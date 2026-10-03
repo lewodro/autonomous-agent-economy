@@ -1,23 +1,32 @@
+import {CanvasAnimationDriver,dispatchAnimation} from './animation.js';
+import type {AnimationDriver} from './animation.js';
+import type {GameRenderer} from './rendering.js';
 import type { Config, State, GameEvent } from './types.js';
 const colors = ['#e39069','#99ad78','#ddb565','#9da6cf','#bb9b86','#84b2aa','#b592b9','#c5ae72'];
 interface Point { x:number; y:number }
-export class Renderer {
+export class Renderer implements GameRenderer {
   private ctx: CanvasRenderingContext2D; private images = new Map<string,HTMLImageElement>();
-  private state: State | null = null; private config: Config | null = null; private event: GameEvent | null = null; private at = 0;
-  private positions: Point[] = []; selected = ''; favorite = new Set<string>(); paused = true;
-  constructor(private canvas: HTMLCanvasElement, private inspect: (id:string)=>void) {
+  private state: State | null = null; private config: Config | null = null; private driver:AnimationDriver;private raf=0;private observer:ResizeObserver;private textScale=1;private hovered='';private resourceDisplay=new Map<string,number>();
+  private positions: Point[] = []; selected = ''; favorite = new Set<string>(); paused = true;speed=1;reducedMotion=false;
+  constructor(private canvas: HTMLCanvasElement, private inspect: (id:string)=>void,driver:AnimationDriver=new CanvasAnimationDriver()) {
+    this.driver=driver;this.observer=new ResizeObserver(entries=>{this.textScale=Math.min(1.75,Math.max(1,600/(entries[0]?.contentRect.width||960)));});this.observer.observe(canvas);
+    canvas.addEventListener('pointermove',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*960/r.width,y=(e.clientY-r.top)*540/r.height;const i=this.positions.findIndex(p=>Math.abs(p.x-x)<45&&Math.abs(p.y-y)<55);this.hovered=this.state?.agents[i]?.id||'';canvas.title=this.config?.agents.find(a=>a.id===this.hovered)?.name||'Select a rival';});
+    canvas.addEventListener('pointerleave',()=>this.hovered='');
     this.ctx = canvas.getContext('2d')!; this.ctx.imageSmoothingEnabled = false;
     canvas.addEventListener('click', e => { const r = canvas.getBoundingClientRect(), x=(e.clientX-r.left)*960/r.width,y=(e.clientY-r.top)*540/r.height;
       const index=this.positions.findIndex(p => Math.abs(p.x-x)<65 && Math.abs(p.y-y)<65); const a=this.state?.agents[index];if(a)this.inspect(a.id); });
-    const draw=(time:number)=>{this.draw(time);requestAnimationFrame(draw);};requestAnimationFrame(draw);
+    const draw=(time:number)=>{this.draw(time);this.raf=requestAnimationFrame(draw);};this.raf=requestAnimationFrame(draw);
   }
   update(state:State,config:Config,event?:GameEvent) {
     this.state=structuredClone(state);this.config=config;
-    if(event){this.event=event;this.at=performance.now();}else{this.event=null;}
+    this.driver.setReducedMotion(this.reducedMotion);
+    if(event)dispatchAnimation(this.driver,event);
     for(const profile of config.agents) if(!this.images.has(profile.sprite)){const img=new Image();img.src='/'+profile.sprite;this.images.set(profile.sprite,img);}
   }
+  reset(){this.driver.reset();this.resourceDisplay.clear();}
+  destroy(){cancelAnimationFrame(this.raf);this.observer.disconnect();}
   private rect(x:number,y:number,w:number,h:number,color:string){this.ctx.fillStyle=color;this.ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
-  private text(text:string,x:number,y:number,size=14,color='#eee0bd',align:CanvasTextAlign='center'){const c=this.ctx;const scale=(this.state?.agents.length||4)<=4?Math.min(1.75,Math.max(1,600/this.canvas.getBoundingClientRect().width)):1;c.fillStyle=color;c.font=`bold ${Math.round(size*scale)}px ui-monospace, monospace`;c.textAlign=align;c.fillText(text,Math.round(x),Math.round(y));}
+  private text(text:string,x:number,y:number,size=14,color='#eee0bd',align:CanvasTextAlign='center'){const c=this.ctx;const scale=(this.state?.agents.length||4)<=4?this.textScale:1;c.fillStyle=color;c.font=`bold ${Math.round(size*scale)}px ui-monospace, monospace`;c.textAlign=align;c.fillText(text,Math.round(x),Math.round(y));}
   private draw(time:number) {
     const c=this.ctx;c.imageSmoothingEnabled=false;
     this.rect(0,0,960,540,'#302d30');
@@ -41,32 +50,36 @@ export class Renderer {
     this.text(state.ended?'THE LAST SEAT':'LAST SEAT',480,237,16,'#4c3e31');
     if(state.ended){const winner=config.agents.find(a=>a.id===state.winner);this.text(winner?winner.name.toUpperCase():'NO SOLE SURVIVOR',480,274,22,'#3b3a2d');this.text(winner?'SURVIVES':'DRAW',480,303,14,'#514738');}
     else {this.text(`WORK +${state.income}   UPKEEP −${state.upkeep}`,480,274,13,'#4b4938');this.text(state.turn===0?'WHO WILL KEEP THEIR SEAT?':`TURN ${String(state.turn).padStart(2,'0')}`,480,301,12,'#695239');}
-    const progress=Math.min(1,(time-this.at)/650),kind=this.event?.type;
+    const frame=this.driver.tick(time,this.paused,this.speed);c.save();c.translate(frame.camera.x,frame.camera.y);
     const max=Math.max(...state.agents.map(a=>a.credits),1);
     state.agents.forEach((a,i)=>{
       const p=this.positions[i]!,profile=config.agents[i]!,color=colors[i%colors.length]!;
       let x=p.x,y=p.y;
-      const actor=this.event?.actor===a.id,target=this.event?.target===a.id;
-      const acting=actor && kind==='ChallengeStarted';
-      if(acting){const to=this.positions[state.agents.findIndex(a=>a.id===this.event?.target)];if(to){x+=(to.x-x)*Math.sin(progress*Math.PI)*.14;y+=(to.y-y)*Math.sin(progress*Math.PI)*.14;}}
-      if((target&&kind==='ChallengeResolved'&&this.event?.amount)||(actor&&kind==='ResourceChanged'&&(this.event?.amount||0)<0))x+=Math.sin(progress*35)*(1-progress)*5;
-      const size=n>8?36:64;const idle=a.alive&&!this.paused?Math.floor(Math.sin(time/650+i)*1.5):0;
+      const pose=frame.poses.get(a.id);
+      x+=pose?.dx||0;y+=pose?.dy||0;
+      if(pose?.moveTarget){const to=this.positions[state.agents.findIndex(a=>a.id===pose.moveTarget)];if(to){x+=(to.x-x)*(pose.moveProgress||0);y+=(to.y-y)*(pose.moveProgress||0);}}
+      const size=n>8?36:64;const idle=a.alive&&!this.paused&&!this.reducedMotion?Math.floor(Math.sin(time/650+i)*1.5):0;
       this.rect(p.x-22,p.y+22,44,21,'#393336');this.rect(p.x-28,p.y-10,56,34,'#604e40');this.rect(p.x-24,p.y-6,48,26,'#796249');
-      if(a.id===this.selected){this.rect(p.x-36,p.y+54,72,3,color);}
-      if(a.alive){const image=this.images.get(profile.sprite);if(image?.complete&&image.naturalWidth)c.drawImage(image,Math.round(x-size/2),Math.round(y-size/2-8+idle),size,size);else{this.rect(x-15,y-30,30,32,color);this.rect(x-10,y-23,5,5,'#363135');this.rect(x+5,y-23,5,5,'#363135');}}
+      if(a.id===this.selected||a.id===this.hovered){this.rect(p.x-36,p.y+54,72,3,color);}
+      if(pose?.flash){this.rect(x-36,y-44,72,72,'#eac5a3');}
+      if(a.alive||pose?.animation==='eliminating'){c.globalAlpha=pose?.alpha??1;const image=this.images.get(profile.sprite);if(image?.complete&&image.naturalWidth)c.drawImage(image,Math.round(x-size/2),Math.round(y-size/2-8+idle),size,size);else{this.rect(x-15,y-30,30,32,color);this.rect(x-10,y-23,5,5,'#363135');this.rect(x+5,y-23,5,5,'#363135');}}
       else {c.globalAlpha=.28;const image=this.images.get(profile.sprite);if(image?.complete)c.drawImage(image,p.x-size/2,p.y-size/2-8,size,size);c.globalAlpha=1;this.text('OUT',p.x,p.y+7,14,'#d5a597');}
+      c.globalAlpha=1;
       this.text(`${this.favorite.has(a.id)?'★ ':''}${profile.name.slice(0,n>8?9:16)}`,p.x,p.y-size/2-19,n>8?10:20,a.alive?color:'#9d9690');
-      this.rect(p.x-31,p.y+32,62,7,'#302e30');this.rect(p.x-30,p.y+33,60*Math.min(1,a.credits/profile.starting_credits),5,a.alive?color:'#736562');
+      this.rect(p.x-31,p.y+32,62,7,'#302e30');this.rect(p.x-30,p.y+33,60*Math.min(1,this.displayCredits(a.id,a.credits)/profile.starting_credits),5,a.alive?color:'#736562');
       this.text(`${a.credits} cr${a.alive&&a.credits===max?' ◇':''}`,p.x,p.y+54,n>8?10:18,a.alive?'#f2e2bc':'#908782');
       if(a.guarded&&a.alive){this.text('◆',p.x+35,p.y-4,24,'#9caecd');}
-      if(actor&&progress<1){
-        const icon=kind==='WorkCompleted'?'⚒':kind==='GuardRaised'?'◆':kind==='CooperationOffered'||kind==='AllianceCreated'?'♥':kind==='ChallengeStarted'?'!':'';
-        if(icon)this.text(icon,x,y-65-Math.sin(progress*Math.PI)*10,22,kind==='GuardRaised'?'#b9c7e0':'#eed18b');
-        if(kind==='ResourceChanged'){const amount=this.event?.amount||0;if(amount)this.text(`${amount>0?'+':''}${amount}`,x+42,y-20-progress*25,20,amount>0?'#c5dd91':'#f0a27d');}
-        if(kind==='AgentEliminated'){c.globalAlpha=1-progress;for(let q=0;q<8;q++)this.rect(p.x+Math.cos(q)*progress*45,p.y+Math.sin(q)*progress*35,5,5,color);c.globalAlpha=1;}
-      }
+      if(pose?.animation==='thinking')this.text('···',x,y-66,22,'#e5d2a1');
+      if(pose?.animation==='working')this.text('⚒',x+42,y-32,22,'#eed18b');
+      if(pose?.animation==='guarding')this.text('◆',x+42,y-32,24,'#bbc9e2');
       if(state.winner===a.id){this.text('♛',p.x,p.y-size/2-43,28,'#f3d27d');}
     });
-    if(this.event?.actor&&this.event.target&&['ChallengeStarted','CooperationOffered','AllianceCreated'].includes(this.event.type)&&progress<1){const a=this.positions[state.agents.findIndex(a=>a.id===this.event?.actor)],b=this.positions[state.agents.findIndex(a=>a.id===this.event?.target)];if(a&&b){for(let i=0;i<4;i++){const t=(progress+i*.1)%1;this.rect(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,5,5,kind==='ChallengeStarted'?'#dda078':'#d2d39b');}}}
+    for(const particle of frame.particles){const p=this.positions[state.agents.findIndex(a=>a.id===particle.id)];if(!p)continue;const q=this.positions[state.agents.findIndex(a=>a.id===particle.target)];const t=particle.progress;const angle=particle.index*2.399;let x=p.x+Math.cos(angle)*t*60,y=p.y+Math.sin(angle)*t*50-t*20;
+      if(q){x=p.x+(q.x-p.x)*t;y=p.y+(q.y-p.y)*t-Math.sin(t*Math.PI)*30+Math.sin(angle)*8;}
+      const color=particle.effect==='betrayal'?'#f18e7c':particle.effect==='hearts'?'#c6cf96':particle.effect==='confetti'?colors[particle.index%colors.length]!:'#ecc779';c.globalAlpha=1-t;this.rect(x,y,particle.effect==='confetti'?5:4,5,color);c.globalAlpha=1;
+    }
+    for(const popup of frame.popups){const p=this.positions[state.agents.findIndex(a=>a.id===popup.id)];if(p){c.globalAlpha=1-popup.progress;this.text(`${popup.amount>0?'+':''}${popup.amount}`,p.x+45,p.y-16-popup.progress*35,19,popup.amount>0?'#d0e5a0':'#edaa8e');c.globalAlpha=1;}}
+    c.restore();
   }
+  private displayCredits(id:string,value:number){const before=this.resourceDisplay.get(id)??value;const next=this.reducedMotion?value:before+(value-before)*.2;this.resourceDisplay.set(id,next);return next;}
 }

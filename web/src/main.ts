@@ -9,10 +9,12 @@ let selected='', favorites=new Set<string>();
 try { favorites=new Set(JSON.parse(localStorage.getItem('last-seat-favorites')||'[]') as string[]); } catch {}
 const notice=(text:string)=>{$('notice').textContent=text;};
 const player=new Player(update,notice);
+const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const renderer=new Renderer($<HTMLCanvasElement>('board'),id=>{selected=id;update();});
+renderer.reducedMotion=motion.matches;motion.addEventListener('change',()=>{renderer.reducedMotion=motion.matches;update();});
 function update(event?:GameEvent) {
   const run=player.run,state=player.state;if(!run||!state)return;
-  renderer.selected=selected;renderer.favorite=favorites;renderer.paused=!player.playing;renderer.update(state,run.config,event);
+  renderer.selected=selected;renderer.favorite=favorites;renderer.paused=!player.playing&&!player.busy;renderer.speed=player.speed;renderer.update(state,run.config,event);
   $('turn').textContent=`TURN ${String(state.turn).padStart(2,'0')}`;
   const count=state.agents.filter(a=>a.alive).length;
   $('alive').textContent=state.ended?state.winner?`${run.config.agents.find(a=>a.id===state.winner)?.name.toUpperCase()} SURVIVES`:'NO SOLE SURVIVOR':`${count} / ${state.agents.length} AT THE TABLE`;
