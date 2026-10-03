@@ -18,3 +18,14 @@ test('economy parser rejects mainnet, numeric money, fake participants and malfo
   const e=event();mutate(e);assert.throws(()=>parseEconomyEvent(e));
  }
 });
+const {mapEconomyEffect,dispatchEconomyEffect,BrowserEconomyAnimationDriver}=await import('../web/dist/economy-animation.js');
+test('economy animation only reacts to confirmations and is replaceable',()=>{
+ assert.deepEqual(mapEconomyEffect({...event(),type:'EntryRequested',agent_id:'a',amount:'1'}),[]);
+ const calls=[],driver={playDeposit:(...args)=>calls.push(args),playPayout:(...args)=>calls.push(args),playRefund:()=>calls.push(['refund'])};
+ dispatchEconomyEffect(driver,{...event(),type:'EntryReceived',agent_id:'a',amount:'20000000',receipt_id:'r'});
+ assert.deepEqual(calls,[['a','20000000']]);
+ assert.deepEqual(mapEconomyEffect({...event(),type:'EntryReceived',agent_id:'a',amount:'0',receipt_id:'r'}),[]);
+ const effects=[];const adapter=new BrowserEconomyAnimationDriver({spawnParticles:(...args)=>effects.push(args),playCelebration:id=>effects.push(id),reset:()=>effects.push('reset')});
+ adapter.playDeposit('a','18446744073709551615');adapter.playPayout('a','1');adapter.playRefund();
+ assert.deepEqual(effects,[['a','coins',6],'a','reset']);
+});
