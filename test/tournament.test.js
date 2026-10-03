@@ -22,3 +22,25 @@ test('recorded settlements still score idempotently', async () => {
   scoreTournament(state, match);
   assert.deepEqual(state, before);
 });
+
+test('a scheduled pair cannot award points for multiple different matches', async () => {
+  const state = configureRun();
+  startTournament(state);
+  const pair = nextTournamentPair(state);
+  const runner = new Orchestrator(state);
+  scoreTournament(state, await runner.step(pair));
+  const extra = await runner.step(pair);
+  const before = structuredClone(state);
+  assert.throws(() => scoreTournament(state, extra), /pair already scored/);
+  assert.deepEqual(state, before);
+});
+
+test('an exhibition played before selection cannot become a tournament result', async () => {
+  const state = configureRun();
+  const earlier = await new Orchestrator(state).step(['agent-1', 'agent-2']);
+  startTournament(state);
+  nextTournamentPair(state);
+  const before = structuredClone(state);
+  assert.throws(() => scoreTournament(state, earlier), /after tournament pair selection/);
+  assert.deepEqual(state, before);
+});

@@ -33,6 +33,13 @@ export function scoreTournament(state, match) {
   if (!t || t.status !== 'open' || match.status !== 'settled' || t.matchIds.includes(match.id)) return;
   if (!state.matches.includes(match)) throw new Error('Unknown tournament match');
   if (JSON.stringify(t.schedule[t.cursor - 1]) !== JSON.stringify(match.players)) throw new Error('Match does not match the tournament schedule');
+  const selected = state.events.findLast(e => e.type === 'TOURNAMENT_PAIR_SELECTED' && e.data.tournamentId === t.id);
+  const payment = state.events.find(e => e.type === 'PAYMENT_CONFIRMED' && e.data.matchId === match.id);
+  if (!selected?.data.eligible || !payment || payment.seq <= selected.seq) throw new Error('Match must be entered after tournament pair selection');
+  if (t.matchIds.some(id => {
+    const scored = state.matches.find(m => m.id === id);
+    return JSON.stringify(scored?.players) === JSON.stringify(match.players);
+  })) throw new Error('Tournament pair already scored');
   t.matchIds.push(match.id);
   if (match.result === 'draw') match.players.forEach(id => t.points[id]++);
   else t.points[match.players[match.result === 'a' ? 0 : 1]] += 3;
