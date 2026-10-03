@@ -581,3 +581,37 @@ fn sample_economy_scenarios_validate_without_paid_inference_or_wallet_secrets() 
     scenario.economy.mode = PaymentMode::Mainnet;
     assert!(scenario.initial().is_err());
 }
+#[test]
+fn one_command_mock_demo_funds_four_agents_and_pays_agent_c_exactly_once() {
+    let scenario: EconomyScenario =
+        serde_json::from_str(include_str!("../../examples/economy/mock-0.02.json")).unwrap();
+    let report = agent_arena_demo::economy::demo::run(&scenario).unwrap();
+    assert_eq!(report.funded_pot, Amount::new(80_000_000));
+    assert_eq!(
+        report.settlement.as_ref().unwrap().winner.as_str(),
+        "agent-3"
+    );
+    for (id, balance) in report.balances {
+        assert_eq!(
+            balance,
+            Amount::new(if id.as_str() == "agent-3" {
+                1_060_000_000
+            } else {
+                980_000_000
+            })
+        );
+    }
+    assert_eq!(
+        report
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, EconomyEventKind::SettlementCompleted { .. }))
+            .count(),
+        1
+    );
+    let free: EconomyScenario =
+        serde_json::from_str(include_str!("../../examples/economy/free.json")).unwrap();
+    let free = agent_arena_demo::economy::demo::run(&free).unwrap();
+    assert_eq!(free.funded_pot, Amount::ZERO);
+    assert!(free.balances.values().all(|v| *v == Amount::ZERO));
+}

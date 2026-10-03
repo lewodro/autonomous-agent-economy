@@ -1,6 +1,6 @@
 {
   "agents": 4,
-  "seed": 9,
+  "seed": 42,
   "max_turns": 40,
   "instance": "free",
   "economy": {

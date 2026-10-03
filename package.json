@@ -22,7 +22,8 @@
     "prematch": "npm run build",
     "demo:payments": "node scripts/payment-demo.js",
     "balance": "cargo run --manifest-path rust/Cargo.toml --bin balance-report --",
-    "lint": "npm run check && npm run typecheck && cargo fmt --manifest-path rust/Cargo.toml --check"
+    "lint": "npm run check && npm run typecheck && cargo fmt --manifest-path rust/Cargo.toml --check",
+    "demo:economy": "cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo --"
   },
   "engines": {
     "node": ">=22"

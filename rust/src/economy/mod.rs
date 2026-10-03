@@ -32,3 +32,5 @@ pub mod mock_signer;
 pub mod devnet;
 
 pub mod scenario;
+
+pub mod demo;
