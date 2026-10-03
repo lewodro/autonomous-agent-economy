@@ -62,6 +62,11 @@ test('HTTP replay sharing verifies the exact prefix and refuses tampering or cro
     const bad=structuredClone(step.replay);bad.final_state.agents[0].credits++;
     assert.equal((await post('/api/replays/share',{replay:bad})).status,400);
     assert.equal((await post('/api/matches',{config},{Origin:'https://unrelated.example'})).status,403);
+    const spoofedHost=await new Promise((resolve,reject)=>{
+      const req=http.request(base+'/api/matches',{method:'POST',headers:{'Content-Type':'application/json',Host:'attacker.example',Origin:'http://attacker.example'}},res=>{res.resume();resolve(res.statusCode);});
+      req.on('error',reject);req.end(JSON.stringify({config}));
+    });
+    assert.equal(spoofedHost,421);
     assert.equal((await fetch(base+'/rust/Cargo.toml')).status,404);
     const wallet=await post('/api/wallet-demo',{}).then(r=>r.json());assert.equal(wallet.mode,'mock');assert.ok(wallet.events.some(e=>e.type==='WalletTransferConfirmed'));
   }finally{if(child.exitCode===null){child.kill('SIGTERM');await once(child,'exit');}}

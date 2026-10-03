@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Core } from './service/core.js';
 import { MatchRuntime } from './service/runtime.js';
+import { authorizeRequest } from './service/http-policy.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const core = new Core(), runtime = new MatchRuntime(), sessions = new Map();
 const directory = path.join(root, 'matches');
@@ -32,10 +33,11 @@ async function persist(replay) {
 }
 const server = http.createServer(async (req, res) => {
   try {
+    const denied = authorizeRequest(req, req.socket.localPort);
+    if (denied) return json(res, denied.status, { error: denied.error });
     const url = new URL(req.url, 'http://localhost'), route = url.pathname;
     if (req.method === 'POST') {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
-      if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== process.env.PUBLIC_ORIGIN) return json(res, 403, { error: 'Cross-origin requests are not allowed' });
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
       const data = await body(req);
@@ -43,7 +45,7 @@ const server = http.createServer(async (req, res) => {
       await persist(replay);
       return json(res, 200, { match_id: replay.match_id });
     }
-    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', version: 'last-seat-v2' });
+    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', version: 'last-seat-v3' });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
       const data = await body(req);
