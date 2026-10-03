@@ -8,3 +8,5 @@ pub mod wallet;
 pub mod wallet_demo;
 
 pub mod solana_wallet;
+
+pub mod economy;
