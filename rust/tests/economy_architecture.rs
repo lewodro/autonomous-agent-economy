@@ -341,3 +341,56 @@ fn stable_economy_id_binds_version_configuration_and_instance() {
     .unwrap();
     assert!(other.verify_finished(&finished).is_err());
 }
+use agent_arena_demo::economy::coordinator::EconomyCoordinator;
+fn funded_coordinator(
+    count: usize,
+    entry: &str,
+) -> (
+    agent_arena_demo::model::Replay,
+    EconomyCoordinator<MockPaymentRail, MockEscrow>,
+) {
+    let initial = engine::start(game_config::default_config(count, 9)).unwrap();
+    let mut economy = EconomyCoordinator::mock(
+        &initial,
+        &economy_config(entry),
+        &OperationId::new("integration-1").unwrap(),
+    )
+    .unwrap();
+    economy.open_funding().unwrap();
+    for agent in initial
+        .config
+        .agents
+        .iter()
+        .map(|a| AgentId::new(&a.id).unwrap())
+    {
+        economy.fund(&agent).unwrap();
+        economy.fund(&agent).unwrap();
+    }
+    (initial, economy)
+}
+#[test]
+fn coordinator_funds_requested_populations_and_exact_pots_before_lock() {
+    for (count, entry, units) in [
+        (2, "0.05", 50_000_000),
+        (4, "0.02", 20_000_000),
+        (4, "0.05", 50_000_000),
+        (8, "0.02", 20_000_000),
+    ] {
+        let (initial, mut economy) = funded_coordinator(count, entry);
+        assert_eq!(economy.view().state, EconomyState::Funded);
+        assert_eq!(economy.view().pot_amount, Amount::new(count as u64 * units));
+        for agent in initial.config.agents {
+            assert_eq!(
+                economy.balance(&AgentId::new(agent.id).unwrap()).unwrap(),
+                Amount::new(1_000_000_000 - units)
+            );
+        }
+        economy.lock().unwrap();
+        economy.start().unwrap();
+        assert_eq!(economy.view().state, EconomyState::Running);
+        for (seq, event) in economy.events().iter().enumerate() {
+            assert_eq!(event.seq, seq as u64);
+            assert_eq!(event.match_id, economy.view().match_id);
+        }
+    }
+}

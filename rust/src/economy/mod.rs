@@ -18,3 +18,5 @@ pub mod escrow;
 pub mod mock_escrow;
 
 pub mod binding;
+
+pub mod coordinator;
