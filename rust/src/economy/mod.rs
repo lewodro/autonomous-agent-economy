@@ -10,3 +10,5 @@ pub mod events;
 pub mod treasury;
 
 pub mod rail;
+
+pub mod mock_rail;

@@ -175,3 +175,54 @@ fn rail_messages_round_trip_without_signing_keys_or_chain_dependencies() {
     );
     assert_eq!(receipt.intent.match_id, intent.match_id);
 }
+use agent_arena_demo::economy::mock_rail::MockPaymentRail;
+fn mock_rail() -> MockPaymentRail {
+    let mut ledger = TreasuryLedger::default();
+    ledger
+        .open(
+            AccountId::new("agent-a").unwrap(),
+            Amount::new(1_000_000_000),
+        )
+        .unwrap();
+    ledger
+        .open(AccountId::new("escrow-one").unwrap(), Amount::ZERO)
+        .unwrap();
+    MockPaymentRail::new(ledger, Amount::new(5_000_000))
+}
+#[test]
+fn mock_rail_verifies_recorded_receipts_and_retries_never_double_debit() {
+    let mut rail = mock_rail();
+    let intent = entry_intent();
+    let prepared = rail.prepare_payment(intent.clone()).unwrap();
+    let first = rail.submit_payment(&prepared).unwrap();
+    let second = rail.submit_payment(&prepared).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(
+        rail.get_balance(&intent.payer).unwrap(),
+        Amount::new(980_000_000)
+    );
+    assert_eq!(rail.receipt_count(), 1);
+    assert_eq!(rail.total().unwrap(), Amount::new(1_000_000_000));
+    rail.verify_payment(&first, &intent).unwrap();
+    let mut conflict = intent.clone();
+    conflict.amount = Amount::new(1);
+    assert!(rail.prepare_payment(conflict).is_err());
+    let mut forged = first;
+    forged.intent.match_id = RunId::new("another-match").unwrap();
+    assert!(rail.verify_payment(&forged, &forged.intent).is_err());
+    let mut tampered = prepared;
+    tampered.authorization = "invented".into();
+    assert!(rail.submit_payment(&tampered).is_err());
+}
+#[test]
+fn concurrent_preparations_recheck_reserves_at_submission() {
+    let mut rail = mock_rail();
+    let mut first = entry_intent();
+    first.amount = Amount::new(600_000_000);
+    let a = rail.prepare_payment(first.clone()).unwrap();
+    first.operation_id = OperationId::new("entry-b").unwrap();
+    let b = rail.prepare_payment(first).unwrap();
+    rail.submit_payment(&a).unwrap();
+    assert!(rail.submit_payment(&b).is_err());
+    assert_eq!(rail.total().unwrap(), Amount::new(1_000_000_000));
+}
