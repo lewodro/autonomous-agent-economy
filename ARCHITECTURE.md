@@ -29,6 +29,24 @@ Agent memory / analytics → validated browser storage
 
 The game engine, strategies, policy, storage, and renderer stay separate. Opportunity descriptors include type, participants, stake, rules, response schema, and settlement conditions so a future service marketplace can reuse these boundaries.
 
+## Pixel game and spectator experience
+
+The supplied PNGs represent 20 algorithmic agents in a CSS pixel field. The visual layer observes economic state; it never creates balances or wins. A match monitor animates evaluate, commit, reveal, and settle. Sprites become inactive when an entry fails policy. Inspection exposes why an agent is out, its limits, opponent memory, and performance.
+
+| Mode | Rules | Completion |
+|---|---|---|
+| Bounded | Stake and exposure caps, minimum reserve, maximum loss | Fewer than two eligible agents, or configured match limit |
+| Survival | No reserve, full bankroll exposure, loss budget equal to initial capital | Fewer than two agents able to pay the stake, or match limit |
+| Exhibition tournament | Up to four eligible agents, one game per pair, win 3 points / draw 1 | Schedule exhausted; ineligible pairs recorded as skipped; ties remain ties |
+
+Spectator utility comes from watching adaptation, comparing seeded conditions, inspecting match proofs, and exporting results. Copyable summaries use recorded facts and require manual publishing. There is no viewer betting or token utility claim.
+
+## Reproduction and recovery
+
+Strategy decisions and matchmaking use a seeded generator; commitment nonces use cryptographic randomness. Result digests exclude nonces and timestamps. Saved browser runs contain complete transitions only. Reload replays economic events through the original policy and settlement functions, verifies reveals, and compares reconstructed bankrolls, memory, statistics, treasury, and tournament state. A consistent rewritten local history remains possible because the browser is not an independent verifier.
+
+The Solana demo is separate from the game: it builds and signs a legacy System Program transfer, optionally reads devnet RPC and simulates it, and never broadcasts a transfer. A faucet flag requests test funds for an ephemeral key. The Rust demo illustrates offchain checked integer settlement; it is not a chain program. Neither demo upgrades local arena results into on-chain proofs.
+
 ## Simulation assumptions
 
 - SOL amounts in this app are simulated units. No wallet connection, private keys, signing, real payments, blockchain verification, or public social publishing is implemented.

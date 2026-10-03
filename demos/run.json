@@ -1,0 +1,8 @@
+{
+  "agents": 20,
+  "mode": "survival",
+  "bankroll": "0.03",
+  "stake": "0.03",
+  "seed": 42,
+  "rounds": 1000
+}

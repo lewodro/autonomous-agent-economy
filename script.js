@@ -32,7 +32,7 @@ function render() {
   const available = state.agents.filter(a => eligibility(state, a).eligible);
   $('active-count').textContent = `${available.length} / ${state.agents.length}`;
   $('match-count').textContent = String(settled.length).padStart(4, '0');
-  $('capital').textContent = fmt(state.agents.reduce((sum, a) => sum + a.balance, 0));
+  $('capital').textContent = fmt(state.agents.reduce((sum, a) => sum + a.balance, 0) + state.matches.reduce((sum, m) => sum + m.escrow, 0));
   $('treasury-total').textContent = fmt(state.treasury);
   $('seed-label').textContent = `SEED ${state.seed}`;
   $('run-status').textContent = state.paused ? 'PAUSED' : watching ? 'LIVE' : settled.length >= state.config.maxRounds || available.length < 2 ? 'COMPLETE' : 'READY';
@@ -142,6 +142,11 @@ $('tournament').addEventListener('click', () => {
   catch (error) { notice(error.message); }
 });
 // Loading checks hashes and reconstructs accounting before enabling gameplay.
-try { const restored = await loadState(); if (restored) { state = restored; selected = state.agents[0].id; notice('Verified saved run restored.'); } }
-catch (error) { notice(`Saved run could not be verified: ${error.message}. A fresh run is ready; the saved data remains until you start a new run.`); }
+document.querySelectorAll('button').forEach(button => button.disabled = true);
+document.body.setAttribute('aria-busy', 'true');
+notice('Verifying saved ledger…');
+try { const restored = await loadState(); if (restored) { state = restored; selected = state.agents[0].id; notice('Verified saved run restored.'); } else notice('Ready · completed matches will be saved locally.'); }
+catch (error) { notice(`Saved run could not be verified: ${error.message}. A fresh run is ready; the saved data remains until the next saved transition.`); }
+document.querySelectorAll('button').forEach(button => button.disabled = false);
+document.body.removeAttribute('aria-busy');
 connect(); render();
