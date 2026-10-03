@@ -6,7 +6,9 @@ fn main() {
         .nth(1)
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(120);
-    let version = std::env::args().nth(2).unwrap_or("last-seat-v3".into());
+    let version = std::env::args()
+        .nth(2)
+        .unwrap_or(agent_arena_demo::model::VERSION.into());
     let mut wins = BTreeMap::<String, u32>::new();
     let mut actions = BTreeMap::<String, u32>::new();
     let (mut turns, mut alliances, mut betrayal, mut draws, mut eliminations, mut eliminated_turns) =

@@ -22,7 +22,7 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
     }
     match profile.strategy.as_str() {
         "aggressive" => {
-            if me.credits < observation.upkeep + 2 {
+            if me.credits < observation.upkeep + 2 || me.credits > richest.credits {
                 return result;
             }
             let target = rivals
