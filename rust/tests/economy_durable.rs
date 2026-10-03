@@ -240,3 +240,69 @@ fn local_transfer_has_two_real_signatures_and_intent_memo() {
     .is_err());
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn parsed_local_receipt_rejects_wrong_amount_recipient_memo_and_failure() {
+    use agent_arena_demo::economy::{
+        local_rail::verify_transaction,
+        local_transaction::{SignedLocalTransfer, MEMO_PROGRAM},
+    };
+    let signed = SignedLocalTransfer {
+        reference: "sig".into(),
+        wire: "wire".into(),
+        sender: "from".into(),
+        recipient: "to".into(),
+        fee_payer: "sponsor".into(),
+        amount: Amount::new(20_000_000),
+        operation_id: OperationId::new("op-test").unwrap(),
+    };
+    let tx = serde_json::json!({"slot":1,"meta":{"err":null,"innerInstructions":[]},"transaction":{"signatures":["sig"],"message":{"accountKeys":[{"pubkey":"sponsor","signer":true},{"pubkey":"from","signer":true}],"instructions":[{"programId":"11111111111111111111111111111111","parsed":{"type":"transfer","info":{"source":"from","destination":"to","lamports":20000000}}},{"programId":MEMO_PROGRAM,"parsed":"op-test"}]}}});
+    verify_transaction(&tx, &signed).unwrap();
+    for field in ["destination", "lamports"] {
+        let mut bad = tx.clone();
+        bad["transaction"]["message"]["instructions"][0]["parsed"]["info"][field] =
+            serde_json::json!("bad");
+        assert!(verify_transaction(&bad, &signed).is_err());
+    }
+    let mut bad = tx.clone();
+    bad["transaction"]["message"]["instructions"][1]["parsed"] = serde_json::json!("op-other");
+    assert!(verify_transaction(&bad, &signed).is_err());
+    let mut bad = tx;
+    bad["meta"]["err"] = serde_json::json!({"error":1});
+    assert!(verify_transaction(&bad, &signed).is_err());
+    assert!(verify_transaction(&serde_json::Value::Null, &signed).is_err());
+}
+#[test]
+#[ignore = "Requires explicitly pinned isolated local validator"]
+fn actual_local_transfer_verifies_chain_and_survives_rail_restart() {
+    use agent_arena_demo::economy::local_rail::LocalPaymentRail;
+    let path = directory("chain");
+    let genesis = std::env::var("LOCAL_GENESIS_HASH").expect("Pin local genesis");
+    let a = AccountId::new("a").unwrap();
+    let escrow = AccountId::new("escrow-test").unwrap();
+    let fee = AccountId::new("fee-sponsor").unwrap();
+    let mut rail = LocalPaymentRail::create(
+        path.join("journal"),
+        path.join("keys"),
+        genesis,
+        vec![a.clone(), escrow.clone()],
+        Amount::new(5_000_000),
+    )
+    .unwrap();
+    rail.provision(&a, Amount::new(1_000_000_000)).unwrap();
+    rail.provision(&fee, Amount::new(2_000_000_000)).unwrap();
+    let mut i = intent();
+    i.payee = escrow.clone();
+    i.operation_id = operation_id(&i.match_id, i.purpose, &i.payer, &i.payee).unwrap();
+    let p = rail.prepare_payment(i.clone()).unwrap();
+    let before = serde_json::to_vec(&rail).unwrap();
+    let receipt = rail.submit_payment(&p).unwrap();
+    rail.verify_payment(&receipt, &i).unwrap();
+    let mut restored: LocalPaymentRail = serde_json::from_slice(&before).unwrap();
+    assert_eq!(restored.submit_payment(&p).unwrap(), receipt);
+    assert_eq!(
+        restored.get_balance(&escrow).unwrap(),
+        Amount::new(20_000_000)
+    );
+    assert_eq!(restored.get_balance(&a).unwrap(), Amount::new(980_000_000));
+    std::fs::remove_dir_all(path).unwrap();
+}
