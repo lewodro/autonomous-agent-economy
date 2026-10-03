@@ -16,6 +16,8 @@ pub struct AgentConfig {
     pub starting_credits: i32,
     #[serde(default)]
     pub wallet_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inference: Option<InferenceConfig>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -148,4 +150,23 @@ pub struct Observation {
     pub upkeep: i32,
     pub agents: Vec<Agent>,
     pub alliances: Vec<[String; 2]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceConfig {
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u32>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub max_requests: Option<u32>,
+    #[serde(default)]
+    pub retries: Option<u32>,
+    #[serde(default)]
+    pub fallback: Option<String>,
 }

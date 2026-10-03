@@ -1,5 +1,5 @@
 export type Action = 'work' | 'challenge' | 'guard' | 'cooperate';
-export interface AgentConfig { id: string; name: string; sprite: string; strategy: string; personality: string; prompt: string; model: string; provider: 'mock' | 'http' | 'recorded'; starting_credits: number; wallet_enabled: boolean }
+export interface AgentConfig { id: string; name: string; sprite: string; strategy: string; personality: string; prompt: string; model: string; provider: 'mock' | 'http' | 'recorded' | 'openai-compatible'; starting_credits: number; wallet_enabled: boolean; inference?: {base_url?:string;api_key_env?:string;timeout_ms?:number;max_tokens?:number;max_requests?:number;retries?:number;fallback?:'work'|'guard'} }
 export interface Config { seed: number; max_turns: number; agents: AgentConfig[] }
 export interface Statistics { actions: number; challenges_won: number; blocks: number; cooperations: number; earned: number; eliminated_turn: number | null }
 export interface Agent { id: string; credits: number; alive: boolean; guarded: boolean; last_action: Action | null; stats: Statistics }

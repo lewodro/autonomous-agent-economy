@@ -48,6 +48,7 @@ pub fn default_config(count: usize, seed: u32) -> Config {
                     provider: "mock".into(),
                     starting_credits: 12,
                     wallet_enabled: false,
+                    inference: None,
                 }
             })
             .collect(),
@@ -86,9 +87,37 @@ pub fn validate(config: &Config) -> Result<(), String> {
         }
         if !["aggressive", "conservative", "opportunist", "cooperative"]
             .contains(&a.strategy.as_str())
-            || !["mock", "http", "recorded"].contains(&a.provider.as_str())
+            || !["mock", "http", "recorded", "openai-compatible"].contains(&a.provider.as_str())
         {
             return Err("Unknown strategy or provider".into());
+        }
+        if let Some(c) = &a.inference {
+            if c.timeout_ms.is_some_and(|v| !(100..=30000).contains(&v))
+                || c.max_tokens.is_some_and(|v| !(16..=2048).contains(&v))
+                || c.max_requests.is_some_and(|v| v > 200)
+                || c.retries.is_some_and(|v| v > 2)
+                || c.fallback
+                    .as_ref()
+                    .is_some_and(|v| !["guard", "work"].contains(&v.as_str()))
+            {
+                return Err("Inference limits invalid".into());
+            }
+            if c.api_key_env.as_ref().is_some_and(|v| {
+                !v.ends_with("_API_KEY")
+                    || v.len() > 64
+                    || !v
+                        .bytes()
+                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+            }) {
+                return Err("Use a dedicated *_API_KEY environment name".into());
+            }
+            if c.base_url.as_ref().is_some_and(|v| {
+                v.len() > 300
+                    || !(v.starts_with("http://") || v.starts_with("https://"))
+                    || v.contains('@')
+            }) {
+                return Err("Invalid model base URL".into());
+            }
         }
         if !a.sprite.starts_with("assets/sprites-agent/")
             || !a.sprite.ends_with(".png")

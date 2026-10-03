@@ -59,6 +59,12 @@ fn request(value: Value, runs: &mut BTreeMap<String, Replay>) -> Result<Value, S
                         .map_err(|e| e.to_string())?,
                 )
             };
+            if value["expected_turn"]
+                .as_u64()
+                .is_some_and(|turn| turn != run.final_state.turn as u64)
+            {
+                return Err("Stale turn revision".into());
+            }
             let events = engine::advance(run, decisions)?;
             Ok(json!({"events":events,"replay":run}))
         }

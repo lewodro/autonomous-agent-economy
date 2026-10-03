@@ -148,18 +148,42 @@ fn observation_is_same_for_all_decisions_and_upkeep_increases() {
 
 #[test]
 fn semantic_contract_is_ordered_and_projects_authoritative_values() {
- let mut run=engine::start(config::default_config(4,42)).unwrap();
- while !run.final_state.ended {
- let events=engine::advance(&mut run,None).unwrap();
- for e in &events { assert!(e.projection.is_some()); }
- for (i,e) in run.events.iter().enumerate() { assert_eq!(e.seq,i); }
- let started=events.iter().filter(|e|e.kind==Kind::ActionStarted).count();
- assert_eq!(started,events.iter().filter(|e|e.kind==Kind::ActionResolved).count());
- let end=events.last().unwrap(); assert_eq!(end.kind,Kind::RoundEnded);assert_eq!(end.state.as_ref().unwrap(),&run.final_state);
- }
- assert_eq!(run.events.iter().filter(|e|e.kind==Kind::WinnerDeclared).count(),1);
- replay::verify(&run).unwrap();
- let mut legacy=engine::start_version(config::default_config(2,7),"last-seat-v1").unwrap();
- while !legacy.final_state.ended { engine::advance(&mut legacy,None).unwrap(); }
- assert!(legacy.events.iter().all(|e|e.projection.is_none()));replay::verify(&legacy).unwrap();
+    let mut run = engine::start(config::default_config(4, 42)).unwrap();
+    while !run.final_state.ended {
+        let events = engine::advance(&mut run, None).unwrap();
+        for e in &events {
+            assert!(e.projection.is_some());
+        }
+        for (i, e) in run.events.iter().enumerate() {
+            assert_eq!(e.seq, i);
+        }
+        let started = events
+            .iter()
+            .filter(|e| e.kind == Kind::ActionStarted)
+            .count();
+        assert_eq!(
+            started,
+            events
+                .iter()
+                .filter(|e| e.kind == Kind::ActionResolved)
+                .count()
+        );
+        let end = events.last().unwrap();
+        assert_eq!(end.kind, Kind::RoundEnded);
+        assert_eq!(end.state.as_ref().unwrap(), &run.final_state);
+    }
+    assert_eq!(
+        run.events
+            .iter()
+            .filter(|e| e.kind == Kind::WinnerDeclared)
+            .count(),
+        1
+    );
+    replay::verify(&run).unwrap();
+    let mut legacy = engine::start_version(config::default_config(2, 7), "last-seat-v1").unwrap();
+    while !legacy.final_state.ended {
+        engine::advance(&mut legacy, None).unwrap();
+    }
+    assert!(legacy.events.iter().all(|e| e.projection.is_none()));
+    replay::verify(&legacy).unwrap();
 }
