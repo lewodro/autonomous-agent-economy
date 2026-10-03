@@ -33,7 +33,13 @@ pub struct FundedHost {
 impl FundedHost {
     pub fn load(root: &Path, session: &str) -> Result<Self> {
         let id = OperationId::new(session)?;
-        let repository = JsonRepository::open(root.join("sessions").join(id.as_str()))?;
+        let directory = root.join("sessions").join(id.as_str());
+        if !directory.exists() {
+            return Err(EconomyError::InvalidInput(
+                "Funded session not found".into(),
+            ));
+        }
+        let repository = JsonRepository::open(directory)?;
         let snapshot: HostSnapshot = repository
             .read("host")?
             .ok_or_else(|| EconomyError::InvalidInput("Funded session not found".into()))?;
@@ -361,12 +367,51 @@ impl FundedHost {
         Ok(self.view())
     }
     pub fn expire(&mut self) -> Result<Value> {
-        if now() >= self.snapshot.funding_deadline
+        if self.snapshot.economy.view().state == EconomyState::RefundPending {
+            let reason = self.snapshot.cancellation.ok_or(EconomyError::Conflict)?;
+            self.cancel(reason)
+        } else if now() >= self.snapshot.funding_deadline
             && self.snapshot.economy.view().state == EconomyState::Funding
         {
             self.cancel(RefundReason::FundingFailed)
         } else {
             Ok(self.view())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn scheduler_resumes_pending_refund_with_original_reason_after_restart() {
+        let root = std::env::temp_dir().join(format!(
+            "refund-retry-{}",
+            crate::wallet::address(&crate::wallet::key().unwrap())
+        ));
+        let config = serde_json::from_value(json!({
+            "simulation": crate::config::default_config(2,42),
+            "economy": {"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"}
+        })).unwrap();
+        let mut host = FundedHost::create(&root, "retry", config).unwrap();
+        host.fund("agent-1").unwrap();
+        // Crash point: cancellation authorized and journaled, before refunds finish.
+        host.snapshot.cancellation = Some(RefundReason::CancelledBeforeStart);
+        host.snapshot.economy.economy.state = EconomyState::RefundPending;
+        host.snapshot
+            .economy
+            .emit(super::super::events::EconomyEventKind::RefundStarted {
+                reason: "CancelledBeforeStart".into(),
+            });
+        host.save().unwrap();
+        drop(host);
+        let mut host = FundedHost::load(&root, "retry").unwrap();
+        let view = host.expire().unwrap();
+        assert_eq!(view["economy"]["state"], "refunded");
+        assert_eq!(view["wallets"][0]["balance"], "1000000000");
+        let operations = view["operations"].clone();
+        assert_eq!(host.expire().unwrap()["operations"], operations);
+        drop(host);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

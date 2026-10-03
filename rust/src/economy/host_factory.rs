@@ -54,7 +54,20 @@ impl FundedHost {
                 )?)
             }
             PaymentMode::Local => {
-                let genesis=std::env::var("LOCAL_GENESIS_HASH").map_err(|_|EconomyError::InvalidInput("Run npm run solana:local; pin LOCAL_GENESIS_HASH before creating a local match".into()))?;
+                let genesis = std::env::var("LOCAL_GENESIS_HASH")
+                    .ok()
+                    .or_else(|| {
+                        std::fs::read(root.join("local-validator.json"))
+                            .ok()
+                            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                            .filter(|v| v["rpc"] == "http://127.0.0.1:8899")
+                            .and_then(|v| v["genesis"].as_str().map(String::from))
+                    })
+                    .ok_or_else(|| {
+                        EconomyError::InvalidInput(
+                            "Run npm run solana:local or pin LOCAL_GENESIS_HASH".into(),
+                        )
+                    })?;
                 let accounts = simulation
                     .config
                     .agents

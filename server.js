@@ -108,6 +108,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { replay: checked });
     }
     const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events))?$/);
+    if(match&&!sessions.has(match[1]))await funded.register(match[1]);
     if (match && sessions.has(match[1])) {
       const session = match[1];
       if (req.method === 'GET' && !match[2]) return json(res, 200, await core.request({ command: 'get', session }));

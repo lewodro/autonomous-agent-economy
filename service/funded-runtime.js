@@ -6,6 +6,7 @@ export class FundedRuntime {
  publish(result){this.remember(result);this.events.publishEconomy?.(result.session||result.economy?.session,result.economy);return result;}
  async restore(){const {sessions}=await this.core.request({command:'funded-host',action:'list'});for(const session of sessions){this.sessions.set(session,true);this.remember(await this.command(session,'get'));}}
  async command(session,action,extra={}){return this.core.request({command:'funded-host',session,action,...extra});}
+ async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
  async create(config,data){
   if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
   const session=randomUUID();this.sessions.set(session,true);
