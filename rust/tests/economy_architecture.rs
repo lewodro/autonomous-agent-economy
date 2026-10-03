@@ -60,3 +60,40 @@ fn lifecycle_validates_every_pair_and_terminal_states_cannot_restart() {
     assert!(Running.transition(RefundPending).is_err());
     assert!(Funded.transition(Settled).is_err());
 }
+use agent_arena_demo::economy::config::*;
+fn economy_config(entry: &str) -> EconomyConfig {
+    EconomyConfig {
+        enabled: true,
+        mode: PaymentMode::Mock,
+        entry_amount_sol: entry.into(),
+        starting_balance_sol: "1.0".into(),
+        maximum_entry_sol: "0.05".into(),
+        minimum_reserve_sol: "0.005".into(),
+    }
+}
+#[test]
+fn configuration_uses_exact_amounts_enforces_reserves_and_rejects_mainnet() {
+    for (text, units) in [
+        ("0", 0),
+        ("0.02", 20_000_000),
+        ("0.03", 30_000_000),
+        ("0.05", 50_000_000),
+        ("1.000000001", 1_000_000_001),
+    ] {
+        assert_eq!(parse_sol(text).unwrap().units(), units);
+    }
+    for text in ["-1", "NaN", "0.0000000001", "1e3", "01.2", ".02", "1."] {
+        assert!(parse_sol(text).is_err());
+    }
+    assert!(economy_config("0.02").validate().is_ok());
+    assert!(economy_config("0.06").validate().is_err());
+    let mut cfg = economy_config("0.05");
+    cfg.starting_balance_sol = "0.05".into();
+    assert!(cfg.validate().is_err());
+    cfg.mode = PaymentMode::Mainnet;
+    assert_eq!(
+        cfg.validate().unwrap_err(),
+        EconomyError::MainnetNotImplemented
+    );
+    assert!(serde_json::from_str::<EconomyConfig>(r#"{"enabled":true,"mode":"mock","entry_amount_sol":0.02,"starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0"}"#).is_err());
+}
