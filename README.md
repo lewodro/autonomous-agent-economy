@@ -39,6 +39,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
 | Local validator | **DEMO** | Fixed loopback RPC, explicitly pinned genesis; requires separately installed validator |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
+| Mock match economy | **WORKING FOUNDATION** | Funding, escrow, exact settlement/refunds; separate CLI/lab sidecar |
 | Public hosted matches | **PLANNED** | Local HTTP service and JSON archives are the foundation |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
 
@@ -159,6 +160,48 @@ MODEL_BASE_URL=http://127.0.0.1:4011/v1 MODEL_API_KEY_ENV=LOCAL_API_KEY npm star
 Profiles may specify `inference.base_url`, `api_key_env`, `timeout_ms`, `max_tokens`, `max_requests`, `retries`, and `fallback` (`guard` or `work`). Public config endpoint/key names must match server policy; they cannot redirect credentials. Defaults: 4s timeout, 256 output tokens, 40 requests per agent, 1 retry; runtime ceiling 200 requests / 128,000 conservative token reservations per match. Failed attempts count. Response streams are capped at 8 KB; redirects are disabled. Token reservations are upper-bound accounting, not exact billing/price estimates.
 
 No paid provider calls are needed to run/test. Tests exercise compatible HTTP payloads using local/stub services. Actual cloud credentials and model availability remain operator choices.
+
+## Match economy foundation
+
+**WORKING MOCK DEMO** — a separate Rust economy coordinator funds 2–20 agents,
+locks verified deposits, binds the simulation result and pays once. Normal live
+matches remain free. Game credits never debit a wallet.
+
+| Capability | Status | Boundary |
+|---|---|---|
+| Free / 0.02 / 0.03 / 0.05 mock SOL entry | **WORKING DEMO** | Exact decimal strings, configured cap and reserve |
+| Entry verification and escrow | **WORKING MOCK** | Recorded receipts, exact pot, all participants funded before lock |
+| Winner settlement / draw refund | **WORKING MOCK** | Verified finished tape, participant check, idempotent operation |
+| Lost payout response | **TESTED MOCK** | Reconcile original intent; recipient change/refund blocked |
+| Wallet identity / signing ports | **WORKING DEMO** | Public identity separate from deterministic test signer |
+| Economy devnet rail | **READ-ONLY** | Pinned RPC/genesis, real balance reads; transfers return NotImplemented |
+| Live paid admission / durable economy | **PLANNED** | Sidecar currently exists only in CLI and opt-in lab |
+| Mainnet | **DISABLED** | Explicit MainnetNotImplemented error |
+
+```sh
+npm run demo:economy
+npm run demo:economy -- examples/economy/mock-0.05.json
+npm run demo:economy -- examples/economy/free.json
+ECONOMY_LAB=1 npm start
+# Open http://localhost:3000/labs/economy
+cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo -- --devnet-balance 11111111111111111111111111111111
+```
+
+The default seed-42 demo funds four 1.00 mock SOL treasuries at 0.02 each: pot
+**0.08**, winner Pip / agent-3 ends at **1.06**, others at **0.98**. It emits public
+funding/settlement events, checks a second payout call, signs/verifies a public test
+message and prints balances. The summary references history IDs; it is not a full
+persisted replay or production wallet record.
+
+Economy scenario files are separate from agent/simulation configs. Monetary inputs
+are strings (`"0.02"`), events use integer base-unit strings, and instance IDs must be
+explicit. The lab is one in-memory mock instance, disabled by default; reset discards
+its records. It accepts actions, not user-supplied winners or receipts.
+
+[Economy architecture and Mermaid diagrams](docs/economy-architecture.md) ·
+[Example configurations](examples/economy/README.md) ·
+[Threat model](docs/threat-model.md) ·
+[Funded-test prerequisites](docs/mainnet-readiness.md)
 
 ## Wallet System
 
