@@ -1,3 +1,4 @@
+import {EconomyHUD} from './economy-hud.js';
 import {parseConfig} from './config.js';
 import {LiveObserver} from './live-observer.js';
 import {SpectatorHUD,setHTML} from './spectator.js';
@@ -13,6 +14,7 @@ let selected='', favorites=new Set<string>();
 let observer:LiveObserver|null=null,watchSession='',watchConnected=false;
 try { favorites=new Set(JSON.parse(localStorage.getItem('last-seat-favorites')||'[]') as string[]); } catch {}
 const notice=(text:string)=>{$('notice').textContent=text;};
+const economyHUD=new EconomyHUD($('economy-hud'),notice);
 const player=new Player(update,notice);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const renderer=new Renderer($<HTMLCanvasElement>('board'),id=>{selected=id;$<HTMLDetailsElement>('agent-drawer').open=true;update();});
@@ -45,10 +47,24 @@ function inspect(profile:AgentConfig) {
   $('favorite').textContent=favorites.has(profile.id)?'★ Following':'☆ Follow';
   setHTML('inspect-content',`<div class="agent-name"><img src="/${profile.sprite}" alt=""><div><strong>${escape(profile.name)} · ${a.credits} credits</strong><small>${escape(profile.provider)} · ${escape(profile.model)} · ${a.alive?'SEATED':`OUT T${a.stats.eliminated_turn}`}</small></div></div><p class="personality">${escape(profile.personality)}</p><button id="copy-agent" class="small-button">Copy agent config</button><details><summary class="personality">Prompt / strategy</summary><p class="personality">${escape(profile.prompt)}<br>Strategy: ${escape(profile.strategy)}</p></details><ul class="last-decisions">${actions.map(e=>`<li><b>T${e.turn} · ${e.decision?.action.toUpperCase()}</b> ${escape(e.reason)}</li>`).join('')||'<li>No decisions yet. Select Play to begin.</li>'}</ul>${profile.wallet_enabled?'<button id="wallet-demo">Try mock wallet capability</button>':''}`);
   $('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(profile,null,2));notice('Agent config copied. Paste into a match setup.');}catch{download(JSON.stringify(profile,null,2),'agent.json');}};
+  economyHUD.decorate();
   const wallet=$('wallet-demo');if(wallet)wallet.onclick=async()=>{try{const result=await api<{wallet:{address:string;balance:number};events:unknown[]}>('/api/wallet-demo',{});notice(`Mock wallet ${result.wallet.address}: ${result.wallet.balance} lamports. ${result.events.length} activity events. Credits are separate.`);}catch(error){notice((error as Error).message);}};
 }
 function download(content:string,name:string,type='application/json') {const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function create(config:Config) {player.pause();const result=await api<MatchResponse>('/api/matches',{config});observer?.close();observer=null;watchSession='';watchConnected=false;history.replaceState(null,'',location.pathname);selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);try{localStorage.setItem('last-seat-replay-v1',JSON.stringify(result.replay));}catch{}notice(`Seed ${result.replay.config.seed} · ${result.replay.config.agents.length} agents · Rust core. Ready.`);}
+function watchMatch(session:string,initial?:Replay){
+ observer?.close();watchSession=session;watchConnected=false;
+ if(initial){renderer.reset();player.load(initial,'',true);player.observing=true;selected=initial.config.agents[0]!.id;}
+ observer=new LiveObserver(session,run=>{const first=!player.run;player.receive(run);if(first){renderer.reset();if(!run.final_state.ended)player.resume();}update();},connected=>{watchConnected=connected;notice(connected?'Watching live. Pause affects your view; the host controls the match.':'Live connection interrupted. Reconnecting…');update();},data=>economyHUD.accept(data));
+ if(initial&&!initial.final_state.ended)player.resume();
+}
+async function create(config:Config,economy?:{mode:string;entry_amount_sol:string}) {
+ player.pause();economyHUD.clear();
+ if(economy&&economy.mode!=='none'){
+  const result=await api<MatchResponse>('/api/funded-matches',{config,...economy});
+  history.replaceState(null,'',`/?watch=${result.session}`);watchMatch(result.session,result.replay);notice('Funding open. Fund test entries to admit the match.');return;
+ }
+ const result=await api<MatchResponse>('/api/matches',{config});observer?.close();observer=null;watchSession='';watchConnected=false;history.replaceState(null,'',location.pathname);selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);try{localStorage.setItem('last-seat-replay-v1',JSON.stringify(result.replay));}catch{}notice(`Seed ${result.replay.config.seed} · ${result.replay.config.agents.length} agents · Rust core. Ready.`);
+}
 $('play').onclick=()=>{if(player.playing)player.pause();else player.resume();};
 $('step').onclick=()=>{void player.step();};
 $('replay').onclick=()=>{player.seek(0);notice('Replaying recorded events. Providers and rules are not called for recorded turns.');};
@@ -62,7 +78,7 @@ $('new').onclick=()=>{player.pause();if(player.run){$<HTMLTextAreaElement>('conf
 $('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(crypto.getRandomValues(new Uint32Array(1))[0]||1);};
 $('close-config').onclick=()=>dialog.close();
 $('preset').onclick=async()=>{try{const config=await api<Config>(`/api/config?agents=${$<HTMLSelectElement>('population').value}`);config.seed=Number($<HTMLInputElement>('seed').value);config.max_turns=Number($<HTMLInputElement>('max-turns').value);config.agents.forEach(a=>a.starting_credits=Number($<HTMLInputElement>('credits').value));$<HTMLTextAreaElement>('config-json').value=JSON.stringify(config,null,2);}catch(error){$('config-error').textContent=(error as Error).message;}};
-$('config-form').onsubmit=async e=>{e.preventDefault();try{await create(parseConfig($<HTMLTextAreaElement>('config-json').value) as Config);dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
+$('config-form').onsubmit=async e=>{e.preventDefault();try{await create(parseConfig($<HTMLTextAreaElement>('config-json').value) as Config,{mode:$<HTMLSelectElement>('economy-mode').value,entry_amount_sol:$<HTMLSelectElement>('economy-entry').value});dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
 $('download-config').onclick=()=>{download($<HTMLTextAreaElement>('config-json').value,'simulation.json');};
 $('export').onclick=()=>{if(player.run)download(JSON.stringify(player.run,null,2),`${player.run.match_id}.json`);};
 $('config-copy').onclick=async()=>{if(!player.run)return;try{await navigator.clipboard.writeText(JSON.stringify(player.run.config,null,2));notice('Config copied. Edit and paste into New / remix.');}catch{download(JSON.stringify(player.run.config,null,2),'simulation.json');}};
@@ -88,10 +104,7 @@ $('share-turn').onclick=()=>{void share(false);};$('share-result').onclick=()=>{
 $('card').onclick=()=>{const run=player.run,state=player.state;if(!run||!state)return;const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=820;const c=canvas.getContext('2d')!;c.fillStyle='#24252a';c.fillRect(0,0,1200,820);c.imageSmoothingEnabled=false;c.drawImage($<HTMLCanvasElement>('board'),60,100,1080,608);c.fillStyle='#e0be7f';c.font='bold 32px monospace';c.fillText('LAST SEAT · AGENTS FIGHT UNTIL THEY ARE OUT',60,60);c.font='20px monospace';c.fillStyle='#e8ddc0';c.fillText(`TURN ${state.turn} · ${state.agents.filter(a=>a.alive).length}/${state.agents.length} SEATED · SEED ${run.seed}`,60,752);c.font='16px monospace';c.fillStyle='#b4a99b';c.fillText('Seeded local simulation · replayable decisions · no real-money gameplay',60,787);const a=document.createElement('a');a.download=`last-seat-turn-${state.turn}.png`;a.href=canvas.toDataURL('image/png');a.click();};
 try {
   const params=new URLSearchParams(location.search),id=params.get('match'),watch=params.get('watch');
-  if(watch){
-   watchSession=watch;
-   observer=new LiveObserver(watch,run=>{const first=!player.run;player.receive(run);if(first){renderer.reset();if(!run.final_state.ended)player.resume();}update();},connected=>{watchConnected=connected;notice(connected?'Watching live. Pause affects your view; the host controls the match.':'Live connection interrupted. Reconnecting…');update();});
-  }
+  if(watch){watchMatch(watch);}
   else if(id){const result=await api<{replay:Replay}>(`/api/replays/${encodeURIComponent(id)}`);player.load(result.replay,'',true);player.seek(Math.max(0,Math.min(result.replay.final_state.turn,Number(params.get('turn')||0))));notice('Shared replay loaded. New / remix forks its config.');}
   else {
     const savedSession=localStorage.getItem('last-seat-session'),saved=localStorage.getItem('last-seat-replay-v1');

@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
     if (match && sessions.has(match[1])) {
       const session = match[1];
       if (req.method === 'GET' && !match[2]) return json(res, 200, await core.request({ command: 'get', session }));
-      if (req.method === 'GET' && match[2] === 'events') {const {replay}=await core.request({command:'get',session});liveEvents.connect(session,replay,res);return;}
+      if (req.method === 'GET' && match[2] === 'events') {const {replay,economy}=await core.request({command:'get',session});liveEvents.connect(session,replay,res,economy);return;}
       if (req.method === 'POST' && match[2] === 'share') { const { replay } = await core.request({ command: 'get', session }); await persist(replay); return json(res, 200, { match_id: replay.match_id }); }
       if (req.method === 'POST' && match[2] === 'step') {
         const data = await body(req);

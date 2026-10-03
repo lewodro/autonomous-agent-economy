@@ -29,3 +29,8 @@ test('economy animation only reacts to confirmations and is replaceable',()=>{
  adapter.playDeposit('a','18446744073709551615');adapter.playPayout('a','1');adapter.playRefund();
  assert.deepEqual(effects,[['a','coins',6],'a','reset']);
 });
+const {formatSol,fundingStatus}=await import('../web/dist/economy-hud.js');
+test('pot formatting preserves lamports and status comes from authoritative projection',()=>{
+ assert.equal(formatSol('1'),'0.000000001');assert.equal(formatSol('80000000'),'0.08');assert.equal(formatSol('18446744073709551615'),'18446744073.709551615');assert.throws(()=>formatSol('0.02'));
+ const v={economy:event().projection,operations:[{purpose:'entry',payer:'a',status:'submitted'}]};assert.equal(fundingStatus(v,'a'),'◐');assert.equal(fundingStatus(v,'b'),'○');v.economy.funded_agents=['a'];assert.equal(fundingStatus(v,'a'),'✓');v.economy.state='refunded';assert.equal(fundingStatus(v,'a'),'↩');
+});

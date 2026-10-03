@@ -7,12 +7,12 @@ export class LiveObserver {
  private run:Replay|null=null;
  private timer:ReturnType<typeof setTimeout>|null=null;
  private closed=false;
- constructor(private session:string,private changed:(run:Replay)=>void,private status:(connected:boolean)=>void){this.source=this.open();}
+ constructor(private session:string,private changed:(run:Replay)=>void,private status:(connected:boolean)=>void,private economyChanged:(value:unknown)=>void=()=>{}){this.source=this.open();}
  private open(){
   const source=new EventSource(`/api/matches/${encodeURIComponent(this.session)}/events`);
   source.addEventListener('snapshot',event=>{
    if(this.closed||source!==this.source)return;
-   try{this.acceptSnapshot(JSON.parse((event as MessageEvent<string>).data).replay as Replay);}catch{this.reconnect();}
+   try{const data=JSON.parse((event as MessageEvent<string>).data);if(data.economy)this.economyChanged(data.economy);this.acceptSnapshot(data.replay as Replay);}catch{this.reconnect();}
   });
   source.addEventListener('transition',event=>{
    if(this.closed||source!==this.source)return;
@@ -21,6 +21,7 @@ export class LiveObserver {
     this.run=mergeTransition(this.run,next);this.changed(this.run);
    }catch{this.reconnect();}
   });
+  source.addEventListener('economy',event=>{if(this.closed||source!==this.source)return;try{this.economyChanged(JSON.parse((event as MessageEvent<string>).data).economy);}catch{this.reconnect();}});
   source.onopen=()=>{if(!this.closed&&source===this.source)this.status(true);};source.onerror=()=>{if(!this.closed&&source===this.source)this.status(false);};
   return source;
  }

@@ -82,3 +82,5 @@ textarea { width:100%; background:#242b26; color:#d0d7b8; border:1px solid #655f
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 @media(max-width:760px){.inspect h2{display:none}.inspect .strip-heading{justify-content:flex-end;min-height:20px}.live-log summary{padding:3px 0}}
+
+.economy-hud{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid #6e6757;background:#2d332d;font:12px monospace;color:#e0be7f}.economy-hud[hidden]{display:none}.funding-statuses{color:#bac994;font-size:10px}.agent-tab[data-funding]::after{content:attr(data-funding);margin-left:5px;color:#bac994}@media(max-width:760px){.economy-hud{gap:8px}.funding-statuses{width:100%;overflow-wrap:anywhere}}

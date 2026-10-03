@@ -1,7 +1,7 @@
 /** Read-only SSE transport. It never schedules turns or waits for viewers. */
 export class MatchEventStream {
  constructor(){this.viewers=new Map();this.count=0;}
- connect(session,replay,res){
+ connect(session,replay,res,economy=null){
   if(res.destroyed||res.writableEnded)return;
   const group=this.viewers.get(session)||new Set();
   if(this.count>=16||group.size>=4)throw Object.assign(new Error('Live viewer limit reached'),{status:429});
@@ -12,7 +12,7 @@ export class MatchEventStream {
   res.on('close',cleanup);res.on('error',cleanup);
   try {
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
-   res.write(`event: snapshot\ndata: ${JSON.stringify({replay})}\n\n`);
+   res.write(`event: snapshot\ndata: ${JSON.stringify({replay,...(economy?{economy}:{})})}\n\n`);
   }catch{res.destroy();cleanup();}
  }
  publish(session,result){
@@ -20,6 +20,10 @@ export class MatchEventStream {
   const replay=result.replay;
   const payload=`event: transition\nid: ${replay.events.length}\ndata: ${JSON.stringify({events:result.events,match_id:replay.match_id,final_state:replay.final_state,winner:replay.winner,statistics:replay.statistics})}\n\n`;
   for(const res of group){if(res.destroyed||res.writableLength>2_000_000){res.destroy();continue;}try{res.write(payload);}catch{res.destroy();}}
+ }
+ publishEconomy(session,economy){
+  if(!economy)return;const payload=`event: economy\ndata: ${JSON.stringify({economy})}\n\n`;
+  for(const res of this.viewers.get(session)||[]){if(res.destroyed||res.writableLength>2_000_000){res.destroy();continue;}try{res.write(payload);}catch{res.destroy();}}
  }
  close(){for(const group of this.viewers.values())for(const res of group)res.destroy();}
 }
