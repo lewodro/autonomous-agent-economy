@@ -101,6 +101,7 @@ impl SolanaWallet {
             return Err("Insufficient test funds, fee and reserve".into());
         }
         let wire = signed_transaction(&self.signer, &message);
+        let expected_signature = bs58::encode(&wire[1..65]).into_string();
         let simulation = rpc_on(
             &self.network,
             "simulateTransaction",
@@ -115,8 +116,15 @@ impl SolanaWallet {
         );
         // Reserve before submission: transport failure can hide a successful send.
         let signature = submit_with_reservation(&mut self.wallet, amount, || {
-            rpc_on(&self.network,"sendTransaction",json!([base64(&wire),{"encoding":"base64","preflightCommitment":"confirmed","maxRetries":2}]))?
-                .as_str().map(str::to_owned).ok_or_else(|| "Invalid signature".into())
+            let result = rpc_on(
+                &self.network,
+                "sendTransaction",
+                json!([base64(&wire),{"encoding":"base64","preflightCommitment":"confirmed","maxRetries":2}]),
+            )?;
+            if result.as_str() != Some(expected_signature.as_str()) {
+                return Err("RPC returned a signature for a different transaction".into());
+            }
+            Ok(expected_signature)
         })?;
         confirm(&self.network, &signature)?;
         self.refresh()?;
@@ -224,14 +232,7 @@ pub fn confirm(network: &Network, signature: &str) -> Result<(), String> {
             "getSignatureStatuses",
             json!([[signature],{"searchTransactionHistory":true}]),
         )?;
-        let s = &result["value"][0];
-        if !s["err"].is_null() {
-            return Err(format!("Transaction failed: {}", s["err"]));
-        }
-        if matches!(
-            s["confirmationStatus"].as_str(),
-            Some("confirmed" | "finalized")
-        ) {
+        if confirmed_status(&result["value"][0])? {
             return Ok(());
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
@@ -239,4 +240,41 @@ pub fn confirm(network: &Network, signature: &str) -> Result<(), String> {
     Err(format!(
         "Confirmation timed out; check {signature} before retrying"
     ))
+}
+fn confirmed_status(status: &serde_json::Value) -> Result<bool, String> {
+    if status.is_null() {
+        return Ok(false);
+    }
+    let error = status
+        .get("err")
+        .ok_or("Malformed confirmation status: missing execution result")?;
+    if !error.is_null() {
+        return Err(format!("Transaction failed: {error}"));
+    }
+    Ok(matches!(
+        status["confirmationStatus"].as_str(),
+        Some("confirmed" | "finalized")
+    ))
+}
+
+#[cfg(test)]
+mod confirmation_tests {
+    use super::*;
+    #[test]
+    fn missing_status_error_cannot_confirm_a_transfer() {
+        assert!(confirmed_status(&json!({"confirmationStatus":"confirmed"})).is_err());
+        assert!(confirmed_status(
+            &json!({"confirmationStatus":"finalized","err":{"InstructionError":0}})
+        )
+        .is_err());
+        assert_eq!(confirmed_status(&json!(null)).unwrap(), false);
+        assert_eq!(
+            confirmed_status(&json!({"confirmationStatus":"processed","err":null})).unwrap(),
+            false
+        );
+        assert_eq!(
+            confirmed_status(&json!({"confirmationStatus":"confirmed","err":null})).unwrap(),
+            true
+        );
+    }
 }

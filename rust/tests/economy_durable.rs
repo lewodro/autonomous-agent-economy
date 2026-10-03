@@ -257,6 +257,15 @@ fn parsed_local_receipt_rejects_wrong_amount_recipient_memo_and_failure() {
     };
     let tx = serde_json::json!({"slot":1,"meta":{"err":null,"innerInstructions":[]},"transaction":{"signatures":["sig"],"message":{"accountKeys":[{"pubkey":"sponsor","signer":true},{"pubkey":"from","signer":true}],"instructions":[{"programId":"11111111111111111111111111111111","parsed":{"type":"transfer","info":{"source":"from","destination":"to","lamports":20000000}}},{"programId":MEMO_PROGRAM,"parsed":"op-test"}]}}});
     verify_transaction(&tx, &signed).unwrap();
+    // Missing RPC evidence is not an explicit successful execution result.
+    let mut missing_error = tx.clone();
+    missing_error["meta"].as_object_mut().unwrap().remove("err");
+    assert!(verify_transaction(&missing_error, &signed).is_err());
+    for metadata in [serde_json::json!(null), serde_json::json!({})] {
+        let mut bad = tx.clone();
+        bad["meta"] = metadata;
+        assert!(verify_transaction(&bad, &signed).is_err());
+    }
     for field in ["destination", "lamports"] {
         let mut bad = tx.clone();
         bad["transaction"]["message"]["instructions"][0]["parsed"]["info"][field] =

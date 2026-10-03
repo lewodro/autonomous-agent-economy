@@ -47,7 +47,9 @@ pub fn verify_transaction(tx: &Value, s: &SignedLocalTransfer) -> Result<()> {
     if tx.is_null() {
         return Err(EconomyError::TransactionNotFound);
     }
-    if tx["slot"].as_u64().is_none() || !tx["meta"]["err"].is_null() {
+    if tx["slot"].as_u64().is_none()
+        || tx.get("meta").and_then(|meta| meta.get("err")) != Some(&Value::Null)
+    {
         return Err(EconomyError::TransactionFailed);
     }
     let instructions = tx["transaction"]["message"]["instructions"]
@@ -198,7 +200,7 @@ impl LocalPaymentRail {
         if status.is_null() {
             return Ok(None);
         }
-        if !status["err"].is_null() {
+        if status.get("err") != Some(&Value::Null) {
             return Err(EconomyError::TransactionFailed);
         }
         if !matches!(
