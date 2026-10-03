@@ -1,3 +1,5 @@
+> **Current playable game:** see [Last Seat design and architecture](docs/LAST_SEAT.md) for the Rust core, semantic replay, TypeScript canvas renderer and optional wallet boundary. The economic reference architecture below is preserved for the RPS lab at `/rps`.
+
 # Architecture review and implementation boundary
 
 ## Review
