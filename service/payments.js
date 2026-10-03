@@ -10,7 +10,7 @@ export class MachinePayments {
   const before=this.balances.get(payer)||0;if(before<q.amount)throw new Error('Payment budget exhausted');
   this.emit('MachinePaymentRequested',{payer,amount:q.amount,resource:q.resource});
   const payload=Buffer.from(JSON.stringify({...q,payer})).toString('base64url');const signature=createHmac('sha256',this.secret).update(payload).digest('base64url');const token=`${payload}.${signature}`;
-  this.balances.set(payer,before-q.amount);this.receipts.set(id,{token,payer,result:{tool_result:'A challenge costs one credit in v4; guard blocks it. Consider mutual cooperation.',mode:'mock',payment_id:id}});
+  this.balances.set(payer,before-q.amount);this.receipts.set(id,{token,payer,result:{tool_result:'Guard blocks a challenge. Consider mutual cooperation and consult the match rules for current action costs.',mode:'mock',payment_id:id}});
   this.emit('MachinePaymentConfirmed',{payer,amount:q.amount,receipt:id});return token;
  }
  verify(token){
