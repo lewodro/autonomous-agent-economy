@@ -9,11 +9,35 @@ use std::{
 };
 pub const DEVNET: &str = "https://api.devnet.solana.com";
 pub const DEVNET_GENESIS: &str = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WalletMode {
+    #[default]
+    Mock,
+    Devnet,
+    Local,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Network {
+    Devnet,
+    Local,
+}
+impl Network {
+    pub fn endpoint(&self) -> &str {
+        match self {
+            Self::Devnet => DEVNET,
+            Self::Local => "http://127.0.0.1:8899",
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentWallet {
     pub address: String,
     pub balance: u64,
     pub spending_limit: u64,
+    #[serde(default)]
+    pub mode: WalletMode,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct WalletEvent {
@@ -47,6 +71,7 @@ impl WalletCapability for MockWallet {
             return Err("Wallet policy denied destination, limit, or balance".into());
         }
         self.wallet.balance -= amount;
+        self.wallet.spending_limit -= amount;
         Ok(WalletEvent {
             seq: 0,
             turn: 0,
@@ -64,6 +89,7 @@ pub fn mock_view(seed: u32, id: &str) -> AgentWallet {
         address: bs58::encode(bytes).into_string(),
         balance: 2_000_000_000,
         spending_limit: 1_000_000,
+        mode: WalletMode::Mock,
     }
 }
 pub fn key() -> Result<SigningKey, String> {
@@ -82,6 +108,9 @@ pub fn message_signature(key: &SigningKey, message: &[u8]) -> Result<String, Str
     Ok(bs58::encode(signature.to_bytes()).into_string())
 }
 pub fn rpc(method: &str, params: Value) -> Result<Value, String> {
+    rpc_on(&Network::Devnet, method, params)
+}
+pub fn rpc_on(network: &Network, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string();
     let mut child = Command::new("curl")
         .args([
@@ -90,7 +119,7 @@ pub fn rpc(method: &str, params: Value) -> Result<Value, String> {
             "--fail",
             "--max-time",
             "15",
-            DEVNET,
+            network.endpoint(),
             "-H",
             "Content-Type: application/json",
             "--data-binary",
