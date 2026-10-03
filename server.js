@@ -9,11 +9,13 @@ import { randomUUID } from 'node:crypto';
 import { Core } from './service/core.js';
 import { MatchRuntime } from './service/runtime.js';
 import { SessionStore } from './service/session-store.js';
+import { MatchEventStream } from './service/event-stream.js';
 import { authorizeRequest } from './service/http-policy.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
+const liveEvents=new MatchEventStream();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -76,14 +78,16 @@ const server = http.createServer(async (req, res) => {
       const { replay: checked } = await core.request({ command: 'verify', replay });
       return json(res, 200, { replay: checked });
     }
-    const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share))?$/);
+    const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events))?$/);
     if (match && sessions.has(match[1])) {
       const session = match[1];
       if (req.method === 'GET' && !match[2]) return json(res, 200, await core.request({ command: 'get', session }));
+      if (req.method === 'GET' && match[2] === 'events') {const {replay}=await core.request({command:'get',session});liveEvents.connect(session,replay,res);return;}
       if (req.method === 'POST' && match[2] === 'share') { const { replay } = await core.request({ command: 'get', session }); await persist(replay); return json(res, 200, { match_id: replay.match_id }); }
       if (req.method === 'POST' && match[2] === 'step') {
         const data = await body(req);
         const result = await runtime.step(core,session,data);
+        liveEvents.publish(session,result);
         if(result.replay.final_state.ended)await persist(result.replay);
         if(data.compact)return json(res,200,{events:result.events,match_id:result.replay.match_id,final_state:result.replay.final_state,winner:result.replay.winner,statistics:result.replay.statistics,budget:runtime.budget(session).view()});
         return json(res,200,result);
@@ -105,5 +109,5 @@ const server = http.createServer(async (req, res) => {
 });
 try{await runtime.restore(core,sessions);}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 server.listen(Number(process.env.PORT || 3000), '127.0.0.1', () => console.log(`Last Seat · Rust core · http://localhost:${server.address().port}`));
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { core.stop(); server.close(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { liveEvents.close();core.stop(); server.close(); process.exit(0); });
 server.on('error', error => { console.error(error.message); core.stop(); process.exit(1); });

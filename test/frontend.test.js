@@ -4,6 +4,37 @@ import {applyEvent} from '../web/dist/replay.js';
 import {mapEvent,CanvasAnimationDriver,dispatchAnimation} from '../web/dist/animation.js';
 import {HttpMatchTransport} from '../web/dist/transport.js';
 import {Player} from '../web/dist/player.js';
+import {LiveObserver} from '../web/dist/live-observer.js';
+test('live observer receives semantic transitions without HTTP turn requests',async()=>{
+ const prior=globalThis.EventSource;let source;
+ class Source extends EventTarget{constructor(url){super();this.url=url;source=this;}close(){this.closed=true;}send(type,data){this.dispatchEvent(new MessageEvent(type,{data:JSON.stringify(data)}));}}
+ globalThis.EventSource=Source;
+ const histories=[],connected=[];
+ const observer=new LiveObserver('session',run=>histories.push(run),value=>connected.push(value));
+ try{
+  assert.equal(source.url,'/api/matches/session/events');
+  source.send('snapshot',{replay:{events:[{seq:0}],final_state:{turn:0}}});
+  source.send('transition',{events:[{seq:1}],final_state:{turn:1},winner:null,statistics:[],match_id:'new'});
+  assert.equal(histories.length,2);assert.equal(histories[1].events.length,2);
+  source.send('transition',{events:[{seq:1}],final_state:{turn:1}});
+  assert.equal(histories.length,2);assert.deepEqual(connected,[true]);
+  source.send('transition',{events:[{seq:4}],final_state:{turn:2}});
+  assert.equal(source.closed,true);assert.deepEqual(connected,[true,false]);
+ }finally{observer.close();globalThis.EventSource=prior;}
+ assert.equal(source.closed,true);
+});
+test('observer player can pause and inspect without advancing the Rust session',async()=>{
+ const core=new Core();let advances=0;
+ const player=new Player(()=>{},()=>{}, {advance:async()=>{advances++;throw new Error('Viewer must not advance');}});
+ try{
+  const config=await core.request({command:'defaults',count:2});
+  const {replay}=await core.request({command:'start',config});
+  player.receive(replay);assert.equal(player.observing,true);await player.step();
+  const next=await core.request({command:'step'});player.receive(next.replay);
+  assert.equal(player.state.turn,0);assert.equal(player.run.final_state.turn,1);
+  player.seek(1);assert.equal(player.state.turn,1);assert.equal(advances,0);
+ }finally{player.load(player.run);core.stop();}
+});
 test('every Rust v2 event projects to its authoritative final state without mutating input',async()=>{
  const core=new Core();try{const config=await core.request({command:'defaults',count:4});const start=await core.request({command:'start',config});let state=start.replay.starting_state;
  for(let turn=0;turn<3;turn++){const {events,replay}=await core.request({command:'step'});for(const event of events){const input=state,before=structuredClone(state);state=applyEvent(state,event);assert.deepEqual(input,before);if(event.projection)assert.deepEqual(state.agents.filter(a=>event.projection.agents.some(p=>p.id===a.id)),event.projection.agents);}assert.deepEqual(state,replay.final_state);}

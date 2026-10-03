@@ -4,12 +4,13 @@ import {HttpMatchTransport} from './transport.js';
 import type {MatchTransport} from './transport.js';
 const durations: Partial<Record<GameEvent['type'],number>> = { RoundStarted: 160, WorldEvent: 260, AgentActionSelected: 75, WorkCompleted: 330, ChallengeStarted: 200, ChallengeResolved: 330, GuardRaised: 280, CooperationOffered: 320, AllianceCreated: 400, AllianceBroken: 400, ResourceChanged: 100, AgentEliminated: 600, MatchEnded: 650, RoundEnded: 100 };
 export class Player {
-  run: Replay | null = null; state: State | null = null; cursor = 1; session = ''; playing = false; busy = false; speed = 1;manual=false;waiting=false;
+  run: Replay | null = null; state: State | null = null; cursor = 1; session = ''; playing = false; busy = false; speed = 1;manual=false;waiting=false;observing=false;
   private generation = 0;
   constructor(private changed: (event?: GameEvent) => void, private failed: (message: string) => void,private transport:MatchTransport=new HttpMatchTransport()) {}
   load(run: Replay, session = '', fromStart = false) {
-    this.generation++; this.playing = false; this.busy = false;this.manual=false;this.waiting=false; this.run = run; this.session = session;
+    this.generation++; this.playing = false; this.busy = false;this.manual=false;this.waiting=false;this.observing=false; this.run = run; this.session = session;
     const point = checkpoint(run, fromStart ? 0 : run.final_state.turn); this.state = point.state; this.cursor = point.cursor;
+    if(session)try{localStorage.setItem('last-seat-session',session);}catch{}
     this.changed();
   }
   seek(turn: number) {
@@ -18,6 +19,11 @@ export class Player {
     const point = checkpoint(this.run, turn); this.state = point.state; this.cursor = point.cursor; this.changed();
   }
   pause() { this.playing = false; this.changed(); }
+  receive(run:Replay){
+    if(!this.run){this.load(run);this.observing=true;return;}
+    if(run.events.length<this.run.events.length)return;
+    this.run=run;this.changed();
+  }
   async play() {
     if (this.playing || this.busy || !this.run) return;
     if (this.state?.ended) this.seek(0);
@@ -48,12 +54,21 @@ export class Player {
     try {
       if (this.cursor >= this.run.events.length) {
         if (this.run.final_state.ended) return false;
+        if(this.observing){
+          if(!automatic)return false;
+          while(this.cursor>=this.run.events.length&&generation===this.generation){
+            if(this.run.final_state.ended)return false;
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          if(generation!==this.generation)return false;
+        } else {
         if (!this.session) throw new Error('Replay has reached its recorded end. Remix to start a new run.');
         this.waiting=true;this.changed();
         const next=await this.transport.advance(this.session,this.run);
         if (generation !== this.generation) return false;
         this.run = next;this.waiting=false;
         try { localStorage.setItem('last-seat-replay-v1', JSON.stringify(this.run)); } catch { this.failed('Storage is full; download the replay to retain it.'); }
+        }
       }
       const turn = this.run.events[this.cursor]?.turn;
       while (this.cursor < this.run.events.length && this.run.events[this.cursor]?.turn === turn) {

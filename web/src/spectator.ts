@@ -4,11 +4,11 @@ export function setHTML(id:string,html:string){const node=document.getElementByI
 const noteworthy=new Set(['WorkCompleted','GuardRaised','ChallengeStarted','ChallengeResolved','AllianceCreated','AllianceBroken','AgentEliminated','WinnerDeclared']);
 export class SpectatorHUD {
  private acting:string|null=null;
- render(run:Replay,state:State,cursor:number,playing:boolean,waiting:boolean,session:string,event?:GameEvent){
+ render(run:Replay,state:State,cursor:number,playing:boolean,waiting:boolean,session:string,event?:GameEvent,observing=false,connected=true){
   if(event?.type==='ActionStarted')this.acting=event.actor;
   if(!event||event?.type==='RoundEnded')this.acting=null;
   const badge=document.getElementById('live')!;
-  const status=state.ended?'ENDED':!session?'HISTORY':waiting?'THINKING':playing?'LIVE':state.turn?'PAUSED':'READY';
+  const status=state.ended?'ENDED':observing&&!connected?'OFFLINE':observing?(playing?'LIVE':'PAUSED'):!session?'HISTORY':waiting?'THINKING':playing?'LIVE':state.turn?'PAUSED':'READY';
   badge.textContent=status;badge.dataset.state=status.toLowerCase();
   document.getElementById('active-agent')!.textContent=waiting?'Agents are choosing…':this.acting?`${run.config.agents.find(a=>a.id===this.acting)?.name} acts`:state.ended?'Table cleared':playing?'Decisions resolving':state.turn?`${session?'Paused at':'Recorded'} turn ${state.turn}`:'Your table is ready';
   const current=run.events.slice(0,cursor).filter(e=>e.turn===state.turn);
