@@ -483,3 +483,19 @@ fn refund_policy_blocks_running_or_settlement_cancellation() {
         .unwrap();
     assert_eq!(economy.view().state, EconomyState::Refunded);
 }
+use agent_arena_demo::economy::signing::*;
+#[test]
+fn wallet_identity_contains_only_validated_public_fields() {
+    let identity = WalletIdentity {
+        agent_id: AgentId::new("agent-a").unwrap(),
+        address: PublicAddress::new("mock:public-a").unwrap(),
+    };
+    let json = serde_json::to_value(&identity).unwrap();
+    assert_eq!(json.as_object().unwrap().len(), 2);
+    assert!(PublicAddress::new("-----BEGIN PRIVATE KEY-----").is_err());
+    assert!(PublicAddress::new("").is_err());
+    assert_eq!(
+        serde_json::from_value::<WalletIdentity>(json).unwrap(),
+        identity
+    );
+}
