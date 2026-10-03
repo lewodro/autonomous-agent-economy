@@ -149,3 +149,29 @@ fn treasury_transfers_are_atomic_and_conserve_funds() {
     );
     assert_eq!(ledger.total().unwrap(), Amount::new(120));
 }
+use agent_arena_demo::economy::rail::*;
+fn entry_intent() -> PaymentIntent {
+    PaymentIntent {
+        operation_id: OperationId::new("entry-a").unwrap(),
+        match_id: RunId::new("eco-one").unwrap(),
+        payer: AccountId::new("agent-a").unwrap(),
+        payee: AccountId::new("escrow-one").unwrap(),
+        amount: Amount::new(20_000_000),
+        purpose: PaymentPurpose::Entry,
+    }
+}
+#[test]
+fn rail_messages_round_trip_without_signing_keys_or_chain_dependencies() {
+    let intent = entry_intent();
+    let receipt = PaymentReceipt {
+        receipt_id: intent.operation_id.clone(),
+        intent: intent.clone(),
+        status: ConfirmationStatus::Confirmed,
+        external_reference: None,
+    };
+    assert_eq!(
+        serde_json::from_value::<PaymentReceipt>(serde_json::to_value(&receipt).unwrap()).unwrap(),
+        receipt
+    );
+    assert_eq!(receipt.intent.match_id, intent.match_id);
+}

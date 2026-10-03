@@ -8,3 +8,5 @@ pub mod config;
 pub mod events;
 
 pub mod treasury;
+
+pub mod rail;
