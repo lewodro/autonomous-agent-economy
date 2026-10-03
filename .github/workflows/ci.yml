@@ -5,6 +5,7 @@ permissions:
 jobs:
   node:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -12,6 +13,7 @@ jobs:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
+      - run: npm audit --audit-level=low
       - run: npm test
       - run: npm run typecheck
       - run: npm run check
@@ -21,8 +23,10 @@ jobs:
       - run: npm run verify -- /tmp/arena-audit.json
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --manifest-path rust/Cargo.toml --locked
       - run: cargo run --manifest-path rust/Cargo.toml --locked --bin table-core > /tmp/match.json
       - run: cargo run --manifest-path rust/Cargo.toml --locked --bin wallet-demo
