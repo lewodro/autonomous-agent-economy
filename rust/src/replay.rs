@@ -1,7 +1,7 @@
 use crate::{engine, model::*};
 use std::collections::BTreeMap;
 pub fn verify(input: &Replay) -> Result<Replay, String> {
-    if ![VERSION, "last-seat-v1"].contains(&input.simulation_version.as_str())
+    if ![VERSION, "last-seat-v2", "last-seat-v1"].contains(&input.simulation_version.as_str())
         || input.events.len() > 30000
         || input.final_state.turn > 200
     {

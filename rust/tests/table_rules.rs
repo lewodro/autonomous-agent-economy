@@ -28,15 +28,21 @@ fn seeded_matches_are_byte_reproducible_and_replayable() {
 }
 #[test]
 fn guard_blocks_challenge_independent_of_initiative() {
-    for seed in 1..30 {
-        let mut r = engine::start(config::default_config(2, seed)).unwrap();
-        let mut d = decisions(&r, Action::Guard);
-        d[0].action = Action::Challenge;
-        d[0].target = Some(d[1].agent_id.clone());
-        engine::advance(&mut r, Some(d)).unwrap();
-        assert_eq!(r.final_state.agents[0].credits, 10);
-        assert_eq!(r.final_state.agents[1].credits, 12);
-        assert_eq!(r.final_state.agents[1].stats.blocks, 1);
+    for version in ["last-seat-v1", "last-seat-v2", VERSION] {
+        for seed in 1..30 {
+            let mut r = engine::start_version(config::default_config(2, seed), version).unwrap();
+            let mut d = decisions(&r, Action::Guard);
+            d[0].action = Action::Challenge;
+            d[0].target = Some(d[1].agent_id.clone());
+            engine::advance(&mut r, Some(d)).unwrap();
+            let modern = version == VERSION;
+            assert_eq!(r.final_state.agents[0].credits, if modern { 9 } else { 10 });
+            assert_eq!(
+                r.final_state.agents[1].credits,
+                if modern { 13 } else { 12 }
+            );
+            assert_eq!(r.final_state.agents[1].stats.blocks, 1);
+        }
     }
 }
 #[test]
@@ -177,7 +183,7 @@ fn semantic_contract_is_ordered_and_projects_authoritative_values() {
             .iter()
             .filter(|e| e.kind == Kind::WinnerDeclared)
             .count(),
-        1
+        usize::from(run.winner.is_some())
     );
     replay::verify(&run).unwrap();
     let mut legacy = engine::start_version(config::default_config(2, 7), "last-seat-v1").unwrap();

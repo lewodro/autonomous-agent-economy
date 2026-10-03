@@ -22,6 +22,9 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
     }
     match profile.strategy.as_str() {
         "aggressive" => {
+            if me.credits < observation.upkeep + 2 {
+                return result;
+            }
             let target = rivals
                 .iter()
                 .filter(|a| a.last_action != Some(Action::Guard))
@@ -39,7 +42,13 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
             let threats = rivals
                 .iter()
                 .any(|a| a.last_action == Some(Action::Challenge));
-            if threats && me.credits >= richest.credits && observation.turn % 3 != 0 {
+            if threats
+                && (me.credits >= richest.credits
+                    || observation.recent_decisions.iter().any(|d| {
+                        d.action == Action::Challenge && d.target.as_ref() == Some(&me.id)
+                    }))
+                && observation.turn % 3 != 0
+            {
                 result.action = Action::Guard;
                 result.reason = "I am a wealthy target; guard blocks every challenge.".into();
             }
@@ -49,6 +58,16 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
                 .iter()
                 .find(|a| a.last_action == Some(Action::Cooperate) && a.credits > 1);
             if let Some(friend) = friend {
+                if observation.upkeep >= 3
+                    && friend.credits >= 4
+                    && friend.credits + 2 <= me.credits
+                {
+                    result.action = Action::Challenge;
+                    result.target = Some(friend.id.clone());
+                    result.reason =
+                        "My ally is vulnerable as upkeep rises; take a risky betrayal.".into();
+                    return result;
+                }
                 result.action = Action::Cooperate;
                 result.target = Some(friend.id.clone());
                 result.reason =
@@ -60,6 +79,15 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
             }
         }
         "cooperative" => {
+            if observation
+                .recent_decisions
+                .iter()
+                .any(|d| d.action == Action::Challenge && d.target.as_ref() == Some(&me.id))
+            {
+                result.action = Action::Guard;
+                result.reason = "A challenge targeted me; defend before trying trust again.".into();
+                return result;
+            }
             let friend = rivals
                 .iter()
                 .filter(|a| a.last_action != Some(Action::Challenge))

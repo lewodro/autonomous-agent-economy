@@ -22,7 +22,7 @@ fn emit(run: &mut Replay, kind: Kind, actor: Option<&str>, target: Option<&str>,
         decision: None,
         state: None,
         outcome: None,
-        projection: if run.simulation_version == VERSION {
+        projection: if run.simulation_version != "last-seat-v1" {
             Some(Projection {
                 turn: run.final_state.turn,
                 income: run.final_state.income,
@@ -90,7 +90,7 @@ pub fn start(config: Config) -> Result<Replay, String> {
     start_version(config, VERSION)
 }
 pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
-    if ![VERSION, "last-seat-v1"].contains(&version) {
+    if ![VERSION, "last-seat-v2", "last-seat-v1"].contains(&version) {
         return Err("Unsupported engine version".into());
     }
     config::validate(&config)?;
@@ -140,6 +140,12 @@ pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
 pub fn observe(run: &Replay) -> Observation {
     let mut rng = run.final_state.rng;
     Observation {
+        recent_decisions: run
+            .events
+            .iter()
+            .filter(|e| e.turn == run.final_state.turn && e.kind == Kind::AgentActionSelected)
+            .filter_map(|e| e.decision.clone())
+            .collect(),
         turn: run.final_state.turn + 1,
         income: 2 + (random(&mut rng) % 3) as i32,
         upkeep: 1 + (run.final_state.turn / 4) as i32,
@@ -164,6 +170,9 @@ pub fn advance(run: &mut Replay, decisions: Option<Vec<Decision>>) -> Result<Vec
 }
 fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(), String> {
     let observation = observe(run);
+    let modern = run.simulation_version == VERSION;
+    let challenge_cost = if modern { 2 } else { 1 };
+    let guard_income = if modern { 2 } else { 1 };
     let living: Vec<usize> = run
         .final_state
         .agents
@@ -195,7 +204,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
     run.final_state.turn += 1;
     run.final_state.income = 2 + (random(&mut run.final_state.rng) % 3) as i32;
     run.final_state.upkeep = observation.upkeep;
-    if run.simulation_version == VERSION {
+    if run.simulation_version != "last-seat-v1" {
         for a in &mut run.final_state.agents {
             a.guarded = false;
         }
@@ -220,7 +229,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             observation.income, observation.upkeep
         ),
     );
-    if run.simulation_version == VERSION {
+    if run.simulation_version != "last-seat-v1" {
         for i in &living {
             let id = run.final_state.agents[*i].id.clone();
             emit(
@@ -244,7 +253,12 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             && d.reason.len() <= 600
             && ((!targeted && d.target.is_none())
                 || (targeted
-                    && me.credits >= 1
+                    && me.credits
+                        >= if d.action == Action::Challenge {
+                            challenge_cost
+                        } else {
+                            1
+                        }
                     && d.target.as_ref().is_some_and(|id| {
                         id != &d.agent_id
                             && observation.agents.iter().any(|a| a.alive && &a.id == id)
@@ -262,7 +276,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             d.target = None;
             d.reason = "Rejected intent; guard without spending.".into();
         }
-        if run.simulation_version == VERSION {
+        if run.simulation_version != "last-seat-v1" {
             run.final_state
                 .agents
                 .iter_mut()
@@ -334,7 +348,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             .and_then(|id| run.final_state.agents.iter().find(|a| &a.id == id))
             .map(|a| a.credits)
             .unwrap_or(0);
-        if run.simulation_version == VERSION {
+        if run.simulation_version != "last-seat-v1" {
             emit(
                 run,
                 Kind::ActionStarted,
@@ -365,13 +379,21 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                     Kind::GuardRaised,
                     Some(&id),
                     None,
-                    format!("{} guarded and earned one safe credit.", name(run, &id)),
+                    if modern {
+                        format!(
+                            "{} guarded and earned {} safe credits.",
+                            name(run, &id),
+                            guard_income
+                        )
+                    } else {
+                        format!("{} guarded and earned one safe credit.", name(run, &id))
+                    },
                 );
-                change(run, &id, 1, "Guard duty income".into());
+                change(run, &id, guard_income, "Guard duty income".into());
             }
             Action::Challenge => {
                 let target = d.target.as_ref().unwrap();
-                if run.final_state.agents[i].credits < 1 {
+                if run.final_state.agents[i].credits < challenge_cost {
                     emit(
                         run,
                         Kind::ChallengeResolved,
@@ -392,7 +414,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                     Some(target),
                     format!("{} challenged {}.", name(run, &id), name(run, target)),
                 );
-                change(run, &id, -1, "Challenge entry cost".into());
+                change(run, &id, -challenge_cost, "Challenge entry cost".into());
                 let j = run
                     .final_state
                     .agents
@@ -442,7 +464,11 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                             name(run, &id),
                             taken,
                             name(run, target),
-                            if cap == 5 { " while they worked" } else { "" }
+                            if choices[target].action == Action::Work {
+                                " while they worked"
+                            } else {
+                                ""
+                            }
                         ),
                     );
                     run.events.last_mut().unwrap().amount = Some(taken);
@@ -594,7 +620,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
         };
         run.final_state.winner = winner.clone();
         run.final_state.end_reason = Some(why.clone());
-        if run.simulation_version == VERSION && winner.is_some() {
+        if run.simulation_version != "last-seat-v1" && winner.is_some() {
             emit(
                 run,
                 Kind::WinnerDeclared,
@@ -617,7 +643,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
 }
 
 fn resolved(run: &mut Replay, d: &Decision, before: i32, target_before: i32) {
-    if run.simulation_version != VERSION {
+    if run.simulation_version == "last-seat-v1" {
         return;
     }
     let actor_delta = run

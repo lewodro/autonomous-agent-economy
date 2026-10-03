@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "last-seat-v2";
+pub const VERSION: &str = "last-seat-v3";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentConfig {
@@ -145,6 +145,8 @@ pub struct Replay {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Observation {
+    #[serde(default)]
+    pub recent_decisions: Vec<Decision>,
     pub turn: u32,
     pub income: i32,
     pub upkeep: i32,
