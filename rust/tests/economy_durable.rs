@@ -42,3 +42,38 @@ fn durable_records_bind_exact_intent_and_confirmation_is_idempotent() {
         record
     );
 }
+
+fn directory(label: &str) -> std::path::PathBuf {
+    let p = std::env::temp_dir().join(format!(
+        "seat-{label}-{}-{}",
+        std::process::id(),
+        agent_arena_demo::wallet::address(&agent_arena_demo::wallet::key().unwrap())
+    ));
+    p
+}
+#[test]
+fn journal_is_atomic_append_only_locked_and_rejects_corruption() {
+    use agent_arena_demo::economy::repository::*;
+    let path = directory("journal");
+    let repo = JsonRepository::open(&path).unwrap();
+    assert!(JsonRepository::open(&path).is_err());
+    repo.write("record", &serde_json::json!({"value":1}))
+        .unwrap();
+    repo.write("record", &serde_json::json!({"value":2}))
+        .unwrap();
+    assert_eq!(
+        repo.read::<serde_json::Value>("record").unwrap().unwrap()["value"],
+        2
+    );
+    assert!(repo.write("../escape", &0).is_err());
+    drop(repo);
+    let repo = JsonRepository::open(&path).unwrap();
+    assert_eq!(
+        repo.read::<serde_json::Value>("record").unwrap().unwrap()["value"],
+        2
+    );
+    std::fs::write(path.join("record--000000000001.json"), b"{}").unwrap();
+    assert!(repo.read::<serde_json::Value>("record").is_err());
+    drop(repo);
+    std::fs::remove_dir_all(path).unwrap();
+}

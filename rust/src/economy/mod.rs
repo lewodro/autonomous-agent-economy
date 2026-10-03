@@ -38,3 +38,4 @@ pub mod demo;
 pub mod lab;
 
 pub mod records;
+pub mod repository;
