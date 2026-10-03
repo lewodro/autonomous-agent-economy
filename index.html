@@ -9,7 +9,7 @@
   <main class="game-shell">
     <header class="game-header">
       <div class="wordmark"><span class="seat-mark" aria-hidden="true">▥</span><div><h1>LAST SEAT</h1><p>agents fight until they're out</p></div></div>
-      <div class="scoreboard"><span id="turn">TURN 00</span><span id="alive">4 AT THE TABLE</span></div>
+      <div class="scoreboard"><span id="live" class="live-badge" data-state="ready">READY</span><span id="turn">TURN 00</span><span id="alive">4 AT THE TABLE</span></div>
       <button id="new" class="small-button">New / remix ↗</button>
     </header>
     <section class="stage" aria-label="Pixel-art agent table">
@@ -22,14 +22,16 @@
       <label class="timeline">Turn <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Replay turn"><output id="scrub-label">0 / 0</output></label>
       <button id="restart" title="Restart with identical configuration and seed">↻ Restart</button>
     </div>
+    <div class="action-lane"><span id="active-agent">Your table is ready</span><div id="action-queue"></div></div>
+    <details class="live-log" open><summary>LIVE LOG <span>decisions from the table</span></summary><div id="live-feed"></div></details>
     <section class="spectator-strip">
       <div class="story"><div class="strip-heading"><h2>THE STORY SO FAR</h2><span id="mode-label">SEEDED MOCK AGENTS</span></div><div id="moments" class="moments"></div><div class="share-tools"><button id="share-turn">↗ Share turn</button><button id="share-result">Share result</button><button id="card">↓ Share card</button><button id="export">↓ Replay</button><button id="config-copy">Copy config</button><label class="file-button">Open replay<input id="import" type="file" accept="application/json,.json"></label></div><p id="notice" class="notice"></p></div>
-      <aside class="inspect"><div class="strip-heading"><h2>INSPECT A RIVAL</h2><button id="favorite" title="Favorite this agent locally">☆ Follow</button></div><div id="agent-tabs" class="agent-tabs" aria-label="Inspect agents"></div><div id="inspect-content"></div></aside>
+      <aside class="inspect"><details id="agent-drawer" open><summary>INSPECT SELECTED AGENT ▾</summary><div class="strip-heading"><h2>INSPECT A RIVAL</h2><button id="favorite" title="Favorite this agent locally">☆ Follow</button></div><div id="agent-tabs" class="agent-tabs" aria-label="Inspect agents"></div><div id="inspect-content"></div></details></aside>
     </section>
     <section id="comparison" class="comparison" hidden></section>
     <footer><span>Work · Challenge · Guard · Cooperate. Rising upkeep empties the table.</span><a href="/rps">RPS economy lab</a><a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">Source ↗</a></footer>
   </main>
-  <dialog id="config-dialog"><form id="config-form"><div class="dialog-heading"><h2>SET YOUR TABLE</h2><button id="close-config" type="button">✕</button></div><p>Use presets, or edit names, prompts, providers and resources in the JSON.</p><div class="preset-controls"><label>Seats<select id="population"><option>2</option><option selected>4</option><option>8</option><option>20</option></select></label><label>Seed<input id="seed" type="number" value="42" min="1" max="4294967295"></label><label>Credits<input id="credits" type="number" value="12" min="1" max="10000"></label><label>Turn limit<input id="max-turns" type="number" value="40" min="1" max="200"></label><button id="preset" type="button">Apply preset</button></div><label class="json-label">simulation.json<textarea id="config-json" spellcheck="false" rows="15" aria-label="Simulation JSON config"></textarea></label><p id="config-error" role="alert"></p><div class="dialog-actions"><button id="download-config" type="button">↓ Config</button><button class="primary" type="submit">Pull up the chairs →</button></div></form></dialog>
+  <dialog id="config-dialog"><form id="config-form"><div class="dialog-heading"><h2>SET YOUR TABLE</h2><button id="close-config" type="button">✕</button></div><p>Use presets, or edit names, prompts, providers and resources in the JSON.</p><div class="preset-controls"><label>Seats<select id="population"><option>2</option><option selected>4</option><option>8</option><option>20</option></select></label><label>Seed<input id="seed" type="number" value="42" min="1" max="4294967295"></label><label>Credits<input id="credits" type="number" value="12" min="1" max="10000"></label><label>Turn limit<input id="max-turns" type="number" value="40" min="1" max="200"></label><button id="random-seed" type="button">Random seed ↻</button><button id="preset" type="button">Apply preset</button></div><label class="json-label">simulation.json<textarea id="config-json" spellcheck="false" rows="15" aria-label="Simulation JSON config"></textarea></label><p id="config-error" role="alert"></p><div class="dialog-actions"><button id="download-config" type="button">↓ Config</button><button class="primary" type="submit">Pull up the chairs →</button></div></form></dialog>
   <script type="module" src="/web/dist/main.js"></script>
 </body>
 </html>
