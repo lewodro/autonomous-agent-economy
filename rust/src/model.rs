@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "last-seat-v1";
+pub const VERSION: &str = "last-seat-v2";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentConfig {
@@ -76,7 +76,11 @@ pub enum Kind {
     MatchStarted,
     RoundStarted,
     WorldEvent,
+    AgentThinking,
     AgentActionSelected,
+    ActionStarted,
+    ActionResolved,
+    WinnerDeclared,
     ActionRejected,
     WorkCompleted,
     ChallengeStarted,
@@ -91,6 +95,23 @@ pub enum Kind {
     MatchEnded,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Projection {
+    pub turn: u32,
+    pub income: i32,
+    pub upkeep: i32,
+    pub agents: Vec<Agent>,
+    pub alliances: Vec<[String; 2]>,
+    pub ended: bool,
+    pub winner: Option<String>,
+    pub end_reason: Option<String>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Outcome {
+    pub action: Action,
+    pub actor_delta: i32,
+    pub target_delta: i32,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Event {
     pub seq: usize,
     pub turn: u32,
@@ -103,6 +124,10 @@ pub struct Event {
     pub reason: String,
     pub decision: Option<Decision>,
     pub state: Option<State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Projection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<Outcome>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Replay {

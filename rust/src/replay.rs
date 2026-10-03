@@ -1,13 +1,13 @@
 use crate::{engine, model::*};
 use std::collections::BTreeMap;
 pub fn verify(input: &Replay) -> Result<Replay, String> {
-    if input.simulation_version != VERSION
+    if ![VERSION, "last-seat-v1"].contains(&input.simulation_version.as_str())
         || input.events.len() > 30000
         || input.final_state.turn > 200
     {
         return Err("Unsupported replay version or size".into());
     }
-    let mut rebuilt = engine::start(input.config.clone())?;
+    let mut rebuilt = engine::start_version(input.config.clone(), &input.simulation_version)?;
     for turn in 1..=input.final_state.turn {
         let mut decisions = BTreeMap::new();
         for event in input.events.iter().filter(|e| {

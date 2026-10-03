@@ -21,6 +21,31 @@ fn emit(run: &mut Replay, kind: Kind, actor: Option<&str>, target: Option<&str>,
         reason,
         decision: None,
         state: None,
+        outcome: None,
+        projection: if run.simulation_version == VERSION {
+            Some(Projection {
+                turn: run.final_state.turn,
+                income: run.final_state.income,
+                upkeep: run.final_state.upkeep,
+                agents: run
+                    .final_state
+                    .agents
+                    .iter()
+                    .filter(|a| {
+                        kind == Kind::RoundStarted
+                            || Some(a.id.as_str()) == actor
+                            || Some(a.id.as_str()) == target
+                    })
+                    .cloned()
+                    .collect(),
+                alliances: run.final_state.alliances.clone(),
+                ended: run.final_state.ended,
+                winner: run.final_state.winner.clone(),
+                end_reason: run.final_state.end_reason.clone(),
+            })
+        } else {
+            None
+        },
     });
 }
 fn name(run: &Replay, id: &str) -> String {
@@ -62,6 +87,12 @@ fn update_id(run: &mut Replay) {
     run.winner = run.final_state.winner.clone();
 }
 pub fn start(config: Config) -> Result<Replay, String> {
+    start_version(config, VERSION)
+}
+pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
+    if ![VERSION, "last-seat-v1"].contains(&version) {
+        return Err("Unsupported engine version".into());
+    }
     config::validate(&config)?;
     let state = State {
         turn: 0,
@@ -86,7 +117,7 @@ pub fn start(config: Config) -> Result<Replay, String> {
         upkeep: 1,
     };
     let mut run = Replay {
-        simulation_version: VERSION.into(),
+        simulation_version: version.into(),
         match_id: String::new(),
         seed: config.seed,
         config,
@@ -164,6 +195,11 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
     run.final_state.turn += 1;
     run.final_state.income = 2 + (random(&mut run.final_state.rng) % 3) as i32;
     run.final_state.upkeep = observation.upkeep;
+    if run.simulation_version == VERSION {
+        for a in &mut run.final_state.agents {
+            a.guarded = false;
+        }
+    }
     emit(
         run,
         Kind::RoundStarted,
@@ -184,6 +220,18 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             observation.income, observation.upkeep
         ),
     );
+    if run.simulation_version == VERSION {
+        for i in &living {
+            let id = run.final_state.agents[*i].id.clone();
+            emit(
+                run,
+                Kind::AgentThinking,
+                Some(&id),
+                None,
+                format!("{} considers the table.", name(run, &id)),
+            );
+        }
+    }
     let mut choices = BTreeMap::new();
     for mut d in decisions {
         let me = observation
@@ -213,6 +261,14 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             d.action = Action::Guard;
             d.target = None;
             d.reason = "Rejected intent; guard without spending.".into();
+        }
+        if run.simulation_version == VERSION {
+            run.final_state
+                .agents
+                .iter_mut()
+                .find(|a| a.id == d.agent_id)
+                .unwrap()
+                .last_action = Some(d.action);
         }
         emit(
             run,
@@ -271,6 +327,23 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
     for i in order {
         let id = run.final_state.agents[i].id.clone();
         let d = &choices[&id];
+        let before = run.final_state.agents[i].credits;
+        let target_before = d
+            .target
+            .as_ref()
+            .and_then(|id| run.final_state.agents.iter().find(|a| &a.id == id))
+            .map(|a| a.credits)
+            .unwrap_or(0);
+        if run.simulation_version == VERSION {
+            emit(
+                run,
+                Kind::ActionStarted,
+                Some(&id),
+                d.target.as_deref(),
+                format!("{} acts: {:?}.", name(run, &id), d.action),
+            );
+            run.events.last_mut().unwrap().decision = Some(d.clone());
+        }
         match d.action {
             Action::Work => {
                 emit(
@@ -309,6 +382,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                             name(run, &id)
                         ),
                     );
+                    resolved(run, d, before, target_before);
                     continue;
                 }
                 emit(
@@ -445,6 +519,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                 }
             }
         }
+        resolved(run, d, before, target_before);
     }
     for i in living {
         let id = run.final_state.agents[i].id.clone();
@@ -519,6 +594,15 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
         };
         run.final_state.winner = winner.clone();
         run.final_state.end_reason = Some(why.clone());
+        if run.simulation_version == VERSION && winner.is_some() {
+            emit(
+                run,
+                Kind::WinnerDeclared,
+                winner.as_deref(),
+                None,
+                format!("{} wins the table.", name(run, winner.as_ref().unwrap())),
+            );
+        }
         emit(run, Kind::MatchEnded, winner.as_deref(), None, why);
     }
     emit(
@@ -530,4 +614,36 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
     );
     run.events.last_mut().unwrap().state = Some(run.final_state.clone());
     Ok(())
+}
+
+fn resolved(run: &mut Replay, d: &Decision, before: i32, target_before: i32) {
+    if run.simulation_version != VERSION {
+        return;
+    }
+    let actor_delta = run
+        .final_state
+        .agents
+        .iter()
+        .find(|a| a.id == d.agent_id)
+        .unwrap()
+        .credits
+        - before;
+    let target_delta = d
+        .target
+        .as_ref()
+        .and_then(|id| run.final_state.agents.iter().find(|a| &a.id == id))
+        .map(|a| a.credits - target_before)
+        .unwrap_or(0);
+    emit(
+        run,
+        Kind::ActionResolved,
+        Some(&d.agent_id),
+        d.target.as_deref(),
+        format!("{} completed {:?}.", name(run, &d.agent_id), d.action),
+    );
+    run.events.last_mut().unwrap().outcome = Some(Outcome {
+        action: d.action,
+        actor_delta,
+        target_delta,
+    });
 }

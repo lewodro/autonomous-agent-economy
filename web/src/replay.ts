@@ -10,6 +10,11 @@ export function checkpoint(run: Replay, turn: number): { state: State; cursor: n
 // Presentation projection only: the authoritative Rust core supplies every resulting value.
 export function applyEvent(state: State, event: GameEvent): State {
   if (event.type === 'RoundEnded' && event.state) return structuredClone(event.state);
+  if (event.projection) {
+    const {agents,...fields}=event.projection;
+    return {...state,...structuredClone(fields),agents:state.agents.map(a=>structuredClone(agents.find(p=>p.id===a.id)||a))};
+  }
+  // Compatibility projection for immutable v1 archives only. New matches use Rust patches.
   state.turn = event.turn;
   const actor = state.agents.find(a => a.id === event.actor);
   if (event.type === 'RoundStarted') { state.agents.forEach(a => a.guarded = false); state.alliances = state.alliances.filter(p => p.every(id => state.agents.find(a => a.id === id)?.alive)); }
