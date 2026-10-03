@@ -20,3 +20,43 @@ fn identifiers_cannot_be_paths_or_empty_values() {
         "entry-agent-1"
     );
 }
+use agent_arena_demo::economy::lifecycle::EconomyState;
+#[test]
+fn lifecycle_validates_every_pair_and_terminal_states_cannot_restart() {
+    use EconomyState::*;
+    let states = [
+        Unfunded,
+        Funding,
+        Funded,
+        Locked,
+        Running,
+        SettlementPending,
+        Settled,
+        RefundPending,
+        Refunded,
+        Failed,
+    ];
+    let happy = [
+        Unfunded,
+        Funding,
+        Funded,
+        Locked,
+        Running,
+        SettlementPending,
+        Settled,
+    ];
+    for pair in happy.windows(2) {
+        assert_eq!(pair[0].transition(pair[1]).unwrap(), pair[1]);
+    }
+    assert!(Funding.transition(RefundPending).is_ok());
+    assert!(RefundPending.transition(Refunded).is_ok());
+    assert!(Failed.transition(RefundPending).is_ok());
+    for state in states {
+        assert!(state.transition(state).is_err());
+        assert!(Settled.transition(state).is_err());
+        assert!(Refunded.transition(state).is_err());
+    }
+    assert!(Unfunded.transition(Running).is_err());
+    assert!(Running.transition(RefundPending).is_err());
+    assert!(Funded.transition(Settled).is_err());
+}
