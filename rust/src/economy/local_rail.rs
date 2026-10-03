@@ -240,6 +240,13 @@ impl PaymentRail for LocalPaymentRail {
                 return Ok(p.clone());
             }
         }
+        if !self.records.contains_key(&intent.operation_id) {
+            self.records.insert(
+                intent.operation_id.clone(),
+                PaymentRecord::new(intent.clone(), PaymentMode::Local, now())?,
+            );
+            self.save()?;
+        }
         if intent.operation_id
             != operation_id(
                 &intent.match_id,
@@ -300,9 +307,7 @@ impl PaymentRail for LocalPaymentRail {
             authorization: serde_json::to_string(&signed)
                 .map_err(|_| EconomyError::UnverifiedPayment)?,
         };
-        let mut record = PaymentRecord::new(intent.clone(), PaymentMode::Local, now())?;
-        record.prepared = Some(prepared.clone());
-        self.records.insert(intent.operation_id, record);
+        self.records.get_mut(&intent.operation_id).unwrap().prepared = Some(prepared.clone());
         self.save()?;
         Ok(prepared)
     }

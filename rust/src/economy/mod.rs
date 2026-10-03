@@ -45,6 +45,8 @@ pub mod recovery;
 
 pub mod attestation;
 
+pub mod backend_escrow;
+pub mod fees;
 pub mod local_rail;
 pub mod local_signer;
 pub mod local_transaction;

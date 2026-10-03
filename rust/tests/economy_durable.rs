@@ -306,3 +306,64 @@ fn actual_local_transfer_verifies_chain_and_survives_rail_restart() {
     assert_eq!(restored.get_balance(&a).unwrap(), Amount::new(980_000_000));
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn escrow_recovers_confirmed_payout_from_journal_before_stale_balance_check() {
+    use agent_arena_demo::economy::{
+        config::EconomyConfig, coordinator::EconomyCoordinator, durable_rail::DurableMockRail,
+        mock_escrow::MockEscrow,
+    };
+    use agent_arena_demo::{config, engine};
+    let scenario:EconomyConfig=serde_json::from_value(serde_json::json!({"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"})).unwrap();
+    let mut run = engine::start(config::default_config(4, 42)).unwrap();
+    let path = directory("crashed-payout");
+    let mut economy =
+        EconomyCoordinator::mock(&run, &scenario, &OperationId::new("crash").unwrap())
+            .unwrap()
+            .persist_rail(path.clone())
+            .unwrap();
+    economy.open_funding().unwrap();
+    for n in 1..=4 {
+        economy
+            .fund(&AgentId::new(format!("agent-{n}")).unwrap())
+            .unwrap();
+    }
+    economy.lock().unwrap();
+    economy.start().unwrap();
+    while !run.final_state.ended {
+        engine::advance(&mut run, None).unwrap();
+    }
+    let before = serde_json::to_vec(&economy).unwrap();
+    let result = economy.settle(&run).unwrap();
+    let mut restored: EconomyCoordinator<DurableMockRail, MockEscrow> =
+        serde_json::from_slice(&before).unwrap();
+    let recovered = restored.settle(&run).unwrap();
+    assert_eq!(result, recovered);
+    assert_eq!(
+        restored.balance(&result.winner).unwrap(),
+        Amount::new(1_060_000_000)
+    );
+    std::fs::remove_dir_all(path).unwrap();
+}
+#[test]
+fn fee_policy_separates_structural_validation_from_supported_zero_fee_execution() {
+    use agent_arena_demo::economy::fees::FeePolicy;
+    FeePolicy::default().prototype().unwrap();
+    assert!(FeePolicy {
+        winner_share_bps: 9000,
+        house_fee_bps: 1000
+    }
+    .validate()
+    .is_ok());
+    assert!(FeePolicy {
+        winner_share_bps: 9000,
+        house_fee_bps: 1000
+    }
+    .prototype()
+    .is_err());
+    assert!(FeePolicy {
+        winner_share_bps: 10000,
+        house_fee_bps: 1
+    }
+    .validate()
+    .is_err());
+}

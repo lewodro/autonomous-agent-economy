@@ -140,6 +140,16 @@ impl MatchEscrow for MockEscrow {
         }
         let pot = self.entry.multiply(self.participants.len() as u64)?;
         let intent = self.intent(PaymentPurpose::Payout, self.account.clone(), recipient, pot)?;
+        if let Some(receipt) = rail.reconcile_payment(&intent)? {
+            rail.verify_payment(&receipt, &intent)?;
+            if self.pot()? != pot {
+                return Err(EconomyError::UnverifiedPayment);
+            }
+            self.pending_payout = Some(intent.clone());
+            self.payout = Some(receipt.clone());
+            self.state = EscrowState::Settled;
+            return Ok(receipt);
+        }
         if let Some(pending) = &self.pending_payout {
             if pending != &intent {
                 return Err(EconomyError::Conflict);
