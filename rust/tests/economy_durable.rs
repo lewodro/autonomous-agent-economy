@@ -205,3 +205,38 @@ fn local_signer_persists_identity_and_never_serializes_secrets() {
         .is_err());
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn local_transfer_has_two_real_signatures_and_intent_memo() {
+    use agent_arena_demo::economy::{local_signer::LocalDevSigner, local_transaction, signing::*};
+    let path = directory("wire");
+    let a = LocalDevSigner::load_or_create(&path.join("a.wallet.bin"), AgentId::new("a").unwrap())
+        .unwrap();
+    let sponsor =
+        LocalDevSigner::load_or_create(&path.join("fee.wallet.bin"), AgentId::new("fee").unwrap())
+            .unwrap();
+    let to = agent_arena_demo::wallet::address(&agent_arena_demo::wallet::key().unwrap());
+    let signed = local_transaction::prepare(
+        &a,
+        &sponsor,
+        &to,
+        "11111111111111111111111111111111",
+        &intent(),
+    )
+    .unwrap();
+    assert_eq!(signed.amount, Amount::new(20_000_000));
+    assert_eq!(signed.sender, a.identity().address.as_str());
+    assert_eq!(signed.fee_payer, sponsor.identity().address.as_str());
+    assert_eq!(
+        bs58::decode(&signed.reference).into_vec().unwrap().len(),
+        64
+    );
+    assert!(local_transaction::prepare(
+        &a,
+        &sponsor,
+        a.identity().address.as_str(),
+        "11111111111111111111111111111111",
+        &intent()
+    )
+    .is_err());
+    std::fs::remove_dir_all(path).unwrap();
+}
