@@ -394,3 +394,48 @@ fn coordinator_funds_requested_populations_and_exact_pots_before_lock() {
         }
     }
 }
+#[test]
+fn settlement_requires_finished_verified_match_and_pays_only_once() {
+    let (mut run, mut economy) = funded_coordinator(2, "0.05");
+    economy.lock().unwrap();
+    economy.start().unwrap();
+    assert!(economy.settle(&run).is_err());
+    while !run.final_state.ended {
+        engine::advance(&mut run, None).unwrap();
+    }
+    let winner = AgentId::new(run.winner.clone().unwrap()).unwrap();
+    let before = economy.balance(&winner).unwrap();
+    let mut forged = run.clone();
+    forged.final_state.ended = false;
+    assert!(economy.settle(&forged).is_err());
+    let result = economy.settle(&run).unwrap();
+    let events = economy.events().len();
+    assert_eq!(economy.settle(&run).unwrap(), result);
+    assert_eq!(economy.events().len(), events);
+    assert_eq!(result.amount, Amount::new(100_000_000));
+    assert_eq!(
+        economy.balance(&winner).unwrap(),
+        before.add(result.amount).unwrap()
+    );
+    assert_eq!(economy.view().state, EconomyState::Settled);
+    assert_eq!(economy.view().pot_amount, Amount::ZERO);
+}
+#[test]
+fn settlement_cannot_use_another_run_configuration_or_an_unfunded_match() {
+    let initial = engine::start(game_config::default_config(2, 9)).unwrap();
+    let mut economy = EconomyCoordinator::mock(
+        &initial,
+        &economy_config("0.02"),
+        &OperationId::new("unfunded").unwrap(),
+    )
+    .unwrap();
+    let mut run = initial;
+    while !run.final_state.ended {
+        engine::advance(&mut run, None).unwrap();
+    }
+    assert!(economy.settle(&run).is_err());
+    let (_, mut another) = funded_coordinator(4, "0.02");
+    another.lock().unwrap();
+    another.start().unwrap();
+    assert!(another.settle(&run).is_err());
+}

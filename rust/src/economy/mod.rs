@@ -20,3 +20,5 @@ pub mod mock_escrow;
 pub mod binding;
 
 pub mod coordinator;
+
+pub mod settlement;
