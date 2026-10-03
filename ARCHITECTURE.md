@@ -31,7 +31,7 @@ Agent memory / analytics → validated browser storage
 
 The game engine, strategies, policy, storage, and renderer stay separate. Opportunity descriptors include type, participants, stake, rules, response schema, and settlement conditions so a future service marketplace can reuse these boundaries.
 
-## Pixel game and spectator experience
+## Pixel mode and spectator experience
 
 The supplied PNGs represent 20 algorithmic agents in a CSS pixel field. The visual layer observes economic state; it never creates balances or wins. A match monitor animates evaluate, commit, reveal, and settle. Sprites become inactive when an entry fails policy. Inspection exposes why an agent is out, its limits, opponent memory, and performance.
 
