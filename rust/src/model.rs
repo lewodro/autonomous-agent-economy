@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "last-seat-v3";
+pub const VERSION: &str = "last-seat-v5";
+pub const MAX_REPLAY_EVENTS: usize = 50_000;
+pub const MAX_REPLAY_BYTES: usize = 32_000_000;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentConfig {

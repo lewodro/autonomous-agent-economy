@@ -1,8 +1,15 @@
 use crate::{engine, model::*};
 use std::collections::BTreeMap;
 pub fn verify(input: &Replay) -> Result<Replay, String> {
-    if ![VERSION, "last-seat-v2", "last-seat-v1"].contains(&input.simulation_version.as_str())
-        || input.events.len() > 30000
+    if ![
+        VERSION,
+        "last-seat-v4",
+        "last-seat-v3",
+        "last-seat-v2",
+        "last-seat-v1",
+    ]
+    .contains(&input.simulation_version.as_str())
+        || input.events.len() > MAX_REPLAY_EVENTS
         || input.final_state.turn > 200
     {
         return Err("Unsupported replay version or size".into());

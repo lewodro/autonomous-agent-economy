@@ -75,8 +75,12 @@ fn change(run: &mut Replay, id: &str, delta: i32, reason: String) {
     event.amount = Some(actual);
     event.after = Some(after);
 }
-fn update_id(run: &mut Replay) {
+fn update_id(run: &mut Replay) -> Result<(), String> {
     let bytes = serde_json::to_vec(&(&run.simulation_version, &run.config, &run.events)).unwrap();
+    // Leave room for starting/final state, statistics, JSON field names and wrappers.
+    if bytes.len() > MAX_REPLAY_BYTES - 64_000 || run.events.len() > MAX_REPLAY_EVENTS {
+        return Err("Replay history exceeds supported size".into());
+    }
     run.match_id = format!("seat-{:x}", Sha256::digest(bytes));
     run.statistics = run
         .final_state
@@ -85,12 +89,21 @@ fn update_id(run: &mut Replay) {
         .map(|a| a.stats.clone())
         .collect();
     run.winner = run.final_state.winner.clone();
+    Ok(())
 }
 pub fn start(config: Config) -> Result<Replay, String> {
     start_version(config, VERSION)
 }
 pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
-    if ![VERSION, "last-seat-v2", "last-seat-v1"].contains(&version) {
+    if ![
+        VERSION,
+        "last-seat-v4",
+        "last-seat-v3",
+        "last-seat-v2",
+        "last-seat-v1",
+    ]
+    .contains(&version)
+    {
         return Err("Unsupported engine version".into());
     }
     config::validate(&config)?;
@@ -134,7 +147,7 @@ pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
         None,
         "Everyone has a seat. Credits keep you in the game.".into(),
     );
-    update_id(&mut run);
+    update_id(&mut run)?;
     Ok(run)
 }
 pub fn observe(run: &Replay) -> Observation {
@@ -163,16 +176,22 @@ pub fn advance(run: &mut Replay, decisions: Option<Vec<Decision>>) -> Result<Vec
     let mut candidate = run.clone();
     let offset = candidate.events.len();
     advance_inner(&mut candidate, decisions)?;
-    update_id(&mut candidate);
+    update_id(&mut candidate)?;
     let events = candidate.events[offset..].to_vec();
     *run = candidate;
     Ok(events)
 }
 fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(), String> {
     let observation = observe(run);
-    let modern = run.simulation_version == VERSION;
-    let challenge_cost = if modern { 2 } else { 1 };
-    let guard_income = if modern { 2 } else { 1 };
+    // Published rule versions are immutable; new defaults must not reinterpret archives.
+    let (challenge_cost, guard_income, work_cap, other_cap, modern) =
+        match run.simulation_version.as_str() {
+            "last-seat-v1" | "last-seat-v2" => (1, 1, 5, 4, false),
+            "last-seat-v3" => (2, 2, 5, 4, true),
+            "last-seat-v4" => (1, 2, 4, 3, true),
+            "last-seat-v5" => (2, 2, 4, 3, true),
+            _ => return Err("Unsupported engine version".into()),
+        };
     let living: Vec<usize> = run
         .final_state
         .agents
@@ -192,6 +211,9 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
     }
     let mut seen = BTreeSet::new();
     for d in &decisions {
+        if d.reason.len() > 600 || d.target.as_ref().is_some_and(|id| id.len() > 40) {
+            return Err("Decision reason or target exceeds supported size".into());
+        }
         if !seen.insert(d.agent_id.clone())
             || !observation
                 .agents
@@ -436,9 +458,9 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                     );
                 } else {
                     let cap = if choices[target].action == Action::Work {
-                        5
+                        work_cap
                     } else {
-                        4
+                        other_cap
                     };
                     let taken = cap.min(run.final_state.agents[j].credits);
                     run.final_state.agents[i].stats.challenges_won += u32::from(taken > 0);
