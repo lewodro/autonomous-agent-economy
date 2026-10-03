@@ -7,6 +7,10 @@ use std::{
 fn request(value: Value, runs: &mut BTreeMap<String, Replay>) -> Result<Value, String> {
     let command = value["command"].as_str().ok_or("command required")?;
     let key = value["session"].as_str().unwrap_or("local").to_string();
+    if command == "drop" {
+        runs.remove(&key);
+        return Ok(json!({"removed":true}));
+    }
     if command == "defaults" {
         let count = value["count"].as_u64().unwrap_or(4) as usize;
         if !(2..=20).contains(&count) {

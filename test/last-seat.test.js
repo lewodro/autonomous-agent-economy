@@ -1,3 +1,5 @@
+import {mkdtemp} from 'node:fs/promises';
+import os from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -44,7 +46,7 @@ test('HTTP decisions are recorded and replayed without calling their provider ag
 });
 
 test('HTTP replay sharing verifies the exact prefix and refuses tampering or cross-origin commands',async()=>{
-  const child=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:'0'},stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:'0',MATCHES_DIR:await mkdtemp(os.tmpdir()+'/last-seat-share-')},stdio:['ignore','pipe','pipe']});
   try{
     const base=await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(new Error('Server startup timed out')),5000);

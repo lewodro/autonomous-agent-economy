@@ -8,11 +8,12 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Core } from './service/core.js';
 import { MatchRuntime } from './service/runtime.js';
+import { SessionStore } from './service/session-store.js';
 import { authorizeRequest } from './service/http-policy.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
-const core = new Core(), runtime = new MatchRuntime(), sessions = new Map();
+const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
+const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
-const directory = path.join(root, 'matches');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -21,8 +22,9 @@ async function createSession(command, data) {
   sessions.set(session, true);
   try {
     const { replay } = await core.request({ command, session, ...data });
+    await runtime.checkpoint(session,replay);
     return { session, replay };
-  } catch (error) { sessions.delete(session); throw error; }
+  } catch (error) { sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});throw error; }
 }
 async function body(req, limit = 1_000_000) {
   const chunks = []; let length = 0;
@@ -101,6 +103,7 @@ const server = http.createServer(async (req, res) => {
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) { json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message }); }
 });
+try{await runtime.restore(core,sessions);}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 server.listen(Number(process.env.PORT || 3000), '127.0.0.1', () => console.log(`Last Seat · Rust core · http://localhost:${server.address().port}`));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { core.stop(); server.close(); process.exit(0); });
 server.on('error', error => { console.error(error.message); core.stop(); process.exit(1); });

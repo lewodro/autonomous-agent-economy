@@ -1,3 +1,5 @@
+import {mkdtemp} from 'node:fs/promises';
+import os from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -10,7 +12,7 @@ test('service reserves session capacity atomically for starts and replay imports
   skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
   timeout: 20000,
 }, async () => {
-  const child = spawn(process.execPath, ['server.js'], { cwd: root, env: { ...process.env, PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['server.js'], { cwd: root, env: { ...process.env, PORT: '0', MATCHES_DIR: await mkdtemp(os.tmpdir()+'/last-seat-service-') }, stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = ''; child.stderr.on('data', chunk => stderr += chunk);
   try {
     const base = await new Promise((resolve, reject) => {

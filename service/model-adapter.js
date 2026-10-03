@@ -12,6 +12,18 @@ export class InferenceBudget {
     this.requests++;this.tokens+=cost;this.agents.set(id,used+1);
   }
   view(){return {requests:this.requests,tokens_reserved:this.tokens,limits:this.limit};}
+  snapshot(){return {...this.view(),agents:[...this.agents]};}
+  static restore(snapshot){
+    const budget=new InferenceBudget(snapshot.limits);
+    if(!Number.isSafeInteger(snapshot.requests)||snapshot.requests<0||snapshot.requests>budget.limit.requests||!Number.isSafeInteger(snapshot.tokens_reserved)||snapshot.tokens_reserved<0||snapshot.tokens_reserved>budget.limit.tokens||!Array.isArray(snapshot.agents)||snapshot.agents.length>20)throw new Error('Invalid saved inference budget');
+    let sum=0;
+    for(const row of snapshot.agents){
+      if(!Array.isArray(row)||row.length!==2||typeof row[0]!=='string'||row[0].length>40||budget.agents.has(row[0])||!Number.isSafeInteger(row[1])||row[1]<0)throw new Error('Invalid saved agent budget');
+      budget.agents.set(row[0],row[1]);sum+=row[1];
+    }
+    if(sum!==snapshot.requests)throw new Error('Inconsistent saved inference budget');
+    budget.requests=snapshot.requests;budget.tokens=snapshot.tokens_reserved;return budget;
+  }
 }
 export const fallback=(profile,reason)=>({agent_id:profile.id,action:profile.inference?.fallback||'guard',target:null,reason});
 export function settings(profile) {
@@ -57,6 +69,8 @@ export class HttpModelAdapter {
     for(let attempt=0;attempt<=o.retries;attempt++){
       try{
         this.budget.reserve(p.id,o,cost);
+        // Persist the reservation before any potentially billable request.
+        if(this.budget.persist)await this.budget.persist();
         const response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',...(credential?{Authorization:`Bearer ${credential}`}:{})},body:JSON.stringify(payload),signal:AbortSignal.timeout(o.timeout_ms)});
         const data=await boundedJson(response);
         const decision=compatible?JSON.parse(data.choices?.[0]?.message?.content||'null'):data;
