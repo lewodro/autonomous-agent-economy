@@ -1,0 +1,69 @@
+[
+  {
+    "name": "pixi.js",
+    "version": "8.22.0",
+    "license": "MIT",
+    "artifact": "dist/pixi.min.js",
+    "raw_bytes": 840663,
+    "gzip_bytes": 237364,
+    "source": "https://unpkg.com/pixi.js@8.22.0/dist/pixi.min.js"
+  },
+  {
+    "name": "phaser",
+    "version": "4.2.1",
+    "license": "MIT",
+    "artifact": "dist/phaser.min.js",
+    "raw_bytes": 1375976,
+    "gzip_bytes": 354596,
+    "source": "https://unpkg.com/phaser@4.2.1/dist/phaser.min.js"
+  },
+  {
+    "name": "animejs",
+    "error": "HTTP 404"
+  },
+  {
+    "name": "gsap",
+    "version": "3.15.0",
+    "license": "Standard 'no charge' license: https://gsap.com/standard-license.",
+    "artifact": "dist/gsap.min.js",
+    "raw_bytes": 72927,
+    "gzip_bytes": 28344,
+    "source": "https://unpkg.com/gsap@3.15.0/dist/gsap.min.js"
+  },
+  {
+    "name": "lottie-web",
+    "version": "5.13.0",
+    "license": "MIT",
+    "artifact": "build/player/lottie.min.js",
+    "raw_bytes": 305704,
+    "gzip_bytes": 76651,
+    "source": "https://unpkg.com/lottie-web@5.13.0/build/player/lottie.min.js"
+  },
+  {
+    "name": "howler",
+    "version": "2.2.4",
+    "license": "MIT",
+    "artifact": "dist/howler.min.js",
+    "raw_bytes": 36173,
+    "gzip_bytes": 9707,
+    "source": "https://unpkg.com/howler@2.2.4/dist/howler.min.js"
+  },
+  {
+    "name": "@tweenjs/tween.js",
+    "version": "25.0.0",
+    "license": "MIT",
+    "artifact": "dist/tween.umd.js",
+    "raw_bytes": 49628,
+    "gzip_bytes": 7480,
+    "source": "https://unpkg.com/@tweenjs/tween.js@25.0.0/dist/tween.umd.js"
+  },
+  {
+    "name": "mitt",
+    "version": "3.0.1",
+    "license": "MIT",
+    "artifact": "dist/mitt.umd.js",
+    "raw_bytes": 520,
+    "gzip_bytes": 296,
+    "source": "https://unpkg.com/mitt@3.0.1/dist/mitt.umd.js"
+  }
+]
