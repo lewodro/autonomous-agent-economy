@@ -36,3 +36,5 @@ pub mod scenario;
 pub mod demo;
 
 pub mod lab;
+
+pub mod records;
