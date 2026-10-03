@@ -25,6 +25,16 @@ test('compact transport rejects out-of-order transitions and reconciles stale re
  let calls=0;globalThis.fetch=async()=>++calls===1?new Response(JSON.stringify({error:'Stale turn'}),{status:409}):new Response(JSON.stringify({replay:{...current,final_state:{turn:1}}}));assert.equal((await new HttpMatchTransport().advance('x',current)).final_state.turn,1);
  }finally{globalThis.fetch=prior;}
 });
+test('compact transport keeps runtime budget metadata out of canonical match history',async()=>{
+ const prior=globalThis.fetch,current={version:5,seed:9,events:[{seq:0}],final_state:{turn:0}};
+ try {
+  globalThis.fetch=async()=>new Response(JSON.stringify({events:[{seq:1}],match_id:'updated',final_state:{turn:1},winner:null,statistics:[],budget:{requests_remaining:12}}));
+  const next=await new HttpMatchTransport().advance('x',current);
+  assert.equal(next.version,5);assert.equal(next.seed,9);assert.equal(next.match_id,'updated');
+  assert.equal(next.events.length,2);assert.equal(current.events.length,1);
+  assert.equal(Object.hasOwn(next,'budget'),false);
+ } finally {globalThis.fetch=prior;}
+});
 
 test('a failed request from an old match cannot stop a newly loaded match',async()=>{
  const core=new Core();

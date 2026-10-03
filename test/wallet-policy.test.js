@@ -15,6 +15,10 @@ test('local wallet execution requires a pinned genesis before key files or RPC a
     const result = spawnSync('rust/target/debug/wallet-demo', ['--local', '--fund', '--save-test-wallet', output], { env, encoding: 'utf8', timeout: 3000 });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /explicit LOCAL_GENESIS_HASH/);
+    const failure = JSON.parse(result.stdout);
+    assert.equal(failure.success, false);
+    assert.equal(failure.events[0].type, 'WalletOperationFailed');
+    assert.match(failure.events[0].reason, /explicit LOCAL_GENESIS_HASH/);
     assert.equal(existsSync(output), false);
   }
 });

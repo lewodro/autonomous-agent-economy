@@ -33,3 +33,15 @@ The smoke script clears only Last Seat's replay storage in that dedicated profil
 ## Network demo
 
 `npm run demo:wallet -- --devnet` checks the fixed devnet genesis and reads a fresh test wallet's balance. `--fund --transfer` additionally requests faucet funds, checks fees/reserve, simulates a capped transfer, sends and confirms it. Network and faucet failures are separate from offline correctness. Never use production keys in demo files.
+
+## Final visual/performance pass
+
+The browser test now compares the default match with `docs/example-match.json`, verifies 20 seats at 360/390/430px widths, exercises reduced motion, captures a live screenshot and records active-scene RAF timing. See `docs/performance.md`; temporary captures include `last-seat-live.png`, `last-seat-mobile.png` and `last-seat-twenty.png`.
+
+## Full-size history check
+
+```bash
+cargo test --release --manifest-path rust/Cargo.toml --locked --test table_rules maximum_size_match_is_replayable_within_transport_limits -- --ignored
+```
+
+This deliberately expensive 20-agent/200-turn case also runs in CI. All other Rust tests run normally without `--ignored`.

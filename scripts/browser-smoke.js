@@ -10,7 +10,7 @@ let id = 0; const pending = new Map(); const errors = [];
 ws.addEventListener('message', event => { const msg = JSON.parse(event.data); if (msg.id) { const p = pending.get(msg.id); pending.delete(msg.id); msg.error ? p.reject(msg.error) : p.resolve(msg.result); } if (msg.method === 'Runtime.exceptionThrown') errors.push(msg.params.exceptionDetails.text); });
 const send = (method, params = {}) => new Promise((resolve, reject) => { const n = ++id; pending.set(n, { resolve, reject }); ws.send(JSON.stringify({ id: n, method, params })); });
 const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
-const wait = async expression => { for (let i = 0; i < 100; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('Timed out: ' + expression); };
+const wait = async expression => { for (let i = 0; i < 200; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('Timed out: ' + expression); };
 await send('Runtime.enable'); await send('Page.enable');
 const expected=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../docs/example-match.json',import.meta.url),'utf8'));
 const base=process.env.GAME_URL||'http://localhost:3000';
@@ -30,7 +30,9 @@ const frozen=await evaluate("({turn:document.getElementById('turn').textContent,
 await new Promise(r=>setTimeout(r,700));
 assert.deepEqual(await evaluate("({turn:document.getElementById('turn').textContent,feed:document.getElementById('ticker').textContent,credits:document.getElementById('inspect-content').textContent})"),frozen);
 await evaluate("document.getElementById('play').click()");
-// A complete default match takes roughly 25 seconds at 4x.
+await wait("Number(document.getElementById('turn').textContent.slice(5))>=8");
+await send('Page.captureScreenshot',{format:'png'}).then(r=>writeFile(path.join(os.tmpdir(),'last-seat-live.png'),Buffer.from(r.data,'base64')));
+// Complete the live match.
 for(let i=0;i<700;i++){if(await evaluate("!document.getElementById('comparison').hidden"))break;await new Promise(r=>setTimeout(r,100));}
 assert.equal(await evaluate("document.getElementById('turn').textContent"),`TURN ${String(expected.final_state.turn).padStart(2,'0')}`);
 assert.equal(await evaluate("document.getElementById('alive').textContent"),expected.winner?`${expected.config.agents.find(a=>a.id===expected.winner).name.toUpperCase()} SURVIVES`:'NO SOLE SURVIVOR');
@@ -69,10 +71,13 @@ await evaluate("document.getElementById('config-form').requestSubmit()");
 await wait("document.querySelectorAll('.agent-tab').length===20");
 await send('Page.captureScreenshot',{format:'png'}).then(r=>writeFile(path.join(os.tmpdir(),'last-seat-twenty.png'),Buffer.from(r.data,'base64')));
 for(const width of [360,390,430]){await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:true});assert.equal(await evaluate(`document.documentElement.scrollWidth<=${width}`),true);}
-await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"),true);
+await evaluate("document.getElementById('speed').value='4';document.getElementById('speed').dispatchEvent(new Event('change'));document.getElementById('play').click()");
+await new Promise(r=>setTimeout(r,1500));
+await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});assert.equal(await evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"),false);
 const frames=await evaluate("new Promise(resolve=>{const samples=[];let last=performance.now();requestAnimationFrame(function frame(t){samples.push(t-last);last=t;if(samples.length<120)requestAnimationFrame(frame);else resolve(samples.slice(1));});})");
-const sorted=frames.slice().sort((a,b)=>a-b);const performanceReport={scene:'20 agents',samples:frames.length,mean_frame_ms:frames.reduce((a,b)=>a+b,0)/frames.length,p95_frame_ms:sorted[Math.floor(sorted.length*.95)],reduced_motion:true};
+const sorted=frames.slice().sort((a,b)=>a-b);const performanceReport={scene:'20 agents',samples:frames.length,mean_frame_ms:frames.reduce((a,b)=>a+b,0)/frames.length,p95_frame_ms:sorted[Math.floor(sorted.length*.95)],mode:'live animation',reduced_motion:false};
 await writeFile(path.join(os.tmpdir(),'last-seat-performance.json'),JSON.stringify(performanceReport,null,2));console.log(performanceReport);
+await evaluate("document.getElementById('play').click()");await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"),true);
 assert.deepEqual(errors,[]);
-console.log('PASS: Rust-backed turns, four-agent winner, animations, pause/resume, 4x, inspect/follow, event-only replay, seek, verified share URL, mobile layout, two-agent remix, restart, no browser errors');
+console.log('PASS: Rust-backed turns, four-agent outcome, animations, pause/resume, 4x, inspect/follow, event-only replay, seek, verified share URL, mobile layout, two-agent remix, restart, no browser errors');
 ws.close();

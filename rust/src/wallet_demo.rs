@@ -158,7 +158,18 @@ pub fn execute(args: &[String]) -> Result<serde_json::Value, String> {
             None,
         );
         if transfer {
-            capability.transfer(&destination, 1_000_000)?;
+            if let Err(error) = capability.transfer(&destination, 1_000_000) {
+                events.extend(capability.activity.clone());
+                for (i, e) in events.iter_mut().enumerate() {
+                    e.seq = i;
+                    if let Some(run) = &associated {
+                        e.turn = run.final_state.turn;
+                    }
+                }
+                return Ok(
+                    json!({"success":false,"error":error,"mode":mode,"wallet":capability.view(),"events":events,"match_id":associated.as_ref().map(|r|r.match_id.clone()),"agent_id":associated.as_ref().and_then(|r|r.winner.clone())}),
+                );
+            }
             events.extend(capability.activity.clone());
         }
         balance = rpc("getBalance", json!([payer,{"commitment":"confirmed"}]))?["value"]
