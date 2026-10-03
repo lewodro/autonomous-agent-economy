@@ -37,12 +37,18 @@ test('service reserves session capacity atomically for starts and replay imports
     const ended = await post(path, {});
     assert.equal(ended.status, 400);
     assert.match(ended.data.error, /already ended/);
+    const oversized = await fetch(base + '/api/matches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(1_000_001) });
+    assert.equal(oversized.status, 413);
+    await oversized.json();
+    const largeImport = await fetch(base + '/api/replays/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(8_100_000) + JSON.stringify({ replay: started.data.replay }) });
+    assert.equal(largeImport.status, 200);
+    await largeImport.json();
     const responses = await Promise.all(Array.from({ length: 105 }, (_, i) => i % 2
       ? post('/api/matches', { config })
       : post('/api/replays/import', { replay: started.data.replay })));
-    assert.equal(responses.filter(r => r.status < 300).length, 99);
+    assert.equal(responses.filter(r => r.status < 300).length, 98);
     const denied = responses.filter(r => r.status >= 300);
-    assert.equal(denied.length, 6);
+    assert.equal(denied.length, 7);
     for (const result of denied) assert.match(result.data.error, /session limit/);
   } finally {
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
