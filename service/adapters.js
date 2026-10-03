@@ -1,4 +1,22 @@
 // Provider I/O ends at decisions. No adapter owns game state or wallet authority.
+async function boundedText(response) {
+  if (!response.body) throw new Error('empty response');
+  const reader = response.body.getReader(), chunks = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > 8192) { await reader.cancel(); throw new Error('response too large'); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
 export async function decisionsFor(config, observation) {
   if (config.agents.every(a => a.provider === 'mock')) return null; // Rust mock strategy implementation.
   // Mixed populations use Rust-produced defaults, then replace only non-mock decisions.
@@ -13,7 +31,7 @@ export async function decisionsFor(config, observation) {
         body: JSON.stringify({ agent: { id: profile.id, model: profile.model, personality: profile.personality, prompt: profile.prompt }, observation,
           response_schema: { action: ['work', 'challenge', 'guard', 'cooperate'], target: 'agent ID or null', reason: 'brief public explanation' } }), signal: AbortSignal.timeout(4000) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text(); if (text.length > 8192) throw new Error('response too large');
+      const text = await boundedText(response);
       const result = JSON.parse(text);
       if (!['work', 'challenge', 'guard', 'cooperate'].includes(result.action) || typeof result.reason !== 'string' || !result.reason.trim() || result.reason.length > 300 || (result.target !== null && result.target !== undefined && typeof result.target !== 'string')) throw new Error('invalid structured decision');
       return { agent_id: profile.id, action: result.action, target: result.target || null, reason: result.reason };
