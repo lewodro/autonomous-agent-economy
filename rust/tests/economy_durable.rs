@@ -176,3 +176,32 @@ fn trusted_completion_rejects_changed_claims_or_another_authority() {
     bad.signature = "bad".into();
     assert!(authority.verify(&id, &run, &bad).is_err());
 }
+#[test]
+fn local_signer_persists_identity_and_never_serializes_secrets() {
+    use agent_arena_demo::economy::{local_signer::LocalDevSigner, signing::*};
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    let path = directory("key");
+    let keypath = path.join("agent.wallet.bin");
+    let a = LocalDevSigner::load_or_create(&keypath, AgentId::new("a").unwrap()).unwrap();
+    let identity = a.identity();
+    drop(a);
+    let a = LocalDevSigner::load_or_create(&keypath, AgentId::new("a").unwrap()).unwrap();
+    assert_eq!(a.identity(), identity);
+    let signed = a.sign_transaction(b"native-message").unwrap();
+    let pubkey: [u8; 32] = bs58::decode(identity.address.as_str())
+        .into_vec()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let signature =
+        Signature::from_slice(&bs58::decode(&signed.signature).into_vec().unwrap()).unwrap();
+    assert!(VerifyingKey::from_bytes(&pubkey)
+        .unwrap()
+        .verify(b"native-message", &signature)
+        .is_ok());
+    assert!(VerifyingKey::from_bytes(&pubkey)
+        .unwrap()
+        .verify(b"tampered", &signature)
+        .is_err());
+    std::fs::remove_dir_all(path).unwrap();
+}

@@ -43,6 +43,7 @@ pub struct WalletIdentity {
 pub enum SigningDomain {
     PublicMessage,
     MockTransaction,
+    SolanaTransaction,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedArtifact {

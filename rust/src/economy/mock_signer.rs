@@ -10,6 +10,7 @@ fn payload(domain: SigningDomain, message: &[u8]) -> Vec<u8> {
     let prefix: &[u8] = match domain {
         SigningDomain::PublicMessage => b"last-seat/public-message/v1\0",
         SigningDomain::MockTransaction => b"last-seat/mock-transaction/v1\0",
+        SigningDomain::SolanaTransaction => b"last-seat/mock-disallowed-native/v1\0",
     };
     [prefix, message].concat()
 }
