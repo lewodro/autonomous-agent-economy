@@ -7,7 +7,7 @@ interface Point { x:number; y:number }
 export class Renderer implements GameRenderer {
   private ctx: CanvasRenderingContext2D; private images = new Map<string,HTMLImageElement>();
   private state: State | null = null; private config: Config | null = null; private driver:AnimationDriver;private raf=0;private observer:ResizeObserver;private textScale=1;private hovered='';private resourceDisplay=new Map<string,number>();
-  private positions: Point[] = []; selected = ''; favorite = new Set<string>(); paused = true;speed=1;reducedMotion=false;
+  private positions: Point[] = []; selected = ''; favorite = new Set<string>(); paused = true;speed=1;reducedMotion=false;thinking=false;
   constructor(private canvas: HTMLCanvasElement, private inspect: (id:string)=>void,driver:AnimationDriver=new CanvasAnimationDriver()) {
     this.driver=driver;this.observer=new ResizeObserver(entries=>{this.textScale=Math.min(1.75,Math.max(1,600/(entries[0]?.contentRect.width||960)));});this.observer.observe(canvas);
     canvas.addEventListener('pointermove',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*960/r.width,y=(e.clientY-r.top)*540/r.height;const i=this.positions.findIndex(p=>Math.abs(p.x-x)<45&&Math.abs(p.y-y)<55);this.hovered=this.state?.agents[i]?.id||'';canvas.title=this.config?.agents.find(a=>a.id===this.hovered)?.name||'Select a rival';});
@@ -69,7 +69,7 @@ export class Renderer implements GameRenderer {
       this.rect(p.x-31,p.y+32,62,7,'#302e30');this.rect(p.x-30,p.y+33,60*Math.min(1,this.displayCredits(a.id,a.credits)/profile.starting_credits),5,a.alive?color:'#736562');
       this.text(`${a.credits} cr${a.alive&&a.credits===max?' ◇':''}`,p.x,p.y+54,n>8?10:18,a.alive?'#f2e2bc':'#908782');
       if(a.guarded&&a.alive){this.text('◆',p.x+35,p.y-4,24,'#9caecd');}
-      if(pose?.animation==='thinking')this.text('···',x,y-66,22,'#e5d2a1');
+      if((this.thinking&&a.alive)||pose?.animation==='thinking')this.text('···',x,y-66,22,'#e5d2a1');
       if(pose?.animation==='working')this.text('⚒',x+42,y-32,22,'#eed18b');
       if(pose?.animation==='guarding')this.text('◆',x+42,y-32,24,'#bbc9e2');
       if(state.winner===a.id){this.text('♛',p.x,p.y-size/2-43,28,'#f3d27d');}

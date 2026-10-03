@@ -14,10 +14,11 @@ const notice=(text:string)=>{$('notice').textContent=text;};
 const player=new Player(update,notice);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const renderer=new Renderer($<HTMLCanvasElement>('board'),id=>{selected=id;$<HTMLDetailsElement>('agent-drawer').open=true;update();});
+const mobile=matchMedia('(max-width:760px)');const log=document.querySelector<HTMLDetailsElement>('.live-log')!;log.open=!mobile.matches;mobile.addEventListener('change',()=>log.open=!mobile.matches);
 renderer.reducedMotion=motion.matches;motion.addEventListener('change',()=>{renderer.reducedMotion=motion.matches;update();});
 function update(event?:GameEvent) {
   const run=player.run,state=player.state;if(!run||!state)return;
-  renderer.selected=selected;renderer.favorite=favorites;renderer.paused=!player.playing&&!player.manual;renderer.speed=player.speed;renderer.update(state,run.config,event);hud.render(run,state,player.cursor,player.playing,player.waiting,player.session,event);
+  renderer.selected=selected;renderer.favorite=favorites;renderer.paused=!player.playing&&!player.manual;renderer.speed=player.speed;renderer.thinking=player.waiting;renderer.update(state,run.config,event);hud.render(run,state,player.cursor,player.playing,player.waiting,player.session,event);
   $('turn').textContent=`TURN ${String(state.turn).padStart(2,'0')}`;
   const count=state.agents.filter(a=>a.alive).length;
   $('alive').textContent=state.ended?state.winner?`${run.config.agents.find(a=>a.id===state.winner)?.name.toUpperCase()} SURVIVES`:'NO SOLE SURVIVOR':`${count} / ${state.agents.length} AT THE TABLE`;
@@ -25,8 +26,8 @@ function update(event?:GameEvent) {
   $<HTMLButtonElement>('step').disabled=player.playing||player.busy||state.ended;
   $<HTMLInputElement>('scrub').max=String(run.final_state.turn);$<HTMLInputElement>('scrub').value=String(state.turn);$('scrub-label').textContent=`${state.turn} / ${run.final_state.turn}`;
   $('mode-label').textContent=run.config.agents.every(a=>a.provider==='mock')?'SEEDED MOCK AGENTS':'RECORDED ADAPTER DECISIONS';
-  if(event && !['ResourceChanged','AgentActionSelected','RoundEnded'].includes(event.type))$('ticker').textContent=event.reason;
-  if(!event) { const latest=run.events.slice(0,player.cursor).reverse().find(e=>!['ResourceChanged','AgentActionSelected','RoundEnded','RoundStarted'].includes(e.type)); $('ticker').textContent=state.ended?(state.winner?`${run.config.agents.find(a=>a.id===state.winner)?.name} kept the last seat. ${state.end_reason}.`:state.end_reason||'Match ended.'):latest?.reason||'Four choices. One currency. Keep your seat.'; }
+  if(event && !['ResourceChanged','AgentActionSelected','RoundEnded','ActionStarted','ActionResolved','AgentThinking'].includes(event.type))$('ticker').textContent=event.reason;
+  if(!event) { const latest=run.events.slice(0,player.cursor).reverse().find(e=>!['ResourceChanged','AgentActionSelected','RoundEnded','RoundStarted','ActionStarted','ActionResolved','AgentThinking'].includes(e.type)); $('ticker').textContent=state.ended?(state.winner?`${run.config.agents.find(a=>a.id===state.winner)?.name} kept the last seat. ${state.end_reason}.`:state.end_reason||'Match ended.'):latest?.reason||'Four choices. One currency. Keep your seat.'; }
   const seen=moments(run).filter(e=>e.seq<player.cursor);
   setHTML('moments',seen.length?[...seen].reverse().slice(0,12).map(e=>`<button class="moment" data-turn="${e.turn}"><span>T${String(e.turn).padStart(2,'0')}</span>${escape(e.reason)}</button>`).join(''):'<p class="personality">A challenge takes credits. A guard blocks it.<br>Mutual cooperation earns a bonus. Upkeep rises every four turns.</p>');
   if(!selected||!state.agents.some(a=>a.id===selected))selected=state.agents[0]!.id;

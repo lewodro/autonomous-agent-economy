@@ -10,7 +10,7 @@ export class SpectatorHUD {
   const badge=document.getElementById('live')!;
   const status=state.ended?'ENDED':!session?'HISTORY':waiting?'THINKING':playing?'LIVE':state.turn?'PAUSED':'READY';
   badge.textContent=status;badge.dataset.state=status.toLowerCase();
-  document.getElementById('active-agent')!.textContent=waiting?'Agents are choosing…':this.acting?`${run.config.agents.find(a=>a.id===this.acting)?.name} acts`:state.ended?'Table cleared':playing?'Decisions resolving':'Your table is ready';
+  document.getElementById('active-agent')!.textContent=waiting?'Agents are choosing…':this.acting?`${run.config.agents.find(a=>a.id===this.acting)?.name} acts`:state.ended?'Table cleared':playing?'Decisions resolving':state.turn?`${session?'Paused at':'Recorded'} turn ${state.turn}`:'Your table is ready';
   const current=run.events.slice(0,cursor).filter(e=>e.turn===state.turn);
   const resolved=new Set(current.filter(e=>e.type==='ActionResolved').map(e=>e.actor));
   const choices=current.filter(e=>e.type==='AgentActionSelected');
