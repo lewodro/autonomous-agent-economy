@@ -23,7 +23,7 @@ impl SolanaWallet {
             Network::Local => std::env::var("LOCAL_GENESIS_HASH")
                 .ok()
                 .is_some_and(|expected| {
-                    genesis.as_str() == Some(&expected) && expected != DEVNET_GENESIS
+                    genesis.as_str() == Some(&expected) && allowed_local_genesis(&expected)
                 }),
         };
         if !valid {

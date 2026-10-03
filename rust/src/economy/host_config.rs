@@ -22,6 +22,15 @@ impl FundedMatchConfig {
     pub fn validate(&self) -> Result<()> {
         self.economy.validate()?;
         self.fees.prototype()?;
+        if self.simulation.agents.iter().any(|agent| {
+            agent.id == "fee-sponsor"
+                || agent.id == "host-authority"
+                || agent.id.starts_with("escrow-")
+        }) {
+            return Err(EconomyError::InvalidInput(
+                "Funded agents must not use reserved custody account IDs".into(),
+            ));
+        }
         if !matches!(self.economy.mode, PaymentMode::Mock | PaymentMode::Local) {
             return Err(EconomyError::NotImplemented(
                 "Funded admission supports mock or pinned local validator only".into(),

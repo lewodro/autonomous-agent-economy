@@ -389,6 +389,12 @@ fn funded_admission_configuration_rejects_mainnet_devnet_and_invalid_deadlines()
         funding_timeout_seconds: 600,
     };
     config.validate().unwrap();
+    for id in ["fee-sponsor", "host-authority", "escrow-forged"] {
+        let prior = config.simulation.agents[0].id.clone();
+        config.simulation.agents[0].id = id.into();
+        assert!(config.validate().is_err());
+        config.simulation.agents[0].id = prior;
+    }
     config.funding_timeout_seconds = 0;
     assert!(config.validate().is_err());
     config.funding_timeout_seconds = 600;

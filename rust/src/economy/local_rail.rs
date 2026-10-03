@@ -28,12 +28,7 @@ pub fn rpc(method: &str, params: Value) -> Result<Value> {
     rpc_on(&Network::Local, method, params).map_err(EconomyError::RpcUnavailable)
 }
 pub fn validate_genesis(expected: &str) -> Result<()> {
-    if expected.len() < 32
-        || expected.len() > 44
-        || ["5eykt4", "EtWTRAB", "4uhcVJy"]
-            .iter()
-            .any(|p| expected.starts_with(p))
-    {
+    if !crate::wallet::allowed_local_genesis(expected) {
         return Err(EconomyError::MainnetNotImplemented);
     }
     if rpc("getGenesisHash", json!([]))?.as_str() != Some(expected) {

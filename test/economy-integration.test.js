@@ -20,7 +20,7 @@ test('Rust economy stream projects exactly in TypeScript for free and funded exa
 });
 async function launch(enabled){
  const directory=await mkdtemp(path.join(os.tmpdir(),'seat-economy-test-'));
- const child=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:'0',MATCHES_DIR:directory,ECONOMY_LAB:enabled?'1':'0'},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:'0',MATCHES_DIR:directory,ECONOMY_LAB:enabled?'1':'0',FUNDED_AUTO_RUN:'0'},stdio:['ignore','pipe','pipe']});
  let text='';const base=await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('Startup timeout')),10000);
   child.stdout.on('data',chunk=>{text+=chunk;const m=text.match(/http:\/\/localhost:(\d+)/);if(m){clearTimeout(timer);resolve(`http://127.0.0.1:${m[1]}`);}});
@@ -41,4 +41,32 @@ test('lab HTTP route is opt-in and Rust owns funding, winner and idempotent sett
   assert.equal(first.data.simulation.winner,'agent-3');assert.equal(first.data.balances['agent-3'],'1060000000');
   assert.equal((await command('refund')).status,400);
  }finally{await lab.close();}
+});
+
+test('funded HTTP admission requires entries and pays the authoritative winner once',async()=>{
+ const host=await launch(false);
+ const post=async(route,body={})=>{const response=await fetch(host.base+route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:response.status,data:await response.json()};};
+ try{
+  const created=await post('/api/funded-matches',{mode:'mock',entry_amount_sol:'0.02',config:{seed:42,max_turns:1,agents:[{id:'a'},{id:'b'}]}});
+  assert.equal(created.status,201);
+  const session=created.data.session,route=`/api/funded-matches/${session}`;
+  assert.equal(created.data.economy.economy.state,'funding');
+  assert.equal((await post(`/api/matches/${session}/step`,{expected_turn:0})).status,400);
+  const funded=await post(route+'/fund-all');assert.equal(funded.status,200);
+  assert.equal(funded.data.economy.economy.state,'running');
+  assert.equal(funded.data.economy.economy.pot_amount,'40000000');
+  const played=await post(`/api/matches/${session}/step`,{expected_turn:0,winner:'forged'});
+  assert.equal(played.status,200);assert.equal(played.data.replay.final_state.ended,true);
+  const first=await post(route+'/settle');assert.equal(first.status,200);
+  const again=await post(route+'/settle');assert.equal(again.status,200);
+  assert.deepEqual(again.data.economy.operations,first.data.economy.operations);
+  assert.deepEqual(again.data.economy.wallets,first.data.economy.wallets);
+  assert.equal(first.data.economy.economy.pot_amount,'0');
+  assert.equal(first.data.economy.attestation.claims.winner_id,played.data.replay.winner);
+  if(played.data.replay.winner){
+   const payout=first.data.economy.operations.filter(operation=>operation.purpose==='payout');
+   assert.equal(payout.length,1);assert.equal(payout[0].payee,played.data.replay.winner);
+   assert.equal(payout[0].amount,'40000000');assert.equal(payout[0].status,'confirmed');
+  }else assert.equal(first.data.economy.economy.state,'refunded');
+ }finally{await host.close();}
 });

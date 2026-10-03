@@ -9,6 +9,13 @@ use std::{
 };
 pub const DEVNET: &str = "https://api.devnet.solana.com";
 pub const DEVNET_GENESIS: &str = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+pub fn allowed_local_genesis(hash: &str) -> bool {
+    (32..=44).contains(&hash.len())
+        && bs58::decode(hash).into_vec().is_ok()
+        && !["5eykt4", "EtWTRAB", "4uhcVJy"]
+            .iter()
+            .any(|prefix| hash.starts_with(prefix))
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum WalletMode {
@@ -218,6 +225,21 @@ pub fn base64(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_wallet_cannot_pin_a_public_cluster() {
+        for hash in [
+            DEVNET_GENESIS,
+            "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY",
+            "",
+            "not a genesis hash",
+        ] {
+            assert!(!allowed_local_genesis(hash));
+        }
+        assert!(allowed_local_genesis(
+            &bs58::encode([9u8; 32]).into_string()
+        ));
+    }
     #[test]
     fn malformed_rpc_envelopes_cannot_be_verified_results() {
         assert!(rpc_result(json!({"jsonrpc":"2.0","id":1})).is_err());
