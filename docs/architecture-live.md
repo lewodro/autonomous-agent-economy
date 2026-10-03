@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TD
- Browser[Browser: controls + spectator HUD] --> Transport[HTTP match transport]
+ Browser[Browser: controls + spectator HUD] --> Transport[HTTP host / SSE viewer transport]
  Transport --> Runtime[Node MatchRuntime: revision lock + inference budget]
  Runtime --> Worker[Persistent Rust NDJSON worker]
  Worker --> Core[Rust authoritative engine]
@@ -22,7 +22,11 @@ flowchart TD
  Transport --> State[Presentation projection]
  State --> Renderer[GameRenderer]
  Renderer --> Animation[AnimationDriver]
- Runtime --> Storage[Verified JSON match files]
+ Runtime --> Storage[Atomic session checkpoints + inference reservations]
+ Storage --> Recovery[Rust verification before startup]
+ Core --> Live[Checkpointed semantic transitions]
+ Live --> SSE[Bounded read-only SSE viewers]
+ SSE --> Transport
 ```
 
 ## Simulation flow
@@ -77,7 +81,7 @@ flowchart LR
  Intent --> Rust[Rust rule authorization]
 ```
 
-A provider's explain method returns the public decision reason. It cannot read wallet keys or execute transactions. The server chooses the credential destination and environment variable; public configs cannot redirect secrets. Inference reservations count failed attempts and retries.
+A provider's explain method returns the public decision reason. It cannot read wallet keys or execute transactions. The server chooses the credential destination and environment variable; public configs cannot redirect secrets. Inference reservations count failed attempts and retries and are checkpointed before provider requests. Startup restores global and per-agent counts.
 
 ## Payment experiment
 

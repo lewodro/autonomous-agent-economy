@@ -44,6 +44,7 @@ test('animation mapper targets damage, transitions and resource values without c
  const e={type:'ChallengeResolved',actor:'a',target:'b',amount:4};const commands=mapEvent(e);assert.equal(commands[0].id,'b');assert.ok(commands.some(c=>c.type==='camera'));
  assert.deepEqual(mapEvent({type:'ResourceChanged',actor:'a',amount:-4,after:7}),[{type:'resource',id:'a',amount:-4,after:7,duration:750}]);
  assert.deepEqual(mapEvent({type:'RoundEnded'}),[]);
+ assert.deepEqual(mapEvent({type:'ResourceChanged',actor:'a',amount:0,after:7}),[]);
 });
 test('animation driver freezes when paused, caps effects and suppresses motion on request',()=>{
  const driver=new CanvasAnimationDriver();driver.playAgentAnimation('b','hit');driver.tick(0,false,1);const first=driver.tick(100,false,1);const frozen=driver.tick(400,true,4);assert.deepEqual(first.poses,frozen.poses);

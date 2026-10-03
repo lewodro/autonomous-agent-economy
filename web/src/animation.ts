@@ -36,7 +36,7 @@ export function mapEvent(event:GameEvent):AnimationCommand[]{
  case 'ChallengeResolved':return target&&(event.amount||0)>0?[{type:'agent',id:target,animation:'hit',duration:480},{type:'particles',id:target,effect:'impact',count:10,duration:500},{type:'camera',strength:3,duration:220}]:[];
  case 'CooperationOffered':case 'AllianceCreated':return [{type:'particles',id,target,effect:'hearts',count:6,duration:650}];
  case 'AllianceBroken':return [{type:'particles',id,target,effect:'betrayal',count:10,duration:700}];
- case 'ResourceChanged':return event.amount!=null&&event.after!=null?[{type:'resource',id,amount:event.amount,after:event.after,duration:750}]:[];
+ case 'ResourceChanged':return event.amount!=null&&event.amount!==0&&event.after!=null?[{type:'resource',id,amount:event.amount,after:event.after,duration:750}]:[];
  case 'AgentEliminated':return [{type:'agent',id,animation:'eliminating',duration:850},{type:'particles',id,effect:'impact',count:12,duration:800}];
  case 'WinnerDeclared':return [{type:'agent',id,animation:'celebrating',duration:1400},{type:'particles',id,effect:'confetti',count:32,duration:1400}];
  default:return [];

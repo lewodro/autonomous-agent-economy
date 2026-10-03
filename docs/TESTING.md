@@ -45,3 +45,7 @@ cargo test --release --manifest-path rust/Cargo.toml --locked --test table_rules
 ```
 
 This deliberately expensive 20-agent/200-turn case also runs in CI. All other Rust tests run normally without `--ignored`.
+
+## Live spectator and persistence checks
+
+Integration tests restart the service and compare the same session/history, subscribe to SSE, advance host turns, and reconnect. Browser checks verify independent viewer pause, zero viewer step requests, reconnect/reload and a separate remix. Store tests cover queued writes, corrupt checkpoints, restored inference budgets and preventing paid requests when reservation persistence fails. Stream tests cover connection limits, slow readers and socket-write failures.

@@ -21,6 +21,10 @@ test('live streams cap viewers, disconnect slow consumers and clean up without b
   hub.publish('match',{replay,events:[]});
   assert.equal(responses[0].destroyed,true);assert.equal(hub.count,3);
   assert.match(responses[1].frames[1],/event: transition/);
+  responses[1].write=()=>{throw new Error('Socket disconnected while writing');};
+  assert.doesNotThrow(()=>hub.publish('match',{replay,events:[]}));
+  assert.equal(responses[1].destroyed,true);assert.equal(hub.count,2);
+  const disconnected=new Response();disconnected.destroy();hub.connect('gone',replay,disconnected);assert.equal(hub.count,2);
  }finally{hub.close();}
  assert.equal(hub.count,0);assert.equal(hub.viewers.size,0);
 });
@@ -49,6 +53,7 @@ test('read-only viewer follows host turns and reconnects to the same durable ses
  const route=`/api/matches/${start.session}`;
  const stream=await fetch(service.base+route+'/events'),reader=stream.body.getReader();
  const snapshot=await frame(reader);assert.deepEqual(snapshot.replay,start.replay);
+ assert.equal((await fetch(service.base+'/api/health').then(r=>r.json())).version,start.replay.simulation_version);
  assert.equal((await fetch(service.base+route).then(r=>r.json())).replay.final_state.turn,0);
  const turn=await post(route+'/step',{expected_turn:0});
  const transition=await frame(reader);assert.deepEqual(transition.events,turn.events);assert.equal(transition.final_state.turn,1);

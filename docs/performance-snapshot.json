@@ -1,8 +1,8 @@
 {
   "scene": "20 agents",
   "samples": 119,
-  "mean_frame_ms": 16.805882352941182,
-  "p95_frame_ms": 16.700000000000728,
+  "mean_frame_ms": 16.66638655462185,
+  "p95_frame_ms": 16.700000000000273,
   "mode": "live animation",
   "reduced_motion": false
 }
