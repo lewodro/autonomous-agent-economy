@@ -53,6 +53,8 @@ The local validator helper can provision disposable accounts with local faucet f
 | Scheduler could leave `RefundPending` stuck | `expire` only handled funding deadlines | Retry the saved cancellation reason; restart and duplicate-retry regression |
 | Old compiler/crypto/action releases | Migration and maintenance drift | Current stable dependencies, immutable action pins and weekly Dependabot checks |
 | SHA-256 0.11 removed old hexadecimal formatting | Direct update broke compilation | Stable lowercase encoding preserves history/operation/journal formats; published SHA-256 vectors and replay tests |
+| Funded CLI allocated profiles before checking seat count | Extremely large untrusted count could exhaust memory | Bound 2–20 before configuration/session/key creation; invalid/maximum-integer regression |
+| JS Solana demo accepted incomplete RPC/simulation results | Missing execution evidence could be reported as successful funded simulation | Validate response version/ID/result and require explicit simulation/faucet execution result |
 
 Concurrent repository development incorporated the refund recovery fix in commit `8bff0c5`; it remains covered by the Rust host regression. Focused `debug_017` and later commits contain this audit's remaining changes.
 

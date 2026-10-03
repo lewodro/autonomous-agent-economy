@@ -56,7 +56,10 @@ fn execute() -> Result<serde_json::Value> {
             "--agents" => {
                 seats = value
                     .parse()
-                    .map_err(|_| EconomyError::InvalidInput("Invalid seats".into()))?
+                    .map_err(|_| EconomyError::InvalidInput("Invalid seats".into()))?;
+                if !(2..=20).contains(&seats) {
+                    return Err(EconomyError::InvalidInput("Use 2–20 funded agents".into()));
+                }
             }
             _ => return Err(EconomyError::InvalidInput("Unknown flag".into())),
         };
