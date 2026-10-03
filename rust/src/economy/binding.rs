@@ -32,7 +32,7 @@ impl SimulationBinding {
             Sha256::digest([b"last-seat/economy-run/v1:".as_slice(), &bytes].concat())
         ))
     }
-    pub fn verify_finished(&self, finished: &Replay) -> Result<AgentId> {
+    pub fn verify_completed(&self, finished: &Replay) -> Result<Option<AgentId>> {
         let checked =
             replay::verify(finished).map_err(|_| EconomyError::SettlementNotAuthorized)?;
         let initial =
@@ -47,7 +47,11 @@ impl SimulationBinding {
         if !checked.config.agents.iter().any(|a| a.id == winner) {
             return Err(EconomyError::SettlementNotAuthorized);
         }
-        AgentId::new(winner)
+        Ok(Some(AgentId::new(winner)?))
+    }
+    pub fn verify_finished(&self, finished: &Replay) -> Result<AgentId> {
+        self.verify_completed(finished)?
+            .ok_or(EconomyError::SettlementNotAuthorized)
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

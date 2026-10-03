@@ -12,6 +12,7 @@ pub struct EconomyCoordinator<R: PaymentRail, E: MatchEscrow> {
     pub(super) events: Vec<EconomyEvent>,
     pub(super) settlement: Option<SettlementResult>,
     pub(super) result_history: Option<String>,
+    pub(super) failure_stage: Option<EconomyState>,
 }
 impl<R: PaymentRail, E: MatchEscrow> EconomyCoordinator<R, E> {
     pub fn new(
@@ -53,6 +54,7 @@ impl<R: PaymentRail, E: MatchEscrow> EconomyCoordinator<R, E> {
             events: vec![],
             settlement: None,
             result_history: None,
+            failure_stage: None,
         })
     }
     pub fn view(&self) -> MatchEconomy {

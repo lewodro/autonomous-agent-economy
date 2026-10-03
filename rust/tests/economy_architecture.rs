@@ -57,7 +57,7 @@ fn lifecycle_validates_every_pair_and_terminal_states_cannot_restart() {
         assert!(Refunded.transition(state).is_err());
     }
     assert!(Unfunded.transition(Running).is_err());
-    assert!(Running.transition(RefundPending).is_err());
+    assert!(Running.transition(RefundPending).is_ok());
     assert!(Funded.transition(Settled).is_err());
 }
 use agent_arena_demo::economy::config::*;
@@ -438,4 +438,48 @@ fn settlement_cannot_use_another_run_configuration_or_an_unfunded_match() {
     another.lock().unwrap();
     another.start().unwrap();
     assert!(another.settle(&run).is_err());
+}
+use agent_arena_demo::economy::refund::RefundReason;
+#[test]
+fn partial_funding_failure_refunds_only_verified_entries_without_double_credit() {
+    let initial = engine::start(game_config::default_config(4, 9)).unwrap();
+    let mut economy = EconomyCoordinator::mock(
+        &initial,
+        &economy_config("0.02"),
+        &OperationId::new("partial").unwrap(),
+    )
+    .unwrap();
+    economy.open_funding().unwrap();
+    let first = AgentId::new("agent-1").unwrap();
+    economy.fund(&first).unwrap();
+    economy
+        .fail_before_lock(EconomyError::AdapterFailure("Funding timed out".into()))
+        .unwrap();
+    economy.refund(RefundReason::FundingFailed, None).unwrap();
+    let events = economy.events().len();
+    economy.refund(RefundReason::FundingFailed, None).unwrap();
+    assert_eq!(events, economy.events().len());
+    for agent in economy.view().required_agents {
+        assert_eq!(economy.balance(&agent).unwrap(), Amount::new(1_000_000_000));
+    }
+    assert_eq!(economy.view().state, EconomyState::Refunded);
+}
+#[test]
+fn refund_policy_blocks_running_or_settlement_cancellation() {
+    let (_, mut economy) = funded_coordinator(2, "0.02");
+    economy.lock().unwrap();
+    economy.start().unwrap();
+    assert!(economy
+        .refund(RefundReason::CancelledBeforeStart, None)
+        .is_err());
+    assert!(economy.fail_before_lock(EconomyError::Conflict).is_err());
+    assert!(economy
+        .refund(RefundReason::NoWinnerFinished, None)
+        .is_err());
+    let (_, mut economy) = funded_coordinator(2, "0.02");
+    economy.lock().unwrap();
+    economy
+        .refund(RefundReason::CancelledBeforeStart, None)
+        .unwrap();
+    assert_eq!(economy.view().state, EconomyState::Refunded);
 }

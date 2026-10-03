@@ -25,6 +25,8 @@ impl EconomyState {
                 | (Locked, Running)
                 | (Running, SettlementPending)
                 | (SettlementPending, Settled)
+                | (Unfunded, RefundPending)
+                | (Running, RefundPending)
                 | (Funding, RefundPending)
                 | (Funded, RefundPending)
                 | (Locked, RefundPending)
