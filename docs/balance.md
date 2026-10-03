@@ -79,3 +79,37 @@ maximum unsigned seed is supported. Metrics remain finite with zero eliminations
 [baseline.json](balance/baseline.json) retains the original pre-tuning 120-match
 experiment where aggression won every match; changing only a replay version does
 not restore that historical strategy implementation.
+
+## Overnight architecture smoke sample — 2026-10-03
+
+No rule or strategy tuning in this pass. A fresh four-agent cohort uses equal
+12-credit starts and rotated seats: **120 matches, seeds 6001–6120, V6**.
+
+| Strategy/result | Count | Share of all matches |
+|---|---:|---:|
+| aggressive | 12 | 10.00% |
+| conservative | 71 | 59.17% |
+| opportunist | 10 | 8.33% |
+| cooperative | 0 | 0.00% |
+| Draw | 27 | 22.50% |
+
+Mean turns: **15.175**, range 10–21.
+Alliances: 109; betrayals: 77; eliminations: 387;
+mean elimination turn: 13.220.
+
+| Action | Uses |
+|---|---:|
+| Challenge | 1241 |
+| Cooperate | 1712 |
+| Guard | 486 |
+| Work | 3051 |
+
+Conservative remains dominant and cooperative wins none; this foundation pass
+intentionally leaves V6 rules and recorded replay behavior unchanged. It confirms
+that balance remains a high-value next gameplay task, not that the game is balanced.
+
+[Raw sample](balance/overnight-v6-smoke.json). Reproduce with:
+
+```sh
+npm run balance -- 120 last-seat-v6 6001 4
+```

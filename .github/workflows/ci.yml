@@ -18,6 +18,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run check
       - run: npm run demo:crypto
+      - run: npm run demo:economy
+      - run: npm run demo:economy -- examples/economy/free.json
+      - run: npm run demo:economy -- examples/economy/mock-0.05.json
       - run: npm run demo:solana
       - run: npm run simulate -- --agents 2 --mode survival --bankroll 0.09 --stake 0.03 --seed 9 --rounds 300 --out /tmp/arena-audit.json
       - run: npm run verify -- /tmp/arena-audit.json

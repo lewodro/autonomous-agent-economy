@@ -375,6 +375,8 @@ fn coordinator_funds_requested_populations_and_exact_pots_before_lock() {
         (4, "0.02", 20_000_000),
         (4, "0.05", 50_000_000),
         (8, "0.02", 20_000_000),
+        (20, "0.02", 20_000_000),
+        (4, "0.03", 30_000_000),
     ] {
         let (initial, mut economy) = funded_coordinator(count, entry);
         assert_eq!(economy.view().state, EconomyState::Funded);
@@ -742,5 +744,45 @@ fn verified_finished_draw_refunds_and_cannot_declare_a_payout() {
     assert_eq!(economy.view().state, EconomyState::Refunded);
     for a in economy.view().required_agents {
         assert_eq!(economy.balance(&a).unwrap(), Amount::new(1_000_000_000));
+    }
+}
+
+#[test]
+fn partial_refund_response_loss_retries_without_double_credit() {
+    struct LostRefund {
+        rail: MockPaymentRail,
+        lost: bool,
+    }
+    impl PaymentRail for LostRefund {
+        fn get_balance(&self, a: &AccountId) -> Result<Amount> {
+            self.rail.get_balance(a)
+        }
+        fn prepare_payment(&mut self, i: PaymentIntent) -> Result<PreparedPayment> {
+            self.rail.prepare_payment(i)
+        }
+        fn submit_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
+            let receipt = self.rail.submit_payment(p)?;
+            if !self.lost && p.intent.purpose == PaymentPurpose::Refund {
+                self.lost = true;
+                return Err(EconomyError::AdapterFailure("refund response lost".into()));
+            }
+            Ok(receipt)
+        }
+        fn verify_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
+            self.rail.verify_payment(r, i)
+        }
+    }
+    let (rail, mut escrow) = funded_escrow();
+    let mut rail = LostRefund { rail, lost: false };
+    assert!(escrow.refund(&mut rail).is_err());
+    let receipts = escrow.refund(&mut rail).unwrap();
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(escrow.refund(&mut rail).unwrap(), receipts);
+    assert_eq!(rail.rail.receipt_count(), 4);
+    for id in ["agent-a", "agent-b"] {
+        assert_eq!(
+            rail.get_balance(&AccountId::new(id).unwrap()).unwrap(),
+            Amount::new(1_000_000_000)
+        );
     }
 }

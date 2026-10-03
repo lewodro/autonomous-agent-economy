@@ -201,7 +201,9 @@ its records. It accepts actions, not user-supplied winners or receipts.
 [Economy architecture and Mermaid diagrams](docs/economy-architecture.md) ·
 [Example configurations](examples/economy/README.md) ·
 [Threat model](docs/threat-model.md) ·
-[Funded-test prerequisites](docs/mainnet-readiness.md)
+[Funded-test prerequisites](docs/mainnet-readiness.md) ·
+[Live economy transport](docs/live-economy-transport.md) ·
+[Animation migration candidates](docs/animation-stack.md)
 
 ## Wallet System
 

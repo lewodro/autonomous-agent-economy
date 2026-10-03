@@ -23,7 +23,8 @@
     "demo:payments": "node scripts/payment-demo.js",
     "balance": "cargo run --manifest-path rust/Cargo.toml --bin balance-report --",
     "lint": "npm run check && npm run typecheck && cargo fmt --manifest-path rust/Cargo.toml --check",
-    "demo:economy": "cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo --"
+    "demo:economy": "cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo --",
+    "test:browser:economy": "node scripts/economy-browser-smoke.js"
   },
   "engines": {
     "node": ">=22"
