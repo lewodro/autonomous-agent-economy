@@ -124,3 +124,28 @@ fn economy_events_serialize_public_projections_and_precise_base_units() {
     assert_eq!(json["projection"]["entry_amount"], "20000000");
     assert_eq!(serde_json::from_value::<EconomyEvent>(json).unwrap(), event);
 }
+use agent_arena_demo::economy::treasury::*;
+#[test]
+fn treasury_transfers_are_atomic_and_conserve_funds() {
+    let mut ledger = TreasuryLedger::default();
+    let a = AccountId::new("agent-a").unwrap();
+    let b = AccountId::new("agent-b").unwrap();
+    ledger.open(a.clone(), Amount::new(100)).unwrap();
+    ledger.open(b.clone(), Amount::new(20)).unwrap();
+    assert!(ledger.open(a.clone(), Amount::new(999)).is_err());
+    assert!(ledger.transfer(&a, &b, Amount::new(101)).is_err());
+    assert_eq!(ledger.balance(&a).unwrap(), Amount::new(100));
+    assert!(ledger
+        .transfer(&a, &AccountId::new("missing").unwrap(), Amount::new(1))
+        .is_err());
+    assert_eq!(ledger.total().unwrap(), Amount::new(120));
+    ledger.transfer(&a, &b, Amount::new(30)).unwrap();
+    assert_eq!(
+        ledger
+            .agent(&AgentId::new("agent-a").unwrap())
+            .unwrap()
+            .balance,
+        Amount::new(70)
+    );
+    assert_eq!(ledger.total().unwrap(), Amount::new(120));
+}

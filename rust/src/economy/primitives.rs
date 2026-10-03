@@ -118,3 +118,4 @@ macro_rules! identifier {
 identifier!(AgentId);
 identifier!(RunId);
 identifier!(OperationId);
+identifier!(AccountId);

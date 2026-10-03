@@ -6,3 +6,5 @@ pub mod lifecycle;
 pub mod config;
 
 pub mod events;
+
+pub mod treasury;
