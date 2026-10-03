@@ -1,19 +1,20 @@
 import type { Replay, State, GameEvent, StepResponse } from './types.js';
 import { applyEvent, checkpoint } from './replay.js';
-import { api } from './api.js';
+import {HttpMatchTransport} from './transport.js';
+import type {MatchTransport} from './transport.js';
 const durations: Partial<Record<GameEvent['type'],number>> = { RoundStarted: 160, WorldEvent: 260, AgentActionSelected: 75, WorkCompleted: 330, ChallengeStarted: 200, ChallengeResolved: 330, GuardRaised: 280, CooperationOffered: 320, AllianceCreated: 400, AllianceBroken: 400, ResourceChanged: 100, AgentEliminated: 600, MatchEnded: 650, RoundEnded: 100 };
 export class Player {
-  run: Replay | null = null; state: State | null = null; cursor = 1; session = ''; playing = false; busy = false; speed = 1;
+  run: Replay | null = null; state: State | null = null; cursor = 1; session = ''; playing = false; busy = false; speed = 1;manual=false;waiting=false;
   private generation = 0;
-  constructor(private changed: (event?: GameEvent) => void, private failed: (message: string) => void) {}
+  constructor(private changed: (event?: GameEvent) => void, private failed: (message: string) => void,private transport:MatchTransport=new HttpMatchTransport()) {}
   load(run: Replay, session = '', fromStart = false) {
-    this.generation++; this.playing = false; this.busy = false; this.run = run; this.session = session;
+    this.generation++; this.playing = false; this.busy = false;this.manual=false;this.waiting=false; this.run = run; this.session = session;
     const point = checkpoint(run, fromStart ? 0 : run.final_state.turn); this.state = point.state; this.cursor = point.cursor;
     this.changed();
   }
   seek(turn: number) {
     if (!this.run) return;
-    this.generation++; this.playing = false; this.busy = false;
+    this.generation++; this.playing = false; this.busy = false;this.manual=false;this.waiting=false;
     const point = checkpoint(this.run, turn); this.state = point.state; this.cursor = point.cursor; this.changed();
   }
   pause() { this.playing = false; this.changed(); }
@@ -43,14 +44,15 @@ export class Player {
   private async round(automatic: boolean): Promise<boolean> {
     if (!this.run || !this.state || this.busy) return false;
     const generation = this.generation;
-    this.busy = true; this.changed();
+    this.busy = true;this.manual=!automatic; this.changed();
     try {
       if (this.cursor >= this.run.events.length) {
         if (this.run.final_state.ended) return false;
         if (!this.session) throw new Error('Replay has reached its recorded end. Remix to start a new run.');
-        const next = await api<StepResponse>(`/api/matches/${this.session}/step`, {});
+        this.waiting=true;this.changed();
+        const next=await this.transport.advance(this.session,this.run);
         if (generation !== this.generation) return false;
-        this.run = next.replay;
+        this.run = next;this.waiting=false;
         try { localStorage.setItem('last-seat-replay-v1', JSON.stringify(this.run)); } catch { this.failed('Storage is full; download the replay to retain it.'); }
       }
       const turn = this.run.events[this.cursor]?.turn;
@@ -65,7 +67,7 @@ export class Player {
       }
       return true;
     } catch (error) { this.playing = false; this.failed((error as Error).message); return false; }
-    finally { if (generation === this.generation) { this.busy = false; this.changed(); } }
+    finally { if (generation === this.generation) { this.busy = false;this.manual=false;this.waiting=false; this.changed(); } }
   }
   // Resume a paused presentation loop; do not start a second core turn.
   resume() { if (this.busy) { this.playing = true; this.changed(); } else void this.play(); }
