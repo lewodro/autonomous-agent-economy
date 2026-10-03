@@ -69,11 +69,11 @@ pub fn operation_id(
     payer: &AccountId,
     payee: &AccountId,
 ) -> Result<OperationId> {
-    use sha2::{Digest, Sha256};
+    use crate::hashing::sha256_hex;
     let bytes = serde_json::to_vec(&(run, purpose, payer, payee))
         .map_err(|e| EconomyError::InvalidInput(e.to_string()))?;
     OperationId::new(format!(
-        "op-{:x}",
-        Sha256::digest([b"last-seat/economy-operation/v1:".as_slice(), &bytes].concat())
+        "op-{}",
+        sha256_hex([b"last-seat/economy-operation/v1:".as_slice(), &bytes].concat())
     ))
 }

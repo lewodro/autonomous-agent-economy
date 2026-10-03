@@ -1,8 +1,8 @@
 //! Single-writer append-only local JSON repository. Atomic rename + fsync before acknowledgement.
 use super::primitives::*;
+use crate::hashing::sha256_hex;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -67,7 +67,7 @@ impl RecoveryRepository for JsonRepository {
         }
         let record: Value = serde_json::from_slice(&bytes).map_err(storage)?;
         let payload = serde_json::to_vec(&record["payload"]).map_err(storage)?;
-        let digest = format!("{:x}", Sha256::digest(payload));
+        let digest = sha256_hex(payload);
         if record["format"] != 1 || record["sha256"] != digest {
             return Err(storage("Corrupt journal envelope"));
         }
@@ -78,10 +78,7 @@ impl RecoveryRepository for JsonRepository {
     fn write<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let paths = self.revisions(key)?;
         let payload = serde_json::to_value(value).map_err(storage)?;
-        let digest = format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&payload).map_err(storage)?)
-        );
+        let digest = sha256_hex(serde_json::to_vec(&payload).map_err(storage)?);
         let bytes = serde_json::to_vec(&json!({"format":1,"sha256":digest,"payload":payload}))
             .map_err(storage)?;
         if bytes.len() > 64_000_000 {

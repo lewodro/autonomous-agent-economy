@@ -1,6 +1,6 @@
 use super::{primitives::*, rail::*, treasury::TreasuryLedger};
+use crate::hashing::sha256_hex;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,8 +51,8 @@ impl PaymentRail for MockPaymentRail {
         let bytes =
             serde_json::to_vec(&intent).map_err(|e| EconomyError::InvalidInput(e.to_string()))?;
         let authorization = format!(
-            "mock-{:x}",
-            Sha256::digest([b"last-seat/mock-payment/v1:".as_slice(), &bytes].concat())
+            "mock-{}",
+            sha256_hex([b"last-seat/mock-payment/v1:".as_slice(), &bytes].concat())
         );
         let prepared = PreparedPayment {
             intent,

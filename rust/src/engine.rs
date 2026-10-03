@@ -1,5 +1,5 @@
+use crate::hashing::sha256_hex;
 use crate::{config, model::*, strategy};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 fn random(rng: &mut u32) -> u32 {
     let mut x = *rng;
@@ -81,7 +81,7 @@ fn update_id(run: &mut Replay) -> Result<(), String> {
     if bytes.len() > MAX_REPLAY_BYTES - 64_000 || run.events.len() > MAX_REPLAY_EVENTS {
         return Err("Replay history exceeds supported size".into());
     }
-    run.match_id = format!("seat-{:x}", Sha256::digest(bytes));
+    run.match_id = format!("seat-{}", sha256_hex(bytes));
     run.statistics = run
         .final_state
         .agents

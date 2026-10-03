@@ -3,10 +3,10 @@ use super::{
     binding::SettlementResult, coordinator::EconomyCoordinator, escrow::MatchEscrow, primitives::*,
     rail::PaymentRail,
 };
+use crate::hashing::sha256_hex;
 use crate::{model::Replay, replay};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompletionClaims {
@@ -28,9 +28,8 @@ pub struct HostAuthority {
     key: SigningKey,
 }
 fn digest(value: &impl Serialize) -> Result<String> {
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(value).map_err(|_| EconomyError::InvalidAttestation)?)
+    Ok(sha256_hex(
+        serde_json::to_vec(value).map_err(|_| EconomyError::InvalidAttestation)?,
     ))
 }
 fn claims(id: RunId, run: &Replay, time: u64) -> Result<CompletionClaims> {

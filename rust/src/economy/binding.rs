@@ -1,7 +1,7 @@
 use super::primitives::*;
+use crate::hashing::sha256_hex;
 use crate::{model::Replay, replay};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SimulationBinding {
     pub initial_history_id: String,
@@ -21,15 +21,15 @@ impl SimulationBinding {
         Ok(Self {
             initial_history_id: initial.match_id.clone(),
             simulation_version: initial.simulation_version.clone(),
-            configuration_digest: format!("{:x}", Sha256::digest(bytes)),
+            configuration_digest: sha256_hex(bytes),
         })
     }
     pub fn run_id(&self, instance: &OperationId) -> Result<RunId> {
         let bytes = serde_json::to_vec(&(self, instance))
             .map_err(|e| EconomyError::InvalidInput(e.to_string()))?;
         RunId::new(format!(
-            "eco-{:x}",
-            Sha256::digest([b"last-seat/economy-run/v1:".as_slice(), &bytes].concat())
+            "eco-{}",
+            sha256_hex([b"last-seat/economy-run/v1:".as_slice(), &bytes].concat())
         ))
     }
     pub fn verify_completed(&self, finished: &Replay) -> Result<Option<AgentId>> {
