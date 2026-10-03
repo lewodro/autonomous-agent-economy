@@ -310,3 +310,34 @@ fn escrow_locks_exact_pot_and_settlement_or_refund_is_idempotent() {
     );
     assert!(escrow.settle(&mut rail, &winner).is_err());
 }
+use agent_arena_demo::economy::binding::SimulationBinding;
+use agent_arena_demo::{config as game_config, engine};
+#[test]
+fn stable_economy_id_binds_version_configuration_and_instance() {
+    let initial = engine::start(game_config::default_config(2, 9)).unwrap();
+    let binding = SimulationBinding::from_initial(&initial).unwrap();
+    let instance = OperationId::new("demo-1").unwrap();
+    let id = binding.run_id(&instance).unwrap();
+    assert_eq!(binding.run_id(&instance).unwrap(), id);
+    assert_ne!(
+        binding
+            .run_id(&OperationId::new("demo-2").unwrap())
+            .unwrap(),
+        id
+    );
+    let mut finished = initial;
+    while !finished.final_state.ended {
+        engine::advance(&mut finished, None).unwrap();
+    }
+    assert_ne!(finished.match_id, binding.initial_history_id);
+    assert!(binding.verify_finished(&finished).is_ok());
+    let mut forged = finished.clone();
+    forged.winner = Some("outsider".into());
+    assert!(binding.verify_finished(&forged).is_err());
+    assert!(SimulationBinding::from_initial(&finished).is_err());
+    let other = SimulationBinding::from_initial(
+        &engine::start(game_config::default_config(2, 10)).unwrap(),
+    )
+    .unwrap();
+    assert!(other.verify_finished(&finished).is_err());
+}
