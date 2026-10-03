@@ -1,6 +1,8 @@
 use super::{escrow::*, primitives::*, rail::*};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MockEscrow {
     run: RunId,
     participants: BTreeMap<AgentId, AccountId>,

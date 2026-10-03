@@ -77,3 +77,32 @@ fn journal_is_atomic_append_only_locked_and_rejects_corruption() {
     drop(repo);
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn durable_mock_debit_receipt_and_duplicate_confirmation_survive_reload() {
+    use agent_arena_demo::economy::{
+        durable_rail::DurableMockRail, mock_rail::MockPaymentRail, treasury::TreasuryLedger,
+    };
+    let path = directory("rail");
+    let mut ledger = TreasuryLedger::default();
+    ledger
+        .open(AccountId::new("a").unwrap(), Amount::new(1_000_000_000))
+        .unwrap();
+    ledger
+        .open(AccountId::new("escrow").unwrap(), Amount::ZERO)
+        .unwrap();
+    let mut rail =
+        DurableMockRail::create(path.clone(), MockPaymentRail::new(ledger, Amount::ZERO)).unwrap();
+    let payment = rail.prepare_payment(intent()).unwrap();
+    let before = serde_json::to_vec(&rail).unwrap();
+    let receipt = rail.submit_payment(&payment).unwrap();
+    let mut restored: DurableMockRail = serde_json::from_slice(&before).unwrap();
+    restored.reload().unwrap();
+    assert_eq!(restored.submit_payment(&payment).unwrap(), receipt);
+    assert_eq!(
+        restored.get_balance(&AccountId::new("a").unwrap()).unwrap(),
+        Amount::new(980_000_000)
+    );
+    assert_eq!(restored.records().len(), 1);
+    drop(restored);
+    std::fs::remove_dir_all(path).unwrap();
+}

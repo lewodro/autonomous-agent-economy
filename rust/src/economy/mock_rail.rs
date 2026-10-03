@@ -1,7 +1,9 @@
 use super::{primitives::*, rail::*, treasury::TreasuryLedger};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MockPaymentRail {
     ledger: TreasuryLedger,
     reserve: Amount,

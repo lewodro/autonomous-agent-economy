@@ -43,6 +43,10 @@ pub trait PaymentRail {
     fn prepare_payment(&mut self, intent: PaymentIntent) -> Result<PreparedPayment>;
     fn submit_payment(&mut self, payment: &PreparedPayment) -> Result<PaymentReceipt>;
     fn verify_payment(&self, receipt: &PaymentReceipt, expected: &PaymentIntent) -> Result<()>;
+    /// Read/reconcile a known operation only. Never creates or submits a payment.
+    fn reconcile_payment(&mut self, _intent: &PaymentIntent) -> Result<Option<PaymentReceipt>> {
+        Ok(None)
+    }
     fn refund(&mut self, intent: PaymentIntent) -> Result<PaymentReceipt> {
         if intent.purpose != PaymentPurpose::Refund {
             return Err(EconomyError::Conflict);

@@ -39,3 +39,5 @@ pub mod lab;
 
 pub mod records;
 pub mod repository;
+
+pub mod durable_rail;

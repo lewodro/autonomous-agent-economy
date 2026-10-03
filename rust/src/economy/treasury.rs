@@ -7,7 +7,8 @@ pub struct AgentTreasury {
     pub balance: Amount,
 }
 /// In-memory mock accounting. All balance changes are checked before mutation.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TreasuryLedger {
     accounts: BTreeMap<AccountId, Amount>,
 }
