@@ -42,3 +42,5 @@ pub mod repository;
 
 pub mod durable_rail;
 pub mod recovery;
+
+pub mod attestation;

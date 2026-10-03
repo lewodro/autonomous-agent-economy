@@ -142,3 +142,37 @@ fn partially_funded_coordinator_reloads_without_recreating_money() {
     assert!(bad.validate_recovery(&run).is_err());
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn trusted_completion_rejects_changed_claims_or_another_authority() {
+    use agent_arena_demo::economy::attestation::*;
+    use agent_arena_demo::{config, engine, wallet};
+    let mut run = engine::start(config::default_config(2, 42)).unwrap();
+    while !run.final_state.ended {
+        engine::advance(&mut run, None).unwrap();
+    }
+    let authority = HostAuthority::new(wallet::key().unwrap());
+    let id = RunId::new("eco-attest").unwrap();
+    let a = authority.attest(id.clone(), &run, 10).unwrap();
+    authority.verify(&id, &run, &a).unwrap();
+    for field in [
+        "match_id",
+        "winner_id",
+        "event_log_hash",
+        "final_state_hash",
+        "engine_version",
+    ] {
+        let mut v = serde_json::to_value(&a).unwrap();
+        v["claims"][field] = serde_json::json!("modified");
+        let bad: CompletionAttestation = serde_json::from_value(v).unwrap();
+        assert_eq!(
+            authority.verify(&id, &run, &bad).unwrap_err(),
+            EconomyError::InvalidAttestation
+        );
+    }
+    assert!(HostAuthority::new(wallet::key().unwrap())
+        .verify(&id, &run, &a)
+        .is_err());
+    let mut bad = a;
+    bad.signature = "bad".into();
+    assert!(authority.verify(&id, &run, &bad).is_err());
+}

@@ -5,6 +5,14 @@ use std::fmt;
 #[serde(tag = "code", content = "detail", rename_all = "snake_case")]
 pub enum EconomyError {
     InvalidInput(String),
+    InvalidAttestation,
+    RpcUnavailable(String),
+    TransactionNotFound,
+    TransactionFailed,
+    WrongRecipient,
+    WrongAmount,
+    AlreadyConsumed,
+    FundingClosed,
     InvalidTransition(String),
     InsufficientFunds,
     Overflow,
