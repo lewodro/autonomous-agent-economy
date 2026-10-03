@@ -4,8 +4,35 @@ use std::{
     collections::BTreeMap,
     io::{self, BufRead, Write},
 };
-fn request(value: Value, runs: &mut BTreeMap<String, Replay>) -> Result<Value, String> {
+fn request(
+    value: Value,
+    runs: &mut BTreeMap<String, Replay>,
+    lab: &mut Option<agent_arena_demo::economy::lab::EconomyLab>,
+) -> Result<Value, String> {
     let command = value["command"].as_str().ok_or("command required")?;
+    if command == "economy-lab" {
+        if std::env::var("ECONOMY_LAB").as_deref() != Ok("1") {
+            return Err("Economy lab disabled".into());
+        }
+        let action = value["action"].as_str().ok_or("action required")?;
+        if action == "reset" {
+            let scenario =
+                serde_json::from_str(include_str!("../../../examples/economy/mock-0.02.json"))
+                    .map_err(|e| format!("{e}"))?;
+            *lab = Some(
+                agent_arena_demo::economy::lab::EconomyLab::new(&scenario)
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        return lab
+            .as_mut()
+            .ok_or("Reset lab first")?
+            .command(
+                if action == "reset" { "get" } else { action },
+                value["agent_id"].as_str(),
+            )
+            .map_err(|e| e.to_string());
+    }
     let key = value["session"].as_str().unwrap_or("local").to_string();
     if command == "drop" {
         runs.remove(&key);
@@ -97,11 +124,12 @@ fn main() {
         return;
     }
     let mut runs = BTreeMap::new();
+    let mut lab = None;
     for line in io::stdin().lock().lines() {
         let result = line
             .map_err(|e| e.to_string())
             .and_then(|line| serde_json::from_str(&line).map_err(|e| e.to_string()))
-            .and_then(|value| request(value, &mut runs));
+            .and_then(|value| request(value, &mut runs, &mut lab));
         let output = match result {
             Ok(result) => json!({"ok":true,"result":result}),
             Err(error) => json!({"ok":false,"error":error}),
@@ -118,6 +146,7 @@ mod tests {
     fn verification_does_not_retain_a_session() {
         let run = engine::start(config::default_config(2, 42)).unwrap();
         let mut runs = BTreeMap::new();
+        let mut lab = None;
         request(json!({"command":"verify","replay":run}), &mut runs).unwrap();
         assert!(runs.is_empty());
         request(

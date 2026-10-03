@@ -48,6 +48,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
     }
+    if(route==='/api/labs/economy'||route==='/labs/economy'){
+      if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Economy lab disabled'});
+      if(req.method==='POST'&&route==='/api/labs/economy'){
+        const data=await body(req,2048);
+        return json(res,200,await core.request({command:'economy-lab',action:data.action,agent_id:data.agent_id}));
+      }
+      if(req.method==='GET'&&route==='/labs/economy'){
+        res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
+        return res.end(await readFile(path.join(root,'labs/economy.html')));
+      }
+      return json(res,405,{error:'Method not allowed'});
+    }
     if (req.method === 'POST' && route === '/api/replays/share') {
       const data = await body(req, 32_000_000);
       const { replay } = await core.request({ command: 'verify', replay: data.replay });

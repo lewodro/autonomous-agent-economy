@@ -615,3 +615,22 @@ fn one_command_mock_demo_funds_four_agents_and_pays_agent_c_exactly_once() {
     assert_eq!(free.funded_pot, Amount::ZERO);
     assert!(free.balances.values().all(|v| *v == Amount::ZERO));
 }
+
+#[test]
+fn developer_lab_cannot_supply_winner_or_settle_before_finishing() {
+    use agent_arena_demo::economy::{lab::EconomyLab, scenario::EconomyScenario};
+    let scenario: EconomyScenario =
+        serde_json::from_str(include_str!("../../examples/economy/mock-0.02.json")).unwrap();
+    let mut lab = EconomyLab::new(&scenario).unwrap();
+    assert!(lab.command("settle", None).is_err());
+    for n in 1..=4 {
+        lab.command("fund", Some(&format!("agent-{n}"))).unwrap();
+    }
+    lab.command("lock", None).unwrap();
+    lab.command("finish", None).unwrap();
+    let first = lab.command("settle", None).unwrap();
+    let second = lab.command("settle", None).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first["economy"]["state"], "settled");
+    assert!(lab.command("set-winner", Some("agent-1")).is_err());
+}

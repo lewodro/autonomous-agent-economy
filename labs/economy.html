@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Last Seat · Mock economy lab</title>
+<style>body{font:15px monospace;background:#172522;color:#f4e6c8;margin:24px;max-width:900px}button,select{font:inherit;padding:10px;margin:4px;background:#dac6a1;color:#172522;border:0}pre{overflow:auto;max-height:55vh;background:#0d1917;padding:16px}#status{color:#f2bc68}a{color:#e1cd9c}</style>
+<h1>Mock economy lab</h1><p>In-memory test funds. Reset discards the sidecar. The Rust engine decides the winner.</p><a href="/">Back to live table</a>
+<p id="status" role="status">Reset to begin</p><select id="agent" aria-label="Agent"></select>
+<nav aria-label="Lab actions"><button data-action="reset">Reset</button><button data-action="fund">Fund selected</button><button data-action="lock">Lock pot</button><button data-action="finish">Run match</button><button data-action="settle">Settle winner</button><button data-action="refund">Cancel / refund</button></nav>
+<details><summary>Public projection and receipts</summary><pre id="output"></pre></details><script type="module" src="/web/dist/economy-lab.js"></script></html>

@@ -34,3 +34,5 @@ pub mod devnet;
 pub mod scenario;
 
 pub mod demo;
+
+pub mod lab;
