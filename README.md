@@ -1,46 +1,30 @@
 <div align="center">
 
-# Agent Arena
+# LAST SEAT
 
-### Stake. Adapt. Survive.
+### Earn. Challenge. Cooperate. Survive.
 
-**Twenty pixel agents. Separate bankrolls. One observable economy.**
+**I made agents fight until they were out.**
 
-Watch autonomous strategies compete in Rock Paper Scissors, learn from their rivals, and fight until their rules—or their funds—take them out.
+A tiny pixel table. Different strategies. One resource. Only one seat remains.
 
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![Agents](https://img.shields.io/badge/Agents-2_or_20-BBF06C)](#the-competitors)
-[![Game](https://img.shields.io/badge/Game-commit--reveal_RPS-EDCC7F)](#the-rules)
-[![Economy](https://img.shields.io/badge/SOL-simulated-9945FF)](#current-vs-planned)
-[![Rust](https://img.shields.io/badge/Rust-offline_demo-000000?logo=rust)](#demos)
-[![Solana](https://img.shields.io/badge/Solana-devnet_demo-14F195)](#demos)
+[![Rust](https://img.shields.io/badge/Core-Rust-CE906B?logo=rust)](rust/src/engine.rs)
+[![TypeScript](https://img.shields.io/badge/Renderer-TypeScript-3178C6?logo=typescript)](web/src/renderer.ts)
+[![Agents](https://img.shields.io/badge/Agents-2–20-BEC998)](#change-your-agents)
+[![Replay](https://img.shields.io/badge/Replay-seeded_%2B_recorded-E0BE7F)](#replay-a-match)
+[![Solana](https://img.shields.io/badge/Solana-optional_devnet-9945FF)](#solana-wallet-demo)
 
-> Working local simulation. Adaptive algorithms today; model integrations and chain-backed settlement later.
+**Watch a betrayal. Follow a rival. Change the conditions. Run it again.**
 
-<br />
-
-**Choose your conditions. Follow a rival. Inspect every settlement. Run it again.**
-
-<img src="docs/arena.png" alt="Agent Arena running locally with 20 supplied pixel sprites, a match monitor, and simulated capital" width="1000" />
+<img src="docs/last-seat.png" alt="Last Seat: four supplied pixel agents around a wooden table, visible credits, compact replay controls and agent inspector" width="1000" />
 
 </div>
 
 ---
 
-## What is Agent Arena?
+## Quick Start
 
-A small, runnable demonstration of the autonomous agent economy described in this repository's original architecture. Each agent has its own identity, sprite, capital, risk limits, opponent memory, and performance history. A deterministic system authorizes entry, verifies committed moves, settles the pot, and records what actually happened.
-
-The first experiment is a simple question: **what happens when agents compete with limited capital and have to learn to keep playing?**
-
-Games are the first application. The same separation between reasoning, authorization, execution, verification, and settlement can later support services, compute, data, and agent-to-agent work.
-
-> [!NOTE]
-> These agents use local adaptive strategy algorithms. They are not connected to an LLM. All arena balances are simulated; there is no live wallet, token, real-money wager, or blockchain game escrow.
-
-## Start playing
-
-You need **Node.js 22 or newer**. The browser game has no npm dependencies.
+Install **Node.js 22+**, **Rust stable / Cargo**, and Git. The optional network wallet example also uses `curl`.
 
 ```bash
 git clone https://github.com/lewodro/autonomous-agent-economy.git
@@ -48,271 +32,218 @@ cd autonomous-agent-economy
 npm start
 ```
 
-Open **http://localhost:3000**, then press **Start watching** or **Next match**.
+Open **http://localhost:3000** and press **Play**. The first start installs the locked TypeScript dependency, builds Rust, and compiles the browser. Subsequent starts reuse downloaded dependencies. Use `PORT=3001 npm start` if needed.
 
-| Control | What it does |
+Default agents are **seeded algorithms**, not paid model calls. Mock matches require neither API keys nor wallets. An HTTP decision adapter lets you connect a model service; provider/model labels alone do not perform inference.
+
+| At the table | What you can see |
 |---|---|
-| Start watching / Stop watching | Runs one economic transition at a time; stopping lets the current match finish |
-| Next match | Advances one match through entry, commitment, reveal, settlement, and learning |
-| Pause economy | Blocks new economic entries and treasury actions; an in-flight match finishes |
-| Click a sprite or leaderboard agent | Opens its strategy, risk limits, drawdown, and recent observations |
-| Click a match replay | Displays verified moves, commitments, and payouts |
-| Download audit | Exports the complete run and append-only ledger as JSON |
-| Copy run summary | Copies a factual summary for manual sharing; publishes nothing automatically |
-| Create new run | Replaces the local experiment with your settings; export the old run first |
+| Credits and bars | More credits means more runway; ◇ marks the richest seat |
+| Challenges | An agent moves toward its rival, who shakes as credits change |
+| Guard ◆ | Blocks every challenge that round |
+| Alliance ribbon | Two agents chose mutual cooperation |
+| Empty / faded seat | Eliminated at zero credits |
+| Ticker | A brief explanation of the latest important decision or outcome |
 
-Completed transitions are saved in your browser. Reloading reconstructs accounting and verifies commitment records before resuming. Use `PORT=3001 npm start` if port 3000 is busy.
+## How a match works
 
-The repository is public. Anyone can clone and run it locally without an API key, wallet connection, or paid service.
+Everyone observes the same public conditions and pre-action state. Everyone chooses before resolution. Guards activate first; remaining actions resolve in seeded shuffled initiative. After actions, upkeep is paid and empty seats are eliminated.
+
+| Action | Requirement | Result |
+|---|---|---|
+| **Work** | Alive | Earn the market's 2–4 credits |
+| **Challenge** | 1 credit; another living agent | Spend 1; take up to 4 credits, or 5 from a working target; guard blocks it |
+| **Guard** | Alive | Earn 1 credit; block all challenges this round |
+| **Cooperate** | 1 credit; another living agent | Mutual choices earn 3 each; otherwise give the target 1 |
+
+Upkeep starts at **1** and rises every four turns. Zero credits eliminates you. One survivor wins; everyone eliminated means a draw. At the turn limit, the unique richest survivor wins; equal leaders draw. Credits are game resources, separate from wallet funds.
+
+**Seed 42, four default agents:** Ember survives turn 15 with 23 credits. Other conditions can produce draws. This is a strategy sandbox, not a model benchmark.
 
 ---
 
-## The rules
-
-| Rule | Behavior |
-|---|---|
-| Game | Rock beats scissors; scissors beat paper; paper beats rock |
-| Entry | Each participant contributes one configurable stake; default **0.03 simulated SOL** |
-| Winner | Receives the two-stake pot |
-| Draw | Both participants receive their stake back |
-| Commitment | SHA-256 binds the match ID, agent ID, move, and 32-byte nonce |
-| Reveal | Neither move is accepted until both hashes are locked; each reveal must match its hash |
-| Fees | Network and protocol fees are separate fields, both zero in the arena simulation |
-| Learning | Settled opponent moves update move-frequency memory and future counter-moves |
-| Ranking | Bankroll, realized P&L, ROI, wins/losses/draws, drawdown, and average stake remain visible |
-
-| Run mode | Entry limits | When an agent is out |
-|---|---|---|
-| **Bounded economy** | Max stake 10% of initial capital; exposure 10–20%; reserve 10%; loss budget 50% | The next entry would violate a deterministic limit; protected funds may remain |
-| **Survival** | Stake cap equals initial bankroll; exposure 100%; reserve zero; loss budget equals initial bankroll | Its available balance cannot cover another stake; dust below the stake may remain |
-
-A run stops when fewer than two agents are eligible **or the configured match limit is reached**. The app reports the actual stop condition. A run that reaches its limit does not automatically have a champion.
-
-### The competitors
-
-All 20 supplied sprites are used. Names describe starting profiles, not fixed sequences of moves.
-
-| Agents | Starting character | Shared learning mechanism |
-|---|---|---|
-| Founder, Trader, Gambler, Analyst | Balanced, trading, variance, and analytical themes | Different initial move priors and exploration rates |
-| Defender, Strategist, Social, Degen | Defensive, modeling, social, and bold themes | Observe each rival's settled moves |
-| Conservative, Aggressive, Explorer, Builder | Bankroll, competition, exploration, and patience themes | Sample an opponent prediction and play a counter-move |
-| Quant, Random, Tournament, Mentor | Probability, randomized baseline, competition, and mentoring themes | Keep independent memory and performance history |
-| Rival, Observer, Adaptive, Wild Card | Rivalry, observation, learning, and unpredictability themes | Learn only from recorded results |
-
-Random is the fully exploratory baseline. The other agents mix exploration with opponent-frequency modeling. These are RPS experiments, not benchmarks of general intelligence or proof of profitable real-world behavior.
-
----
-
-## Why watch?
-
-| Visitor | Useful thing to do | What they leave with |
-|---|---|---|
-| Someone who stumbles across a post | Watch a quick survival run; follow a favorite pixel rival | An understandable story about limited capital and adaptation |
-| Strategy builder | Repeat a seed; change stake, bankroll, or strategy code | Comparable results and an experiment digest |
-| Curious skeptic | Inspect a loss, reveal, or payout | A replay and accounting records they can verify locally |
-| Agent developer | Study how strategy proposals meet deterministic permissions | A small architecture to adapt for other economic activities |
-| Community participant | Export a run and manually share its summary | A claim grounded in actual recorded matches |
-
-No viewer betting or spectator token is needed. The first utility is observation, reproducibility, and learning. Public profiles, hosted replays, and community challenges remain future features.
-
-### A post you can honestly make
-
-> I made 20 pixel agents fight in Rock Paper Scissors with limited bankrolls. They learn from opponents, stake simulated SOL, and drop out when they can't keep playing. You can watch the results, verify every settlement, or run your own seed and rules locally.
-
-Add your **actual** match count, remaining agents, seed, and stop condition. The game's copy-summary button reads those facts from your run.
-
----
-
-## Run your own experiment
-
-Use the browser's **Build a new run** panel or the CLI:
+## Run a match
 
 ```bash
-# Small two-agent survival experiment
-npm run simulate -- --agents 2 --mode survival --bankroll 0.09 --stake 0.03 --seed 9 --rounds 300
+# Browser: edit the table with New / remix
+npm start
 
-# Fast 20-agent survival experiment; save the audit
-npm run simulate -- --config demos/run.json --out my-run.json
+# Headless: export a full replay
+npm run match -- --agents 2 --seed 9 --out two-agents.json
+npm run match -- --agents 4 --seed 42 --out match.json
+npm run match -- --agents 8 --seed 17 --out eight-agents.json
+npm run match -- --config examples/simulation.json --seed 123 --out custom.json
 
-# Compare a different stake, bankroll, seed, and match limit
-npm run simulate -- --agents 20 --mode bounded --bankroll 2 --stake 0.05 --seed 123 --rounds 500
-
-# Reconstruct and verify an exported browser or CLI run
-npm run verify -- my-run.json
+# Rust-only mock run, JSON on stdout
+cargo run --manifest-path rust/Cargo.toml --bin table-core -- examples/simulation.json > match.json
 ```
 
-| Setting | Default | What changes |
+| CLI option | Default | Purpose |
 |---|---|---|
-| `--agents` | `20` | Population: `2` or `20` |
-| `--mode` | `bounded` | Risk-controlled competition or bankroll survival |
-| `--bankroll` | `1` | Initial simulated SOL per agent |
-| `--stake` | `0.03` | Simulated SOL required for each entry |
-| `--seed` | `42` | Reproducible pairings and strategy decisions |
-| `--rounds` | `1000` | Match limit, from 1 to 10,000 |
-| `--config` | None | JSON settings; CLI flags override the file |
-| `--out` | None | Output path for the full audit |
+| `--agents` | 4 | 2–20 seats when no config is supplied |
+| `--seed` | 42 | Override world conditions and initiative seed |
+| `--config` | None | Complete JSON agent configuration |
+| `--out` | `match.json` | Replay output path |
 
-The bundled [`demos/run.json`](demos/run.json) starts 20 survival agents with exactly one stake each for a short elimination run. Change it to test your own conditions. Edit [`src/strategies.js`](src/strategies.js) to experiment with another decision algorithm; deterministic policy still authorizes every entry.
+### Change your agents
 
-| Recorded example | Result |
+Copy [`examples/simulation.json`](examples/simulation.json), edit it, and pass `--config`. The browser offers the same JSON editor and downloadable presets.
+
+| Config field | Supported values / use |
 |---|---|
-| Configuration | 20 agents, survival, seed 42, 0.03 simulated SOL each, 0.03 stake |
-| Settled matches | 305 |
-| Remaining eligible agent | Rival, holding the conserved 0.6 simulated SOL |
-| Verification | 2,747 ledger events replayed and reconciled |
+| `seed` | Integer 1–4,294,967,295 |
+| `max_turns` | 1–200 |
+| `agents` | 2–20 profiles, with unique simple `id` values |
+| `name`, `sprite` | Display name; PNG under `assets/sprites-agent/` |
+| `strategy` | `aggressive`, `conservative`, `opportunist`, `cooperative` |
+| `provider` | `mock`, `http`, `recorded` |
+| `model` | Display/adapter model identifier |
+| `prompt`, `personality` | Public instructions and readable summary |
+| `starting_credits` | 1–10,000 per agent |
+| `wallet_enabled` | Enables the offline wallet demonstration in the inspector |
 
-This is one reproducible local experiment, not a prediction of future results or real-world profitability.
+Mock agents follow `strategy`; changing their prompt text alone does not change behavior. HTTP agents send prompt, personality and model to your adapter. Set the same model with different prompts to compare personalities, or different model names for a cross-model experiment. Keep credentials in server environment variables; configurations and replays are public artifacts.
 
-Same settings, seed, and code reproduce pairings, moves, outcomes, and balances. Fresh cryptographic nonces and timestamps make raw audit bytes different. The CLI prints a SHA-256 digest of the reproducible experiment results, excluding those random nonces and timestamps. Changing funding or interleaving tournaments changes the experiment.
+### Create a custom strategy
 
----
+For a seeded built-in policy, edit [`rust/src/strategy.rs`](rust/src/strategy.rs), register its name in config validation, and add a rule test. A strategy receives observations and produces a decision; it never modifies balances.
 
-## The economic loop
-
-```mermaid
-flowchart LR
-  A[Discover opportunity] --> B[Evaluate opponent and bankroll]
-  B --> C[Authorize structured intent]
-  C --> D[Lock stakes and moves]
-  D --> E[Verify reveals and result]
-  E --> F[Settle exactly once]
-  F --> G[Learn from recorded moves]
-  G --> A
-```
-
-### Architecture snapshot
-
-| Layer | Responsibility | Implemented in |
-|---|---|---|
-| Agent state | Persistent identity, bankroll, priors, opponent memory, and statistics | `src/economy.js` |
-| Strategy | Seeded adaptive move proposals; no signing authority | `src/strategies.js` |
-| Orchestrator | Serial event-driven matches, rollback on failed transitions | `src/orchestrator.js` |
-| Policy | Approved intent/destination, pause, stake, exposure, reserve, and loss checks | `src/policy.js` |
-| RPS verifier | Domain-bound commitments, verified reveals, deterministic resolution | `src/rps.js` |
-| Ledger / settlement | Integer lamports, escrow, append-only events, duplicate-payout prevention | `src/economy.js` |
-| Persistence | Save completed transitions; reconstruct and compare the ledger on reload | `src/storage.js` |
-| Treasury | Recorded simulated receipts, 30% treasury share, bounded grants | `src/treasury.js` |
-| Tournament | Up to four eligible agents, round robin, recorded points | `src/tournament.js` |
-| Spectator UI | Pixel field, monitor, standings, inspection, replays, manual sharing | `index.html`, `script.js`, `styles.css` |
-
-**Strategies propose. Deterministic systems authorize and settle.** A future LLM adapter should emit structured intents and receive sanitized observations. It must not receive keys or gain unrestricted economic authority.
-
-### Treasury and tournaments
-
-| Mechanism | Exact behavior |
-|---|---|
-| Treasury genesis | Zero; initial agent capital is a separately recorded simulated seed allocation |
-| Creator revenue | A user-entered simulated receipt, not a detected on-chain payment |
-| Treasury share | `floor(revenue × 30 / 100)` lamports; the remaining 70% is outside this economy |
-| Receipt retries | Same ID and amount returns the existing deposit; different amount with the same ID is rejected |
-| Grants | Lowest balances first, up to 10% of current capital per agent per allocation; funded only from treasury |
-| Performance | Grants increase contributed capital; they are excluded from trading P&L and do not reset loss limits |
-| Tournament | First up to four eligible agents; every pair plays once; win 3 points, draw 1, loss 0 |
-| Ineligible pairing | Skipped and recorded; no stake charged |
-| Ties | Remain ties; no fabricated champion or extra prize |
-
----
-
-## Demos
-
-All offline demos use Node's built-in cryptography or Rust's standard library. No game service, API key, wallet file, or package installation is required for them.
-
-| Demo | Command | What it proves | What it does not do |
-|---|---|---|---|
-| Adaptive simulation | `npm run simulate -- --config demos/run.json` | Agents can complete the economic loop with bounded capital | Call models or move real SOL |
-| Audit replay | `npm run verify -- my-run.json` | Recorded commitments, settlement, statistics, and accounting reconcile | Authenticate a malicious browser operator |
-| Crypto receipt | `npm run demo:crypto` | SHA-256 commitments and Ed25519 signing/verification; tampering fails | Certify funds or publish a chain receipt |
-| Solana wire format | `npm run demo:solana` | Build and locally verify a signed 0.001-SOL transfer message | Contact a network or broadcast a transaction |
-| Solana devnet | `npm run demo:solana -- --devnet` | Read devnet state, estimate fees, submit a signed transaction for simulation | Broadcast a transfer or connect the arena to chain escrow |
-| Devnet faucet + simulation | `npm run demo:solana -- --devnet --airdrop` | Request test funds for an ephemeral key, then simulate the transfer | Retain a wallet or send mainnet transactions |
-| Rust settlement | `cargo run --manifest-path rust/Cargo.toml` | Integer accounting, deterministic RPS, checked limits, and idempotent settlement | Run a deployed Solana program or verify commitment proofs |
-
-The Solana demo uses a fixed devnet endpoint and verifies its genesis hash. Its keys exist only in process memory. Default devnet simulation uses an unfunded payer and reports the expected rejection; the optional faucet can be rate-limited. No transfer is broadcast. Any faucet funds are devnet test funds associated with the temporary key, which is discarded when the process exits.
-
-Protocol references: [Solana transactions](https://solana.com/docs/core/transactions), [transaction structure](https://solana.com/docs/core/transactions/transaction-structure), [simulateTransaction](https://solana.com/docs/rpc/http/simulatetransaction), and [requestAirdrop](https://solana.com/docs/rpc/http/requestairdrop).
-
----
-
-## Current vs planned
-
-| Area | Working today | Planned / future |
-|---|---|---|
-| Pixel game | 20 supplied sprites, 2/20-agent runs, adaptive RPS, survival and bounded modes | Additional game engines |
-| Viewer utility | Live match monitor, profiles, local replays, audit download, copyable summaries | Public hosted replays, followable rivals, community challenges |
-| Economic controls | Simulation policy, integer balances, escrow, duplicate-payout prevention | Isolated wallet/signing service |
-| Verification | SHA-256 commitments and local ledger reconstruction | Independent participants, deadlines, chain receipts, authenticated proofs |
-| Storage | Validated local browser storage and exported JSON | Durable server database and multi-user runs |
-| Treasury | Explicit simulated receipts and bounded allocation | Confirmed creator revenue and chain reconciliation |
-| Tournaments | Small round-robin exhibitions and recorded points | Larger schedules and broader competition formats |
-| AI | Different adaptive algorithmic priors and opponent memory | Event-driven model adapters under the same policy boundary |
-| Solana | Separate offline signing and devnet RPC/simulation demo | Testnet game escrow and production settlement |
-| Rust | Tested offchain settlement demonstration | Audited chain program and native service |
-| Agent marketplace | Generic opportunity descriptors | External-agent protocol, services, API/compute purchases |
-
-### Trust boundaries
-
-| Boundary | Current guarantee | Remaining assumption |
-|---|---|---|
-| Strategy → economy | Typed intent shape and deterministic entry checks | Local strategy code is part of the trusted runtime |
-| Commitment → reveal | Both hashes precede valid reveals in the ledger | One browser controls both agents; this is not trustless multiplayer |
-| Settlement → balances | Conservation and idempotence tests; ledger reconstruction | Local records do not prove real-world payments |
-| Browser storage → runtime | Invalid economic records and mismatched statistics are rejected | An operator can rewrite a wholly self-consistent local history |
-| Demo signer → network | In-memory key, devnet-only RPC, no transfer broadcast | No production signing/custody service is implemented |
-| Recorded results → social claims | Summaries derive from actual local matches | A local RPS run is not a general agent capability benchmark |
-
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the review, security assumptions, and requirements before testnet or real-value operation.
-
----
-
-## Repository shape
+For an external policy or real model, implement a JSON HTTP endpoint:
 
 ```text
-autonomous-agent-economy/
-  AGENTS.md                 original engineering and economic requirements
-  ARCHITECTURE.md            architecture review and trust boundaries
-  index.html / styles.css    pixel arena and responsive spectator interface
-  script.js                 browser controls and rendering
-  server.js                 dependency-free local static server
-  assets/sprites-agent/     all 20 original agent PNGs
-  src/                      policies, game, orchestration, storage, treasury
-  scripts/                  CLI simulation, audit verification, checks
-  demos/                    run config, crypto receipt, Solana wire/RPC demos
-  rust/                     offline settlement demo and Rust tests
-  test/                     Node invariant and integration tests
-  docs/arena.png            actual local game screenshot
+Request:  {agent: {id, model, prompt, personality}, observation, response_schema}
+Response: {action: "work|challenge|guard|cooperate", target: "agent-2" or null,
+           reason: "A brief public explanation"}
 ```
+
+Try the bundled **deterministic adapter example** in two terminals:
+
+```bash
+node examples/http-adapter.js
+
+AGENT_HTTP_ENDPOINT=http://127.0.0.1:4010 npm run match -- --config examples/http-simulation.json --out adapted.json
+# Or run npm start with the same environment and remix using that config.
+```
+
+Replace the example with your model SDK. Optional `AGENT_HTTP_TOKEN` becomes a server-side Bearer token. Adapters have a four-second timeout and validate structured output; failures become a recorded guard fallback. Rust also validates targets and action requirements. `recorded` supports explicitly supplied decisions on the step API; without one, it guards. Inference budgets, provider-specific SDKs, and tool calls remain future work.
+
+---
+
+## Watch, replay, remix, share
+
+| Spectator action | Working behavior |
+|---|---|
+| Inspect an avatar or agent tab | Model, personality, prompt, credits and three recent decisions |
+| Follow | Browser-local favorite, marked with a star |
+| Play / Pause / One turn | Presentation control, with 1× / 2× / 4× speeds |
+| Replay | Starts at turn zero and animates stored semantic events |
+| Turn slider / important moments | Jump to a completed round, alliance or elimination |
+| New / remix | Fork the config; alter agents, seed, prompts and starting resources |
+| Copy config / Download replay | Portable experiment inputs and complete evidence |
+| Share turn / result | Factual text and a content-addressed replay URL |
+| Share card | Download a PNG of the actual table and turn |
+| After-game comparison | Survival turns, credits, challenges, blocks, cooperation |
+
+### Replay a match
+
+Use **Open replay** to load a CLI or browser-exported `match.json`. Rust verifies its recorded decisions, rules, states and content ID. Playback then uses recorded events; it does not call providers or re-run rules in the browser.
+
+A replay includes `simulation_version`, `seed`, `config`, `starting_state`, ordered `events`, `final_state`, `winner`, and statistics inside agent state. Each round records decisions and a `RoundEnded` checkpoint. Mock replays are byte-identical under the same version/config. Model responses are recorded so the resulting run remains replayable even when fresh inference differs.
+
+Completed and explicitly shared runs are saved under ignored `matches/`. IDs hash config and events. Browser reload verifies its locally retained replay before resuming. Turn links use `/?match=seat-<hash>&turn=11`.
+
+**Localhost links require your local service. Public X links need a hosted instance and durable replay storage.** Sharing copies text; it does not post to X. PNGs and exported replays are portable today.
+
+| Future X command | Boundary |
+|---|---|
+| `@project run claude vs gpt5` | Validate config → create match → schedule turns |
+| `@project replay <match>` | Retrieve verified replay / share card |
+| `@project why did agent3 die` | Explain recorded resources, actions and upkeep |
+| `@project remix <match> with llama` | Copy config → replace one adapter → new match |
+
+No X integration is implemented. A later gateway can call the existing match/replay APIs with authentication, rate limits and inference budgets.
+
+---
+
+## Architecture overview
+
+| Layer | Responsibility | Location |
+|---|---|---|
+| **Rust simulation** | Rules, state, seeded RNG, decisions, elimination, winner | `rust/src/engine.rs`, `model.rs` |
+| Agent policies | Observation → structured intent | `rust/src/strategy.rs`, `service/adapters.js` |
+| Replay | Record decisions; reconstruct and verify exact outcomes | `rust/src/replay.rs` |
+| Web transport | Persistent Rust NDJSON worker; local HTTP and replay files | `service/core.js`, `server.js` |
+| Browser playback | Event queue, timing, checkpoints, seeking | `web/src/player.ts`, `replay.ts` |
+| Pixel renderer | Canvas sprites, particles, motion and resource bars | `web/src/renderer.ts` |
+| Spectator layer | Inspection, favorites, remix, turn links, share cards | `web/src/main.ts` |
+| Wallet capability | Optional mock / fixed-devnet activity | `rust/src/wallet.rs`, `bin/wallet-demo.rs` |
+
+The engine emits semantic events: `RoundStarted`, `WorldEvent`, `AgentActionSelected`, `ActionRejected`, `WorkCompleted`, `GuardRaised`, `ChallengeStarted`, `ChallengeResolved`, `CooperationOffered`, `AllianceCreated`, `AllianceBroken`, `ResourceChanged`, `AgentEliminated`, `MatchEnded`, `RoundEnded`.
+
+**Rust determines what happens. The browser animates why it happened.** Animation speed cannot affect match correctness. HTTP works for this slice; future WebSocket delivery can transport the same events.
+
+Read the critique, screen layout and design decisions in [`docs/LAST_SEAT.md`](docs/LAST_SEAT.md). The existing RPS, escrow, treasury and tournament work remains available at **/rps** and in `src/`, with its tests preserved. Original architectural material remains in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+---
+
+## Solana wallet demo
+
+Crypto is optional. The game uses credits even if no wallet exists. The browser can call only the offline demo; agents cannot supply signing or network commands.
+
+```bash
+# Deterministic mock transfer + real Ed25519 sign/verify; no network
+npm run demo:wallet
+
+# Fresh test wallet, devnet genesis verification, SOL balance read
+npm run demo:wallet -- --devnet
+
+# Optional faucet funds and a simulated-then-confirmed 0.001 devnet SOL transfer
+npm run demo:wallet -- --devnet --fund --transfer
+
+# Optional test wallet persistence; newly created file has mode 0600 on Unix
+npm run demo:wallet -- --devnet --save-test-wallet /tmp/last-seat-test.wallet.bin
+npm run demo:wallet -- --devnet --load-test-wallet /tmp/last-seat-test.wallet.bin --fund --transfer
+```
+
+| Capability | Demo behavior |
+|---|---|
+| Wallet view | Address, integer lamport balance, spending limit |
+| Key generation / loading | Fresh devnet test key; optional raw 32-byte test seed file |
+| Message receipt | Ed25519 signature verified locally |
+| Mock settlement | Deterministic fixture keys, approved destination, balance and per-transfer cap |
+| Devnet RPC | Fixed endpoint; genesis checked before balance/faucet/transfer |
+| Transfer | Fresh generated recipient; 0.001 SOL maximum; fee/reserve check; simulation; confirmation |
+| Activity | Ordered `WalletCreated`, `WalletMessageSigned`, balance/funding/transfer/fee events |
+
+Devnet faucet availability can vary. No mainnet mode exists. Wallet funds do not influence match scoring, and activity is a separate wallet-demo event stream for now. The `WalletCapability` interface is the seam for other settlement systems; a full durable signer service and agent spending-budget integration are future work.
+
+Earlier JS cryptography and Solana wire examples remain available with `npm run demo:crypto` and `npm run demo:solana`.
 
 ## Validation
 
 ```bash
-npm test
-npm run check
-cargo test --manifest-path rust/Cargo.toml
-npm run demo:crypto
-npm run demo:solana
+npm test                           # builds core/client; Node integration + legacy tests
+npm run check                      # JavaScript syntax
+npm run typecheck                  # strict TypeScript
+cargo test --manifest-path rust/Cargo.toml --locked
+npm run test:browser                # running game + dedicated Chrome debug port 9322
 ```
 
 | Check | Coverage |
 |---|---|
-| RPS | All nine outcomes, invalid moves, commitment binding, invalid reveals |
-| Accounting | Capital conservation, draws, exact payouts, no duplicate settlement |
-| Policy | Stake, exposure, reserve, loss, destination, pause, and atomic two-player entry |
-| Orchestration | Repeatable results, asynchronous rollback, concurrent-step rejection, survival |
-| Storage | Ledger reconstruction, corrupt records, duplicate-event rejection, resumed tournament |
-| Treasury | Receipt deduplication, funded allocation, caps, contribution/P&L separation |
-| Crypto / wire format | Ed25519 verification, tamper rejection, base58 round trips, transfer limits |
-| Browser smoke | Sprites, match/replay controls, pause, survival, reload, treasury, tournament, mobile layout |
-| Rust | Deterministic outcomes, checked limits, atomic rejection, idempotent payouts |
+| Rust | Deterministic 2/4/8/20-seat matches, guard ordering, cooperation/betrayal, elimination, limits, invalid decisions, replay tampering, wallet policy/signatures |
+| Service | Worker failures, session limits, HTTP match/replay paths |
+| Browser | Full winner, pause/resume, replay without engine requests, turn seek, shared URL, favorites, remix/restart, mobile layout |
+| Existing economy | RPS commitments, exact settlement, policy, treasury, storage and tournaments |
 
-[`scripts/browser-smoke.js`](scripts/browser-smoke.js) connects to an already-running local game and a dedicated headless Chrome debug session. Setup is documented in [`docs/TESTING.md`](docs/TESTING.md). CI runs the offline Node and Rust checks; devnet availability is a separate integration concern.
+See [`docs/TESTING.md`](docs/TESTING.md) for browser setup. CI runs offline build/test checks; devnet is optional.
 
 ---
 
 <div align="center">
 
-**Small games. Inspectable decisions. A reusable economic loop.**
+**Small table. Observable decisions. Stories you can run again.**
 
-Built from the original autonomous-agent-economy architecture and supplied sprites. README presentation inspired by [BenchArena](https://github.com/Vexera-Core/bencharena); game design and implementation follow this project's own requirements.
+README presentation inspired by [BenchArena](https://github.com/Vexera-Core/bencharena). This game's mechanics, architecture and supplied sprites belong to this project.
 
 </div>
