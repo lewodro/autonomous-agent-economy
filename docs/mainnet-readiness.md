@@ -1,9 +1,10 @@
 # Mainnet readiness — disabled
 
-`PaymentMode::Mainnet` always returns `MainnetNotImplemented`. The economy sidecar
-submits no Solana entry, refund or payout transactions. Its devnet rail only reads
-balances. The separate existing wallet demo retains its tiny-transfer cap; raising
-that cap is not a funded-match implementation.
+`PaymentMode::Mainnet` always returns `MainnetNotImplemented`. Funded matches support
+durable mock payments and a **local-validator-only** native transfer rail. Public devnet
+funded admission is unavailable; its standalone economy rail only reads balances.
+The separate wallet demo retains its tiny test-transfer cap and is not funded escrow.
+See the [2026 audit](crypto-audit-2026.md) for current implementation and evidence.
 
 | Area | Required before any real funded service |
 |---|---|
@@ -20,17 +21,19 @@ that cap is not a funded-match implementation.
 
 ## Exact next step for 0.02–0.05 SOL test matches
 
-1. Implement a **local-validator-only** payment rail and escrow adapter with explicit
-   fee reserve, native transaction signer, deposit receipt verification and spend caps.
-2. Persist operation intents/receipts and bind settlement to the authoritative host's
-   signed completion. Test restart between submission and receipt recording, fake
-   deposit, wrong winner, duplicate settlement and partial-refund recovery.
+1. Run the implemented local rail against an isolated pinned validator; verify native
+   signatures, fee sponsorship, exact deposit receipts and spend caps from chain data.
+2. Exercise the durable intent/receipt journal and signed host completion across
+   actual network submission/restart, ambiguous deposit, wrong winner, duplicate
+   settlement and partial-refund recovery. Mock recovery tests already exist.
 3. Fund fresh disposable validator wallets. Verify 2×0.05, 4×0.02, 4×0.05 and 8×0.02
    entries, exact pot, winner payout, fee accounting and refunds from chain data.
 4. Repeat that controlled test on pinned devnet with fresh test wallets and bounded
    faucet funding. Keep public API admission disabled until its authorization exists.
 
-Current prerequisites: a local validator is separately installed; funded adapters,
-production signer, durable economy store and host attestation are absent. Public devnet
-balance reading was verified on 2026-10-03. Faucet reliability still limits the separate
-wallet transfer demo. None of these observations establish mainnet readiness.
+Implemented prerequisites include funded host admission, local signing, a durable
+JSON operation journal, host attestations, exact-pot bookkeeping and restart tests.
+Production signer/custody, public funded rails, participant authorization and an
+audited on-chain escrow are still absent. The actual local-chain test is ignored in
+normal CI and needs a separately installed validator. Neither offline checks nor a
+public devnet balance read establishes mainnet readiness.

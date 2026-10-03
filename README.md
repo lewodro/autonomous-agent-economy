@@ -392,6 +392,8 @@ npm run test:browser       # dedicated Chrome debug port 9322 + running app
 
 ## Security
 
+See the [2026 dependency and competition-payment audit](docs/crypto-audit-2026.md) for the exact mock/local/devnet/mainnet boundaries, verified controls, fixes, and remaining custody risks.
+
 Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
 
 This is a local developer application. Public deployment still needs authentication, rate limits, durable sessions/storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
