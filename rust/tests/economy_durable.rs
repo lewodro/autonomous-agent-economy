@@ -106,3 +106,39 @@ fn durable_mock_debit_receipt_and_duplicate_confirmation_survive_reload() {
     drop(restored);
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn partially_funded_coordinator_reloads_without_recreating_money() {
+    use agent_arena_demo::economy::{
+        config::EconomyConfig, coordinator::EconomyCoordinator, durable_rail::DurableMockRail,
+        mock_escrow::MockEscrow,
+    };
+    use agent_arena_demo::{config, engine};
+    let scenario:EconomyConfig=serde_json::from_value(serde_json::json!({"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"})).unwrap();
+    let run = engine::start(config::default_config(4, 42)).unwrap();
+    let path = directory("partial");
+    let mut economy =
+        EconomyCoordinator::mock(&run, &scenario, &OperationId::new("partial").unwrap())
+            .unwrap()
+            .persist_rail(path.clone())
+            .unwrap();
+    economy.open_funding().unwrap();
+    for id in ["agent-1", "agent-2"] {
+        economy.fund(&AgentId::new(id).unwrap()).unwrap();
+    }
+    let bytes = serde_json::to_vec(&economy).unwrap();
+    drop(economy);
+    let mut restored: EconomyCoordinator<DurableMockRail, MockEscrow> =
+        serde_json::from_slice(&bytes).unwrap();
+    restored.validate_recovery(&run).unwrap();
+    for id in ["agent-3", "agent-4"] {
+        restored.fund(&AgentId::new(id).unwrap()).unwrap();
+    }
+    assert_eq!(restored.view().pot_amount, Amount::new(80_000_000));
+    restored.lock().unwrap();
+    restored.start().unwrap();
+    let mut bad: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    bad["economy"]["pot_amount"] = serde_json::json!("1");
+    let bad: EconomyCoordinator<DurableMockRail, MockEscrow> = serde_json::from_value(bad).unwrap();
+    assert!(bad.validate_recovery(&run).is_err());
+    std::fs::remove_dir_all(path).unwrap();
+}

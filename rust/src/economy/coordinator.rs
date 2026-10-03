@@ -4,6 +4,8 @@ use super::{
 };
 use crate::model::Replay;
 use std::collections::{BTreeMap, BTreeSet};
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EconomyCoordinator<R: PaymentRail, E: MatchEscrow> {
     pub(super) binding: SimulationBinding,
     pub(super) economy: MatchEconomy,
