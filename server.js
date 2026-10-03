@@ -62,6 +62,11 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res,405,{error:'Method not allowed'});
     }
+    if(req.method==='GET'&&route==='/labs/funded'){
+      if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Economy lab disabled'});
+      res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});return res.end(await readFile(path.join(root,'labs/funded.html')));
+    }
+    if(req.method==='GET'&&route==='/api/funded-matches')return json(res,200,{matches:[...funded.matches.entries()].map(([session,value])=>({session,state:value.economy.economy.state,mode:value.economy.economy.payment_mode}))});
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
     if(req.method==='POST'&&route==='/api/funded-matches'){
       const data=await body(req);return json(res,201,await funded.create(await resolveConfig(core,data.config),data));
