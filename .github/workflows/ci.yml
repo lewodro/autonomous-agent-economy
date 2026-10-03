@@ -10,7 +10,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
       - run: npm test
+      - run: npm run typecheck
       - run: npm run check
       - run: npm run demo:crypto
       - run: npm run demo:solana
@@ -21,4 +24,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo test --manifest-path rust/Cargo.toml --locked
-      - run: cargo run --manifest-path rust/Cargo.toml --locked
+      - run: cargo run --manifest-path rust/Cargo.toml --locked --bin table-core > /tmp/match.json
+      - run: cargo run --manifest-path rust/Cargo.toml --locked --bin wallet-demo
