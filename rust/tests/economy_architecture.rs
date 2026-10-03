@@ -97,3 +97,30 @@ fn configuration_uses_exact_amounts_enforces_reserves_and_rejects_mainnet() {
     );
     assert!(serde_json::from_str::<EconomyConfig>(r#"{"enabled":true,"mode":"mock","entry_amount_sol":0.02,"starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0"}"#).is_err());
 }
+use agent_arena_demo::economy::events::*;
+#[test]
+fn economy_events_serialize_public_projections_and_precise_base_units() {
+    let run = RunId::new("eco-test").unwrap();
+    let projection = MatchEconomy {
+        match_id: run.clone(),
+        simulation_start_id: "seat-test".into(),
+        payment_mode: PaymentMode::Mock,
+        entry_amount: Amount::new(20_000_000),
+        required_agents: vec![AgentId::new("agent-1").unwrap()],
+        funded_agents: Default::default(),
+        pot_amount: Amount::ZERO,
+        state: EconomyState::Funding,
+        settlement_status: SettlementStatus::NotStarted,
+    };
+    let event = EconomyEvent {
+        schema_version: 1,
+        seq: 0,
+        match_id: run,
+        kind: EconomyEventKind::FundingOpened,
+        projection,
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "FundingOpened");
+    assert_eq!(json["projection"]["entry_amount"], "20000000");
+    assert_eq!(serde_json::from_value::<EconomyEvent>(json).unwrap(), event);
+}
