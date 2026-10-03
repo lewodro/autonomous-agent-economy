@@ -18,7 +18,7 @@ export function record(state, type, data) {
 }
 export function createState(count = 20) {
   if (![2, 20].includes(count)) throw new Error('Choose 2 or 20 agents');
-  const state = { version: 1, paused: false, config: { stake: 30_000_000, networkFee: 0, protocolFee: 0 },
+  const state = { version: 1, seed: 42, rng: 42, mode: 'bounded', paused: false, config: { stake: 30_000_000, networkFee: 0, protocolFee: 0, maxRounds: 1000 },
     treasury: 0, externalCapital: count * SOL, agents: [], matches: [], events: [], nextMatch: 1 };
   state.agents = PROFILES.slice(0, count).map(([slug, name, strategy], index) => ({
     id: `agent-${index + 1}`, name, strategy, address: `simulation:agent-${index + 1}`,
