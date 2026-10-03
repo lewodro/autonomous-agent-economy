@@ -1,0 +1,54 @@
+{
+  "agents": [
+    {
+      "id": "agent-1",
+      "model": "mock/aggressive",
+      "name": "Ember",
+      "personality": "Take from wealthy rivals. Protect my last credit.",
+      "prompt": "Take from wealthy rivals. Protect my last credit.",
+      "provider": "mock",
+      "sprite": "assets/sprites-agent/01-founder.png",
+      "starting_credits": 12,
+      "strategy": "aggressive",
+      "wallet_enabled": false
+    },
+    {
+      "id": "agent-2",
+      "model": "mock/conservative",
+      "name": "Moss",
+      "personality": "Keep earning. Guard when a rival threatens me.",
+      "prompt": "Keep earning. Guard when a rival threatens me.",
+      "provider": "mock",
+      "sprite": "assets/sprites-agent/05-defender.png",
+      "starting_credits": 12,
+      "strategy": "conservative",
+      "wallet_enabled": false
+    },
+    {
+      "id": "agent-3",
+      "model": "mock/opportunist",
+      "name": "Pip",
+      "personality": "Find a soft target. Accept a profitable alliance.",
+      "prompt": "Find a soft target. Accept a profitable alliance.",
+      "provider": "mock",
+      "sprite": "assets/sprites-agent/11-explorer.png",
+      "starting_credits": 12,
+      "strategy": "opportunist",
+      "wallet_enabled": false
+    },
+    {
+      "id": "agent-4",
+      "model": "mock/cooperative",
+      "name": "Luna",
+      "personality": "Build mutual trust. Remember who betrayed me.",
+      "prompt": "Build mutual trust. Remember who betrayed me.",
+      "provider": "mock",
+      "sprite": "assets/sprites-agent/19-adaptive.png",
+      "starting_credits": 12,
+      "strategy": "cooperative",
+      "wallet_enabled": false
+    }
+  ],
+  "max_turns": 40,
+  "seed": 42
+}

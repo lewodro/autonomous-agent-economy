@@ -1,12 +1,12 @@
-import { createState, assertAccounting, record } from './src/economy.js';
-import { SOL } from './src/policy.js';
-import { configureRun } from './src/config.js';
-import { Orchestrator, eligibility } from './src/orchestrator.js';
-import { verifyProof } from './src/rps.js';
-import { loadState, saveState } from './src/storage.js';
-import { receiveRevenue, allocateTreasury } from './src/treasury.js';
-import { toLamports } from './src/policy.js';
-import { startTournament, nextTournamentPair, scoreTournament } from './src/tournament.js';
+import { createState, assertAccounting, record } from '../src/economy.js';
+import { SOL } from '../src/policy.js';
+import { configureRun } from '../src/config.js';
+import { Orchestrator, eligibility } from '../src/orchestrator.js';
+import { verifyProof } from '../src/rps.js';
+import { loadState, saveState } from '../src/storage.js';
+import { receiveRevenue, allocateTreasury } from '../src/treasury.js';
+import { toLamports } from '../src/policy.js';
+import { startTournament, nextTournamentPair, scoreTournament } from '../src/tournament.js';
 
 const $ = id => document.getElementById(id);
 const fmt = n => (n / SOL).toFixed(3);
@@ -43,10 +43,10 @@ function render() {
   $('pause').textContent = state.paused ? 'Resume economy' : 'Pause economy';
   document.querySelectorAll('#new-run input,#new-run select,#new-run button').forEach(el => el.disabled = busy || watching);
   document.querySelectorAll('#treasury-controls input,#treasury-controls button').forEach(el => el.disabled = busy || watching || state.paused);
-  $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
+  $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="/${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
   if (current) {
     $('match-title').textContent = `${current.id} · ${fmt(current.stake)} SOL each`;
-    $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="${agent(id).sprite}" alt="">${agent(id).name}<b>${['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
+    $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="/${agent(id).sprite}" alt="">${agent(id).name}<b>${['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
     $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both stakes returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} SOL pot settled.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Stakes held in escrow.';
   } else {
     $('match-title').textContent = 'Waiting for rivals';
@@ -56,7 +56,7 @@ function render() {
   document.querySelectorAll('[data-phase]').forEach(el => el.classList.toggle('active', el.dataset.phase === phase));
   const sort = $('sort').value;
   const ranked = [...state.agents].sort((a, b) => sort === 'drawdown' ? a.drawdown - b.drawdown : b[sort] - a[sort]);
-  $('leaderboard').innerHTML = ranked.map((a, i) => `<tr><td><button data-agent="${a.id}"><span class="rank">${i + 1}</span><img class="table-agent" src="${a.sprite}" alt="">${a.name}</button></td><td>${fmt(a.balance)}</td><td class="${a.pnl < 0 ? 'negative' : 'positive'}">${a.pnl >= 0 ? '+' : ''}${fmt(a.pnl)}<span class="tiny">${(a.pnl / a.capital * 100).toFixed(1)}% ROI</span></td><td>${a.wins} / ${a.losses} / ${a.draws}</td><td class="${eligibility(state, a).eligible ? 'positive' : 'muted'}">${eligibility(state, a).eligible ? 'READY' : 'OUT'}</td></tr>`).join('');
+  $('leaderboard').innerHTML = ranked.map((a, i) => `<tr><td><button data-agent="${a.id}"><span class="rank">${i + 1}</span><img class="table-agent" src="/${a.sprite}" alt="">${a.name}</button></td><td>${fmt(a.balance)}</td><td class="${a.pnl < 0 ? 'negative' : 'positive'}">${a.pnl >= 0 ? '+' : ''}${fmt(a.pnl)}<span class="tiny">${(a.pnl / a.capital * 100).toFixed(1)}% ROI</span></td><td>${a.wins} / ${a.losses} / ${a.draws}</td><td class="${eligibility(state, a).eligible ? 'positive' : 'muted'}">${eligibility(state, a).eligible ? 'READY' : 'OUT'}</td></tr>`).join('');
   renderDetail();
   const t = state.tournament;
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
@@ -65,7 +65,7 @@ function render() {
 function renderDetail() {
   const a = agent(selected) || state.agents[0]; selected = a.id;
   const count = games(a);
-  $('agent-detail').innerHTML = `<div class="agent-head"><img src="${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX DRAWDOWN</dt><dd>${fmt(a.drawdown)} SOL</dd></div><div><dt>AVERAGE STAKE</dt><dd>${fmt(count ? a.staked / count : 0)} SOL</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max stake ${fmt(a.policy.maxStake)} SOL · reserve ${fmt(a.policy.reserve)} SOL · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)} SOL.</p><h3>What this agent learns</h3><p class="muted">Opponent move frequencies inform counter-moves. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} SOL realized</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
+  $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX DRAWDOWN</dt><dd>${fmt(a.drawdown)} SOL</dd></div><div><dt>AVERAGE STAKE</dt><dd>${fmt(count ? a.staked / count : 0)} SOL</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max stake ${fmt(a.policy.maxStake)} SOL · reserve ${fmt(a.policy.reserve)} SOL · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)} SOL.</p><h3>What this agent learns</h3><p class="muted">Opponent move frequencies inform counter-moves. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} SOL realized</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
 }
 async function playOne() {
   if (busy) return;

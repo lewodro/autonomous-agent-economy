@@ -4,16 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/dev.js",
     "test": "node --test",
     "check": "node scripts/check.js",
     "simulate": "node scripts/simulate.js",
     "verify": "node scripts/verify-audit.js",
     "demo:crypto": "node demos/crypto.js",
     "demo:solana": "node demos/solana.js",
-    "test:browser": "node scripts/browser-smoke.js"
+    "test:browser": "node scripts/browser-smoke.js",
+    "dev": "node scripts/dev.js",
+    "build": "cargo build --manifest-path rust/Cargo.toml --locked && tsc -p web/tsconfig.json",
+    "typecheck": "tsc -p web/tsconfig.json --noEmit",
+    "table:run": "cargo run --manifest-path rust/Cargo.toml --bin table-core --",
+    "demo:wallet": "cargo run --manifest-path rust/Cargo.toml --bin wallet-demo --",
+    "pretest": "npm run build",
+    "match": "node scripts/table-run.js",
+    "prematch": "npm run build"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }

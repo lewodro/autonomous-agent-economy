@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Watch 20 pixel agents compete and learn. Run your own repeatable Rock Paper Scissors experiment.">
+<meta name="theme-color" content="#151b21">
+<title>Agent Arena · Autonomous Agent Economy</title>
+<link rel="stylesheet" href="/legacy/styles.css">
+</head>
+<body>
+<header class="topbar">
+<a class="brand" href="#">▦ AGENT<span>ARENA</span>
+</a>
+<nav>
+<a href="#arena">Arena</a>
+<a href="#agents">Agents</a>
+<a href="#history">Replays</a>
+<a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">Source ↗</a>
+</nav>
+<span class="chip">● SIMULATION</span>
+</header>
+<main>
+<section class="intro">
+<div>
+<p class="eyebrow">AN EXPERIMENT IN THE AGENT ECONOMY</p>
+<h1>Twenty agents.<br>
+<span>One last standing?</span>
+</h1>
+<p class="lede">They stake. They fight. They learn.<br>Follow the rivals—or run the experiment your way.</p>
+</div>
+<div class="intro-note">
+<span>✦</span>
+<p>Rock. Paper. Scissors.<br>Small moves. Real lessons.</p>
+<small>Local adaptive algorithms · simulated SOL<br>No real money or wallet connection</small>
+</div>
+</section>
+<section class="metrics" aria-label="Economy statistics">
+<div>
+<span>IN THE ARENA</span>
+<strong id="active-count">20 / 20</strong>
+</div>
+<div>
+<span>MATCHES SETTLED</span>
+<strong id="match-count">0000</strong>
+</div>
+<div>
+<span>AGENT CAPITAL / SOL</span>
+<strong id="capital">20.000</strong>
+</div>
+<div>
+<span>TREASURY / SOL</span>
+<strong id="treasury-total">0.000</strong>
+</div>
+</section>
+<section class="arena-layout" id="arena">
+<div class="arena-panel">
+<div class="panel-heading">
+<div>
+<p class="eyebrow">LIVE FIELD</p>
+<h2>The proving ground</h2>
+</div>
+<span id="run-status" class="chip">READY</span>
+</div>
+<div class="field">
+<div class="field-line">
+</div>
+<div class="field-center">RPS</div>
+<div id="sprite-field" class="sprite-field" aria-label="Agent field">
+</div>
+<div class="field-caption">CLICK AN AGENT TO INSPECT</div>
+</div>
+<div class="arena-bottom">
+<span id="arena-caption">All rivals are ready.</span>
+<span id="seed-label">SEED 42</span>
+</div>
+</div>
+<aside class="match-panel">
+<p class="eyebrow">MATCH MONITOR</p>
+<h2 id="match-title">Waiting for rivals</h2>
+<div id="duel" class="duel">
+<b>?</b>
+<span>VS</span>
+<b>?</b>
+</div>
+<div id="phases" class="phases">
+<span data-phase="evaluate">EVALUATE</span>
+<span data-phase="commit">COMMIT</span>
+<span data-phase="reveal">REVEAL</span>
+<span data-phase="settle">SETTLE</span>
+</div>
+<p id="match-result">Moves stay hidden until both commitments are locked.</p>
+<div class="play-controls">
+<button id="run" class="primary">▶ Start watching</button>
+<button id="step">Next match →</button>
+<button id="pause">Pause economy</button>
+</div>
+<label class="speed-label">Playback <select id="speed">
+<option value="650">Normal</option>
+<option value="160">Fast</option>
+<option value="0">Instant</option>
+</select>
+</label>
+<p id="notice" role="status" aria-live="polite">Local session · no network required</p>
+</aside>
+</section>
+<section class="lower-layout">
+<div id="agents" class="panel">
+<div class="panel-heading">
+<div>
+<p class="eyebrow">THE COMPETITORS</p>
+<h2>Agent standings</h2>
+</div>
+<label class="sort-label">Rank by <select id="sort">
+<option value="pnl">P&amp;L</option>
+<option value="balance">Bankroll</option>
+<option value="wins">Wins</option>
+<option value="drawdown">Drawdown</option>
+</select>
+</label>
+</div>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th># / AGENT</th>
+<th>BANKROLL</th>
+<th>P&amp;L / ROI</th>
+<th>W / L / D</th>
+<th>STATE</th>
+</tr>
+</thead>
+<tbody id="leaderboard">
+</tbody>
+</table>
+</div>
+</div>
+<aside class="panel inspector">
+<p class="eyebrow">AGENT DOSSIER</p>
+<div id="agent-detail">
+</div>
+</aside>
+</section>
+<section class="panel" id="history">
+<div class="panel-heading">
+<div>
+<p class="eyebrow">NO MADE-UP VICTORIES</p>
+<h2>Match replays</h2>
+</div>
+<div class="button-row">
+<button id="export">↓ Download audit</button>
+<button id="share">Copy run summary</button>
+</div>
+</div>
+<p class="muted">Select a settled match to inspect moves, commitments, and payouts.</p>
+<div id="history-list" class="history-list">
+<p class="empty">The story begins with the first match.</p>
+</div>
+<div id="proof" class="proof" hidden>
+</div>
+</section>
+<section class="settings-layout">
+<div class="panel">
+<p class="eyebrow">YOUR RULES, YOUR EXPERIMENT</p>
+<h2>Build a new run</h2>
+<form id="new-run" class="settings-form">
+<label>Population<select name="agents">
+<option value="20">20 agents</option>
+<option value="2">2 agents</option>
+</select>
+</label>
+<label>Rules<select name="mode">
+<option value="bounded">Bounded economy</option>
+<option value="survival">Survival · play until out</option>
+</select>
+</label>
+<label>Stake per agent · SOL<input name="stake" inputmode="decimal" value="0.03" required>
+</label>
+<label>Initial bankroll · SOL<input name="bankroll" inputmode="decimal" value="1" required>
+</label>
+<label>Experiment seed<input name="seed" type="number" min="1" max="4294967295" value="42" required>
+</label>
+<label>Match limit<input name="rounds" type="number" min="1" max="10000" value="1000" required>
+</label>
+<button class="primary" type="submit">Create new run ↗</button>
+</form>
+<p class="muted">Bounded mode protects a reserve and limits loss and exposure. Survival mode removes those buffers; an agent is out when it cannot cover the next stake. Both modes have a match limit.</p>
+</div>
+<div class="panel">
+<p class="eyebrow">ECONOMY LAB</p>
+<h2>Follow the money</h2>
+<p class="muted">Treasury starts at zero. No imagined creator revenue. Stakes move through escrow; wins transfer the pot; draws return the stakes.</p>
+<div id="treasury-controls">
+<p class="muted">Treasury controls arrive in the next delivery.</p>
+</div>
+<div class="rules-note">
+<h3>Rules you can inspect</h3>
+<p>Rock beats scissors. Scissors beat paper. Paper beats rock. Each agent pays one stake. The winner receives two stakes. A draw refunds both. Network and protocol fees are zero in this simulation.</p>
+</div>
+</div>
+</section>
+<section class="how-it-works">
+<p class="eyebrow">WHY WATCH?</p>
+<div>
+<article>
+<span>01 / FOLLOW</span>
+<h3>Find your rival</h3>
+<p>Inspect each agent's learning, bankroll, and risk. See who survives across repeated runs.</p>
+</article>
+<article>
+<span>02 / QUESTION</span>
+<h3>Verify the win</h3>
+<p>Replay recorded matches. Check committed moves, payouts, and the ledger instead of trusting a claim.</p>
+</article>
+<article>
+<span>03 / EXPERIMENT</span>
+<h3>Change the conditions</h3>
+<p>Choose a seed, capital, and stake. Compare results, export your run, and share what happened.</p>
+</article>
+</div>
+</section>
+</main>
+<footer>
+<span>AGENT ARENA / AUTONOMOUS AGENT ECONOMY</span>
+<span>Discover → Evaluate → Transact → Execute → Verify → Settle → Learn</span>
+</footer>
+<script type="module" src="/legacy/script.js">
+</script>
+</body>
+</html>

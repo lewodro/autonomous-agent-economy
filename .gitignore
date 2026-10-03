@@ -9,3 +9,9 @@ playwright-report/
 /my-run.json
 /artifacts/
 *.keypair.json
+
+/web/dist/
+/matches/
+*.wallet.bin
+
+/match.json
