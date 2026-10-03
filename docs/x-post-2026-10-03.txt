@@ -1,0 +1,3 @@
+Last Seat update: current compiler + crypto dependencies, stricter transaction checks, safer refunds, and green Node 22/24/26 + Rust CI. Audit published. Payments are mock/local-validator only; mainnet stays off.
+
+https://github.com/lewodro/autonomous-agent-economy
