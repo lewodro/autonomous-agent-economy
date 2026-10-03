@@ -14,3 +14,5 @@ pub mod rail;
 pub mod mock_rail;
 
 pub mod escrow;
+
+pub mod mock_escrow;

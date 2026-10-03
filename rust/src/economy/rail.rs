@@ -58,3 +58,18 @@ pub trait PaymentRail {
         self.submit_payment(&prepared)
     }
 }
+/// Domain-separated retry key; changing any participant or intent changes the key.
+pub fn operation_id(
+    run: &RunId,
+    purpose: PaymentPurpose,
+    payer: &AccountId,
+    payee: &AccountId,
+) -> Result<OperationId> {
+    use sha2::{Digest, Sha256};
+    let bytes = serde_json::to_vec(&(run, purpose, payer, payee))
+        .map_err(|e| EconomyError::InvalidInput(e.to_string()))?;
+    OperationId::new(format!(
+        "op-{:x}",
+        Sha256::digest([b"last-seat/economy-operation/v1:".as_slice(), &bytes].concat())
+    ))
+}

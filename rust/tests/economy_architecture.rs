@@ -241,3 +241,72 @@ fn escrow_status_is_public_and_chain_independent() {
         view
     );
 }
+use agent_arena_demo::economy::mock_escrow::MockEscrow;
+fn funded_escrow() -> (MockPaymentRail, MockEscrow) {
+    let run = RunId::new("eco-one").unwrap();
+    let account = AccountId::new("escrow-one").unwrap();
+    let mut ledger = TreasuryLedger::default();
+    ledger.open(account.clone(), Amount::ZERO).unwrap();
+    let participants = ["agent-a", "agent-b"]
+        .into_iter()
+        .map(|id| {
+            let account = AccountId::new(id).unwrap();
+            ledger
+                .open(account.clone(), Amount::new(1_000_000_000))
+                .unwrap();
+            (AgentId::new(id).unwrap(), account)
+        })
+        .collect();
+    let mut rail = MockPaymentRail::new(ledger, Amount::ZERO);
+    let mut escrow = MockEscrow::open(
+        run.clone(),
+        participants,
+        Amount::new(20_000_000),
+        account.clone(),
+    )
+    .unwrap();
+    assert!(escrow.lock(&rail).is_err());
+    for agent in ["agent-a", "agent-b"] {
+        let payer = AccountId::new(agent).unwrap();
+        let intent = PaymentIntent {
+            operation_id: operation_id(&run, PaymentPurpose::Entry, &payer, &account).unwrap(),
+            match_id: run.clone(),
+            payer,
+            payee: account.clone(),
+            amount: Amount::new(20_000_000),
+            purpose: PaymentPurpose::Entry,
+        };
+        let prepared = rail.prepare_payment(intent).unwrap();
+        let receipt = rail.submit_payment(&prepared).unwrap();
+        escrow.deposit(&rail, &receipt).unwrap();
+        escrow.deposit(&rail, &receipt).unwrap();
+    }
+    escrow.lock(&rail).unwrap();
+    (rail, escrow)
+}
+#[test]
+fn escrow_locks_exact_pot_and_settlement_or_refund_is_idempotent() {
+    let (mut rail, mut escrow) = funded_escrow();
+    assert_eq!(escrow.status().unwrap().pot_amount, Amount::new(40_000_000));
+    assert!(escrow
+        .settle(&mut rail, &AgentId::new("outsider").unwrap())
+        .is_err());
+    let winner = AgentId::new("agent-b").unwrap();
+    let receipt = escrow.settle(&mut rail, &winner).unwrap();
+    assert_eq!(escrow.settle(&mut rail, &winner).unwrap(), receipt);
+    assert_eq!(
+        rail.get_balance(&AccountId::new("agent-b").unwrap())
+            .unwrap(),
+        Amount::new(1_020_000_000)
+    );
+    assert!(escrow.refund(&mut rail).is_err());
+    let (mut rail, mut escrow) = funded_escrow();
+    let refunded = escrow.refund(&mut rail).unwrap();
+    assert_eq!(escrow.refund(&mut rail).unwrap(), refunded);
+    assert_eq!(
+        rail.get_balance(&AccountId::new("agent-a").unwrap())
+            .unwrap(),
+        Amount::new(1_000_000_000)
+    );
+    assert!(escrow.settle(&mut rail, &winner).is_err());
+}
