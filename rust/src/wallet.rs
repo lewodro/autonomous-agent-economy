@@ -153,7 +153,10 @@ fn rpc_result(value: Value) -> Result<Value, String> {
     if !value["error"].is_null() {
         return Err(format!("Devnet RPC error: {}", value["error"]));
     }
-    value.get("result").cloned().ok_or_else(|| "RPC response missing result".into())
+    value
+        .get("result")
+        .cloned()
+        .ok_or_else(|| "RPC response missing result".into())
 }
 pub fn transfer_message(
     payer: &str,
@@ -221,7 +224,10 @@ mod tests {
         assert!(rpc_result(json!({"jsonrpc":"2.0","id":2,"result":{}})).is_err());
         assert!(rpc_result(json!({"id":1,"result":{}})).is_err());
         assert!(rpc_result(json!({"jsonrpc":"2.0","id":1,"error":{"code":-1}})).is_err());
-        assert_eq!(rpc_result(json!({"jsonrpc":"2.0","id":1,"result":{"value":123}})).unwrap(), json!({"value":123}));
+        assert_eq!(
+            rpc_result(json!({"jsonrpc":"2.0","id":1,"result":{"value":123}})).unwrap(),
+            json!({"value":123})
+        );
     }
     #[test]
     fn mock_policy() {

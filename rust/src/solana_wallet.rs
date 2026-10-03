@@ -10,7 +10,11 @@ pub struct SolanaWallet {
 }
 impl SolanaWallet {
     pub fn new(signer: SigningKey, network: Network, approved: String) -> Result<Self, String> {
-        if network == Network::Local && std::env::var("LOCAL_GENESIS_HASH").ok().is_none_or(|hash| hash.trim().is_empty()) {
+        if network == Network::Local
+            && std::env::var("LOCAL_GENESIS_HASH")
+                .ok()
+                .is_none_or(|hash| hash.trim().is_empty())
+        {
             return Err("Local wallet requires an explicit LOCAL_GENESIS_HASH".into());
         }
         let genesis = rpc_on(&network, "getGenesisHash", json!([]))?;
@@ -131,17 +135,30 @@ impl SolanaWallet {
     }
 }
 fn required_balance(amount: u64, fee: u64) -> Result<u64, String> {
-    amount.checked_add(fee).and_then(|total| total.checked_add(890_880))
+    amount
+        .checked_add(fee)
+        .and_then(|total| total.checked_add(890_880))
         .ok_or_else(|| "Invalid fee estimate: balance requirement overflow".into())
 }
 fn verify_simulation(simulation: &serde_json::Value) -> Result<(), String> {
-    let error = simulation.get("value").and_then(|value| value.get("err"))
+    let error = simulation
+        .get("value")
+        .and_then(|value| value.get("err"))
         .ok_or("Malformed simulation response: missing verification result")?;
-    if !error.is_null() { return Err(format!("Simulation rejected: {error}")); }
+    if !error.is_null() {
+        return Err(format!("Simulation rejected: {error}"));
+    }
     Ok(())
 }
-fn submit_with_reservation(wallet: &mut AgentWallet, amount: u64, submit: impl FnOnce() -> Result<String, String>) -> Result<String, String> {
-    wallet.spending_limit = wallet.spending_limit.checked_sub(amount).ok_or("Wallet spending budget exhausted")?;
+fn submit_with_reservation(
+    wallet: &mut AgentWallet,
+    amount: u64,
+    submit: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    wallet.spending_limit = wallet
+        .spending_limit
+        .checked_sub(amount)
+        .ok_or("Wallet spending budget exhausted")?;
     submit()
 }
 
@@ -150,7 +167,13 @@ mod tests {
     use super::*;
     #[test]
     fn missing_simulation_proof_cannot_authorize_submission() {
-        for value in [json!(null), json!({}), json!({"value":null}), json!({"value":{}}), json!({"value":{"err":{"InstructionError":[0,"failure"]}}})] {
+        for value in [
+            json!(null),
+            json!({}),
+            json!({"value":null}),
+            json!({"value":{}}),
+            json!({"value":{"err":{"InstructionError":[0,"failure"]}}}),
+        ] {
             assert!(verify_simulation(&value).is_err());
         }
         assert!(verify_simulation(&json!({"value":{"err":null}})).is_ok());
@@ -164,9 +187,15 @@ mod tests {
     #[test]
     fn uncertain_submission_cannot_retry_the_same_spending_budget() {
         let mut wallet = mock_view(42, "agent");
-        assert!(submit_with_reservation(&mut wallet, 1_000_000, || Err("Receipt lost after submission".into())).is_err());
+        assert!(submit_with_reservation(&mut wallet, 1_000_000, || Err(
+            "Receipt lost after submission".into()
+        ))
+        .is_err());
         assert_eq!(wallet.spending_limit, 0);
-        assert!(submit_with_reservation(&mut wallet, 1, || panic!("Exhausted budget must not submit")).is_err());
+        assert!(submit_with_reservation(&mut wallet, 1, || panic!(
+            "Exhausted budget must not submit"
+        ))
+        .is_err());
     }
 }
 impl WalletCapability for SolanaWallet {

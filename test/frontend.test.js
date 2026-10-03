@@ -48,3 +48,12 @@ test('a failed request from an old match cannot stop a newly loaded match',async
   }
  }finally{core.stop();}
 });
+
+import {parseConfig} from '../web/dist/config.js';
+import {expandConfig} from '../service/config.js';
+test('short agent configs expand provider/prompt/avatar fields without putting rules in the browser',()=>{
+ const short={seed:12,agents:[{name:'Builder',strategy:'aggressive'},{name:'Survivor',strategy:'defensive',system_prompt:'Stay alive',starting_stats:{credits:20}}]};
+ assert.deepEqual(parseConfig(JSON.stringify(short)),short);assert.throws(()=>parseConfig('[]'),/agents/);
+ const expanded=expandConfig(short,{seed:42,max_turns:40,agents:[{id:'agent-1',provider:'mock',strategy:'aggressive',starting_credits:12},{id:'agent-2',provider:'mock',strategy:'conservative',starting_credits:12}]});
+ assert.equal(expanded.agents[1].strategy,'conservative');assert.equal(expanded.agents[1].prompt,'Stay alive');assert.equal(expanded.agents[1].starting_credits,20);
+});

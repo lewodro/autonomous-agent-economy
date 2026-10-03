@@ -1,3 +1,4 @@
+import {parseConfig} from './config.js';
 import {SpectatorHUD,setHTML} from './spectator.js';
 import type { AgentConfig, Config, GameEvent, MatchResponse, Replay } from './types.js';
 import { api } from './api.js';
@@ -58,7 +59,7 @@ $('new').onclick=()=>{player.pause();if(player.run){$<HTMLTextAreaElement>('conf
 $('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(crypto.getRandomValues(new Uint32Array(1))[0]||1);};
 $('close-config').onclick=()=>dialog.close();
 $('preset').onclick=async()=>{try{const config=await api<Config>(`/api/config?agents=${$<HTMLSelectElement>('population').value}`);config.seed=Number($<HTMLInputElement>('seed').value);config.max_turns=Number($<HTMLInputElement>('max-turns').value);config.agents.forEach(a=>a.starting_credits=Number($<HTMLInputElement>('credits').value));$<HTMLTextAreaElement>('config-json').value=JSON.stringify(config,null,2);}catch(error){$('config-error').textContent=(error as Error).message;}};
-$('config-form').onsubmit=async e=>{e.preventDefault();try{await create(JSON.parse($<HTMLTextAreaElement>('config-json').value) as Config);dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
+$('config-form').onsubmit=async e=>{e.preventDefault();try{await create(parseConfig($<HTMLTextAreaElement>('config-json').value) as Config);dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
 $('download-config').onclick=()=>{download($<HTMLTextAreaElement>('config-json').value,'simulation.json');};
 $('export').onclick=()=>{if(player.run)download(JSON.stringify(player.run,null,2),`${player.run.match_id}.json`);};
 $('config-copy').onclick=async()=>{if(!player.run)return;try{await navigator.clipboard.writeText(JSON.stringify(player.run.config,null,2));notice('Config copied. Edit and paste into New / remix.');}catch{download(JSON.stringify(player.run.config,null,2),'simulation.json');}};

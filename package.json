@@ -19,7 +19,10 @@
     "demo:wallet": "cargo run --manifest-path rust/Cargo.toml --bin wallet-demo --",
     "pretest": "npm run build",
     "match": "node scripts/table-run.js",
-    "prematch": "npm run build"
+    "prematch": "npm run build",
+    "demo:payments": "node scripts/payment-demo.js",
+    "balance": "cargo run --manifest-path rust/Cargo.toml --bin balance-report --",
+    "lint": "npm run check && npm run typecheck && cargo fmt --manifest-path rust/Cargo.toml --check"
   },
   "engines": {
     "node": ">=22"

@@ -29,8 +29,14 @@ pub fn execute(args: &[String]) -> Result<serde_json::Value, String> {
         Network::Devnet
     };
     let networked = devnet || local;
-    if local && std::env::var("LOCAL_GENESIS_HASH").ok().is_none_or(|hash| hash.trim().is_empty()) {
-        return Err("--local requires an explicit LOCAL_GENESIS_HASH before wallet activity".into());
+    if local
+        && std::env::var("LOCAL_GENESIS_HASH")
+            .ok()
+            .is_none_or(|hash| hash.trim().is_empty())
+    {
+        return Err(
+            "--local requires an explicit LOCAL_GENESIS_HASH before wallet activity".into(),
+        );
     }
     let mode = if local {
         WalletMode::Local

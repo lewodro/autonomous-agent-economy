@@ -1,3 +1,5 @@
+import {resolveConfig} from './service/config.js';
+import {MachinePayments} from './service/payments.js';
 import http from 'node:http';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -9,6 +11,7 @@ import { MatchRuntime } from './service/runtime.js';
 import { authorizeRequest } from './service/http-policy.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const core = new Core(), runtime = new MatchRuntime(), sessions = new Map();
+const payments=new MachinePayments();
 const directory = path.join(root, 'matches');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
@@ -21,9 +24,11 @@ async function createSession(command, data) {
     return { session, replay };
   } catch (error) { sessions.delete(session); throw error; }
 }
-async function body(req) {
+async function body(req, limit = 1_000_000) {
   const chunks = []; let length = 0;
-  for await (const chunk of req) { length += chunk.length; if (length > 8_000_000) throw new Error('Request exceeds 8 MB'); chunks.push(chunk); }
+  const tooLarge = () => { req.resume(); return Object.assign(new Error('Request exceeds the supported size'), { status: 413 }); };
+  if (Number(req.headers['content-length']) > limit) throw tooLarge();
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) { length += chunk.length; if (length > limit) throw tooLarge(); chunks.push(chunk); }
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
 }
 async function persist(replay) {
@@ -40,19 +45,27 @@ const server = http.createServer(async (req, res) => {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
-      const data = await body(req);
+      const data = await body(req, 32_000_000);
       const { replay } = await core.request({ command: 'verify', replay: data.replay });
       await persist(replay);
       return json(res, 200, { match_id: replay.match_id });
     }
-    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', version: 'last-seat-v3' });
+    if(req.method==='GET'&&route==='/premium-tool'){
+      const receipt=req.headers['x-demo-payment'];
+      if(!receipt)return json(res,402,{payment_required:payments.quote(),protocol:'experimental-local'});
+      return json(res,200,payments.verify(receipt));
+    }
+    if(req.method==='POST'&&route==='/api/payments/pay'){
+      const data=await body(req);const receipt=payments.pay(data.challenge_id,data.payer);return json(res,200,{receipt,events:payments.events.slice(-2),mode:'mock'});
+    }
+    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', version: 'last-seat-v5' });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
       const data = await body(req);
-      return json(res, 201, await createSession('start', { config: data.config }));
+      return json(res, 201, await createSession('start', { config: await resolveConfig(core,data.config) }));
     }
     if (req.method === 'POST' && route === '/api/replays/import') {
-      const data = await body(req);
+      const data = await body(req, 32_000_000);
       return json(res, 200, await createSession('import', { replay: data.replay }));
     }
     const archived = route.match(/^\/api\/replays\/(seat-[a-f0-9]{64})$/);
