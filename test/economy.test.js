@@ -75,3 +75,27 @@ test('commitments are bound to the game and participant', async () => {
   assert.notEqual(hash, await commitment('game-2', 'agent-1', 'rock', salt));
   assert.notEqual(hash, await commitment('game-1', 'agent-2', 'rock', salt));
 });
+
+test('pending games count toward aggregate exposure and worst-case losses', () => {
+  for (const limit of ['exposure', 'loss']) {
+    const state = createState(2);
+    for (const agent of state.agents) {
+      agent.policy.maxExposureBps = limit === 'exposure' ? 600 : 10000;
+      agent.policy.maxLoss = limit === 'loss' ? 60_000_000 : 500_000_000;
+    }
+    enterMatch(state, ['agent-1', 'agent-2']);
+    enterMatch(state, ['agent-1', 'agent-2']);
+    const before = structuredClone(state);
+    assert.throws(() => enterMatch(state, ['agent-1', 'agent-2']), new RegExp(`${limit} limit`));
+    assert.deepEqual(state, before);
+    assertAccounting(state);
+  }
+});
+
+test('settled draws release exposure for subsequent entries', async () => {
+  const state = createState(2);
+  for (const agent of state.agents) agent.policy.maxExposureBps = 300;
+  await played(state, ['rock', 'rock']);
+  enterMatch(state, ['agent-1', 'agent-2']);
+  assertAccounting(state);
+});

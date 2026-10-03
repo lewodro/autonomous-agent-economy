@@ -17,9 +17,13 @@ export function authorize(state, intent) {
   const stake = amount(intent.stake);
   if (!stake) throw new Error('Stake must be positive');
   const policy = agent.policy;
+  const locked = state.matches.filter(m => m.status !== 'settled' && m.players.includes(agent.id))
+    .reduce((sum, m) => sum + m.stake, 0);
+  const exposure = amount(locked + stake);
   if (stake > policy.maxStake) throw new Error(`${agent.name}: maximum stake exceeded`);
-  if (stake > Math.floor(agent.balance * policy.maxExposureBps / 10000)) throw new Error(`${agent.name}: exposure limit exceeded`);
+  const exposureLimit = Number(BigInt(amount(agent.balance + locked)) * BigInt(policy.maxExposureBps) / 10000n);
+  if (exposure > exposureLimit) throw new Error(`${agent.name}: exposure limit exceeded`);
   if (agent.balance - stake < policy.reserve) throw new Error(`${agent.name}: reserve protected`);
-  if (agent.pnl - stake < -policy.maxLoss) throw new Error(`${agent.name}: loss limit protected`);
+  if (agent.pnl - exposure < -policy.maxLoss) throw new Error(`${agent.name}: loss limit protected`);
   return agent;
 }
