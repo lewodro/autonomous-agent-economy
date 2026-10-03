@@ -15,3 +15,5 @@ playwright-report/
 *.wallet.bin
 
 /match.json
+
+.AGENTS.md
