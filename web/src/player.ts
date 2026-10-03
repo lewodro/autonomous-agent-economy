@@ -66,7 +66,10 @@ export class Player {
         if (!await this.wait(durations[event.type] || 80, generation, automatic)) return false;
       }
       return true;
-    } catch (error) { this.playing = false; this.failed((error as Error).message); return false; }
+    } catch (error) {
+      if (generation !== this.generation) return false;
+      this.playing = false; this.failed((error as Error).message); return false;
+    }
     finally { if (generation === this.generation) { this.busy = false;this.manual=false;this.waiting=false; this.changed(); } }
   }
   // Resume a paused presentation loop; do not start a second core turn.

@@ -3,6 +3,7 @@ import {Core} from '../service/core.js';
 import {applyEvent} from '../web/dist/replay.js';
 import {mapEvent,CanvasAnimationDriver,dispatchAnimation} from '../web/dist/animation.js';
 import {HttpMatchTransport} from '../web/dist/transport.js';
+import {Player} from '../web/dist/player.js';
 test('every Rust v2 event projects to its authoritative final state without mutating input',async()=>{
  const core=new Core();try{const config=await core.request({command:'defaults',count:4});const start=await core.request({command:'start',config});let state=start.replay.starting_state;
  for(let turn=0;turn<3;turn++){const {events,replay}=await core.request({command:'step'});for(const event of events){const input=state,before=structuredClone(state);state=applyEvent(state,event);assert.deepEqual(input,before);if(event.projection)assert.deepEqual(state.agents.filter(a=>event.projection.agents.some(p=>p.id===a.id)),event.projection.agents);}assert.deepEqual(state,replay.final_state);}
@@ -23,4 +24,27 @@ test('compact transport rejects out-of-order transitions and reconciles stale re
  try{globalThis.fetch=async()=>new Response(JSON.stringify({events:[{seq:4}],final_state:{turn:1}}));await assert.rejects(new HttpMatchTransport().advance('x',current),/Out-of-order/);
  let calls=0;globalThis.fetch=async()=>++calls===1?new Response(JSON.stringify({error:'Stale turn'}),{status:409}):new Response(JSON.stringify({replay:{...current,final_state:{turn:1}}}));assert.equal((await new HttpMatchTransport().advance('x',current)).final_state.turn,1);
  }finally{globalThis.fetch=prior;}
+});
+
+test('a failed request from an old match cannot stop a newly loaded match',async()=>{
+ const core=new Core();
+ try {
+  const config=await core.request({command:'defaults',count:2});
+  const {replay}=await core.request({command:'start',config});
+  const pending=[],errors=[];
+  const transport={advance:()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))};
+  const player=new Player(()=>{},message=>errors.push(message),transport);
+  player.load(replay,'old-session');const oldPlay=player.play();
+  player.load(replay,'new-session');const newPlay=player.play();
+  try {
+   pending[0].reject(new Error('Old request failed after remix'));
+   await oldPlay;
+   assert.equal(player.playing,true);assert.equal(player.busy,true);assert.equal(player.waiting,true);
+   assert.deepEqual(errors,[]);
+  } finally {
+   player.load(replay);
+   pending[1].reject(new Error('Canceled newer request'));
+   await newPlay;
+  }
+ }finally{core.stop();}
 });
