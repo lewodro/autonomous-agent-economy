@@ -21,3 +21,13 @@ test('runtime refuses duplicate and stale turns before adapter or engine executi
  runtime.busy.add('session');await assert.rejects(runtime.step(core,'session',{}),/already resolving/);runtime.busy.delete('session');
  await runtime.step(core,'session',{expected_turn:3,decisions:[{}]});assert.equal(advance,1);assert.equal(runtime.busy.size,0);
 });
+test('public rationale strips provider metadata and mock adapters do not call inference',async()=>{
+ const {publicDecisionReason}=await import('../service/model-adapter.js');
+ const {decisionsFor}=await import('../service/adapters.js');
+ const observation={agents:[{id:'a',credits:12,private_key:'never-show'},{id:'b',credits:4},{id:'c',credits:90}]};
+ const choice={agent_id:'a',target:'b',reason:'Challenge a vulnerable rival.',thinking:'private trace',wallet:'secret'};
+ assert.deepEqual(publicDecisionReason(choice,observation),{summary:choice.reason,relevant_state:[{agent_id:'a',credits:12},{agent_id:'b',credits:4}]});
+ assert.equal(await decisionsFor({agents:[{id:'a',provider:'mock'}]},observation),null);
+ assert.ok((await import('../service/adapters.js')).adapterFactories.has('http'));
+ assert.ok((await import('../service/adapters.js')).adapterFactories.has('openai-compatible'));
+});

@@ -56,6 +56,7 @@ export class HttpModelAdapter {
   constructor(profile,budget){this.profile=profile;this.budget=budget;this.options=settings(profile);}
   observe(observation){return structuredClone(observation);}
   explain(choice){return choice.reason;}
+  explainPublic(choice,observation){return publicDecisionReason(choice,observation);}
   async decide(observation){
     const p=this.profile,o=this.options,compatible=p.provider==='openai-compatible';
     const messages=[{role:'system',content:`You compete at Last Seat. Choose one legal action: work, guard, challenge, cooperate. Challenge/cooperate require another living target; work/guard require target:null. Return JSON {action,target,reason}. Reason is public, at most 300 characters. ${p.prompt}\nPersonality: ${p.personality}`},{role:'user',content:JSON.stringify({self:p.id,observation:this.observe(observation)})}];
@@ -83,4 +84,11 @@ export class HttpModelAdapter {
     }
     return fallback(p,'No model decision; local fallback.');
   }
+}
+
+/** Only the public summary and selected observable facts cross the spectator boundary. */
+export function publicDecisionReason(choice,observation) {
+  return {summary:String(choice.reason||'').slice(0,300),relevant_state:(observation.agents||[])
+    .filter(a=>a.id===choice.agent_id||a.id===choice.target)
+    .map(a=>({agent_id:a.id,credits:a.credits}))};
 }

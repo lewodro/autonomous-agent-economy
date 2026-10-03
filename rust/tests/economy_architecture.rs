@@ -634,3 +634,27 @@ fn developer_lab_cannot_supply_winner_or_settle_before_finishing() {
     assert_eq!(first["economy"]["state"], "settled");
     assert!(lab.command("set-winner", Some("agent-1")).is_err());
 }
+
+#[test]
+fn spectator_reason_contains_only_selected_public_state_and_summary() {
+    use agent_arena_demo::{
+        config, engine,
+        model::{Action, Decision},
+        public_reason::PublicDecisionReason,
+    };
+    let run = engine::start(config::default_config(4, 42)).unwrap();
+    let choice = Decision {
+        agent_id: "agent-1".into(),
+        target: Some("agent-2".into()),
+        action: Action::Challenge,
+        reason: "Challenge a vulnerable rival.".into(),
+    };
+    let reason = PublicDecisionReason::from_decision(&choice, &engine::observe(&run));
+    assert_eq!(reason.relevant_state.len(), 2);
+    let json = serde_json::to_value(reason).unwrap();
+    assert_eq!(json.as_object().unwrap().len(), 2);
+    assert!(serde_json::from_value::<PublicDecisionReason>(
+        serde_json::json!({"summary":"Public","relevant_state":[],"thinking":"private"})
+    )
+    .is_err());
+}
