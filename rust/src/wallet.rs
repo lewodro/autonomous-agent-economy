@@ -144,10 +144,16 @@ pub fn rpc_on(network: &Network, method: &str, params: Value) -> Result<Value, S
         ));
     }
     let value: Value = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+    rpc_result(value)
+}
+fn rpc_result(value: Value) -> Result<Value, String> {
+    if value["jsonrpc"] != "2.0" || value["id"] != 1 {
+        return Err("Invalid RPC response version or request ID".into());
+    }
     if !value["error"].is_null() {
         return Err(format!("Devnet RPC error: {}", value["error"]));
     }
-    Ok(value["result"].clone())
+    value.get("result").cloned().ok_or_else(|| "RPC response missing result".into())
 }
 pub fn transfer_message(
     payer: &str,
@@ -209,6 +215,14 @@ pub fn base64(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn malformed_rpc_envelopes_cannot_be_verified_results() {
+        assert!(rpc_result(json!({"jsonrpc":"2.0","id":1})).is_err());
+        assert!(rpc_result(json!({"jsonrpc":"2.0","id":2,"result":{}})).is_err());
+        assert!(rpc_result(json!({"id":1,"result":{}})).is_err());
+        assert!(rpc_result(json!({"jsonrpc":"2.0","id":1,"error":{"code":-1}})).is_err());
+        assert_eq!(rpc_result(json!({"jsonrpc":"2.0","id":1,"result":{"value":123}})).unwrap(), json!({"value":123}));
+    }
     #[test]
     fn mock_policy() {
         let mut wallet = MockWallet {

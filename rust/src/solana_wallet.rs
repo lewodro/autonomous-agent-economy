@@ -102,12 +102,7 @@ impl SolanaWallet {
             "simulateTransaction",
             json!([base64(&wire),{"encoding":"base64","commitment":"confirmed","sigVerify":true}]),
         )?;
-        if !simulation["value"]["err"].is_null() {
-            return Err(format!(
-                "Simulation rejected: {}",
-                simulation["value"]["err"]
-            ));
-        }
+        verify_simulation(&simulation)?;
         self.event(
             "WalletTransactionRequested",
             amount,
@@ -139,6 +134,12 @@ fn required_balance(amount: u64, fee: u64) -> Result<u64, String> {
     amount.checked_add(fee).and_then(|total| total.checked_add(890_880))
         .ok_or_else(|| "Invalid fee estimate: balance requirement overflow".into())
 }
+fn verify_simulation(simulation: &serde_json::Value) -> Result<(), String> {
+    let error = simulation.get("value").and_then(|value| value.get("err"))
+        .ok_or("Malformed simulation response: missing verification result")?;
+    if !error.is_null() { return Err(format!("Simulation rejected: {error}")); }
+    Ok(())
+}
 fn submit_with_reservation(wallet: &mut AgentWallet, amount: u64, submit: impl FnOnce() -> Result<String, String>) -> Result<String, String> {
     wallet.spending_limit = wallet.spending_limit.checked_sub(amount).ok_or("Wallet spending budget exhausted")?;
     submit()
@@ -147,6 +148,13 @@ fn submit_with_reservation(wallet: &mut AgentWallet, amount: u64, submit: impl F
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_simulation_proof_cannot_authorize_submission() {
+        for value in [json!(null), json!({}), json!({"value":null}), json!({"value":{}}), json!({"value":{"err":{"InstructionError":[0,"failure"]}}})] {
+            assert!(verify_simulation(&value).is_err());
+        }
+        assert!(verify_simulation(&json!({"value":{"err":null}})).is_ok());
+    }
     #[test]
     fn fee_overflow_cannot_bypass_reserve() {
         assert_eq!(required_balance(1_000_000, 5_000).unwrap(), 1_895_880);
