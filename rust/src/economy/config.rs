@@ -30,11 +30,11 @@ pub struct EconomyConfig {
 }
 #[derive(Clone, Debug)]
 pub struct ValidatedConfig {
-    pub enabled: bool,
-    pub mode: PaymentMode,
-    pub entry: Amount,
-    pub starting_balance: Amount,
-    pub minimum_reserve: Amount,
+    pub(super) enabled: bool,
+    pub(super) mode: PaymentMode,
+    pub(super) entry: Amount,
+    pub(super) starting_balance: Amount,
+    pub(super) minimum_reserve: Amount,
 }
 pub fn parse_sol(value: &str) -> Result<Amount> {
     let invalid = || {

@@ -658,3 +658,89 @@ fn spectator_reason_contains_only_selected_public_state_and_summary() {
     )
     .is_err());
 }
+
+#[test]
+fn uncertain_payout_reconciles_same_operation_without_refund_or_second_payment() {
+    struct LostResponse {
+        rail: MockPaymentRail,
+        lost: bool,
+    }
+    impl PaymentRail for LostResponse {
+        fn get_balance(&self, a: &AccountId) -> Result<Amount> {
+            self.rail.get_balance(a)
+        }
+        fn prepare_payment(&mut self, i: PaymentIntent) -> Result<PreparedPayment> {
+            self.rail.prepare_payment(i)
+        }
+        fn submit_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
+            let receipt = self.rail.submit_payment(p)?;
+            if !self.lost && p.intent.purpose == PaymentPurpose::Payout {
+                self.lost = true;
+                return Err(EconomyError::AdapterFailure(
+                    "response lost after transfer".into(),
+                ));
+            }
+            Ok(receipt)
+        }
+        fn verify_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
+            self.rail.verify_payment(r, i)
+        }
+    }
+    let (rail, mut escrow) = funded_escrow();
+    let mut rail = LostResponse { rail, lost: false };
+    let winner = AgentId::new("agent-b").unwrap();
+    assert!(escrow.settle(&mut rail, &winner).is_err());
+    assert!(escrow.refund(&mut rail).is_err());
+    assert!(escrow
+        .settle(&mut rail, &AgentId::new("agent-a").unwrap())
+        .is_err());
+    let receipt = escrow.settle(&mut rail, &winner).unwrap();
+    assert_eq!(escrow.settle(&mut rail, &winner).unwrap(), receipt);
+    assert_eq!(rail.rail.receipt_count(), 3);
+    assert_eq!(
+        rail.get_balance(&AccountId::new("agent-b").unwrap())
+            .unwrap(),
+        Amount::new(1_020_000_000)
+    );
+}
+
+#[test]
+fn verified_finished_draw_refunds_and_cannot_declare_a_payout() {
+    let mut cfg = game_config::default_config(2, 42);
+    cfg.max_turns = 1;
+    let mut run = engine::start(cfg).unwrap();
+    let mut economy = EconomyCoordinator::mock(
+        &run,
+        &economy_config("0.02"),
+        &OperationId::new("draw").unwrap(),
+    )
+    .unwrap();
+    economy.open_funding().unwrap();
+    for agent in economy.view().required_agents {
+        economy.fund(&agent).unwrap();
+    }
+    economy.lock().unwrap();
+    economy.start().unwrap();
+    let decisions = run
+        .config
+        .agents
+        .iter()
+        .map(|a| agent_arena_demo::model::Decision {
+            agent_id: a.id.clone(),
+            action: agent_arena_demo::model::Action::Work,
+            target: None,
+            reason: "Earn safely.".into(),
+        })
+        .collect();
+    engine::advance(&mut run, Some(decisions)).unwrap();
+    assert!(run.final_state.ended);
+    assert!(run.winner.is_none());
+    assert!(economy.settle(&run).is_err());
+    economy
+        .refund(RefundReason::NoWinnerFinished, Some(&run))
+        .unwrap();
+    assert_eq!(economy.view().state, EconomyState::Refunded);
+    for a in economy.view().required_agents {
+        assert_eq!(economy.balance(&a).unwrap(), Amount::new(1_000_000_000));
+    }
+}

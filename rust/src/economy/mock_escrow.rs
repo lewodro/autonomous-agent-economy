@@ -9,6 +9,7 @@ pub struct MockEscrow {
     state: EscrowState,
     deposits: BTreeMap<AgentId, PaymentReceipt>,
     payout: Option<PaymentReceipt>,
+    pending_payout: Option<PaymentIntent>,
     refunds: BTreeMap<AgentId, PaymentReceipt>,
 }
 impl MockEscrow {
@@ -63,6 +64,7 @@ impl MatchEscrow for MockEscrow {
             state: EscrowState::Open,
             deposits: BTreeMap::new(),
             payout: None,
+            pending_payout: None,
             refunds: BTreeMap::new(),
         })
     }
@@ -135,10 +137,19 @@ impl MatchEscrow for MockEscrow {
             ));
         }
         let pot = self.entry.multiply(self.participants.len() as u64)?;
-        if self.pot()? != pot || rail.get_balance(&self.account)? != pot {
-            return Err(EconomyError::UnverifiedPayment);
-        }
         let intent = self.intent(PaymentPurpose::Payout, self.account.clone(), recipient, pot)?;
+        if let Some(pending) = &self.pending_payout {
+            if pending != &intent {
+                return Err(EconomyError::Conflict);
+            }
+        } else {
+            if self.pot()? != pot || rail.get_balance(&self.account)? != pot {
+                return Err(EconomyError::UnverifiedPayment);
+            }
+            // Record the authorized operation before submission. An unknown outcome
+            // must reconcile this same intent, never choose a new payee or refund.
+            self.pending_payout = Some(intent.clone());
+        }
         let receipt = rail.settle(intent.clone())?;
         rail.verify_payment(&receipt, &intent)?;
         self.payout = Some(receipt.clone());
@@ -148,6 +159,11 @@ impl MatchEscrow for MockEscrow {
     fn refund(&mut self, rail: &mut dyn PaymentRail) -> Result<Vec<PaymentReceipt>> {
         if self.state == EscrowState::Refunded {
             return Ok(self.refunds.values().cloned().collect());
+        }
+        if self.pending_payout.is_some() {
+            return Err(EconomyError::InvalidTransition(
+                "Uncertain payout must reconcile before refund".into(),
+            ));
         }
         if !matches!(
             self.state,

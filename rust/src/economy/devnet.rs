@@ -9,6 +9,11 @@ use std::collections::BTreeMap;
 pub struct SolanaPublicKey([u8; 32]);
 impl SolanaPublicKey {
     pub fn parse(value: &str) -> Result<Self> {
+        if value.is_empty() || value.len() > 44 {
+            return Err(EconomyError::InvalidInput(
+                "Invalid Solana public key length".into(),
+            ));
+        }
         let bytes = bs58::decode(value)
             .into_vec()
             .map_err(|_| EconomyError::InvalidInput("Invalid Solana public key".into()))?;

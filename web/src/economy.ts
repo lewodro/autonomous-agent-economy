@@ -26,7 +26,7 @@ const amount=(x:unknown):x is string=>typeof x==='string'&&/^(0|[1-9]\d{0,19})$/
 export function parseEconomyEvent(value:unknown):EconomyEvent {
  if(!value||typeof value!=='object')throw Error('Invalid economy event');
  const e=value as Record<string,unknown>,p=e.projection as Partial<MatchEconomy>|undefined;
- if(e.schema_version!==1||!Number.isSafeInteger(e.seq)||Number(e.seq)<1||!id(e.match_id)||!kinds.has(String(e.type))||!p||p.match_id!==e.match_id||typeof p.simulation_start_id!=='string'||!['mock','local','devnet'].includes(String(p.payment_mode))||!states.has(String(p.state))||!['not_started','pending','completed','refunded'].includes(String(p.settlement_status))||!amount(p.pot_amount)||!amount(p.entry_amount)||!Array.isArray(p.required_agents)||p.required_agents.length<2||p.required_agents.length>20||!p.required_agents.every(id)||new Set(p.required_agents).size!==p.required_agents.length||!Array.isArray(p.funded_agents)||new Set(p.funded_agents).size!==p.funded_agents.length||!p.funded_agents.every(a=>p.required_agents!.includes(a)))throw Error('Invalid economy projection');
+ if(e.schema_version!==1||!Number.isSafeInteger(e.seq)||Number(e.seq)<0||!id(e.match_id)||!kinds.has(String(e.type))||!p||p.match_id!==e.match_id||typeof p.simulation_start_id!=='string'||!['mock','local','devnet'].includes(String(p.payment_mode))||!states.has(String(p.state))||!['not_started','pending','completed','refunded'].includes(String(p.settlement_status))||!amount(p.pot_amount)||!amount(p.entry_amount)||!Array.isArray(p.required_agents)||p.required_agents.length<2||p.required_agents.length>20||!p.required_agents.every(id)||new Set(p.required_agents).size!==p.required_agents.length||!Array.isArray(p.funded_agents)||new Set(p.funded_agents).size!==p.funded_agents.length||!p.funded_agents.every(a=>p.required_agents!.includes(a)))throw Error('Invalid economy projection');
  if('agent_id' in e&&(!id(e.agent_id)||!p.required_agents.includes(e.agent_id)))throw Error('Unknown payment agent');
  if('winner' in e&&(!id(e.winner)||!p.required_agents.includes(e.winner)))throw Error('Unknown settlement winner');
  if(['EntryRequested','EntryReceived','EntryRejected'].includes(String(e.type))&&!id(e.agent_id))throw Error('Missing payment agent');
@@ -42,7 +42,7 @@ export function reduceEconomy(previous:EconomyView|null,raw:unknown):EconomyView
  const e=parseEconomyEvent(raw);
  if(previous&&previous.match.match_id!==e.match_id)throw Error('Different economy instance; reset first');
  if(previous&&e.seq<=previous.sequence)return previous;
- if(e.seq!==(previous?.sequence??0)+1)throw Error('Economy event gap; reload snapshot');
+ if(e.seq!==(previous?.sequence??-1)+1)throw Error('Economy event gap; reload snapshot');
  const payments={...previous?.payments};
  if(e.type==='EntryRequested')payments[e.agent_id]='pending';
  if(e.type==='EntryReceived')payments[e.agent_id]='received';

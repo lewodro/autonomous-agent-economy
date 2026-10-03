@@ -41,9 +41,9 @@ impl SimulationBinding {
         if Self::from_initial(&initial)? != *self || !checked.final_state.ended {
             return Err(EconomyError::SettlementNotAuthorized);
         }
-        let winner = checked
-            .winner
-            .ok_or(EconomyError::SettlementNotAuthorized)?;
+        let Some(winner) = checked.winner else {
+            return Ok(None);
+        };
         if !checked.config.agents.iter().any(|a| a.id == winner) {
             return Err(EconomyError::SettlementNotAuthorized);
         }

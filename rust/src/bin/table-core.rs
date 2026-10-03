@@ -147,11 +147,17 @@ mod tests {
         let run = engine::start(config::default_config(2, 42)).unwrap();
         let mut runs = BTreeMap::new();
         let mut lab = None;
-        request(json!({"command":"verify","replay":run}), &mut runs).unwrap();
+        request(
+            json!({"command":"verify","replay":run}),
+            &mut runs,
+            &mut lab,
+        )
+        .unwrap();
         assert!(runs.is_empty());
         request(
             json!({"command":"import","session":"loaded","replay":run}),
             &mut runs,
+            &mut lab,
         )
         .unwrap();
         assert_eq!(runs.len(), 1);
