@@ -26,3 +26,5 @@ pub mod settlement;
 pub mod refund;
 
 pub mod signing;
+
+pub mod mock_signer;

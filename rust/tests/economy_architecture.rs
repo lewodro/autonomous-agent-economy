@@ -499,3 +499,28 @@ fn wallet_identity_contains_only_validated_public_fields() {
         identity
     );
 }
+use agent_arena_demo::economy::mock_signer::MockSigner;
+#[test]
+fn mock_signatures_are_deterministic_tamper_resistant_and_domain_separated() {
+    let signer = MockSigner::new(AgentId::new("agent-a").unwrap(), 42).unwrap();
+    let another = MockSigner::new(AgentId::new("agent-a").unwrap(), 42).unwrap();
+    let message = signer.sign_message(b"entry intent").unwrap();
+    assert_eq!(message, another.sign_message(b"entry intent").unwrap());
+    signer
+        .verify(SigningDomain::PublicMessage, b"entry intent", &message)
+        .unwrap();
+    assert!(signer
+        .verify(SigningDomain::PublicMessage, b"changed intent", &message)
+        .is_err());
+    assert!(signer
+        .verify(SigningDomain::MockTransaction, b"entry intent", &message)
+        .is_err());
+    let transaction = signer.sign_transaction(b"entry intent").unwrap();
+    assert_ne!(transaction.signature, message.signature);
+    assert_eq!(transaction.domain, SigningDomain::MockTransaction);
+    assert!(signer.sign_message(&vec![0; 16_385]).is_err());
+    let other = MockSigner::new(AgentId::new("agent-b").unwrap(), 42).unwrap();
+    assert!(other
+        .verify(SigningDomain::PublicMessage, b"entry intent", &message)
+        .is_err());
+}
