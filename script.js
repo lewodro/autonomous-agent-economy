@@ -3,6 +3,10 @@ import { SOL } from './src/policy.js';
 import { configureRun } from './src/config.js';
 import { Orchestrator, eligibility } from './src/orchestrator.js';
 import { verifyProof } from './src/rps.js';
+import { loadState, saveState } from './src/storage.js';
+import { receiveRevenue, allocateTreasury } from './src/treasury.js';
+import { toLamports } from './src/policy.js';
+import { startTournament, nextTournamentPair, scoreTournament } from './src/tournament.js';
 
 const $ = id => document.getElementById(id);
 const fmt = n => (n / SOL).toFixed(3);
@@ -12,9 +16,12 @@ let orchestrator;
 const agent = id => state.agents.find(a => a.id === id);
 const games = a => a.wins + a.losses + a.draws;
 const notice = text => { $('notice').textContent = text; };
-function save() {}
+function save() { saveState(state); }
 function connect() {
-  orchestrator = new Orchestrator(state, { onSave: save, onStage: async (stage, match) => {
+  orchestrator = new Orchestrator(state, { onSave: () => {
+    if (state.tournament?.status === 'open') scoreTournament(state, state.matches.at(-1));
+    save();
+  }, onStage: async (stage, match) => {
     phase = stage; current = match; render();
     const delay = Number($('speed').value);
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -35,6 +42,7 @@ function render() {
   $('run').disabled = state.paused;
   $('pause').textContent = state.paused ? 'Resume economy' : 'Pause economy';
   document.querySelectorAll('#new-run input,#new-run select,#new-run button').forEach(el => el.disabled = busy || watching);
+  document.querySelectorAll('#treasury-controls input,#treasury-controls button').forEach(el => el.disabled = busy || watching || state.paused);
   $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
   if (current) {
     $('match-title').textContent = `${current.id} · ${fmt(current.stake)} SOL each`;
@@ -50,6 +58,8 @@ function render() {
   const ranked = [...state.agents].sort((a, b) => sort === 'drawdown' ? a.drawdown - b.drawdown : b[sort] - a[sort]);
   $('leaderboard').innerHTML = ranked.map((a, i) => `<tr><td><button data-agent="${a.id}"><span class="rank">${i + 1}</span><img class="table-agent" src="${a.sprite}" alt="">${a.name}</button></td><td>${fmt(a.balance)}</td><td class="${a.pnl < 0 ? 'negative' : 'positive'}">${a.pnl >= 0 ? '+' : ''}${fmt(a.pnl)}<span class="tiny">${(a.pnl / a.capital * 100).toFixed(1)}% ROI</span></td><td>${a.wins} / ${a.losses} / ${a.draws}</td><td class="${eligibility(state, a).eligible ? 'positive' : 'muted'}">${eligibility(state, a).eligible ? 'READY' : 'OUT'}</td></tr>`).join('');
   renderDetail();
+  const t = state.tournament;
+  if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
   $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
 }
 function renderDetail() {
@@ -62,7 +72,12 @@ async function playOne() {
   busy = true; render();
   try {
     if (state.matches.length >= state.config.maxRounds) throw new Error('Match limit reached. Create a new run to continue.');
-    const match = await orchestrator.step(); current = match; phase = 'settle'; notice('Settlement verified · capital conserved');
+    const inTournament = state.tournament?.status === 'open';
+    const pair = inTournament ? nextTournamentPair(state) : null;
+    if (inTournament && !pair) { save(); watching = false; notice('Tournament complete. Inspect the recorded points.'); return; }
+    const match = await orchestrator.step(pair); current = match; phase = 'settle';
+    if (inTournament) { scoreTournament(state, match); save(); }
+    notice('Settlement verified · saved locally · capital conserved');
   } catch (error) { watching = false; current = state.matches.at(-1) || null; phase = current ? 'settle' : ''; notice(error.message); }
   finally { busy = false; render(); }
 }
@@ -77,7 +92,7 @@ $('pause').addEventListener('click', () => {
   // Finish an atomic in-flight settlement before applying pause to the next entry.
   watching = false; state.paused = !state.paused;
   record(state, 'EMERGENCY_PAUSE', { paused: state.paused });
-  if (!busy) save(state); render();
+  try { if (!busy) save(); } catch (error) { notice(`Could not save: ${error.message}`); } render();
 });
 $('sort').addEventListener('change', render);
 document.addEventListener('click', async event => {
@@ -110,4 +125,23 @@ $('share').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(summary); notice('Run summary copied.'); }
   catch { notice(summary); }
 });
+$('treasury-controls').innerHTML = `<form id="revenue-form" class="settings-form"><label>Simulated receipt ID<input name="receipt" value="demo-receipt-1" required></label><label>Creator revenue · SOL<input name="revenue" inputmode="decimal" value="1" required></label><button type="submit">Record receipt → allocate 30% to treasury</button></form><div class="button-row" style="margin-top:12px"><button id="allocate">Distribute bounded grants</button><button id="tournament">Start tournament</button></div><p id="tournament-status" class="muted"></p><p class="muted">Duplicate receipt IDs cannot create funds twice. Grants go to lower balances first, capped at 10% of each agent's capital per allocation. Grants never reset loss limits.</p>`;
+$('revenue-form').addEventListener('submit', event => {
+  event.preventDefault(); if (busy || watching) return;
+  try { const form = new FormData(event.target); const deposit = receiveRevenue(state, form.get('receipt'), toLamports(form.get('revenue'))); save(); render(); notice(`${fmt(deposit)} simulated SOL recorded for treasury.`); }
+  catch (error) { notice(error.message); }
+});
+$('allocate').addEventListener('click', () => {
+  if (busy || watching) return;
+  try { const grants = allocateTreasury(state, `allocation-${state.events.length + 1}`); save(); render(); notice(`${grants.length} bounded grants recorded. Trading P&L excludes grants.`); }
+  catch (error) { notice(error.message); }
+});
+$('tournament').addEventListener('click', () => {
+  if (busy || watching) return;
+  try { startTournament(state); save(); render(); notice('Tournament opened. Press Start watching or Next match.'); }
+  catch (error) { notice(error.message); }
+});
+// Loading checks hashes and reconstructs accounting before enabling gameplay.
+try { const restored = await loadState(); if (restored) { state = restored; selected = state.agents[0].id; notice('Verified saved run restored.'); } }
+catch (error) { notice(`Saved run could not be verified: ${error.message}. A fresh run is ready; the saved data remains until you start a new run.`); }
 connect(); render();
