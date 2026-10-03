@@ -44,3 +44,30 @@ test('an exhibition played before selection cannot become a tournament result', 
   assert.throws(() => scoreTournament(state, earlier), /after tournament pair selection/);
   assert.deepEqual(state, before);
 });
+
+test('retrying pair selection cannot skip an unscored game or finish early', async () => {
+  const state = configureRun({ agents: 2 });
+  startTournament(state);
+  const pair = nextTournamentPair(state);
+  const selected = structuredClone(state);
+  assert.deepEqual(nextTournamentPair(state), pair);
+  assert.deepEqual(state, selected);
+  const match = await new Orchestrator(state).step(pair);
+  const settled = structuredClone(state);
+  assert.deepEqual(nextTournamentPair(state), pair);
+  assert.deepEqual(state, settled);
+  scoreTournament(state, match);
+  assert.equal(nextTournamentPair(state), null);
+  assert.equal(state.tournament.status, 'finished');
+});
+
+test('failed transitions retain the selected tournament pair for a safe retry', async () => {
+  const state = configureRun();
+  startTournament(state);
+  const pair = nextTournamentPair(state);
+  const before = structuredClone(state);
+  await assert.rejects(new Orchestrator(state, { onStage: () => { throw new Error('Fault before settlement'); } }).step(pair), /Fault/);
+  assert.deepEqual(state, before);
+  assert.deepEqual(nextTournamentPair(state), pair);
+  assert.deepEqual(state, before);
+});

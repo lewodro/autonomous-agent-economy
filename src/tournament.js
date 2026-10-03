@@ -17,6 +17,10 @@ export function nextTournamentPair(state) {
   const t = state.tournament;
   if (!t || t.status !== 'open') return null;
   if (state.paused) throw new Error('Economy is paused');
+  const selected = state.events.findLast(e => e.type === 'TOURNAMENT_PAIR_SELECTED' && e.data.tournamentId === t.id);
+  if (selected?.data.eligible && !state.events.some(e => e.type === 'TOURNAMENT_SCORED' && e.data.tournamentId === t.id && e.seq > selected.seq)) {
+    return [...selected.data.pair];
+  }
   while (t.cursor < t.schedule.length) {
     const pair = t.schedule[t.cursor++];
     const eligible = pair.every(id => eligibility(state, state.agents.find(a => a.id === id)).eligible);
