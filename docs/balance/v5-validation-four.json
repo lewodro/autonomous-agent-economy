@@ -1,0 +1,26 @@
+{
+  "action_usage": {
+    "Challenge": 1192,
+    "Cooperate": 1911,
+    "Guard": 586,
+    "Work": 3106
+  },
+  "alliances": 103,
+  "betrayals": 51,
+  "draws": 18,
+  "eliminations": 378,
+  "matches": 120,
+  "max_turns": 23,
+  "mean_elimination_turn": 13.793650793650794,
+  "mean_turns": 15.791666666666666,
+  "min_turns": 10,
+  "positions": "rotated by seed mod 4",
+  "seats": 4,
+  "seeds": "3001..=3120",
+  "version": "last-seat-v5",
+  "wins": {
+    "aggressive": 9,
+    "conservative": 87,
+    "opportunist": 6
+  }
+}

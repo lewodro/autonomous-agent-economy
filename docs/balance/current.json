@@ -1,26 +1,26 @@
 {
   "action_usage": {
-    "Challenge": 1161,
-    "Cooperate": 1950,
-    "Guard": 569,
-    "Work": 3241
+    "Challenge": 1213,
+    "Cooperate": 1683,
+    "Guard": 477,
+    "Work": 3119
   },
-  "alliances": 110,
-  "betrayals": 61,
-  "draws": 20,
-  "eliminations": 380,
+  "alliances": 103,
+  "betrayals": 75,
+  "draws": 23,
+  "eliminations": 383,
   "matches": 120,
-  "max_turns": 24,
-  "mean_elimination_turn": 14.007894736842106,
-  "mean_turns": 16.083333333333332,
-  "min_turns": 11,
+  "max_turns": 19,
+  "mean_elimination_turn": 13.177545691906005,
+  "mean_turns": 15.183333333333334,
+  "min_turns": 10,
   "positions": "rotated by seed mod 4",
   "seats": 4,
   "seeds": "1..=120",
-  "version": "last-seat-v5",
+  "version": "last-seat-v6",
   "wins": {
     "aggressive": 12,
-    "conservative": 82,
-    "opportunist": 6
+    "conservative": 67,
+    "opportunist": 18
   }
 }

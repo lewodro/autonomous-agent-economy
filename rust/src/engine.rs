@@ -95,15 +95,7 @@ pub fn start(config: Config) -> Result<Replay, String> {
     start_version(config, VERSION)
 }
 pub fn start_version(config: Config, version: &str) -> Result<Replay, String> {
-    if ![
-        VERSION,
-        "last-seat-v4",
-        "last-seat-v3",
-        "last-seat-v2",
-        "last-seat-v1",
-    ]
-    .contains(&version)
-    {
+    if !SUPPORTED_VERSIONS.contains(&version) {
         return Err("Unsupported engine version".into());
     }
     config::validate(&config)?;
@@ -190,6 +182,7 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
             "last-seat-v3" => (2, 2, 5, 4, true),
             "last-seat-v4" => (1, 2, 4, 3, true),
             "last-seat-v5" => (2, 2, 4, 3, true),
+            "last-seat-v6" => (2, 0, 4, 3, true),
             _ => return Err("Unsupported engine version".into()),
         };
     let living: Vec<usize> = run
@@ -401,7 +394,12 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
                     Kind::GuardRaised,
                     Some(&id),
                     None,
-                    if modern {
+                    if guard_income == 0 {
+                        format!(
+                            "{} guarded instead of earning. Incoming challenges are blocked.",
+                            name(run, &id)
+                        )
+                    } else if modern {
                         format!(
                             "{} guarded and earned {} safe credits.",
                             name(run, &id),

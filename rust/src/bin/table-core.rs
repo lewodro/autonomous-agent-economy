@@ -11,6 +11,9 @@ fn request(value: Value, runs: &mut BTreeMap<String, Replay>) -> Result<Value, S
         runs.remove(&key);
         return Ok(json!({"removed":true}));
     }
+    if command == "metadata" {
+        return Ok(json!({"version":VERSION}));
+    }
     if command == "defaults" {
         let count = value["count"].as_u64().unwrap_or(4) as usize;
         if !(2..=20).contains(&count) {

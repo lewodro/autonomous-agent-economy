@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: &str = "last-seat-v5";
+pub const VERSION: &str = "last-seat-v6";
+pub const SUPPORTED_VERSIONS: [&str; 6] = [
+    "last-seat-v1",
+    "last-seat-v2",
+    "last-seat-v3",
+    "last-seat-v4",
+    "last-seat-v5",
+    VERSION,
+];
 pub const MAX_REPLAY_EVENTS: usize = 50_000;
 pub const MAX_REPLAY_BYTES: usize = 32_000_000;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

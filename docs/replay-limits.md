@@ -18,6 +18,7 @@ Debug builds remain available for normal tests and development.
 Published game rules are immutable. Version 3 archives retain the two-credit
 challenge entry, two-credit guard income, and challenge caps of five/four.
 Version 4 games use a one-credit entry, two-credit guard income, and caps of
-four/three. Current version 5 games use a two-credit entry, two-credit guard
-income, and caps of four/three. Versions 1 and 2 retain their original rules. The default version
+four/three. Version 5 games use a two-credit entry, two-credit guard
+income, and caps of four/three. Current version 6 keeps that challenge cost/caps
+but guard earns zero while still blocking all challenges. Versions 1 and 2 retain their original rules. The default version
 constant never determines the rules used to verify an older archive.

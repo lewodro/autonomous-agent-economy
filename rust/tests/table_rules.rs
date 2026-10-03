@@ -61,7 +61,14 @@ fn seeded_matches_are_byte_reproducible_and_replayable() {
 }
 #[test]
 fn guard_blocks_challenge_independent_of_initiative() {
-    for version in ["last-seat-v1", "last-seat-v2", "last-seat-v3", VERSION] {
+    for version in [
+        "last-seat-v1",
+        "last-seat-v2",
+        "last-seat-v3",
+        "last-seat-v4",
+        "last-seat-v5",
+        VERSION,
+    ] {
         for seed in 1..30 {
             let mut r = engine::start_version(config::default_config(2, seed), version).unwrap();
             let mut d = decisions(&r, Action::Guard);
@@ -71,7 +78,7 @@ fn guard_blocks_challenge_independent_of_initiative() {
             let modern = matches!(version, "last-seat-v3" | "last-seat-v4" | "last-seat-v5");
             assert_eq!(
                 r.final_state.agents[0].credits,
-                if matches!(version, "last-seat-v3" | "last-seat-v5") {
+                if matches!(version, "last-seat-v3" | "last-seat-v5" | "last-seat-v6") {
                     9
                 } else {
                     10
@@ -79,7 +86,13 @@ fn guard_blocks_challenge_independent_of_initiative() {
             );
             assert_eq!(
                 r.final_state.agents[1].credits,
-                if modern { 13 } else { 12 }
+                if modern {
+                    13
+                } else if version == "last-seat-v6" {
+                    11
+                } else {
+                    12
+                }
             );
             assert_eq!(r.final_state.agents[1].stats.blocks, 1);
         }
@@ -93,6 +106,8 @@ fn published_replay_versions_keep_their_original_challenge_caps() {
         "last-seat-v2",
         "last-seat-v3",
         "last-seat-v4",
+        "last-seat-v5",
+        "last-seat-v6",
     ] {
         let mut run = engine::start_version(config::default_config(2, 42), version).unwrap();
         let income = engine::observe(&run).income;
@@ -100,8 +115,16 @@ fn published_replay_versions_keep_their_original_challenge_caps() {
         submitted[0].action = Action::Challenge;
         submitted[0].target = Some(submitted[1].agent_id.clone());
         engine::advance(&mut run, Some(submitted)).unwrap();
-        let cost = if version == "last-seat-v3" { 2 } else { 1 };
-        let cap = if version == "last-seat-v4" { 4 } else { 5 };
+        let cost = if matches!(version, "last-seat-v3" | "last-seat-v5" | "last-seat-v6") {
+            2
+        } else {
+            1
+        };
+        let cap = if matches!(version, "last-seat-v4" | "last-seat-v5" | "last-seat-v6") {
+            4
+        } else {
+            5
+        };
         assert_eq!(run.final_state.agents[0].credits, 12 - cost + cap - 1);
         assert_eq!(run.final_state.agents[1].credits, 12 + income - cap - 1);
         assert_eq!(replay::verify(&run).unwrap(), run);

@@ -75,7 +75,7 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
             } else if richest.last_action == Some(Action::Work) && richest.credits >= 4 {
                 result.action = Action::Challenge;
                 result.target = Some(richest.id.clone());
-                result.reason = "A working rival is exposed to a five-credit challenge.".into();
+                result.reason = "A working rival is exposed; challenge their lead.".into();
             }
         }
         "cooperative" => {

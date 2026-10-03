@@ -62,7 +62,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='POST'&&route==='/api/payments/pay'){
       const data=await body(req);const receipt=payments.pay(data.challenge_id,data.payer);return json(res,200,{receipt,events:payments.events.slice(-2),mode:'mock'});
     }
-    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', version: 'last-seat-v5' });
+    if (route === '/api/health') return json(res, 200, { ok: true, engine: 'Rust', ...await core.request({command:'metadata'}) });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
       const data = await body(req);
