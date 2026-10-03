@@ -391,3 +391,60 @@ fn funded_admission_configuration_rejects_mainnet_devnet_and_invalid_deadlines()
     config.economy.mode = PaymentMode::Devnet;
     assert!(config.validate().is_err());
 }
+fn funded_config(
+    count: usize,
+    entry: &str,
+) -> agent_arena_demo::economy::host_config::FundedMatchConfig {
+    use agent_arena_demo::economy::{
+        config::EconomyConfig, fees::FeePolicy, host_config::FundedMatchConfig,
+    };
+    FundedMatchConfig{simulation:agent_arena_demo::config::default_config(count,42),economy:serde_json::from_value::<EconomyConfig>(serde_json::json!({"enabled":true,"mode":"mock","entry_amount_sol":entry,"starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"})).unwrap(),fees:FeePolicy::default(),funding_timeout_seconds:600}
+}
+#[test]
+fn authoritative_host_gates_turns_persists_funding_and_attested_settlement() {
+    use agent_arena_demo::economy::host::FundedHost;
+    let path = directory("host");
+    let mut h = FundedHost::create(&path, "host-test", funded_config(4, "0.02")).unwrap();
+    assert!(h.step(0, None).is_err());
+    h.fund("agent-1").unwrap();
+    h.fund("agent-2").unwrap();
+    drop(h);
+    let mut h = FundedHost::load(&path, "host-test").unwrap();
+    assert_eq!(h.view()["economy"]["pot_amount"], "40000000");
+    h.fund("agent-3").unwrap();
+    h.fund("agent-4").unwrap();
+    while !h.replay().final_state.ended {
+        let turn = h.replay().final_state.turn;
+        h.step(turn, None).unwrap();
+    }
+    let first = h.view();
+    assert_eq!(first["economy"]["state"], "settled");
+    assert!(first["attestation"]["signature"].is_string());
+    drop(h);
+    let mut h = FundedHost::load(&path, "host-test").unwrap();
+    let second = h.finalize().unwrap();
+    assert_eq!(second["settlement"], first["settlement"]);
+    assert_eq!(second["wallets"], first["wallets"]);
+    assert_eq!(second["operations"].as_array().unwrap().len(), 5);
+    drop(h);
+    std::fs::remove_dir_all(path).unwrap();
+}
+#[test]
+fn partial_cancellation_and_refunds_survive_host_restart() {
+    use agent_arena_demo::economy::{host::FundedHost, refund::RefundReason};
+    let path = directory("cancel-host");
+    let mut h = FundedHost::create(&path, "cancel", funded_config(4, "0.02")).unwrap();
+    h.fund("agent-1").unwrap();
+    h.fund("agent-2").unwrap();
+    let first = h.cancel(RefundReason::CancelledBeforeStart).unwrap();
+    assert_eq!(first["economy"]["state"], "refunded");
+    assert_eq!(h.replay().final_state.turn, 0);
+    drop(h);
+    let mut h = FundedHost::load(&path, "cancel").unwrap();
+    let again = h.cancel(RefundReason::CancelledBeforeStart).unwrap();
+    assert_eq!(first["wallets"], again["wallets"]);
+    assert_eq!(again["operations"].as_array().unwrap().len(), 4);
+    assert!(h.step(0, None).is_err());
+    drop(h);
+    std::fs::remove_dir_all(path).unwrap();
+}

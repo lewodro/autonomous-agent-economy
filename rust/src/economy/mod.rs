@@ -52,3 +52,6 @@ pub mod host_config;
 pub mod local_rail;
 pub mod local_signer;
 pub mod local_transaction;
+
+pub mod host;
+pub mod host_factory;
