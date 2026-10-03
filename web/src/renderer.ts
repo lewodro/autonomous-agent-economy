@@ -42,10 +42,10 @@ export class Renderer implements GameRenderer {
     for(let y=215;y<346;y+=32){this.rect(303,y,354,2,'#98764c');this.rect(380+(y%3)*16,y,2,30,'#a37d50');}
     this.rect(294,352,24,42,'#5d4739');this.rect(642,352,24,42,'#5d4739');
     // Small candles; no decorative dashboard chrome.
-    for(const x of [88,872]){this.rect(x-11,263,22,6,'#252a2a');this.rect(x-4,242,8,21,'#d2c19b');this.rect(x-3,230+(Math.floor(time/800)%2),6,10,'#e9bf71');this.rect(x-1,230,2,6,'#ffdea0');}
+    for(const x of [88,872]){this.rect(x-11,263,22,6,'#252a2a');this.rect(x-4,242,8,21,'#d2c19b');this.rect(x-3,230+(this.reducedMotion?0:Math.floor(time/800)%2),6,10,'#e9bf71');this.rect(x-1,230,2,6,'#ffdea0');}
     if(!this.state||!this.config){this.text('PULLING UP THE CHAIRS…',480,280,18);return;}
     const state=this.state,config=this.config,n=state.agents.length;
-    this.positions=n===2?[{x:208,y:270},{x:752,y:270}]:n===4?[{x:224,y:144},{x:736,y:144},{x:736,y:420},{x:224,y:420}]:state.agents.map((_,i)=>({x:480+350*Math.cos(-Math.PI/2+i*2*Math.PI/n),y:278+180*Math.sin(-Math.PI/2+i*2*Math.PI/n)}));
+    this.positions=n===2?[{x:208,y:270},{x:752,y:270}]:n===4?[{x:224,y:144},{x:736,y:144},{x:736,y:420},{x:224,y:420}]:n>8?state.agents.map((_,i)=>{const columns=Math.ceil(n/2);return {x:88+(i%columns)*784/(columns-1),y:i<columns?126:420};}):state.agents.map((_,i)=>({x:480+350*Math.cos(-Math.PI/2+i*2*Math.PI/n),y:278+180*Math.sin(-Math.PI/2+i*2*Math.PI/n)}));
     for(const pair of state.alliances){const a=this.positions[state.agents.findIndex(a=>a.id===pair[0])],b=this.positions[state.agents.findIndex(a=>a.id===pair[1])];if(a&&b){c.strokeStyle='#b6bb7e';c.lineWidth=2;c.setLineDash([5,8]);c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();c.setLineDash([]);}}
     this.text(state.ended?'THE LAST SEAT':'LAST SEAT',480,237,16,'#4c3e31');
     if(state.ended){const winner=config.agents.find(a=>a.id===state.winner);this.text(winner?winner.name.toUpperCase():'NO SOLE SURVIVOR',480,274,22,'#3b3a2d');this.text(winner?'SURVIVES':'DRAW',480,303,14,'#514738');}
@@ -81,5 +81,5 @@ export class Renderer implements GameRenderer {
     for(const popup of frame.popups){const p=this.positions[state.agents.findIndex(a=>a.id===popup.id)];if(p){c.globalAlpha=1-popup.progress;this.text(`${popup.amount>0?'+':''}${popup.amount}`,p.x+45,p.y-16-popup.progress*35,19,popup.amount>0?'#d0e5a0':'#edaa8e');c.globalAlpha=1;}}
     c.restore();
   }
-  private displayCredits(id:string,value:number){const before=this.resourceDisplay.get(id)??value;const next=this.reducedMotion?value:before+(value-before)*.2;this.resourceDisplay.set(id,next);return next;}
+  private displayCredits(id:string,value:number){const before=this.resourceDisplay.get(id)??value;const next=this.reducedMotion?value:this.paused?before:before+(value-before)*.2;this.resourceDisplay.set(id,next);return next;}
 }

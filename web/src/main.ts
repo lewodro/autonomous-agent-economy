@@ -45,7 +45,7 @@ function inspect(profile:AgentConfig) {
   const wallet=$('wallet-demo');if(wallet)wallet.onclick=async()=>{try{const result=await api<{wallet:{address:string;balance:number};events:unknown[]}>('/api/wallet-demo',{});notice(`Mock wallet ${result.wallet.address}: ${result.wallet.balance} lamports. ${result.events.length} activity events. Credits are separate.`);}catch(error){notice((error as Error).message);}};
 }
 function download(content:string,name:string,type='application/json') {const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function create(config:Config) {player.pause();const result=await api<MatchResponse>('/api/matches',{config});selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);try{localStorage.setItem('last-seat-replay-v1',JSON.stringify(result.replay));}catch{}notice(`Seed ${config.seed} · ${config.agents.length} agents · Rust core. Ready.`);}
+async function create(config:Config) {player.pause();const result=await api<MatchResponse>('/api/matches',{config});selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);try{localStorage.setItem('last-seat-replay-v1',JSON.stringify(result.replay));}catch{}notice(`Seed ${result.replay.config.seed} · ${result.replay.config.agents.length} agents · Rust core. Ready.`);}
 $('play').onclick=()=>{if(player.playing)player.pause();else player.resume();};
 $('step').onclick=()=>{void player.step();};
 $('replay').onclick=()=>{player.seek(0);notice('Replaying recorded events. Providers and rules are not called for recorded turns.');};
