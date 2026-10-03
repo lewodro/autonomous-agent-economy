@@ -14,3 +14,8 @@ Keep local/private model endpoints explicit in server configuration. Public agen
 prompts, configs and replays must never contain credentials. Failed permission
 checks fall back to a local action without consuming inference budget or making
 a network request.
+
+Inference reservations count each UTF-8 request byte plus the configured maximum
+output tokens. This deliberately overestimates typical context token counts;
+failed requests and retries still consume the reservation. Invalid numeric costs
+or limits cannot reduce the budget. These are local limits, not billing receipts.

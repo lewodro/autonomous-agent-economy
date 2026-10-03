@@ -1,8 +1,12 @@
 /** Provider boundary: observe immutable public state, decide a structured action,
  * explain with a public reason. Adapters have no state mutation or wallet access. */
 export class InferenceBudget {
-  constructor({requests=200,tokens=128000}={}) { this.limit={requests,tokens};this.requests=0;this.tokens=0;this.agents=new Map(); }
+  constructor({requests=200,tokens=128000}={}) {
+    if (![requests,tokens].every(v=>Number.isSafeInteger(v)&&v>=0)) throw new Error('Invalid inference budget limits');
+    this.limit={requests,tokens};this.requests=0;this.tokens=0;this.agents=new Map();
+  }
   reserve(id,settings,cost) {
+    if (!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(settings.max_requests)||settings.max_requests<0) throw new Error('Invalid inference budget reservation');
     const used=this.agents.get(id)||0;
     if(this.requests>=this.limit.requests||used>=settings.max_requests||this.tokens+cost>this.limit.tokens)throw new Error('Inference budget exhausted');
     this.requests++;this.tokens+=cost;this.agents.set(id,used+1);
@@ -49,7 +53,7 @@ export class HttpModelAdapter {
     const credential=compatible?process.env[o.api_key_env]:process.env.AGENT_HTTP_TOKEN;
     const payload=compatible?{model:p.model,messages,max_tokens:o.max_tokens,temperature:0,response_format:{type:'json_object'}}:{agent:{id:p.id,model:p.model,prompt:p.prompt,personality:p.personality},observation:this.observe(observation),response_schema:{action:['work','guard','challenge','cooperate'],target:'agent ID or null',reason:'brief public explanation'}};
     // Conservative context+output reservation; failed requests/retries count too.
-    const cost=Math.ceil(JSON.stringify(payload).length/4)+o.max_tokens;
+    const cost=new TextEncoder().encode(JSON.stringify(payload)).byteLength+o.max_tokens;
     for(let attempt=0;attempt<=o.retries;attempt++){
       try{
         this.budget.reserve(p.id,o,cost);

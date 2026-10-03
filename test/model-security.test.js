@@ -48,3 +48,20 @@ test('approved model requests disable automatic redirects and use the server cre
     for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
 });
+
+test('invalid inference reservations cannot reduce or corrupt the budget', () => {
+  for (const value of [-1, NaN, Infinity, 0.5, '200']) {
+    assert.throws(() => new InferenceBudget({ requests: value }), /Invalid inference budget/);
+    assert.throws(() => new InferenceBudget({ tokens: value }), /Invalid inference budget/);
+    const budget = new InferenceBudget();
+    assert.throws(() => budget.reserve('a', { max_requests: 10 }, value), /Invalid inference budget/);
+    assert.throws(() => budget.reserve('a', { max_requests: value }, 1), /Invalid inference budget/);
+    assert.equal(budget.requests, 0);
+    assert.equal(budget.tokens, 0);
+  }
+  const budget = new InferenceBudget({ requests: 2, tokens: 5 });
+  budget.reserve('a', { max_requests: 2 }, 5);
+  assert.throws(() => budget.reserve('a', { max_requests: 2 }, 1), /exhausted/);
+  assert.equal(budget.requests, 1);
+  assert.equal(budget.tokens, 5);
+});
