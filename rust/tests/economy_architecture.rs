@@ -524,3 +524,39 @@ fn mock_signatures_are_deterministic_tamper_resistant_and_domain_separated() {
         .verify(SigningDomain::PublicMessage, b"entry intent", &message)
         .is_err());
 }
+use agent_arena_demo::economy::devnet::*;
+#[test]
+fn devnet_foundation_rejects_mainnet_bad_keys_rpc_data_and_payment_submission() {
+    let mut cfg = DevnetRailConfig::default();
+    cfg.mode = PaymentMode::Mainnet;
+    assert_eq!(
+        cfg.validate().unwrap_err(),
+        EconomyError::MainnetNotImplemented
+    );
+    cfg = DevnetRailConfig::default();
+    cfg.rpc_url = "https://api.mainnet-beta.solana.com".into();
+    assert!(cfg.validate().is_err());
+    assert!(SolanaPublicKey::parse("not-a-key").is_err());
+    let key = SolanaPublicKey::parse(&bs58::encode([7; 32]).into_string()).unwrap();
+    assert_eq!(SolanaPublicKey::parse(&key.address()).unwrap(), key);
+    for value in [
+        serde_json::json!({"value":1}),
+        serde_json::json!({"context":{"slot":1},"value":-1}),
+        serde_json::json!({"context":{"slot":1},"value":"1"}),
+    ] {
+        assert!(decode_balance(value).is_err());
+    }
+    assert_eq!(
+        decode_balance(serde_json::json!({"context":{"slot":1},"value":123})).unwrap(),
+        Amount::new(123)
+    );
+    let mut rail = SolanaDevnetRail::new(
+        DevnetRailConfig::default(),
+        [(AccountId::new("agent-a").unwrap(), key)].into(),
+    )
+    .unwrap();
+    assert!(matches!(
+        rail.prepare_payment(entry_intent()),
+        Err(EconomyError::NotImplemented(_))
+    ));
+}
