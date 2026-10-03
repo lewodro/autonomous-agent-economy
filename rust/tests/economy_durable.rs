@@ -367,3 +367,27 @@ fn fee_policy_separates_structural_validation_from_supported_zero_fee_execution(
     .validate()
     .is_err());
 }
+#[test]
+fn funded_admission_configuration_rejects_mainnet_devnet_and_invalid_deadlines() {
+    use agent_arena_demo::economy::{
+        config::EconomyConfig, fees::FeePolicy, host_config::FundedMatchConfig,
+    };
+    let economy:EconomyConfig=serde_json::from_value(serde_json::json!({"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"})).unwrap();
+    let mut config = FundedMatchConfig {
+        simulation: agent_arena_demo::config::default_config(4, 42),
+        economy,
+        fees: FeePolicy::default(),
+        funding_timeout_seconds: 600,
+    };
+    config.validate().unwrap();
+    config.funding_timeout_seconds = 0;
+    assert!(config.validate().is_err());
+    config.funding_timeout_seconds = 600;
+    config.economy.mode = PaymentMode::Mainnet;
+    assert_eq!(
+        config.validate().unwrap_err(),
+        EconomyError::MainnetNotImplemented
+    );
+    config.economy.mode = PaymentMode::Devnet;
+    assert!(config.validate().is_err());
+}
