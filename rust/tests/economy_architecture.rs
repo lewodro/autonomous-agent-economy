@@ -226,3 +226,18 @@ fn concurrent_preparations_recheck_reserves_at_submission() {
     assert!(rail.submit_payment(&b).is_err());
     assert_eq!(rail.total().unwrap(), Amount::new(1_000_000_000));
 }
+use agent_arena_demo::economy::escrow::*;
+#[test]
+fn escrow_status_is_public_and_chain_independent() {
+    let view = EscrowView {
+        match_id: RunId::new("eco-one").unwrap(),
+        account: AccountId::new("escrow-one").unwrap(),
+        state: EscrowState::Open,
+        deposits: Default::default(),
+        pot_amount: Amount::ZERO,
+    };
+    assert_eq!(
+        serde_json::from_value::<EscrowView>(serde_json::to_value(&view).unwrap()).unwrap(),
+        view
+    );
+}
