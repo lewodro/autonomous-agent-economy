@@ -54,4 +54,5 @@ pub mod local_signer;
 pub mod local_transaction;
 
 pub mod host;
+pub mod host_api;
 pub mod host_factory;

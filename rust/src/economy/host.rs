@@ -73,8 +73,13 @@ impl FundedHost {
             {
                 let s = e.file_name().to_string_lossy().to_string();
                 OperationId::new(&s)?;
-                let h = Self::load(root, &s)?;
-                sessions.push(h.snapshot.session.as_str().into());
+                let repo = JsonRepository::open(e.path())?;
+                let complete = repo.read::<HostSnapshot>("host")?.is_some();
+                drop(repo);
+                if complete {
+                    let h = Self::load(root, &s)?;
+                    sessions.push(h.snapshot.session.as_str().into());
+                }
             }
         }
         sessions.sort();
@@ -106,7 +111,11 @@ impl FundedHost {
                 self.snapshot.economy.escrow.status().unwrap().account,
             ));
         for id in ids {
-            let result = self.snapshot.economy.rail.get_balance(&id);
+            let result = if rpc_ready {
+                self.snapshot.economy.rail.get_balance(&id)
+            } else {
+                Err(EconomyError::RpcUnavailable("RPC unavailable".into()))
+            };
             if result.is_err() {
                 rpc_ready = false;
             }
@@ -264,6 +273,18 @@ impl FundedHost {
         }
         if self.snapshot.cancellation.is_some_and(|r| r != reason) {
             return Err(EconomyError::Conflict);
+        }
+        let state = self.snapshot.economy.view().state;
+        let draw = reason == RefundReason::NoWinnerFinished
+            && self.snapshot.simulation.final_state.ended
+            && self.snapshot.simulation.winner.is_none()
+            && self.snapshot.attestation.is_some();
+        if !matches!(state, EconomyState::RefundPending | EconomyState::Refunded)
+            && !reason.allowed(state, draw)
+        {
+            return Err(EconomyError::InvalidTransition(
+                "Cancellation is not authorized for this phase".into(),
+            ));
         }
         self.snapshot.cancellation = Some(reason);
         self.save()?;

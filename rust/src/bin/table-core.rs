@@ -10,6 +10,21 @@ fn request(
     lab: &mut Option<agent_arena_demo::economy::lab::EconomyLab>,
 ) -> Result<Value, String> {
     let command = value["command"].as_str().ok_or("command required")?;
+    if command == "funded-host" {
+        return agent_arena_demo::economy::host_api::request(&value)
+            .map_err(|e| serde_json::to_string(&e).unwrap());
+    }
+    if matches!(command, "get" | "import" | "observe" | "decide" | "step")
+        && value["session"].as_str().is_some_and(|s| {
+            agent_arena_demo::economy::host_api::exists(
+                &agent_arena_demo::economy::host_api::root(),
+                s,
+            )
+        })
+    {
+        return agent_arena_demo::economy::host_api::game(&value)
+            .map_err(|e| serde_json::to_string(&e).unwrap());
+    }
     if command == "economy-lab" {
         if std::env::var("ECONOMY_LAB").as_deref() != Ok("1") {
             return Err("Economy lab disabled".into());

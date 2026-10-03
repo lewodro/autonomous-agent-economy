@@ -448,3 +448,18 @@ fn partial_cancellation_and_refunds_survive_host_restart() {
     drop(h);
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn rejected_cancellation_does_not_poison_later_completion() {
+    use agent_arena_demo::economy::{host::FundedHost, refund::RefundReason};
+    let path = directory("cancel-running");
+    let mut h = FundedHost::create(&path, "running", funded_config(2, "0.05")).unwrap();
+    h.fund("agent-1").unwrap();
+    h.fund("agent-2").unwrap();
+    assert!(h.cancel(RefundReason::CancelledBeforeStart).is_err());
+    while !h.replay().final_state.ended {
+        h.step(h.replay().final_state.turn, None).unwrap();
+    }
+    assert_eq!(h.view()["economy"]["state"], "settled");
+    drop(h);
+    std::fs::remove_dir_all(path).unwrap();
+}
