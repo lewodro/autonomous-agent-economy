@@ -1,0 +1,14 @@
+{
+  "agents": 4,
+  "seed": 9,
+  "max_turns": 40,
+  "instance": "mock-005",
+  "economy": {
+    "enabled": true,
+    "mode": "mock",
+    "entry_amount_sol": "0.05",
+    "starting_balance_sol": "1.0",
+    "maximum_entry_sol": "0.05",
+    "minimum_reserve_sol": "0.005"
+  }
+}

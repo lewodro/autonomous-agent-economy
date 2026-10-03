@@ -560,3 +560,24 @@ fn devnet_foundation_rejects_mainnet_bad_keys_rpc_data_and_payment_submission() 
         Err(EconomyError::NotImplemented(_))
     ));
 }
+use agent_arena_demo::economy::scenario::EconomyScenario;
+#[test]
+fn sample_economy_scenarios_validate_without_paid_inference_or_wallet_secrets() {
+    for text in [
+        include_str!("../../examples/economy/free.json"),
+        include_str!("../../examples/economy/mock-0.02.json"),
+        include_str!("../../examples/economy/mock-0.05.json"),
+    ] {
+        let scenario: EconomyScenario = serde_json::from_str(text).unwrap();
+        let initial = scenario.initial().unwrap();
+        assert_eq!(initial.config.agents.len(), 4);
+        assert!(initial.config.agents.iter().all(|a| a.provider == "mock"));
+    }
+    let mut scenario: EconomyScenario =
+        serde_json::from_str(include_str!("../../examples/economy/mock-0.02.json")).unwrap();
+    scenario.agents = 21;
+    assert!(scenario.initial().is_err());
+    scenario.agents = 4;
+    scenario.economy.mode = PaymentMode::Mainnet;
+    assert!(scenario.initial().is_err());
+}
