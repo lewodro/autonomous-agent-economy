@@ -1,3 +1,4 @@
+import {FundedRuntime} from './service/funded-runtime.js';
 import {resolveConfig} from './service/config.js';
 import {MachinePayments} from './service/payments.js';
 import http from 'node:http';
@@ -16,6 +17,7 @@ const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matche
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
+const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -58,6 +60,16 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
         return res.end(await readFile(path.join(root,'labs/economy.html')));
       }
+      return json(res,405,{error:'Method not allowed'});
+    }
+    if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
+    if(req.method==='POST'&&route==='/api/funded-matches'){
+      const data=await body(req);return json(res,201,await funded.create(await resolveConfig(core,data.config),data));
+    }
+    const economyRoute=route.match(/^\/api\/funded-matches\/([a-f0-9-]{36})(?:\/(fund|fund-all|cancel|settle|reconcile))?$/);
+    if(economyRoute){
+      if(req.method==='GET'&&!economyRoute[2])return json(res,200,await funded.command(economyRoute[1],'get'));
+      if(req.method==='POST'&&economyRoute[2])return json(res,200,await funded.act(economyRoute[1],economyRoute[2],await body(req)));
       return json(res,405,{error:'Method not allowed'});
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
@@ -117,9 +129,10 @@ const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(route), target = path.resolve(root, `.${pathname === '/' ? '/index.html' : pathname === '/rps' ? '/legacy/index.html' : pathname}`), relative = path.relative(root, target);
     if (relative.startsWith('..') || !/^(index\.html|styles\.css|legacy\/(index\.html|styles\.css|script\.js)|src\/[\w-]+\.js|web\/dist\/[\w-]+\.js|assets\/sprites-agent\/[\w-]+\.png)$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
-  } catch (error) { json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message }); }
+  } catch (error) { let detail;try{detail=JSON.parse(error.message);}catch{}
+    json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message, ...(detail?.code?{code:detail.code}: {}) }); }
 });
-try{await runtime.restore(core,sessions);}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await runtime.restore(core,sessions);await funded.restore();funded.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 server.listen(Number(process.env.PORT || 3000), '127.0.0.1', () => console.log(`Last Seat · Rust core · http://localhost:${server.address().port}`));
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { liveEvents.close();core.stop(); server.close(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { funded.close();liveEvents.close();core.stop(); server.close(); process.exit(0); });
 server.on('error', error => { console.error(error.message); core.stop(); process.exit(1); });

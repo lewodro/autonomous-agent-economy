@@ -6,7 +6,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 export class Core {
   constructor({ worker } = {}) {
     this.pending = []; this.closed = false;
-    this.worker = worker ?? spawn(path.join(root, 'rust/target/debug/table-core'), ['--serve'], { cwd: root, stdio: ['pipe', 'pipe', 'inherit'] });
+    this.worker = worker ?? spawn(path.join(root, 'rust/target/debug/table-core'), ['--serve'], { cwd: root, env: {...process.env,ECONOMY_DIR:process.env.ECONOMY_DIR||path.join(process.env.MATCHES_DIR||path.join(root,'matches'),'economy')}, stdio: ['pipe', 'pipe', 'inherit'] });
     readline.createInterface({ input: this.worker.stdout }).on('line', line => {
       const item = this.pending.shift(); if (!item) return;
       try { const value = JSON.parse(line); value.ok ? item.resolve(value.result) : item.reject(new Error(value.error)); }
