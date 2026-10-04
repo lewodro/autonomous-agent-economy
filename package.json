@@ -27,7 +27,9 @@
     "test:browser:economy": "node scripts/economy-browser-smoke.js",
     "solana:local": "node scripts/start-local-validator.js",
     "demo:funded-local": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo --",
-    "economy:reconcile": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo -- --reconcile"
+    "economy:reconcile": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo -- --reconcile",
+    "doctor": "node scripts/doctor.js",
+    "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --"
   },
   "engines": {
     "node": ">=22"
