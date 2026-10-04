@@ -10,13 +10,16 @@ playwright-report/
 /artifacts/
 *.keypair.json
 
+# Local agent instructions
+AGENTS.md
+agents.md
+CLAUDE.md
+
 /web/dist/
 /matches/
 *.wallet.bin
 
 /match.json
-
-AGENTS.md
 
 /economy-data/
 /validator-ledger/
