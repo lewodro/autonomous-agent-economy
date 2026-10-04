@@ -83,6 +83,7 @@
 <span>VS</span>
 <b>?</b>
 </div>
+<div id="ttt-board" class="ttt-board" aria-label="Tic-tac-toe board" hidden></div>
 <div id="phases" class="phases">
 <span data-phase="evaluate">EVALUATE</span>
 <span data-phase="commit">COMMIT</span>
@@ -95,6 +96,11 @@
 <button id="step">Next match →</button>
 <button id="pause">Pause economy</button>
 </div>
+<label class="speed-label">Next game <select id="game-type">
+<option value="mixed">Mixed · RPS + tic-tac-toe</option>
+<option value="rps">Rock · Paper · Scissors</option>
+<option value="tictactoe">Tic-tac-toe</option>
+</select></label>
 <label class="speed-label">Playback <select id="speed">
 <option value="650">Normal</option>
 <option value="160">Fast</option>

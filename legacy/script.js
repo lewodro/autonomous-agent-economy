@@ -3,6 +3,7 @@ import { SOL } from '../src/policy.js';
 import { configureRun } from '../src/config.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { verifyProof } from '../src/rps.js';
+import { verifyTicTacToeProof } from '../src/tictactoe.js';
 import { loadState, saveState } from '../src/storage.js';
 import { receiveRevenue, allocateTreasury } from '../src/treasury.js';
 import { toLamports } from '../src/policy.js';
@@ -45,27 +46,32 @@ function render() {
   document.querySelectorAll('#treasury-controls input,#treasury-controls button').forEach(el => el.disabled = busy || watching || state.paused);
   $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="/${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
   if (current) {
-    $('match-title').textContent = `${current.id} · ${fmt(current.stake)} SOL each`;
-    $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="/${agent(id).sprite}" alt="">${agent(id).name}<b>${['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
-    $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both stakes returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} SOL pot settled.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Stakes held in escrow.';
+    const ttt = current.type === 'tictactoe';
+    $('match-title').textContent = `${current.id} · ${ttt ? 'TIC-TAC-TOE' : 'RPS'} · ${fmt(current.stake)} simulated SOL each`;
+    $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="/${agent(id).sprite}" alt="">${agent(id).name}<b>${ttt ? i ? 'O' : 'X' : ['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
+    $('ttt-board').hidden = !ttt;
+    if (ttt) $('ttt-board').innerHTML = current.board.map(cell => `<span>${cell === 'a' ? 'X' : cell === 'b' ? 'O' : '·'}</span>`).join('');
+    $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both simulated stakes returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} simulated SOL pot settled.` : ttt ? `Move ${current.moves.length + 1} · ${agent(current.players[current.moves.length % 2]).name} to play.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Stakes held in escrow.';
   } else {
     $('match-title').textContent = 'Waiting for rivals';
     $('duel').innerHTML = '<b>?</b><span>VS</span><b>?</b>';
     $('match-result').textContent = 'Moves stay hidden until both commitments are locked.';
+    $('ttt-board').hidden = true;
   }
-  document.querySelectorAll('[data-phase]').forEach(el => el.classList.toggle('active', el.dataset.phase === phase));
+  const tttPhases = current?.type === 'tictactoe' ? ['evaluate', 'play', 'verify', 'settle'] : ['evaluate', 'commit', 'reveal', 'settle'];
+  document.querySelectorAll('[data-phase]').forEach((el, i) => { el.dataset.phase = tttPhases[i]; el.textContent = tttPhases[i].toUpperCase(); el.classList.toggle('active', el.dataset.phase === phase); });
   const sort = $('sort').value;
   const ranked = [...state.agents].sort((a, b) => sort === 'drawdown' ? a.drawdown - b.drawdown : b[sort] - a[sort]);
   $('leaderboard').innerHTML = ranked.map((a, i) => `<tr><td><button data-agent="${a.id}"><span class="rank">${i + 1}</span><img class="table-agent" src="/${a.sprite}" alt="">${a.name}</button></td><td>${fmt(a.balance)}</td><td class="${a.pnl < 0 ? 'negative' : 'positive'}">${a.pnl >= 0 ? '+' : ''}${fmt(a.pnl)}<span class="tiny">${(a.pnl / a.capital * 100).toFixed(1)}% ROI</span></td><td>${a.wins} / ${a.losses} / ${a.draws}</td><td class="${eligibility(state, a).eligible ? 'positive' : 'muted'}">${eligibility(state, a).eligible ? 'READY' : 'OUT'}</td></tr>`).join('');
   renderDetail();
   const t = state.tournament;
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
-  $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
+  $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} simulated SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
 }
 function renderDetail() {
   const a = agent(selected) || state.agents[0]; selected = a.id;
   const count = games(a);
-  $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX DRAWDOWN</dt><dd>${fmt(a.drawdown)} SOL</dd></div><div><dt>AVERAGE STAKE</dt><dd>${fmt(count ? a.staked / count : 0)} SOL</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max stake ${fmt(a.policy.maxStake)} SOL · reserve ${fmt(a.policy.reserve)} SOL · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)} SOL.</p><h3>What this agent learns</h3><p class="muted">Opponent move frequencies inform counter-moves. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} SOL realized</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
+  $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX DRAWDOWN</dt><dd>${fmt(a.drawdown)} SOL</dd></div><div><dt>AVERAGE STAKE</dt><dd>${fmt(count ? a.staked / count : 0)} SOL</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max stake ${fmt(a.policy.maxStake)} SOL · reserve ${fmt(a.policy.reserve)} SOL · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)} SOL.</p><h3>What this agent learns</h3><p class="muted">RPS move frequencies inform counter-moves; tic-tac-toe records board outcomes. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} simulated SOL</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
 }
 async function playOne() {
   if (busy) return;
@@ -75,9 +81,9 @@ async function playOne() {
     const inTournament = state.tournament?.status === 'open';
     const pair = inTournament ? nextTournamentPair(state) : null;
     if (inTournament && !pair) { save(); watching = false; notice('Tournament complete. Inspect the recorded points.'); return; }
-    const match = await orchestrator.step(pair); current = match; phase = 'settle';
+    const match = await orchestrator.step(pair, $('game-type').value); current = match; phase = 'settle';
     if (inTournament) { scoreTournament(state, match); save(); }
-    notice('Settlement verified · saved locally · capital conserved');
+    notice('Simulated settlement verified · saved locally · capital conserved');
   } catch (error) { watching = false; current = state.matches.at(-1) || null; phase = current ? 'settle' : ''; notice(error.message); }
   finally { busy = false; render(); }
 }
@@ -102,9 +108,9 @@ document.addEventListener('click', async event => {
   if (target.dataset.match && !busy) {
     const match = state.matches.find(m => m.id === target.dataset.match);
     if (!match || match.status !== 'settled') return;
-    const valid = await verifyProof(match);
+    const valid = match.type === 'tictactoe' ? verifyTicTacToeProof(match) : await verifyProof(match);
     current = match; phase = 'settle'; render(); $('proof').hidden = false;
-    $('proof').innerHTML = `<p class="${valid ? 'positive' : 'negative'}">${esc(match.id)} · ${valid ? 'SHA-256 reveals and deterministic result verified' : 'Verification failed'}</p>${match.players.map(id => `<p>${agent(id).name}: ${esc(match.reveals[id].move)} · payout ${fmt(match.payouts[id])} SOL</p>`).join('')}<details><summary>Inspect complete proof</summary><pre>${esc(JSON.stringify(match, null, 2))}</pre></details>`;
+    $('proof').innerHTML = `<p class="${valid ? 'positive' : 'negative'}">${esc(match.id)} · ${valid ? match.type === 'tictactoe' ? 'Board and deterministic result verified' : 'SHA-256 reveals and deterministic result verified' : 'Verification failed'}</p>${match.players.map(id => `<p>${agent(id).name}: ${esc(match.type === 'tictactoe' ? `${match.moves.filter(m => m.agentId === id).length} moves` : match.reveals[id].move)} · payout ${fmt(match.payouts[id])} simulated SOL</p>`).join('')}<details><summary>Inspect complete proof</summary><pre>${esc(JSON.stringify(match, null, 2))}</pre></details>`;
   }
 });
 $('new-run').addEventListener('submit', event => {
@@ -121,7 +127,7 @@ $('export').addEventListener('click', () => {
 });
 $('share').addEventListener('click', async () => {
   const top = [...state.agents].sort((a, b) => b.pnl - a.pnl)[0];
-  const summary = `I made ${state.agents.length} pixel agents fight in Rock Paper Scissors. Seed ${state.seed}, ${state.matches.filter(m => m.status === 'settled').length} settled matches, ${state.agents.filter(a => eligibility(state, a).eligible).length} still eligible. ${top.name} leads by P&L (${fmt(top.pnl)} simulated SOL). Run yours: https://github.com/lewodro/autonomous-agent-economy`;
+  const summary = `I made ${state.agents.length} pixel agents compete in RPS and tic-tac-toe. Seed ${state.seed}, ${state.matches.filter(m => m.status === 'settled').length} settled matches, ${state.agents.filter(a => eligibility(state, a).eligible).length} still eligible. ${top.name} leads by P&L (${fmt(top.pnl)} simulated SOL). Run yours: https://github.com/lewodro/autonomous-agent-economy`;
   try { await navigator.clipboard.writeText(summary); notice('Run summary copied.'); }
   catch { notice(summary); }
 });

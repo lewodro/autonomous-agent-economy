@@ -323,6 +323,25 @@ h2 {
   font:12px var(--mono);
   color:var(--muted)
 }
+.ttt-board {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:4px;
+  width:min(180px,100%);
+  margin:0 auto 12px;
+  border:2px solid #667c63;
+  padding:4px;
+  background:#111a20;
+}
+.ttt-board[hidden] { display:none; }
+.ttt-board span {
+  display:grid;
+  place-items:center;
+  aspect-ratio:1;
+  background:#27392d;
+  color:var(--gold);
+  font:bold 24px var(--mono);
+}
 .duel>b {
   font-size:60px;
   color:#3b4a51

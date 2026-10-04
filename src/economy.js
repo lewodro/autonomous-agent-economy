@@ -1,5 +1,6 @@
 import { SOL, amount, authorize } from './policy.js';
 import { resolve, commitment } from './rps.js';
+import { playCell, verifyTicTacToeProof } from './tictactoe.js';
 
 export const PROFILES = [
   ['founder', 'Founder', 'Balanced pioneer'], ['trader', 'Trader', 'Pattern trader'],
@@ -32,19 +33,25 @@ export function createState(count = 20) {
   record(state, 'FUNDS_RECEIVED', { source: 'simulation-genesis', amount: state.externalCapital, agents: count });
   return state;
 }
-export function opportunity(state, players) {
+export function opportunity(state, players, gameType = 'rps') {
+  if (gameType === 'tictactoe') return { id: `game-${state.nextMatch}`, type: 'tictactoe', provider: 'simulation:tictactoe', participants: players,
+    stake: state.config.stake, rules: 'tictactoe-v1', responseSchema: 'ENTER_GAME', settlement: 'verified-board-result', capabilities: ['sequential-public-moves'] };
+  if (gameType !== 'rps') throw new Error('Unknown game type');
   return { id: `game-${state.nextMatch}`, type: 'rps', provider: 'simulation:rps', participants: players,
     stake: state.config.stake, rules: 'rps-v1', responseSchema: 'ENTER_GAME', settlement: 'two-verified-reveals', capabilities: ['commit-reveal'] };
 }
-export function enterMatch(state, players, stake = state.config.stake) {
+export function enterMatch(state, players, stake = state.config.stake, gameType = 'rps') {
   if (!Array.isArray(players) || players.length !== 2 || players[0] === players[1]) throw new Error('Two different agents are required');
-  const agents = players.map(agentId => authorize(state, { type: 'ENTER_GAME', agentId, stake, destination: 'simulation:rps' }));
+  if (!['rps', 'tictactoe'].includes(gameType)) throw new Error('Unknown game type');
+  const agents = players.map(agentId => authorize(state, { type: 'ENTER_GAME', agentId, stake, destination: `simulation:${gameType}` }));
   const match = { id: `game-${state.nextMatch++}`, players: [...players], stake, escrow: stake * 2,
     status: 'committing', commitments: {}, reveals: {}, result: null, payouts: {}, networkFee: 0, protocolFee: 0 };
+  if (gameType === 'tictactoe') Object.assign(match, { type: gameType, status: 'playing', board: Array(9).fill(null), moves: [] });
   amount(match.escrow);
   agents.forEach(agent => { agent.balance -= stake; });
   state.matches.push(match);
-  record(state, 'PAYMENT_CONFIRMED', { matchId: match.id, players, stake, escrow: match.escrow });
+  record(state, 'PAYMENT_CONFIRMED', { matchId: match.id, players, stake, escrow: match.escrow,
+    ...(gameType === 'tictactoe' ? { game_type: gameType } : {}) });
   return match;
 }
 export function commitMove(state, match, agentId, hash) {
@@ -66,12 +73,27 @@ export async function revealMove(state, match, agentId, move, salt) {
   match.reveals[agentId] = { move, nonce: salt };
   record(state, 'MOVE_REVEALED', { matchId: match.id, agentId, move, nonce: salt });
 }
+export function playTicTacToeMove(state, match, agentId, cell) {
+  if (!state.matches.includes(match) || match.type !== 'tictactoe' || match.status !== 'playing' || !match.players.includes(agentId)) {
+    throw new Error('No active tic-tac-toe turn for this agent');
+  }
+  const marker = match.players[0] === agentId ? 'a' : 'b';
+  const next = playCell(match.board, marker, cell);
+  match.board = next.board;
+  match.moves.push({ agentId, cell });
+  record(state, 'TICTACTOE_MOVE_PLAYED', { matchId: match.id, agentId, cell });
+  if (next.result !== null) { match.result = next.result; match.status = 'ready_to_settle'; }
+  return match;
+}
 export function settleMatch(state, match) {
   if (!state.matches.includes(match)) throw new Error('Unknown match');
   if (match.status === 'settled') return match;
-  if (match.status !== 'revealing' || !match.players.every(id => match.reveals[id])) throw new Error('Two verified reveals required');
+  const ticTacToe = match.type === 'tictactoe';
+  if (ticTacToe ? !verifyTicTacToeProof(match) : match.status !== 'revealing' || !match.players.every(id => match.reveals[id])) {
+    throw new Error(ticTacToe ? 'Verified terminal tic-tac-toe board required' : 'Two verified reveals required');
+  }
   const [a, b] = match.players.map(id => state.agents.find(agent => agent.id === id));
-  const result = resolve(match.reveals[a.id].move, match.reveals[b.id].move);
+  const result = ticTacToe ? match.result : resolve(match.reveals[a.id].move, match.reveals[b.id].move);
   match.result = result;
   match.payouts = { [a.id]: result === 'draw' ? match.stake : result === 'a' ? match.escrow : 0,
     [b.id]: result === 'draw' ? match.stake : result === 'b' ? match.escrow : 0 };
@@ -86,9 +108,12 @@ export function settleMatch(state, match) {
     const outcome = result === 'draw' ? 'draws' : delta > 0 ? 'wins' : 'losses';
     agent[outcome]++;
     const memory = agent.opponents[opponent.id] ||= { rock: 0, paper: 0, scissors: 0, wins: 0, losses: 0, draws: 0 };
-    memory[match.reveals[opponent.id].move]++;
+    if (ticTacToe) memory.tictactoe = (memory.tictactoe || 0) + 1;
+    else memory[match.reveals[opponent.id].move]++;
     memory[outcome]++;
-    agent.memory.push({ matchId: match.id, opponent: opponent.id, move: match.reveals[agent.id].move, observed: match.reveals[opponent.id].move, delta });
+    agent.memory.push({ matchId: match.id, opponent: opponent.id,
+      move: ticTacToe ? `cell ${match.moves.findLast(m => m.agentId === agent.id).cell + 1}` : match.reveals[agent.id].move,
+      observed: ticTacToe ? 'tic-tac-toe board' : match.reveals[opponent.id].move, delta });
   }
   match.escrow = 0;
   match.status = 'settled';

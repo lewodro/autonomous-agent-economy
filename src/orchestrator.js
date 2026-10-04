@@ -1,7 +1,7 @@
-import { enterMatch, commitMove, revealMove, settleMatch, record, opportunity } from './economy.js';
+import { enterMatch, commitMove, revealMove, playTicTacToeMove, settleMatch, record, opportunity } from './economy.js';
 import { authorize } from './policy.js';
 import { commitment, nonce } from './rps.js';
-import { chooseMove, random } from './strategies.js';
+import { chooseMove, chooseTicTacToeCell, random } from './strategies.js';
 
 export function eligibility(state, agent) {
   try {
@@ -13,13 +13,14 @@ export class Orchestrator {
   constructor(state, { onStage = () => {}, onSave = () => {} } = {}) {
     this.state = state; this.onStage = onStage; this.onSave = onSave; this.busy = false;
   }
-  async step(players = null) {
+  async step(players = null, gameType = 'rps') {
     if (this.busy) throw new Error('A match is already running');
     if (this.state.paused) throw new Error('Economy is paused');
     this.busy = true;
     const before = structuredClone(this.state);
     try {
       const state = this.state;
+      if (gameType === 'mixed') gameType = random(state) < 0.5 ? 'rps' : 'tictactoe';
       const available = state.agents.filter(a => eligibility(state, a).eligible);
       if (!players) {
         if (available.length < 2) throw new Error('Run complete: fewer than two eligible agents remain');
@@ -27,14 +28,26 @@ export class Orchestrator {
         const b = available[Math.floor(random(state) * available.length)];
         players = [a.id, b.id];
       }
-      record(state, 'GAME_AVAILABLE', opportunity(state, players));
-      const match = enterMatch(state, players);
+      record(state, 'GAME_AVAILABLE', opportunity(state, players, gameType));
+      const match = enterMatch(state, players, state.config.stake, gameType);
       await this.onStage('evaluate', match);
-      const decisions = match.players.map(id => ({ id, move: chooseMove(state, state.agents.find(a => a.id === id), match.players.find(other => other !== id)), salt: nonce() }));
-      for (const d of decisions) commitMove(state, match, d.id, await commitment(match.id, d.id, d.move, d.salt));
-      await this.onStage('commit', match);
-      for (const d of decisions) await revealMove(state, match, d.id, d.move, d.salt);
-      await this.onStage('reveal', match);
+      if (gameType === 'tictactoe') {
+        while (match.status === 'playing') {
+          const turn = match.moves.length;
+          const id = match.players[turn % 2];
+          const marker = turn % 2 === 0 ? 'a' : 'b';
+          const agent = state.agents.find(a => a.id === id);
+          playTicTacToeMove(state, match, id, chooseTicTacToeCell(state, agent, match.board, marker));
+          await this.onStage('play', match);
+        }
+        await this.onStage('verify', match);
+      } else {
+        const decisions = match.players.map(id => ({ id, move: chooseMove(state, state.agents.find(a => a.id === id), match.players.find(other => other !== id)), salt: nonce() }));
+        for (const d of decisions) commitMove(state, match, d.id, await commitment(match.id, d.id, d.move, d.salt));
+        await this.onStage('commit', match);
+        for (const d of decisions) await revealMove(state, match, d.id, d.move, d.salt);
+        await this.onStage('reveal', match);
+      }
       settleMatch(state, match);
       await this.onStage('settle', match);
       await this.onSave(state);

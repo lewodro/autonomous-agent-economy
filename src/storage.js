@@ -1,4 +1,4 @@
-import { createState, enterMatch, commitMove, revealMove, settleMatch, record, assertAccounting, opportunity } from './economy.js';
+import { createState, enterMatch, commitMove, revealMove, playTicTacToeMove, settleMatch, record, assertAccounting, opportunity } from './economy.js';
 import { configureRun } from './config.js';
 import { receiveRevenue, allocateTreasury } from './treasury.js';
 import { startTournament, nextTournamentPair, scoreTournament } from './tournament.js';
@@ -23,11 +23,12 @@ export async function validateState(input) {
     const match = () => rebuilt.matches.find(m => m.id === data.matchId);
     switch (event.type) {
       case 'GAME_AVAILABLE':
-        if (!same(data, opportunity(rebuilt, data.participants))) throw new Error('Opportunity mismatch');
+        if (!same(data, opportunity(rebuilt, data.participants, data.type))) throw new Error('Opportunity mismatch');
         record(rebuilt, event.type, data); break;
-      case 'PAYMENT_CONFIRMED': enterMatch(rebuilt, data.players, data.stake); break;
+      case 'PAYMENT_CONFIRMED': enterMatch(rebuilt, data.players, data.stake, data.game_type || 'rps'); break;
       case 'MOVE_COMMITTED': commitMove(rebuilt, match(), data.agentId, data.hash); break;
       case 'MOVE_REVEALED': await revealMove(rebuilt, match(), data.agentId, data.move, data.nonce); break;
+      case 'TICTACTOE_MOVE_PLAYED': playTicTacToeMove(rebuilt, match(), data.agentId, data.cell); break;
       case 'GAME_FINISHED': settleMatch(rebuilt, match()); break;
       case 'EMERGENCY_PAUSE':
         if (typeof data.paused !== 'boolean') throw new Error('Invalid pause event');

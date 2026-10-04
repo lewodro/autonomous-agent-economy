@@ -11,7 +11,7 @@ export function toLamports(value) {
 }
 export function authorize(state, intent) {
   if (state.paused) throw new Error('Economy is paused');
-  if (!intent || intent.type !== 'ENTER_GAME' || intent.destination !== 'simulation:rps') throw new Error('Unapproved intent or destination');
+  if (!intent || intent.type !== 'ENTER_GAME' || !['simulation:rps', 'simulation:tictactoe'].includes(intent.destination)) throw new Error('Unapproved intent or destination');
   const agent = state.agents.find(a => a.id === intent.agentId);
   if (!agent) throw new Error('Unknown agent');
   const stake = amount(intent.stake);
