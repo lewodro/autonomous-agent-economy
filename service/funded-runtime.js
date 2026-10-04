@@ -18,6 +18,9 @@ export class FundedRuntime {
  async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
  async create(config,data){
   if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
+  const terminal=new Set(['settled','refunded','failed']);
+  const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
+  if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
   const session=randomUUID();this.sessions.set(session,true);
   try{
    const mode=data.mode??'mock';

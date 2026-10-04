@@ -15,6 +15,7 @@ import { MatchEventStream } from './service/event-stream.js';
 import { authorizeRequest } from './service/http-policy.js';
 import { validateDeploymentConfig } from './service/deployment-config.js';
 import { hostCookie, hasHostCookie } from './service/host-auth.js';
+import { SlidingWindowLimiter } from './service/rate-limit.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -24,6 +25,8 @@ const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(d
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
+const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
+const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -80,6 +83,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
     if(req.method==='POST'&&route==='/api/funded-matches'){
       if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
+      if(production&&!publicFundedCreates.allow())return json(res,429,{error:'Funded match creation is temporarily limited. Try again later.'});
       const data=await body(req);
       if(publicDevnet&&data.mode!=='devnet')return json(res,400,{error:'Public funded matches require Devnet test SOL'});
       const created=await funded.create(await resolveConfig(core,data.config),data);
@@ -125,6 +129,7 @@ const server = http.createServer(async (req, res) => {
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
+      if(production&&!publicMatchCreates.allow())return json(res,429,{error:'Match creation is temporarily limited. Try again later.'});
       const data = await body(req);
       const created=await createSession('start', { config: await resolveConfig(core,data.config) });
       return json(res,201,created,{'Set-Cookie':hostCookie(created.session)});
