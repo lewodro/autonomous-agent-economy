@@ -19,6 +19,7 @@ COPY --from=build /app/rust/target/debug/wallet-demo ./rust/target/debug/wallet-
 COPY --from=build /app/web/dist ./web/dist
 COPY package.json server.js index.html styles.css ./
 COPY service ./service
+COPY src ./src
 COPY legacy ./legacy
 COPY labs ./labs
 COPY assets ./assets
