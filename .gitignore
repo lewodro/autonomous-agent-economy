@@ -16,6 +16,7 @@ playwright-report/
 
 /match.json
 
-.AGENTS.md
+AGENTS.md
+
 /economy-data/
 /validator-ledger/
