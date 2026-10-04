@@ -44,7 +44,7 @@ impl PaymentRecord {
                 || receipt.intent != self.intent
                 || receipt.receipt_id != self.intent.operation_id
                 || receipt.status != ConfirmationStatus::Confirmed
-                || (self.rail == PaymentMode::Local
+                || (matches!(self.rail, PaymentMode::Local | PaymentMode::Devnet)
                     && receipt
                         .external_reference
                         .as_ref()

@@ -377,7 +377,7 @@ fn fee_policy_separates_structural_validation_from_supported_zero_fee_execution(
     .is_err());
 }
 #[test]
-fn funded_admission_configuration_rejects_mainnet_devnet_and_invalid_deadlines() {
+fn funded_admission_configuration_accepts_devnet_but_rejects_mainnet_and_invalid_deadlines() {
     use agent_arena_demo::economy::{
         config::EconomyConfig, fees::FeePolicy, host_config::FundedMatchConfig,
     };
@@ -404,7 +404,7 @@ fn funded_admission_configuration_rejects_mainnet_devnet_and_invalid_deadlines()
         EconomyError::MainnetNotImplemented
     );
     config.economy.mode = PaymentMode::Devnet;
-    assert!(config.validate().is_err());
+    config.validate().unwrap();
 }
 fn funded_config(
     count: usize,

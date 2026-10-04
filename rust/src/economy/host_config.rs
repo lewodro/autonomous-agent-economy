@@ -31,9 +31,13 @@ impl FundedMatchConfig {
                 "Funded agents must not use reserved custody account IDs".into(),
             ));
         }
-        if !matches!(self.economy.mode, PaymentMode::Mock | PaymentMode::Local) {
+        if !matches!(
+            self.economy.mode,
+            PaymentMode::Mock | PaymentMode::Local | PaymentMode::Devnet
+        ) {
             return Err(EconomyError::NotImplemented(
-                "Funded admission supports mock or pinned local validator only".into(),
+                "Funded admission supports mock, pinned local validator, or Solana devnet only"
+                    .into(),
             ));
         }
         if !(1..=86400).contains(&self.funding_timeout_seconds) {

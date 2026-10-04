@@ -118,6 +118,9 @@ pub fn rpc(method: &str, params: Value) -> Result<Value, String> {
     rpc_on(&Network::Devnet, method, params)
 }
 pub fn rpc_on(network: &Network, method: &str, params: Value) -> Result<Value, String> {
+    rpc_at(network.endpoint(), method, params)
+}
+pub fn rpc_at(endpoint: &str, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string();
     let mut child = Command::new("curl")
         .args([
@@ -126,7 +129,7 @@ pub fn rpc_on(network: &Network, method: &str, params: Value) -> Result<Value, S
             "--fail",
             "--max-time",
             "15",
-            network.endpoint(),
+            endpoint,
             "-H",
             "Content-Type: application/json",
             "--data-binary",

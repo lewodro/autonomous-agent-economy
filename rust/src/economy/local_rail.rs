@@ -10,7 +10,7 @@ use super::{
     repository::*,
     signing::SigningBackend,
 };
-use crate::wallet::{rpc_on, Network};
+use crate::wallet::{rpc_at, Network, DEVNET_GENESIS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -18,11 +18,21 @@ use std::{collections::BTreeMap, path::PathBuf};
 #[serde(deny_unknown_fields)]
 pub struct LocalPaymentRail {
     pub(super) directory: PathBuf,
+    #[serde(default = "local_mode")]
+    mode: PaymentMode,
+    #[serde(default = "local_rpc_url")]
+    rpc_url: String,
     genesis: String,
     keys: PathBuf,
     accounts: BTreeMap<AccountId, String>,
     reserve: Amount,
     pub(super) records: BTreeMap<OperationId, PaymentRecord>,
+}
+fn local_mode() -> PaymentMode {
+    PaymentMode::Local
+}
+fn local_rpc_url() -> String {
+    Network::Local.endpoint().into()
 }
 pub fn rpc(method: &str, params: Value) -> Result<Value> {
     #[cfg(debug_assertions)]
@@ -31,7 +41,7 @@ pub fn rpc(method: &str, params: Value) -> Result<Value> {
             "Injected development RPC failure".into(),
         ));
     }
-    rpc_on(&Network::Local, method, params).map_err(EconomyError::RpcUnavailable)
+    rpc_at(Network::Local.endpoint(), method, params).map_err(EconomyError::RpcUnavailable)
 }
 pub fn validate_genesis(expected: &str) -> Result<()> {
     if !crate::wallet::allowed_local_genesis(expected) {
@@ -40,6 +50,45 @@ pub fn validate_genesis(expected: &str) -> Result<()> {
     if rpc("getGenesisHash", json!([]))?.as_str() != Some(expected) {
         return Err(EconomyError::InvalidInput(
             "Local validator genesis changed".into(),
+        ));
+    }
+    Ok(())
+}
+fn validate_devnet_url(value: &str) -> Result<()> {
+    if !value.starts_with("https://")
+        || value.len() > 512
+        || value
+            .bytes()
+            .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+    {
+        return Err(EconomyError::InvalidInput(
+            "Devnet RPC URL must be an HTTPS URL without whitespace".into(),
+        ));
+    }
+    Ok(())
+}
+fn validate_cluster(mode: PaymentMode, endpoint: &str, expected: &str) -> Result<()> {
+    match mode {
+        PaymentMode::Local => {
+            if endpoint != Network::Local.endpoint()
+                || !crate::wallet::allowed_local_genesis(expected)
+            {
+                return Err(EconomyError::MainnetNotImplemented);
+            }
+        }
+        PaymentMode::Devnet => {
+            validate_devnet_url(endpoint)?;
+            if expected != DEVNET_GENESIS {
+                return Err(EconomyError::MainnetNotImplemented);
+            }
+        }
+        _ => return Err(EconomyError::MainnetNotImplemented),
+    }
+    let genesis =
+        rpc_at(endpoint, "getGenesisHash", json!([])).map_err(EconomyError::RpcUnavailable)?;
+    if genesis.as_str() != Some(expected) {
+        return Err(EconomyError::InvalidInput(
+            "RPC genesis does not match the configured settlement cluster".into(),
         ));
     }
     Ok(())
@@ -97,7 +146,43 @@ impl LocalPaymentRail {
         logical: Vec<AccountId>,
         reserve: Amount,
     ) -> Result<Self> {
-        validate_genesis(&genesis)?;
+        Self::create_for_network(
+            directory,
+            keys,
+            PaymentMode::Local,
+            Network::Local.endpoint().into(),
+            genesis,
+            logical,
+            reserve,
+        )
+    }
+    pub fn create_devnet(
+        directory: PathBuf,
+        keys: PathBuf,
+        rpc_url: String,
+        logical: Vec<AccountId>,
+        reserve: Amount,
+    ) -> Result<Self> {
+        Self::create_for_network(
+            directory,
+            keys,
+            PaymentMode::Devnet,
+            rpc_url,
+            DEVNET_GENESIS.into(),
+            logical,
+            reserve,
+        )
+    }
+    fn create_for_network(
+        directory: PathBuf,
+        keys: PathBuf,
+        mode: PaymentMode,
+        rpc_url: String,
+        genesis: String,
+        logical: Vec<AccountId>,
+        reserve: Amount,
+    ) -> Result<Self> {
+        validate_cluster(mode, &rpc_url, &genesis)?;
         let repo = JsonRepository::open(&directory)?;
         if repo.read::<Self>("rail")?.is_some() {
             return Err(EconomyError::Conflict);
@@ -115,6 +200,8 @@ impl LocalPaymentRail {
         }
         let rail = Self {
             directory,
+            mode,
+            rpc_url,
             genesis,
             keys,
             accounts,
@@ -129,6 +216,8 @@ impl LocalPaymentRail {
             .read::<Self>("rail")?
             .ok_or_else(|| EconomyError::AdapterFailure("Missing local rail journal".into()))?;
         if loaded.directory != self.directory
+            || loaded.mode != self.mode
+            || loaded.rpc_url != self.rpc_url
             || loaded.genesis != self.genesis
             || loaded.accounts != self.accounts
             || loaded.keys != self.keys
@@ -137,7 +226,7 @@ impl LocalPaymentRail {
         }
         for (id, record) in &loaded.records {
             record.validate()?;
-            if id != &record.intent.operation_id || record.rail != PaymentMode::Local {
+            if id != &record.intent.operation_id || record.rail != self.mode {
                 return Err(EconomyError::UnverifiedPayment);
             }
         }
@@ -153,8 +242,29 @@ impl LocalPaymentRail {
     pub fn records(&self) -> &BTreeMap<OperationId, PaymentRecord> {
         &self.records
     }
+    pub fn mode(&self) -> PaymentMode {
+        self.mode
+    }
+    fn call(&self, method: &str, params: Value) -> Result<Value> {
+        #[cfg(debug_assertions)]
+        if std::env::var("ECONOMY_TEST_RPC_FAIL_METHOD").as_deref() == Ok(method) {
+            return Err(EconomyError::RpcUnavailable(
+                "Injected development RPC failure".into(),
+            ));
+        }
+        rpc_at(&self.rpc_url, method, params).map_err(EconomyError::RpcUnavailable)
+    }
+    fn validate_cluster(&self) -> Result<()> {
+        validate_cluster(self.mode, &self.rpc_url, &self.genesis)
+    }
     pub fn provision(&self, agent: &AccountId, amount: Amount) -> Result<()> {
-        validate_genesis(&self.genesis)?;
+        if self.mode != PaymentMode::Local {
+            return Err(EconomyError::NotImplemented(
+                "Public devnet wallets must be funded externally; faucet provisioning is disabled"
+                    .into(),
+            ));
+        }
+        self.validate_cluster()?;
         if agent.as_str().starts_with("escrow-") {
             return Err(EconomyError::InvalidInput(
                 "Never airdrop into match pot".into(),
@@ -171,7 +281,7 @@ impl LocalPaymentRail {
             .accounts
             .get(agent)
             .ok_or(EconomyError::WrongRecipient)?;
-        rpc(
+        self.call(
             "requestAirdrop",
             json!([address,amount.units(),{"commitment":"confirmed"}]),
         )?;
@@ -200,7 +310,7 @@ impl LocalPaymentRail {
     }
     fn confirmed_receipt(&self, p: &PreparedPayment) -> Result<Option<PaymentReceipt>> {
         let s = self.signed(p)?;
-        let statuses = rpc(
+        let statuses = self.call(
             "getSignatureStatuses",
             json!([[s.reference],{"searchTransactionHistory":true}]),
         )?;
@@ -217,7 +327,7 @@ impl LocalPaymentRail {
         ) {
             return Ok(None);
         }
-        let tx = rpc(
+        let tx = self.call(
             "getTransaction",
             json!([s.reference,{"encoding":"jsonParsed","commitment":"confirmed","maxSupportedTransactionVersion":0}]),
         )?;
@@ -232,12 +342,11 @@ impl LocalPaymentRail {
 }
 impl PaymentRail for LocalPaymentRail {
     fn get_balance(&self, a: &AccountId) -> Result<Amount> {
-        validate_genesis(&self.genesis)?;
+        self.validate_cluster()?;
         let address = self.accounts.get(a).ok_or(EconomyError::WrongRecipient)?;
-        super::devnet::decode_balance(rpc(
-            "getBalance",
-            json!([address,{"commitment":"confirmed"}]),
-        )?)
+        super::devnet::decode_balance(
+            self.call("getBalance", json!([address,{"commitment":"confirmed"}]))?,
+        )
     }
     fn prepare_payment(&mut self, intent: PaymentIntent) -> Result<PreparedPayment> {
         self.reload()?;
@@ -266,7 +375,7 @@ impl PaymentRail for LocalPaymentRail {
         if !self.records.contains_key(&intent.operation_id) {
             self.records.insert(
                 intent.operation_id.clone(),
-                PaymentRecord::new(intent.clone(), PaymentMode::Local, now())?,
+                PaymentRecord::new(intent.clone(), self.mode, now())?,
             );
             self.save()?;
         }
@@ -300,7 +409,7 @@ impl PaymentRail for LocalPaymentRail {
 }
 impl LocalPaymentRail {
     fn build_payment(&self, intent: &PaymentIntent) -> Result<PreparedPayment> {
-        validate_genesis(&self.genesis)?;
+        self.validate_cluster()?;
         if intent.operation_id
             != operation_id(
                 &intent.match_id,
@@ -350,7 +459,7 @@ impl LocalPaymentRail {
             .accounts
             .get(&intent.payee)
             .ok_or(EconomyError::WrongRecipient)?;
-        let hash = rpc("getLatestBlockhash", json!([{"commitment":"confirmed"}]))?["value"]
+        let hash = self.call("getLatestBlockhash", json!([{"commitment":"confirmed"}]))?["value"]
             ["blockhash"]
             .as_str()
             .ok_or(EconomyError::UnverifiedPayment)?
@@ -365,7 +474,7 @@ impl LocalPaymentRail {
     }
     fn submit_known_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
         self.reload()?;
-        validate_genesis(&self.genesis)?;
+        self.validate_cluster()?;
         let id = &p.intent.operation_id;
         let record = self
             .records
@@ -393,7 +502,7 @@ impl LocalPaymentRail {
             return Ok(r);
         }
         let signed = self.signed(p)?;
-        let result = rpc(
+        let result = self.call(
             "sendTransaction",
             json!([signed.wire,{"encoding":"base64","preflightCommitment":"confirmed","skipPreflight":false,"maxRetries":2}]),
         );
@@ -439,7 +548,7 @@ impl LocalPaymentRail {
         Err(error)
     }
     fn verify_known_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
-        validate_genesis(&self.genesis)?;
+        self.validate_cluster()?;
         let record = self
             .records
             .get(&i.operation_id)
@@ -463,7 +572,7 @@ impl LocalPaymentRail {
     }
     fn reconcile_known_payment(&mut self, i: &PaymentIntent) -> Result<Option<PaymentReceipt>> {
         self.reload()?;
-        validate_genesis(&self.genesis)?;
+        self.validate_cluster()?;
         let Some(record) = self.records.get(&i.operation_id) else {
             return Ok(None);
         };

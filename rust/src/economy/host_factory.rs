@@ -88,6 +88,31 @@ impl FundedHost {
                 rail.provision(&AccountId::new("fee-sponsor")?, Amount::new(2_000_000_000))?;
                 BackendRail::Local(rail)
             }
+            PaymentMode::Devnet => {
+                if std::env::var("PUBLIC_DEVNET_ACK").as_deref() != Ok("I_UNDERSTAND_TEST_SOL_ONLY")
+                {
+                    return Err(EconomyError::InvalidInput(
+                        "Set PUBLIC_DEVNET_ACK=I_UNDERSTAND_TEST_SOL_ONLY to create a devnet match"
+                            .into(),
+                    ));
+                }
+                let accounts = simulation
+                    .config
+                    .agents
+                    .iter()
+                    .map(|a| AccountId::new(&a.id))
+                    .chain(std::iter::once(Ok(escrow)))
+                    .collect::<Result<Vec<_>>>()?;
+                let rpc_url = std::env::var("SOLANA_DEVNET_RPC_URL")
+                    .unwrap_or_else(|_| crate::wallet::DEVNET.into());
+                BackendRail::Devnet(LocalPaymentRail::create_devnet(
+                    directory.join("rail"),
+                    directory.join("keys"),
+                    rpc_url,
+                    accounts,
+                    parsed.minimum_reserve,
+                )?)
+            }
             _ => {
                 return Err(EconomyError::NotImplemented(
                     "Funded rail unavailable".into(),
