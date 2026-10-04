@@ -6,7 +6,7 @@ Rust owns game state. Viewer pause never sends an engine step.
 
 Opt-in funded matches now use FundedHost admission, durable host/rail journals and
 signed completion verification. Mock and pinned local backend custody are supported;
-public devnet funded admission is unavailable and mainnet is disabled. The Rust
+public Devnet funded admission is opt-in and experimental; mainnet is disabled. The Rust
 host starts turns only after all required entries are verified and funds locked.
 
 Node publishes economy snapshots on the separate SSE `economy` channel alongside

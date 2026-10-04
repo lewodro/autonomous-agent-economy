@@ -1,8 +1,9 @@
 # Mainnet readiness — disabled
 
 `PaymentMode::Mainnet` always returns `MainnetNotImplemented`. Funded matches support
-durable mock payments and a **local-validator-only** native transfer rail. Public devnet
-funded admission is unavailable; its standalone economy rail only reads balances.
+durable mock payments, an isolated local-validator rail, and an opt-in Devnet native
+transfer rail. Devnet agent/escrow address creation and reads are live-verified; a faucet
+failure still blocks the first complete public-chain funded match.
 The separate wallet demo retains its tiny test-transfer cap and is not funded escrow.
 See the [2026 audit](crypto-audit-2026.md) for current implementation and evidence.
 

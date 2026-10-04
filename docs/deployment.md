@@ -1,6 +1,6 @@
 # Deploying the public free-match website
 
-This repository can host **free, seeded Last Seat matches** with read-only live spectators. The `/rps` and tic-tac-toe economy is currently a browser-local **simulated SOL** experiment. Do not ask visitors to send SOL to its generated mock addresses. The funded Rust host currently works only with mock accounting or an isolated local validator; production refuses its endpoints. Public paid entry and mainnet custody are not enabled.
+This repository can host **free, seeded Last Seat matches** with read-only live spectators. The `/rps` and tic-tac-toe economy is currently a browser-local **simulated SOL** experiment. Do not ask visitors to send SOL to its generated mock addresses. An explicit opt-in Devnet mode exists for public test-SOL experiments; it is documented separately and never enables mainnet custody.
 
 ## Railway topology
 
@@ -46,7 +46,7 @@ There are **no database migrations** in this topology. `npm ci` and `npm run bui
 | `PORT` | Hosting-provided | HTTP listener port; defaults to 3000 |
 | `MODEL_BASE_URL`, `MODEL_API_KEY_ENV` | Optional | Explicit approved model endpoint and server-side key variable name |
 | `ECONOMY_LAB`, `MACHINE_PAYMENTS_DEMO` | Must remain off | Local development demonstrations only |
-| `ENTRY_FEE_ENABLED` | Must remain off | Public paid matches are not ready |
+| `ENTRY_FEE_ENABLED` | Off for free launch | Set only with the complete experimental Devnet variable set |
 
 Mock strategies need no provider key. If an optional model provider fails, the bounded fallback policy applies. Never put API keys in agent JSON, frontend files, logs or public Railway variables.
 
@@ -58,4 +58,4 @@ For rollback, redeploy the last known-good Git commit while keeping the same mou
 
 ## Payment boundary
 
-The public site may be launched **today as a free demo**. Solscan links and public agent funding require genuine public-chain addresses, a verified public rail, custody/authorization decisions, recovery tests on that rail and an operator process for stuck payouts. Local-validator keys and mock addresses must never be shown as fundable mainnet addresses. See [mainnet readiness](mainnet-readiness.md) and [trust boundaries](trust-boundaries.md).
+The public site may be launched **today as a free demo**. An opt-in [public Devnet path](public-devnet.md) now generates genuine testnet addresses and Solscan links behind explicit production variables. Its full public entry/payout still needs a funded run against the exact deployment RPC before promotion. Local-validator keys and mock addresses must never be shown as fundable public addresses. Mainnet stays disabled. See [mainnet readiness](mainnet-readiness.md) and [trust boundaries](trust-boundaries.md).

@@ -29,8 +29,8 @@ The single-writer JSON journal uses atomic rename/fsync and local OS locks. It i
 a replicated database; filesystem behavior, disk capacity, backups and retention
 remain operational responsibilities. Preserve both host and rail revisions on recovery.
 
-Devnet wallet demos are experimental/capped test SOL. The economy devnet rail is
-read-only; public devnet funded competition is unavailable. Mainnet competition is
+Devnet wallet demos and the opt-in funded rail use valueless test SOL. The funded rail
+keeps agent/escrow keys in trusted backend storage and exposes public Solscan evidence. Mainnet competition is
 disabled in config, adapters and CLI. Real-value competition is not production-ready.
 No guarantee of zero vulnerabilities follows from passing tests or dependency audits.
 

@@ -41,7 +41,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
 | Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
-| Public paid entries | **NOT IMPLEMENTED** | Local-validator funding is test-only; production rejects paid endpoints |
+| Public test-SOL entries | **EXPERIMENTAL** | Explicit Devnet-only production gate, real addresses/receipts; full live funded run remains unverified |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
 
 ## Live Match
@@ -176,10 +176,10 @@ matches remain free. Game credits never debit a wallet.
 | Winner settlement / draw refund | **WORKING MOCK** | Verified finished tape, participant check, idempotent operation |
 | Lost payout response | **TESTED MOCK** | Reconcile original intent; recipient change/refund blocked |
 | Wallet identity / signing ports | **WORKING DEMO** | Public identity separate from deterministic test signer |
-| Economy devnet rail | **READ-ONLY** | Pinned RPC/genesis, real balance reads; transfers return NotImplemented |
+| Economy devnet rail | **EXPERIMENTAL** | Durable agent/escrow addresses, restricted native transfers, receipt verification and Solscan links |
 | Funded mock admission / durable economy | **WORKING** | Rust host gates turns, verifies signed completion, persists host/rail journals |
 | Local funded admission | **TESTED ON LOCAL VALIDATOR** | Native signed entries, exact pots, attested payouts, partial refunds and restart recovery |
-| Public devnet funded competition | **UNAVAILABLE** | Economy rail is read-only; wallet demos remain separate |
+| Public devnet funded competition | **OPT-IN / NEEDS CHAIN RUN** | Production gate exists; address generation verified, live faucet blocked full entry/payout validation |
 | Mainnet | **DISABLED** | Explicit MainnetNotImplemented error |
 
 | Economy Mode | Funding | Settlement | Refund | Persistence |
@@ -187,7 +187,7 @@ matches remain free. Game credits never debit a wallet.
 | Free | N/A | N/A | N/A | ✅ Game checkpoint/history |
 | Mock | ✅ | ✅ | ✅ | ✅ Host and rail journals |
 | Local validator | ✅ Test SOL | ✅ Test SOL | ✅ Test SOL | ✅ Including interrupted transactions |
-| Devnet | Unavailable for matches | Unavailable for matches | Unavailable for matches | No funded match path |
+| Devnet | Implemented | Implemented | Implemented | Experimental; exact production-RPC chain run still required |
 | Mainnet | ❌ | ❌ | ❌ | ❌ |
 
 For a live funded prototype: run `npm run solana:local`, then
@@ -206,6 +206,8 @@ npm run economy:reconcile -- SESSION_ID
 
 Keep the validator ledger, authority/test keys and journals across restarts.
 [Local setup](docs/local-validator.md) · [Verified funded-pass results](docs/funded-pass.md).
+
+For a public test-SOL deployment, follow the separate [Devnet funded-match guide](docs/public-devnet.md). It explains the trusted-backend custody model, dedicated RPC, persistent keys, public Solscan links, funding workflow and the current faucet verification blocker. Mainnet remains rejected.
 
 ```sh
 npm run demo:economy
