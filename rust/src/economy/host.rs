@@ -160,6 +160,12 @@ impl FundedHost {
     }
     fn admit(&mut self) -> Result<()> {
         if self.snapshot.economy.view().state == EconomyState::Funded {
+            // A saved cancellation must finish its original refund, never admit a game.
+            if self.snapshot.cancellation.is_some() {
+                return Err(EconomyError::InvalidTransition(
+                    "Cancellation is pending; resume the original refund before admission".into(),
+                ));
+            }
             // Read-only reconciliation cannot admit a late deposit or initiate refunds.
             if now() >= self.snapshot.funding_deadline {
                 return Err(EconomyError::FundingClosed);
@@ -476,5 +482,41 @@ mod tests {
         assert_eq!(host.expire().unwrap()["operations"], operations);
         drop(host);
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn funded_recovery_admits_on_time_but_never_after_saved_cancellation() {
+        for cancelled in [false, true] {
+            let root = std::env::temp_dir().join(format!(
+                "admission-retry-{}",
+                crate::wallet::address(&crate::wallet::key().unwrap())
+            ));
+            let config=serde_json::from_value(json!({"simulation":crate::config::default_config(2,42),"economy":{"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"}})).unwrap();
+            let mut host = FundedHost::create(&root, "admission", config).unwrap();
+            for id in ["agent-1", "agent-2"] {
+                host.snapshot
+                    .economy
+                    .fund(&AgentId::new(id).unwrap())
+                    .unwrap();
+            }
+            if cancelled {
+                host.snapshot.cancellation = Some(RefundReason::CancelledBeforeStart);
+            }
+            host.save().unwrap();
+            drop(host);
+            let mut host = FundedHost::load(&root, "admission").unwrap();
+            let operations = host.view()["operations"].clone();
+            if cancelled {
+                assert!(host.reconcile().is_err());
+                assert_eq!(host.view()["economy"]["state"], "funded");
+                host.cancel(RefundReason::CancelledBeforeStart).unwrap();
+                assert_eq!(host.view()["economy"]["state"], "refunded");
+            } else {
+                assert_eq!(host.reconcile().unwrap()["economy"]["state"], "running");
+                assert_eq!(host.view()["operations"], operations);
+            }
+            assert_eq!(host.replay().final_state.turn, 0);
+            drop(host);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 }

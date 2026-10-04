@@ -37,3 +37,7 @@ test('scheduled financial operation excludes concurrent manual mutation and rele
  await assert.rejects(host.act('test','cancel'),/already resolving/);
  release();await ticking;assert.equal(host.busy.has('test'),false);
 });
+test('fully funded recovery retries admission before the deadline without funding again',async()=>{
+ const {host,calls,succeed}=fixture('funded');succeed();host.matches.get('test').economy.funding_deadline=Math.floor(Date.now()/1000)+600;
+ await host.tick();assert.deepEqual(calls,['reconcile']);
+});

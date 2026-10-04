@@ -52,6 +52,7 @@ export class FundedRuntime {
    active=[session,known];this.busy.add(session);
    const state=known.economy.economy.state;let result;
    if([State.Funding,State.Funded].includes(state)&&Date.now()/1000>=known.economy.funding_deadline)result=await this.command(session,'expire');
+   else if(state===State.Funded)result=await this.command(session,'reconcile');
    else if(state===State.Running&&!known.replay.final_state.ended){result=await this.runtime.step(this.core,session,{expected_turn:known.replay.final_state.turn});this.events.publish(session,result);}
    else if(state===State.SettlementPending||(state===State.Running&&known.replay.final_state.ended))result=await this.command(session,'settle');
    else if(state===State.RefundPending)result=await this.command(session,'expire');
