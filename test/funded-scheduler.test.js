@@ -19,3 +19,21 @@ test('explicit retry clears exhausted automatic retry state after a successful o
 test('a recovered funded match past its deadline is expired instead of started',async()=>{
  const {host,calls,succeed}=fixture('funded');succeed();await host.tick();assert.deepEqual(calls,['expire']);
 });
+test('scheduler failure stays attached to the selected match when the registry grows',async()=>{
+ const {host}=fixture();const row=host.matches.get('test');
+ const result=id=>({...structuredClone(row),session:id});host.remember(result('second'));host.cursor=3;
+ host.core.request=async request=>{
+  if(request.action==='settle'){host.remember(result('new'));throw Error('temporary failure');}
+  return result(request.session);
+ };
+ await host.tick();assert.equal(host.matches.get('second').failures,1);
+ assert.equal(host.matches.get('test').failures||0,0);assert.equal(host.matches.get('new').failures||0,0);
+});
+test('scheduled financial operation excludes concurrent manual mutation and releases its lock',async()=>{
+ const {host}=fixture();let release;const pending=new Promise(resolve=>{release=resolve;});
+ const result=structuredClone(host.matches.get('test'));
+ host.core.request=async()=>{await pending;return result;};
+ const ticking=host.tick();
+ await assert.rejects(host.act('test','cancel'),/already resolving/);
+ release();await ticking;assert.equal(host.busy.has('test'),false);
+});

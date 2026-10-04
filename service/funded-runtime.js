@@ -45,10 +45,11 @@ export class FundedRuntime {
  }
  start(){if(this.timer||process.env.FUNDED_AUTO_RUN==='0')return;this.timer=setInterval(()=>{void this.tick();},250);this.timer.unref();}
  async tick(){
-  if(this.running||!this.matches.size)return;this.running=true;
+  if(this.running||!this.matches.size)return;this.running=true;let active=null;
   try{
    const entries=[...this.matches.entries()];const [session,known]=entries[this.cursor++%entries.length];
    if(this.busy.has(session)||this.runtime.busy.has(session)||(known.failures||0)>=8||Date.now()<(known.nextAttempt||0))return;
+   active=[session,known];this.busy.add(session);
    const state=known.economy.economy.state;let result;
    if([State.Funding,State.Funded].includes(state)&&Date.now()/1000>=known.economy.funding_deadline)result=await this.command(session,'expire');
    else if(state===State.Running&&!known.replay.final_state.ended){result=await this.runtime.step(this.core,session,{expected_turn:known.replay.final_state.turn});this.events.publish(session,result);}
@@ -56,9 +57,8 @@ export class FundedRuntime {
    else if(state===State.RefundPending)result=await this.command(session,'expire');
    if(result)this.publish({...result,session});
   }catch(error){
-   const entries=[...this.matches.entries()];const row=entries[(this.cursor-1)%entries.length];
-   if(row){const [session,known]=row;const failures=(known.failures||0)+1,nextAttempt=Date.now()+Math.min(60000,2000*2**(failures-1));Object.assign(known,{failures,nextAttempt,lastError:error.message});economyLog('reconciliation_retry',{session,payment_mode:known.economy.economy.payment_mode,code:error.code||'operation_failed'});try{const current=await this.command(session,'get');this.publish(current);Object.assign(this.matches.get(session),{failures,nextAttempt,lastError:error.message});}catch{}}
-  }finally{this.running=false;}
+   if(active){const [session,known]=active;const failures=(known.failures||0)+1,nextAttempt=Date.now()+Math.min(60000,2000*2**(failures-1));Object.assign(known,{failures,nextAttempt,lastError:error.message});economyLog('reconciliation_retry',{session,payment_mode:known.economy.economy.payment_mode,code:error.code||'operation_failed'});try{const current=await this.command(session,'get');this.publish(current);Object.assign(this.matches.get(session),{failures,nextAttempt,lastError:error.message});}catch{}}
+  }finally{if(active)this.busy.delete(active[0]);this.running=false;}
  }
  health(){
   const rows=[...this.matches.values()];
