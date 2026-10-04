@@ -2,8 +2,8 @@
 
 The existing V6 simulation remains unchanged. `rust/src/economy` owns an independent
 match funding lifecycle. Rust validates authoritative results; the UI only projects
-semantic events. Demo/lab instances are mock-only, ephemeral and not admission control
-for the normal live table.
+semantic events. The normal live table remains free. Opt-in funded matches use a durable Rust host
+for admission, mock or pinned local backend custody, and completion attestation.
 
 ```mermaid
 flowchart LR
@@ -26,7 +26,9 @@ flowchart TD
   Coordinator --> Escrow[MatchEscrow]
   Coordinator --> Rail[PaymentRail]
   Escrow -->|verify exact receipts / lock / payout / refund| Rail
-  Rail --> Mock[MockPaymentRail / TreasuryLedger]
+  Rail --> Mock[DurableMockRail / TreasuryLedger]
+  Rail --> Local[LocalPaymentRail: pinned validator]
+  Coordinator --> Journal[Append-only host and rail journals]
   Rail --> Devnet[SolanaDevnetRail: read-only]
   Coordinator --> Events[Ordered economy events]
   Events --> View[TypeScript projection / lab]
@@ -62,10 +64,13 @@ flowchart LR
   MockSigner --> Artifact[Public signed artifact]
   Rail[PaymentRail port] --> Ledger[Mock ledger receipts]
   Rail --> RPC[Devnet balance read]
-  Artifact -. future native transaction signer .-> Rail
+  Backend --> LocalSigner[LocalDevSigner: ignored backend test keys]
+  LocalSigner --> Transaction[Two-signature native transfer and memo]
+  Transaction --> Rail
 ```
 
-The signing and payment ports are deliberately independent today. The mock rail does
+The mock signing and payment ports remain independent. LocalPaymentRail uses
+LocalDevSigner for persisted native signed transactions. The mock rail does
 not pretend to submit signed Solana transactions. The separate `wallet-demo` remains
 the existing native Solana wire demonstration.
 
@@ -73,7 +78,8 @@ the existing native Solana wire demonstration.
 |---|---|
 | Amounts and identity | `primitives`: checked integer units, validated IDs, string JSON amounts |
 | Configuration | `config`, `scenario`: exact decimal SOL strings, entry cap/reserve, mainnet rejection |
-| Payments | `rail`, `mock_rail`: canonical intents, verification, idempotent receipts |
+| Payments | `rail`, `durable_rail`, `local_rail`: exact intents, persisted signed bytes, verified receipts |
+| Host / storage | `host`, `attestation`, `repository`, `recovery`: admission, signed completion, atomic journals |
 | Escrow | `escrow`, `mock_escrow`: verified deposits, exact pot, lock, retry/refund accounting |
 | Lifecycle | `coordinator`, `settlement`, `refund`: binding, funding, verified winner, explicit policy |
 | Wallet boundary | `signing`, `mock_signer`: address-only identity, secret-free artifacts |
@@ -88,5 +94,9 @@ Events start at sequence **0**. Cross-run streams and missing sequence numbers f
 clients fetch a complete snapshot rather than calculating replacement balances.
 
 `replay::verify` proves rule consistency, not that an untrusted tape came from the
-host. Real-funded settlement needs the trusted completion/durable journal described
+host. FundedHost implements trusted completion and durable journals, under test-only
+backend custody. Production gaps are described
 in [mainnet-readiness](mainnet-readiness.md) and [threat model](threat-model.md).
+
+See [API](api.md), [event schemas](events.md), [recovery diagrams](failure-recovery.md),
+and [trust boundary diagram](trust-boundaries.md).

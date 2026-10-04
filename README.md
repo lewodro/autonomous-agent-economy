@@ -37,9 +37,9 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Wallet mock/signing | **WORKING DEMO** | Deterministic mock transfer, Ed25519 signature verification |
 | Solana balance | **WORKING DEMO** | Fixed devnet RPC + genesis; test wallet balance read verified |
 | Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
-| Local validator | **DEMO** | Fixed loopback RPC, explicitly pinned genesis; requires separately installed validator |
+| Local validator funding | **IMPLEMENTED / TEST-ONLY** | Durable backend custody; current chain run requires separately installed validator |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
-| Mock match economy | **WORKING FOUNDATION** | Funding, escrow, exact settlement/refunds; separate CLI/lab sidecar |
+| Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
 | Public hosted matches | **PLANNED** | Local HTTP service and JSON archives are the foundation |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
 
@@ -163,7 +163,7 @@ No paid provider calls are needed to run/test. Tests exercise compatible HTTP pa
 
 ## Match economy foundation
 
-**WORKING MOCK DEMO** — a separate Rust economy coordinator funds 2–20 agents,
+**WORKING MOCK / TEST LOCAL FOUNDATION** — a separate Rust economy coordinator funds 2–20 agents,
 locks verified deposits, binds the simulation result and pays once. Normal live
 matches remain free. Game credits never debit a wallet.
 
@@ -175,7 +175,9 @@ matches remain free. Game credits never debit a wallet.
 | Lost payout response | **TESTED MOCK** | Reconcile original intent; recipient change/refund blocked |
 | Wallet identity / signing ports | **WORKING DEMO** | Public identity separate from deterministic test signer |
 | Economy devnet rail | **READ-ONLY** | Pinned RPC/genesis, real balance reads; transfers return NotImplemented |
-| Live paid admission / durable economy | **PLANNED** | Sidecar currently exists only in CLI and opt-in lab |
+| Funded mock admission / durable economy | **WORKING** | Rust host gates turns, verifies signed completion, persists host/rail journals |
+| Local funded admission | **IMPLEMENTED / TEST-ONLY** | Backend custody, fixed loopback RPC and pinned genesis; chain verification needs validator |
+| Public devnet funded competition | **UNAVAILABLE** | Economy rail is read-only; wallet demos remain separate |
 | Mainnet | **DISABLED** | Explicit MainnetNotImplemented error |
 
 ```sh
@@ -195,8 +197,9 @@ persisted replay or production wallet record.
 
 Economy scenario files are separate from agent/simulation configs. Monetary inputs
 are strings (`"0.02"`), events use integer base-unit strings, and instance IDs must be
-explicit. The lab is one in-memory mock instance, disabled by default; reset discards
-its records. It accepts actions, not user-supplied winners or receipts.
+explicit. The opt-in lab uses the durable funded host; reset selects a new test instance,
+while prior operation journals remain on disk. It accepts actions, not user-supplied
+winners or receipts. The normal live game still uses game credits only.
 
 [Economy architecture and Mermaid diagrams](docs/economy-architecture.md) ·
 [Example configurations](examples/economy/README.md) ·
@@ -396,7 +399,7 @@ See the [2026 dependency and competition-payment audit](docs/crypto-audit-2026.m
 
 Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
 
-This is a local developer application. Public deployment still needs authentication, rate limits, durable sessions/storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
+This is a local developer application. Public deployment still needs authentication, rate limits, replicated storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
 
 ## Roadmap
 
@@ -406,9 +409,23 @@ This is a local developer application. Public deployment still needs authenticat
 | Cloud/local model smoke runs and cost telemetry | Verify provider compatibility and actual inference usage |
 | Held-out balance experiments | Improve cooperation and reduce conservative dominance |
 | Dedicated authored sprite states + sound | More expressive live actions |
-| Durable capability receipts and local-validator CI | Stronger payment evidence without coupling wallets to game rules |
+| Isolated local-validator CI and recovery fault injection | Verify existing durable payment receipts on a real test chain |
+
+## Hardening and developer tools
+
+`npm run doctor` checks toolchains and writable storage. `npm run examples:check`
+validates canonical JSON with Rust, and `npm run docs:check` checks local links.
+`ECONOMY_LOG=1 npm start` enables safe economy transition/retry logs on stderr.
+
+[API](docs/api.md) · [Events](docs/events.md) · [Trust boundaries](docs/trust-boundaries.md) ·
+[Recovery](docs/failure-recovery.md) · [Local validator](docs/local-validator.md) ·
+[Commands](docs/commands.md) · [Troubleshooting](docs/troubleshooting.md) ·
+[Security reporting](SECURITY.md) · [Dependencies](docs/dependencies.md) ·
+[Changelog](CHANGELOG.md)
 
 ## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, focused commits and authority boundaries.
 
 Make one focused change, preserve event/version contracts, add meaningful invariant tests and run `npm test`, `npm run lint`, and Cargo tests. A renderer or provider replacement should pass the same contract tests. Describe actual behavior and test evidence; keep experiments labeled.
 
