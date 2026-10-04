@@ -19,7 +19,7 @@ import { SlidingWindowLimiter } from './service/rate-limit.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
-const fundedApiEnabled=process.env.ECONOMY_LAB==='1'||publicDevnet;
+const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
@@ -124,7 +124,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
       game_modes:['last-seat','rps','tictactoe'],
-      funded_modes:publicDevnet?['devnet']:production?[]:process.env.ECONOMY_LAB==='1'?['mock','local']:[],
+      funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
