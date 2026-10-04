@@ -84,3 +84,11 @@ textarea { width:100%; background:#242b26; color:#d0d7b8; border:1px solid #655f
 @media(max-width:760px){.inspect h2{display:none}.inspect .strip-heading{justify-content:flex-end;min-height:20px}.live-log summary{padding:3px 0}}
 
 .economy-hud{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid #6e6757;background:#2d332d;font:12px monospace;color:#e0be7f}.economy-hud[hidden]{display:none}.funding-statuses{color:#bac994;font-size:10px}.agent-tab[data-funding]::after{content:attr(data-funding);margin-left:5px;color:#bac994}@media(max-width:760px){.economy-hud{gap:8px}.funding-statuses{width:100%;overflow-wrap:anywhere}}
+.ongoing-panel{border-top:1px solid var(--line);padding:10px 0;color:var(--gold)}
+.ongoing-panel summary{cursor:pointer;font:11px var(--mono);letter-spacing:.08em}
+.ongoing-panel summary span{color:var(--muted);font-size:10px;letter-spacing:0;margin-left:8px}
+.ongoing-games{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:10px}
+.ongoing-game{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);background:#262c27;padding:10px;text-decoration:none;color:inherit;font:11px var(--mono)}
+.ongoing-game:hover,.ongoing-game:focus-visible{border-color:var(--gold);outline:1px solid var(--gold)}
+.ongoing-game span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ongoing-game small{color:var(--green)}

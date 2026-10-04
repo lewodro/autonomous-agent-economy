@@ -1,8 +1,8 @@
 // Local service authority is configured by the server, never by request headers.
-export function authorizeRequest(req, port, publicOrigin = process.env.PUBLIC_ORIGIN) {
+export function authorizeRequest(req, port, publicOrigins = process.env.PUBLIC_ORIGIN) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([...hosts].map(host => `http://${host}`));
-  if (publicOrigin) {
+  for (const publicOrigin of (Array.isArray(publicOrigins) ? publicOrigins : [publicOrigins]).filter(Boolean)) {
     const configured = new URL(publicOrigin);
     if (!['http:', 'https:'].includes(configured.protocol) || configured.username || configured.password || configured.origin !== publicOrigin) throw new Error('PUBLIC_ORIGIN must be an HTTP origin');
     hosts.add(configured.host);

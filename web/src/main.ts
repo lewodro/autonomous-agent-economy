@@ -6,10 +6,12 @@ import type { AgentConfig, Config, GameEvent, MatchResponse, Replay } from './ty
 import { api } from './api.js';
 import { Player } from './player.js';
 import { Renderer } from './renderer.js';
+import { mountOngoingGames } from './ongoing.js';
 import { moments } from './replay.js';
 const $ = <T extends HTMLElement = HTMLElement>(id:string):T => document.getElementById(id) as T;
 const escape = (text:string) => text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const hud=new SpectatorHUD();
+mountOngoingGames($('ongoing-games'));
 let selected='', favorites=new Set<string>();
 let observer:LiveObserver|null=null,watchSession='',watchConnected=false;
 try { favorites=new Set(JSON.parse(localStorage.getItem('last-seat-favorites')||'[]') as string[]); } catch {}

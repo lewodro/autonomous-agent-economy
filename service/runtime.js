@@ -10,7 +10,7 @@ export class MatchRuntime {
     for(const record of await this.store.load()){
       const budget=InferenceBudget.restore(record.budget);
       await core.request({command:'import',session:record.session,replay:record.replay});
-      this.budgets.set(record.session,budget);sessions.set(record.session,true);
+      this.budgets.set(record.session,budget);sessions.set(record.session,{kind:'free',replay:record.replay});
     }
   }
   async step(core,session,data){

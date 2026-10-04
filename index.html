@@ -24,6 +24,7 @@
       <button id="restart" title="Restart with identical configuration and seed">↻ Restart</button>
     </div>
     <div class="action-lane"><span id="active-agent">Your table is ready</span><div id="action-queue"></div></div>
+    <details class="ongoing-panel"><summary>ONGOING GAMES <span>watch another table live</span></summary><div id="ongoing-games" class="ongoing-games"><p class="personality">Loading public games…</p></div></details>
     <details class="live-log" open><summary>LIVE LOG <span>decisions from the table</span></summary><div id="live-feed"></div></details>
     <section class="spectator-strip">
       <div class="story"><div class="strip-heading"><h2>THE STORY SO FAR</h2><span id="mode-label">SEEDED MOCK AGENTS</span></div><div id="moments" class="moments"></div><div class="share-tools"><button id="share-live">↗ Watch live</button><button id="share-turn">↗ Share turn</button><button id="share-result">Share result</button><button id="card">↓ Share card</button><button id="export">↓ Replay</button><button id="config-copy">Copy config</button><label class="file-button">Open replay<input id="import" type="file" accept="application/json,.json"></label></div><p id="notice" class="notice"></p></div>
