@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
         with:
           toolchain: stable
-        components: clippy, rustfmt
+          components: clippy, rustfmt
       - run: cargo fmt --manifest-path rust/Cargo.toml --check
       - run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path rust/Cargo.toml --locked
