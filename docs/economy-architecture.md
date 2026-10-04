@@ -6,6 +6,29 @@ semantic events. The normal live table remains free. Opt-in funded matches use a
 for admission, mock or pinned local backend custody, and completion attestation.
 
 ```mermaid
+flowchart TD
+ Request[Match request] --> Host[FundedHost / economy coordinator]
+ Host --> Store[Append-only intent, receipt and host journals]
+ Host --> Escrow[TrustedBackendEscrow]
+ Escrow --> Rail[PaymentRail]
+ Rail --> Mock[DurableMockRail]
+ Rail --> Local[LocalPaymentRail / isolated Solana validator]
+ Host --> Gate[Verified entries, exact pot, server deadline]
+ Gate --> Engine[Authoritative Rust simulation]
+ Engine --> Attestation[Signed completion / verified final hashes]
+ Attestation --> Settlement[Canonical one-match payout or draw refund]
+ Settlement --> Rail
+ Rail --> Receipt[Verified receipt and durable settlement record]
+ Receipt --> Store
+ Host --> SSE[Existing HTTP / SSE economy projection]
+ SSE --> HUD[Compact spectator pot HUD]
+```
+
+The local branch uses trusted backend test wallets and a separate fee sponsor.
+It is not smart-contract escrow. Signed bytes/reference persist before broadcast;
+reconciliation verifies known operations without creating transactions.
+
+```mermaid
 flowchart LR
   Agents --> Strategy
   Strategy --> Engine[Authoritative Rust engine]

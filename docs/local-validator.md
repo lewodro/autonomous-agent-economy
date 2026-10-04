@@ -67,5 +67,17 @@ active ledger or reuse old journals against a new genesis. No automatic destruct
 reset command is provided. Missing binary, connection refused, low sponsor balance,
 and changed genesis are covered in [troubleshooting](troubleshooting.md).
 
-In this hardening environment Solana tools were absent; chain tests remain opt-in.
-Mock demos and local wire/evidence tests do not establish a fresh on-chain run.
+The funded implementation pass verified native transactions against an isolated
+Agave 4.3.0 validator, including actual worker crashes after broadcast. These chain
+tests remain opt-in in normal CI:
+
+```sh
+FUNDED_LOCAL_TESTS=1 LOCAL_GENESIS_HASH=YOUR_OBSERVED_LOCAL_GENESIS \
+  node --test test/funded-recovery.test.js
+GAME_URL=http://localhost:3001 node scripts/funded-browser-smoke.js
+```
+
+The browser check requires Chrome remote debugging at `CHROME_DEBUG_URL`
+(default `http://127.0.0.1:9322`) and an app with `ECONOMY_LAB=1`.
+See [actual results](funded-pass.md). This proves local test settlement, not devnet
+or production custody.

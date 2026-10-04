@@ -37,7 +37,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Wallet mock/signing | **WORKING DEMO** | Deterministic mock transfer, Ed25519 signature verification |
 | Solana balance | **WORKING DEMO** | Fixed devnet RPC + genesis; test wallet balance read verified |
 | Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
-| Local validator funding | **IMPLEMENTED / TEST-ONLY** | Durable backend custody; current chain run requires separately installed validator |
+| Local validator funding | **WORKING / TEST-ONLY** | Verified local entries, payout, refunds and actual process-crash recovery; trusted backend custody |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
 | Public hosted matches | **PLANNED** | Local HTTP service and JSON archives are the foundation |
@@ -163,7 +163,7 @@ No paid provider calls are needed to run/test. Tests exercise compatible HTTP pa
 
 ## Match economy foundation
 
-**WORKING MOCK / TEST LOCAL FOUNDATION** — a separate Rust economy coordinator funds 2–20 agents,
+**WORKING MOCK / VERIFIED LOCAL PROTOTYPE** — a separate Rust economy coordinator funds 2–20 agents,
 locks verified deposits, binds the simulation result and pays once. Normal live
 matches remain free. Game credits never debit a wallet.
 
@@ -176,9 +176,34 @@ matches remain free. Game credits never debit a wallet.
 | Wallet identity / signing ports | **WORKING DEMO** | Public identity separate from deterministic test signer |
 | Economy devnet rail | **READ-ONLY** | Pinned RPC/genesis, real balance reads; transfers return NotImplemented |
 | Funded mock admission / durable economy | **WORKING** | Rust host gates turns, verifies signed completion, persists host/rail journals |
-| Local funded admission | **IMPLEMENTED / TEST-ONLY** | Backend custody, fixed loopback RPC and pinned genesis; chain verification needs validator |
+| Local funded admission | **TESTED ON LOCAL VALIDATOR** | Native signed entries, exact pots, attested payouts, partial refunds and restart recovery |
 | Public devnet funded competition | **UNAVAILABLE** | Economy rail is read-only; wallet demos remain separate |
 | Mainnet | **DISABLED** | Explicit MainnetNotImplemented error |
+
+| Economy Mode | Funding | Settlement | Refund | Persistence |
+|---|---|---|---|---|
+| Free | N/A | N/A | N/A | ✅ Game checkpoint/history |
+| Mock | ✅ | ✅ | ✅ | ✅ Host and rail journals |
+| Local validator | ✅ Test SOL | ✅ Test SOL | ✅ Test SOL | ✅ Including interrupted transactions |
+| Devnet | Unavailable for matches | Unavailable for matches | Unavailable for matches | No funded match path |
+| Mainnet | ❌ | ❌ | ❌ | ❌ |
+
+For a live funded prototype: run `npm run solana:local`, then
+`ECONOMY_LAB=1 PORT=3001 npm start`. Select **Local validator** and an entry in
+**New / remix**, create the match and choose **Fund test entries**. The trusted
+backend provisions disposable validator wallets, verifies all entries, starts
+turns automatically, signs completion and settles the winner. `/labs/funded`
+exposes the same backend for partial funding, cancellation and reconciliation.
+House fee is zero; a separate test fee sponsor pays network fees outside the pot.
+
+```sh
+npm run demo:funded-local -- --mode local --agents 4 --entry 0.02
+npm run demo:funded-local -- --mode mock
+npm run economy:reconcile -- SESSION_ID
+```
+
+Keep the validator ledger, authority/test keys and journals across restarts.
+[Local setup](docs/local-validator.md) · [Verified funded-pass results](docs/funded-pass.md).
 
 ```sh
 npm run demo:economy
@@ -197,9 +222,10 @@ persisted replay or production wallet record.
 
 Economy scenario files are separate from agent/simulation configs. Monetary inputs
 are strings (`"0.02"`), events use integer base-unit strings, and instance IDs must be
-explicit. The opt-in lab uses the durable funded host; reset selects a new test instance,
-while prior operation journals remain on disk. It accepts actions, not user-supplied
-winners or receipts. The normal live game still uses game credits only.
+explicit. `/labs/economy` retains the offline mock demonstration; `/labs/funded`
+uses the durable host and creates new instances without erasing old journals.
+Funded commands accept actions, not user-supplied winners or receipts.
+The normal free game still uses game credits only.
 
 [Economy architecture and Mermaid diagrams](docs/economy-architecture.md) ·
 [Example configurations](examples/economy/README.md) ·
