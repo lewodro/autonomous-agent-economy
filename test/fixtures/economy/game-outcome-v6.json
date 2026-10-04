@@ -1,0 +1,62 @@
+[
+  {
+    "seq": 0,
+    "turn": 0,
+    "type": "MatchStarted",
+    "actor": null,
+    "target": null,
+    "amount": null,
+    "after": null,
+    "reason": "Everyone has a seat. Credits keep you in the game.",
+    "decision": null,
+    "state": null,
+    "projection": {
+      "turn": 0,
+      "income": 3,
+      "upkeep": 1,
+      "agents": [],
+      "alliances": [],
+      "ended": false,
+      "winner": null,
+      "end_reason": null
+    }
+  },
+  {
+    "seq": 435,
+    "turn": 14,
+    "type": "WinnerDeclared",
+    "actor": "agent-3",
+    "target": null,
+    "amount": null,
+    "after": null,
+    "reason": "Pip wins the table.",
+    "decision": null,
+    "state": null,
+    "projection": {
+      "turn": 14,
+      "income": 3,
+      "upkeep": 4,
+      "agents": [
+        {
+          "id": "agent-3",
+          "credits": 3,
+          "alive": true,
+          "guarded": false,
+          "last_action": "challenge",
+          "stats": {
+            "actions": 14,
+            "challenges_won": 7,
+            "blocks": 0,
+            "cooperations": 2,
+            "earned": 43,
+            "eliminated_turn": null
+          }
+        }
+      ],
+      "alliances": [],
+      "ended": true,
+      "winner": "agent-3",
+      "end_reason": "Last seat standing"
+    }
+  }
+]
