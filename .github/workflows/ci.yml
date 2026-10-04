@@ -21,6 +21,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run check
+      - run: npm run docs:check
+      - run: npm run examples:check
       - run: npm run demo:crypto
       - run: npm run demo:economy
       - run: npm run demo:economy -- examples/economy/free.json
@@ -38,6 +40,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
         with:
           toolchain: stable
+        components: clippy, rustfmt
+      - run: cargo fmt --manifest-path rust/Cargo.toml --check
+      - run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path rust/Cargo.toml --locked
       - run: cargo test --release --manifest-path rust/Cargo.toml --locked maximum_size_match_is_replayable_within_transport_limits -- --ignored
       - run: cargo run --manifest-path rust/Cargo.toml --locked --bin table-core > /tmp/match.json

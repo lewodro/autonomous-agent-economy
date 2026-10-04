@@ -30,7 +30,8 @@
     "economy:reconcile": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo -- --reconcile",
     "doctor": "node scripts/doctor.js",
     "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --",
-    "examples:check": "node scripts/validate-examples.js"
+    "examples:check": "node scripts/validate-examples.js",
+    "docs:check": "node scripts/check-docs.js"
   },
   "engines": {
     "node": ">=22"
