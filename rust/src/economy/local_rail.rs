@@ -128,6 +128,12 @@ impl LocalPaymentRail {
         {
             return Err(EconomyError::Conflict);
         }
+        for (id, record) in &loaded.records {
+            record.validate()?;
+            if id != &record.intent.operation_id || record.rail != PaymentMode::Local {
+                return Err(EconomyError::UnverifiedPayment);
+            }
+        }
         *self = loaded;
         Ok(())
     }

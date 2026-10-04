@@ -26,6 +26,35 @@ pub struct PaymentRecord {
     pub last_error: Option<EconomyError>,
 }
 impl PaymentRecord {
+    /// Persisted labels are not proof: confirmation must retain its exact receipt.
+    pub fn validate(&self) -> Result<()> {
+        self.rail.validate()?;
+        if self.currency != "SOL"
+            || self
+                .prepared
+                .as_ref()
+                .is_some_and(|p| p.intent != self.intent)
+            || (self.status == OperationStatus::Submitted && self.prepared.is_none())
+            || (self.status == OperationStatus::Confirmed) != self.receipt.is_some()
+        {
+            return Err(EconomyError::UnverifiedPayment);
+        }
+        if let Some(receipt) = &self.receipt {
+            if self.prepared.is_none()
+                || receipt.intent != self.intent
+                || receipt.receipt_id != self.intent.operation_id
+                || receipt.status != ConfirmationStatus::Confirmed
+                || (self.rail == PaymentMode::Local
+                    && receipt
+                        .external_reference
+                        .as_ref()
+                        .is_none_or(|r| r.is_empty()))
+            {
+                return Err(EconomyError::UnverifiedPayment);
+            }
+        }
+        Ok(())
+    }
     pub fn new(intent: PaymentIntent, rail: PaymentMode, now: u64) -> Result<Self> {
         rail.validate()?;
         Ok(Self {

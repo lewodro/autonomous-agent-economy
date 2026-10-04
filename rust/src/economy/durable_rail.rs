@@ -43,6 +43,7 @@ impl DurableMockRail {
         }
         loaded.backend.total()?;
         for (id, r) in &loaded.records {
+            r.validate()?;
             if id != &r.intent.operation_id || r.rail != super::config::PaymentMode::Mock {
                 return Err(EconomyError::UnverifiedPayment);
             }
