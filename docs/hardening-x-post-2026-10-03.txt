@@ -1,0 +1,1 @@
+Last Seat hardening: economy invariants, receipt/restart regressions, safe logs + health, doctor, schema fixtures, recovery/security docs and CI checks. Seeded game behavior unchanged. Mock funded works; local custody is test-only, devnet funded unavailable, mainnet off.
