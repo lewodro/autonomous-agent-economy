@@ -22,6 +22,7 @@ pub enum EconomyError {
     MainnetNotImplemented,
     NotImplemented(String),
     AdapterFailure(String),
+    StorageFailure(String),
 }
 impl fmt::Display for EconomyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

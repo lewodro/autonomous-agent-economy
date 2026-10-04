@@ -136,7 +136,7 @@ const server = http.createServer(async (req, res) => {
     if (relative.startsWith('..') || !/^(index\.html|styles\.css|legacy\/(index\.html|styles\.css|script\.js)|src\/[\w-]+\.js|web\/dist\/[\w-]+\.js|assets\/sprites-agent\/[\w-]+\.png)$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) { let detail;try{detail=JSON.parse(error.message);}catch{}
-    json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message, ...(detail?.code?{code:detail.code}: {}) }); }
+    json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message, ...((error.code||detail?.code)?{code:error.code||detail.code}: {}) }); }
 });
 try{await runtime.restore(core,sessions);await funded.restore();funded.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 server.listen(Number(process.env.PORT || 3000), '127.0.0.1', () => console.log(`Last Seat · Rust core · http://localhost:${server.address().port}`));

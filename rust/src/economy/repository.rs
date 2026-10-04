@@ -17,7 +17,7 @@ pub struct JsonRepository {
     _lease: File,
 }
 fn storage(e: impl std::fmt::Display) -> EconomyError {
-    EconomyError::AdapterFailure(format!("Storage: {e}"))
+    EconomyError::StorageFailure(e.to_string())
 }
 impl JsonRepository {
     pub fn open(directory: impl AsRef<Path>) -> Result<Self> {

@@ -1,3 +1,4 @@
+import {WorkerError} from './worker-error.js';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import path from 'node:path';
@@ -9,7 +10,7 @@ export class Core {
     this.worker = worker ?? spawn(path.join(root, 'rust/target/debug/table-core'), ['--serve'], { cwd: root, env: {...process.env,ECONOMY_DIR:process.env.ECONOMY_DIR||path.join(process.env.MATCHES_DIR||path.join(root,'matches'),'economy')}, stdio: ['pipe', 'pipe', 'inherit'] });
     readline.createInterface({ input: this.worker.stdout }).on('line', line => {
       const item = this.pending.shift(); if (!item) return;
-      try { const value = JSON.parse(line); value.ok ? item.resolve(value.result) : item.reject(new Error(value.error)); }
+      try { const value = JSON.parse(line); value.ok ? item.resolve(value.result) : item.reject(new WorkerError(value.error)); }
       catch (error) { item.reject(error); }
     });
     const fail = error => { this.closed = true; for (const p of this.pending.splice(0)) p.reject(error); };

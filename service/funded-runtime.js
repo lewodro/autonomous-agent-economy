@@ -1,10 +1,18 @@
+import {economyLog} from './economy-log.js';
 import {randomUUID} from 'node:crypto';
 const State=Object.freeze({Funding:'funding',Running:'running',SettlementPending:'settlement_pending',RefundPending:'refund_pending'});
 /** Admission is Rust-owned. This host schedules turns and publishes verified public projections. */
 export class FundedRuntime {
- constructor(core,runtime,events,sessions){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;}
+ constructor(core,runtime,events,sessions){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
  remember(result){const session=result.session||result.economy?.session;if(session&&result.economy)this.matches.set(session,{...result,nextAttempt:0});return result;}
- publish(result){this.remember(result);this.events.publishEconomy?.(result.session||result.economy?.session,result.economy);return result;}
+ publish(result){
+  this.remember(result);const session=result.session||result.economy?.session;
+  let last=this.logged.get(session)??-1;
+  for(const event of result.economy?.events??[])if(event.seq>last){
+   economyLog(event.type,{session,match_id:event.match_id,operation_id:event.receipt_id,payment_mode:event.projection.payment_mode,seq:event.seq});last=event.seq;
+  }
+  this.logged.set(session,last);this.events.publishEconomy?.(session,result.economy);return result;
+ }
  async restore(){const {sessions}=await this.core.request({command:'funded-host',action:'list'});for(const session of sessions){this.sessions.set(session,true);this.remember(await this.command(session,'get'));}}
  async command(session,action,extra={}){return this.core.request({command:'funded-host',session,action,...extra});}
  async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
@@ -48,7 +56,7 @@ export class FundedRuntime {
    if(result)this.publish({...result,session});
   }catch(error){
    const entries=[...this.matches.entries()];const row=entries[(this.cursor-1)%entries.length];
-   if(row){const [session,known]=row;known.nextAttempt=Date.now()+5000;known.lastError=error.message;try{const current=await this.command(session,'get');this.publish(current);this.matches.get(session).nextAttempt=Date.now()+5000;}catch{}}
+   if(row){const [session,known]=row;known.nextAttempt=Date.now()+5000;known.lastError=error.message;economyLog('reconciliation_retry',{session,payment_mode:known.economy.economy.payment_mode,code:error.code||'operation_failed'});try{const current=await this.command(session,'get');this.publish(current);this.matches.get(session).nextAttempt=Date.now()+5000;}catch{}}
   }finally{this.running=false;}
  }
  health(){
