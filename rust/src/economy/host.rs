@@ -47,6 +47,33 @@ impl FundedHost {
             return Err(EconomyError::Conflict);
         }
         snapshot.config.validate()?;
+        if snapshot.config.simulation != snapshot.simulation.config
+            || snapshot.config.economy.mode != snapshot.economy.view().payment_mode
+        {
+            return Err(EconomyError::Conflict);
+        }
+        if matches!(
+            snapshot.economy.view().state,
+            EconomyState::SettlementPending | EconomyState::Settled
+        ) && (snapshot.attestation.is_none() || snapshot.settlement.is_none())
+        {
+            return Err(EconomyError::InvalidAttestation);
+        }
+        if let Some(record) = &snapshot.settlement {
+            let view = snapshot.economy.view();
+            let pot = view
+                .entry_amount
+                .multiply(view.required_agents.len() as u64)?;
+            if record.match_id != view.match_id
+                || Some(record.winner_id.as_str()) != snapshot.simulation.winner.as_deref()
+                || record.pot_amount != pot
+                || record.payout_amount != pot
+                || record.fee_amount != Amount::ZERO
+                || record.payment_rail != view.payment_mode
+            {
+                return Err(EconomyError::SettlementNotAuthorized);
+            }
+        }
         snapshot.economy.validate_recovery(&snapshot.simulation)?;
         let mut host = Self {
             root: root.into(),

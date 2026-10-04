@@ -17,6 +17,23 @@ impl<R: PaymentRail, E: MatchEscrow> EconomyCoordinator<R, E> {
             return Err(EconomyError::Conflict);
         }
         let escrow = self.escrow.status()?;
+        let participants: std::collections::BTreeSet<_> = simulation
+            .config
+            .agents
+            .iter()
+            .map(|a| AgentId::new(&a.id))
+            .collect::<Result<_>>()?;
+        if self.economy.required_agents.len() != participants.len()
+            || self
+                .economy
+                .required_agents
+                .iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                != participants
+        {
+            return Err(EconomyError::Conflict);
+        }
         if escrow.match_id != self.economy.match_id
             || escrow
                 .deposits
@@ -50,8 +67,20 @@ impl<R: PaymentRail, E: MatchEscrow> EconomyCoordinator<R, E> {
         {
             return Err(EconomyError::UnverifiedPayment);
         }
-        if self.settlement.is_some() && !simulation.final_state.ended {
-            return Err(EconomyError::SettlementNotAuthorized);
+        if let Some(settlement) = &self.settlement {
+            let winner = self.binding.verify_finished(simulation)?;
+            if settlement.winner != winner
+                || settlement.match_id != self.economy.match_id
+                || settlement.final_history_id != simulation.match_id
+                || settlement.amount
+                    != self
+                        .economy
+                        .entry_amount
+                        .multiply(participants.len() as u64)?
+                || self.result_history.as_ref() != Some(&simulation.match_id)
+            {
+                return Err(EconomyError::SettlementNotAuthorized);
+            }
         }
         Ok(())
     }
