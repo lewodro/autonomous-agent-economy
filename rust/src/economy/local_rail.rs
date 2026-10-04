@@ -74,9 +74,10 @@ pub fn verify_transaction(tx: &Value, s: &SignedLocalTransfer) -> Result<()> {
     {
         return Err(EconomyError::UnverifiedPayment);
     }
-    if tx["meta"]["innerInstructions"]
-        .as_array()
-        .is_some_and(|a| !a.is_empty())
+    if !matches!(tx["meta"].get("innerInstructions"), Some(Value::Null))
+        && !tx["meta"]["innerInstructions"]
+            .as_array()
+            .is_some_and(|a| a.is_empty())
     {
         return Err(EconomyError::UnverifiedPayment);
     }
