@@ -1,7 +1,8 @@
 import {reduceEconomy,type EconomyView} from './economy.js';
 export interface PublicEconomy {
  session:string;economy:EconomyView['match'];events:unknown[];expected_pot:string;funding_deadline:number;
- operations:{id:string;purpose:'entry'|'payout'|'refund';payer:string;status:string;amount:string;reference?:string|null}[];
+ wallets:{account:string;address:string|null;balance:string|null;explorer_url?:string|null}[];
+ operations:{id:string;purpose:'entry'|'payout'|'refund';payer:string;status:string;amount:string;reference?:string|null;explorer_url?:string|null}[];
  settlement:{status:string;payout_amount:string;winner_id:string}|null;
 }
 export function formatSol(units:string):string {
@@ -38,7 +39,18 @@ export class EconomyHUD {
   this.root.append(label);
   const presentation=document.createElement('small');presentation.className='economy-presentation';presentation.hidden=true;this.root.append(presentation);if(this.presentation)this.present(this.presentation.turn,this.presentation.ended);
   const status=document.createElement('span');status.className='funding-statuses';status.textContent=e.required_agents.map(id=>`${id} ${fundingStatus(v,id)}`).join(' · ');this.root.append(status);
-  if(e.state==='funding')for(const [action,text] of [['fund-all','Fund test entries'],['cancel','Cancel / refund']]){const b=document.createElement('button');b.textContent=text!;b.className='small-button';b.onclick=async()=>{b.disabled=true;try{const r=await fetch(`/api/funded-matches/${encodeURIComponent(v.session)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const result=await r.json();if(!r.ok)throw Error(result.error);this.accept(result.economy);}catch(error){this.error((error as Error).message);}finally{b.disabled=false;}};this.root.append(b);}
+  if(e.payment_mode==='devnet'){
+   const wallets=document.createElement('span');wallets.className='wallet-links';
+   for(const wallet of v.wallets.filter(wallet=>e.required_agents.includes(wallet.account)||wallet.account.startsWith('escrow-')||wallet.account==='fee-sponsor')){
+    if(!wallet.address||!wallet.explorer_url)continue;const link=document.createElement('a');link.href=wallet.explorer_url;link.target='_blank';link.rel='noreferrer';link.textContent=`${wallet.account}: ${wallet.address.slice(0,4)}…${wallet.address.slice(-4)}`;link.title=`Open ${wallet.address} on Solscan Devnet`;wallets.append(link);
+   }
+   this.root.append(wallets);
+  }
+  const command=async(action:string,body:object={})=>{const r=await fetch(`/api/funded-matches/${encodeURIComponent(v.session)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await r.json();if(!r.ok)throw Error(result.error);this.accept(result.economy);};
+  if(e.state==='funding'){
+   const actions=e.payment_mode==='devnet'?[...e.required_agents.filter(id=>!e.funded_agents.includes(id)).map(id=>({action:'fund',text:`Verify ${id}`,body:{agent_id:id}})),{action:'cancel',text:'Cancel / refund',body:{}}]:[{action:'fund-all',text:'Fund test entries',body:{}},{action:'cancel',text:'Cancel / refund',body:{}}];
+   for(const action of actions){const b=document.createElement('button');b.textContent=action.text;b.className='small-button';b.onclick=async()=>{b.disabled=true;try{await command(action.action,action.body);}catch(error){this.error((error as Error).message);}finally{b.disabled=false;}};this.root.append(b);}
+  }
   this.decorate();
  }
 }

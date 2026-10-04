@@ -148,13 +148,17 @@ impl FundedHost {
         let mut rpc_ready = true;
         let mut wallets = vec![];
         let addresses = self.snapshot.economy.rail.addresses();
-        let ids = economy
+        let mut ids: Vec<_> = economy
             .required_agents
             .iter()
             .map(|id| AccountId::new(id.as_str()).unwrap())
             .chain(std::iter::once(
                 self.snapshot.economy.escrow.status().unwrap().account,
-            ));
+            ))
+            .collect();
+        if addresses.contains_key(&AccountId::new("fee-sponsor").unwrap()) {
+            ids.push(AccountId::new("fee-sponsor").unwrap());
+        }
         for id in ids {
             let result = if rpc_ready {
                 self.snapshot.economy.rail.get_balance(&id)
@@ -164,9 +168,20 @@ impl FundedHost {
             if result.is_err() {
                 rpc_ready = false;
             }
-            wallets.push(json!({"account":id,"address":addresses.get(&id),"balance":result.ok()}));
+            let address = addresses.get(&id);
+            let explorer_url = if economy.payment_mode == super::config::PaymentMode::Devnet {
+                address
+                    .map(|address| format!("https://solscan.io/account/{address}?cluster=devnet"))
+            } else {
+                None
+            };
+            wallets.push(json!({"account":id,"address":address,"balance":result.ok(),"explorer_url":explorer_url}));
         }
-        let operations:Vec<_>=self.snapshot.economy.rail.records().values().map(|r|json!({"id":r.intent.operation_id,"purpose":r.intent.purpose,"payer":r.intent.payer,"payee":r.intent.payee,"amount":r.intent.amount,"status":r.status,"created_at":r.created_at,"updated_at":r.updated_at,"retry_count":r.retry_count,"next_retry_at":r.next_retry_at,"reference":r.receipt.as_ref().and_then(|r|r.external_reference.clone()).or_else(||r.prepared.as_ref().and_then(|p|serde_json::from_str::<super::local_transaction::SignedLocalTransfer>(&p.authorization).ok().map(|s|s.reference))),"error":r.last_error})).collect();
+        let operations:Vec<_>=self.snapshot.economy.rail.records().values().map(|r|{
+            let reference=r.receipt.as_ref().and_then(|r|r.external_reference.clone()).or_else(||r.prepared.as_ref().and_then(|p|serde_json::from_str::<super::local_transaction::SignedLocalTransfer>(&p.authorization).ok().map(|s|s.reference)));
+            let explorer_url=if economy.payment_mode==super::config::PaymentMode::Devnet {reference.as_ref().map(|signature|format!("https://solscan.io/tx/{signature}?cluster=devnet"))}else{None};
+            json!({"id":r.intent.operation_id,"purpose":r.intent.purpose,"payer":r.intent.payer,"payee":r.intent.payee,"amount":r.intent.amount,"status":r.status,"created_at":r.created_at,"updated_at":r.updated_at,"retry_count":r.retry_count,"next_retry_at":r.next_retry_at,"reference":reference,"explorer_url":explorer_url,"error":r.last_error})
+        }).collect();
         json!({"session":self.snapshot.session,"economy":economy,"events":self.snapshot.economy.events(),"wallets":wallets,"operations":operations,"settlement":self.snapshot.settlement,"attestation":self.snapshot.attestation,"funding_deadline":self.snapshot.funding_deadline,"expected_pot":economy.entry_amount.multiply(economy.required_agents.len() as u64).unwrap(),"health":super::health::EconomyHealth::observed(economy.payment_mode,economy.state,rpc_ready,self.snapshot.economy.rail.records().values())})
     }
     fn admit(&mut self) -> Result<()> {
