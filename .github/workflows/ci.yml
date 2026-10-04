@@ -23,6 +23,12 @@ jobs:
       - run: npm run check
       - run: npm run docs:check
       - run: npm run examples:check
+      - run: npm run verify:production
+        env:
+          NODE_ENV: production
+          PUBLIC_ORIGIN: https://ci.example
+          MATCHES_DIR: ${{ runner.temp }}
+          HOST_SESSION_SECRET: ci-only-host-session-secret-000000000000
       - run: npm run demo:crypto
       - run: npm run demo:economy
       - run: npm run demo:economy -- examples/economy/free.json
