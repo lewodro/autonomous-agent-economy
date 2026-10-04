@@ -6,6 +6,8 @@ export interface MatchEconomy {
  settlement_status:'not_started'|'pending'|'completed'|'refunded';
 }
 export type EconomyKind=
+ | {type:'EntryPaymentCreated'|'EntryPaymentSubmitted'|'EntryPaymentConfirmed'|'RefundSubmitted'|'RefundConfirmed';agent_id:string;amount:string;operation_id:string}
+ | {type:'SettlementPending'|'SettlementSubmitted'|'SettlementConfirmed';winner:string;amount:string;operation_id:string}
  | {type:'FundingOpened'|'FundingCompleted'|'FundsLocked'|'EconomyRunning'}
  | {type:'EntryRequested';agent_id:string;amount:string}
  | {type:'EntryReceived';agent_id:string;amount:string;receipt_id:string}
@@ -19,7 +21,8 @@ export type EconomyKind=
 export type EconomyEvent=EconomyKind&{schema_version:1;seq:number;match_id:string;projection:MatchEconomy};
 export interface EconomyView {match:MatchEconomy;sequence:number;payments:Record<string,'pending'|'received'|'rejected'>}
 const states=new Set(['unfunded','funding','funded','locked','running','settlement_pending','settled','refund_pending','refunded','failed']);
-const kinds=new Set(['FundingOpened','EntryRequested','EntryReceived','EntryRejected','PotUpdated','FundingCompleted','FundsLocked','EconomyRunning','SettlementStarted','SettlementCompleted','RefundStarted','RefundCompleted','EconomyFailed']);
+const operationKinds=new Set(['EntryPaymentCreated','EntryPaymentSubmitted','EntryPaymentConfirmed','SettlementPending','SettlementSubmitted','SettlementConfirmed','RefundSubmitted','RefundConfirmed']);
+const kinds=new Set(['FundingOpened','EntryRequested','EntryReceived','EntryRejected','PotUpdated','FundingCompleted','FundsLocked','EconomyRunning','SettlementStarted','SettlementCompleted','RefundStarted','RefundCompleted','EconomyFailed',...operationKinds]);
 const id=(x:unknown):x is string=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x);
 const amount=(x:unknown):x is string=>typeof x==='string'&&/^(0|[1-9]\d{0,19})$/.test(x)&&BigInt(x)<=18446744073709551615n;
 /** Reject malformed transport data before it reaches a renderer. No rules or balance calculations here. */
@@ -29,6 +32,10 @@ export function parseEconomyEvent(value:unknown):EconomyEvent {
  if(e.schema_version!==1||!Number.isSafeInteger(e.seq)||Number(e.seq)<0||!id(e.match_id)||!kinds.has(String(e.type))||!p||p.match_id!==e.match_id||typeof p.simulation_start_id!=='string'||!['mock','local','devnet'].includes(String(p.payment_mode))||!states.has(String(p.state))||!['not_started','pending','completed','refunded'].includes(String(p.settlement_status))||!amount(p.pot_amount)||!amount(p.entry_amount)||!Array.isArray(p.required_agents)||p.required_agents.length<2||p.required_agents.length>20||!p.required_agents.every(id)||new Set(p.required_agents).size!==p.required_agents.length||!Array.isArray(p.funded_agents)||new Set(p.funded_agents).size!==p.funded_agents.length||!p.funded_agents.every(a=>p.required_agents!.includes(a)))throw Error('Invalid economy projection');
  if('agent_id' in e&&(!id(e.agent_id)||!p.required_agents.includes(e.agent_id)))throw Error('Unknown payment agent');
  if('winner' in e&&(!id(e.winner)||!p.required_agents.includes(e.winner)))throw Error('Unknown settlement winner');
+ if(operationKinds.has(String(e.type))){
+  if(!id(e.operation_id)||!amount(e.amount))throw Error('Invalid payment operation');
+  if(String(e.type).startsWith('Settlement')?!id(e.winner):!id(e.agent_id))throw Error('Missing payment participant');
+ }
  if(['EntryRequested','EntryReceived','EntryRejected'].includes(String(e.type))&&!id(e.agent_id))throw Error('Missing payment agent');
  if(['SettlementStarted','SettlementCompleted'].includes(String(e.type))&&!id(e.winner))throw Error('Missing winner');
  if(['EntryRequested','EntryReceived','PotUpdated','SettlementCompleted','RefundCompleted'].includes(String(e.type))&&!amount(e.amount))throw Error('Invalid amount');
@@ -44,8 +51,8 @@ export function reduceEconomy(previous:EconomyView|null,raw:unknown):EconomyView
  if(previous&&e.seq<=previous.sequence)return previous;
  if(e.seq!==(previous?.sequence??-1)+1)throw Error('Economy event gap; reload snapshot');
  const payments={...previous?.payments};
- if(e.type==='EntryRequested')payments[e.agent_id]='pending';
- if(e.type==='EntryReceived')payments[e.agent_id]='received';
+ if(e.type==='EntryRequested'||e.type==='EntryPaymentCreated'||e.type==='EntryPaymentSubmitted')payments[e.agent_id]='pending';
+ if(e.type==='EntryReceived'||e.type==='EntryPaymentConfirmed')payments[e.agent_id]='received';
  if(e.type==='EntryRejected')payments[e.agent_id]='rejected';
  return {match:e.projection,sequence:e.seq,payments};
 }

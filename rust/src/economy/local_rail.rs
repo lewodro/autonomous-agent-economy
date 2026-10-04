@@ -355,7 +355,7 @@ impl LocalPaymentRail {
             .as_str()
             .ok_or(EconomyError::UnverifiedPayment)?
             .to_string();
-        let signed = local_transaction::prepare(&sender, &sponsor, to, &hash, &intent)?;
+        let signed = local_transaction::prepare(&sender, &sponsor, to, &hash, intent)?;
         let prepared = PreparedPayment {
             intent: intent.clone(),
             authorization: serde_json::to_string(&signed)

@@ -26,6 +26,46 @@ pub struct MatchEconomy {
 #[serde(tag = "type")]
 pub enum EconomyEventKind {
     FundingOpened,
+    EntryPaymentCreated {
+        agent_id: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    EntryPaymentSubmitted {
+        agent_id: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    EntryPaymentConfirmed {
+        agent_id: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    SettlementPending {
+        winner: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    SettlementSubmitted {
+        winner: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    SettlementConfirmed {
+        winner: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    RefundSubmitted {
+        agent_id: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
+    RefundConfirmed {
+        agent_id: AgentId,
+        amount: Amount,
+        operation_id: OperationId,
+    },
     EntryRequested {
         agent_id: AgentId,
         amount: Amount,

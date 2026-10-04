@@ -118,7 +118,8 @@ impl FundedHost {
         sessions.sort();
         Ok(sessions)
     }
-    pub(super) fn save(&self) -> Result<()> {
+    pub(super) fn save(&mut self) -> Result<()> {
+        self.observe_payment_events()?;
         self.repository.write("host", &self.snapshot)
     }
     fn authority(&self) -> Result<HostAuthority> {
@@ -240,11 +241,12 @@ impl FundedHost {
             .snapshot
             .attestation
             .as_ref()
+            .cloned()
             .ok_or(EconomyError::InvalidAttestation)?;
         authority.verify(
             &self.snapshot.economy.view().match_id,
             &self.snapshot.simulation,
-            a,
+            &a,
         )?;
         if let Some(winner) = self.snapshot.simulation.winner.clone() {
             if self.snapshot.settlement.is_none() {
@@ -274,7 +276,7 @@ impl FundedHost {
             let result =
                 self.snapshot
                     .economy
-                    .settle_attested(&self.snapshot.simulation, a, &authority);
+                    .settle_attested(&self.snapshot.simulation, &a, &authority);
             self.save()?;
             let settled = result?;
             let record = self.snapshot.settlement.as_mut().unwrap();

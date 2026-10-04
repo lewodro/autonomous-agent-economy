@@ -104,7 +104,7 @@ impl FundedHost {
         let funding_deadline = now()
             .checked_add(config.funding_timeout_seconds)
             .ok_or(EconomyError::Overflow)?;
-        let host = Self {
+        let mut host = Self {
             root: root.into(),
             repository,
             snapshot: HostSnapshot {

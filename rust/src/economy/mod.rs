@@ -55,6 +55,7 @@ pub mod local_transaction;
 
 pub mod host;
 pub mod host_api;
+mod host_events;
 pub mod host_factory;
 
 pub mod health;

@@ -19,3 +19,15 @@ V1 archives are verified with the preserved v1 event contract and isolated compa
 | Replay/state payload grows with every live response | Turn endpoint returns only new events and authoritative final state; replay fetched/exported separately |
 
 Game history is deterministic. Runtime request duration, network receipts and visual effects are separate channels and never enter game scoring or seeded randomness.
+# Durable payment observations
+
+Funded hosts append `EntryPaymentCreated`, `EntryPaymentSubmitted`,
+`EntryPaymentConfirmed`, `SettlementPending`, `SettlementSubmitted`,
+`SettlementConfirmed`, `RefundSubmitted` and `RefundConfirmed` to the existing
+ordered economy stream. Each carries a canonical operation ID, participant and
+integer amount. No transaction bytes or signing keys are exposed.
+
+These events report **observed journal facts**, not network timestamps. After a
+restart, submission and confirmation may be observed in the same snapshot. Each
+operation/phase is emitted once; repeated settlement or reconciliation preserves
+the event prefix. The older coordinator-only demo events remain compatible.

@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {reduceEconomy,parseEconomyEvent} from '../web/dist/economy.js';
 
 // Each restart reuses durable storage but replaces the entire Node/Rust process group.
 async function fixture(extra={}){
@@ -32,6 +33,11 @@ test('partial funding survives process kill, completes admission and pays only o
   await command(host,id,'fund-all');const completed=await finish(host,id);assert.ok(completed.replay.winner);
   const first=await command(host,id,'settle');await host.restart();const again=await command(host,id,'settle');
   assert.deepEqual(again.economy.operations,first.economy.operations);assert.deepEqual(balances(again),balances(first));assert.equal(again.economy.settlement.status,'confirmed');assert.equal(again.economy.attestation.claims.winner_id,completed.replay.winner);
+  const events=again.economy.events;assert.deepEqual(events,first.economy.events);
+  let projected=null;for(const event of events)projected=reduceEconomy(projected,event);assert.deepEqual(projected.match,again.economy.economy);
+  for(const type of ['EntryPaymentCreated','EntryPaymentSubmitted','EntryPaymentConfirmed'])assert.equal(events.filter(e=>e.type===type).length,4);
+  for(const type of ['SettlementPending','SettlementSubmitted','SettlementConfirmed'])assert.equal(events.filter(e=>e.type===type).length,1);
+  const confirmed=events.find(e=>e.type==='EntryPaymentConfirmed');assert.throws(()=>parseEconomyEvent({...confirmed,operation_id:'../invalid'}));assert.throws(()=>parseEconomyEvent({...confirmed,agent_id:'stranger'}));
  }finally{await host.close();}
 });
 test('partial cancellation remains refunded after a real process restart',async()=>{
