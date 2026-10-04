@@ -4,7 +4,7 @@
 
 ### Experiment in making agents fight until they are out.
 
-**A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death conecept**
+**A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death concept**
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#simulation-engine)
 [![UI](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript)](#tech-stack)
