@@ -126,16 +126,51 @@ fn persisted_confirmation_requires_matching_proof_and_failed_records_roundtrip()
     }
     let mut failed =
         PaymentRecord::new(intent(PaymentPurpose::Refund), PaymentMode::Mock, 10).unwrap();
-    failed.status = OperationStatus::Failed;
     failed
         .retry(
             EconomyError::RpcUnavailable("test RPC unavailable".into()),
             11,
         )
         .unwrap();
+    failed.status = OperationStatus::Failed;
     failed.validate().unwrap();
     assert_eq!(
         serde_json::from_str::<PaymentRecord>(&serde_json::to_string(&failed).unwrap()).unwrap(),
         failed
     );
+}
+#[test]
+fn terminal_payment_records_cannot_acquire_retry_metadata() {
+    let i = intent(PaymentPurpose::Entry);
+    let mut confirmed = PaymentRecord::new(i.clone(), PaymentMode::Mock, 10).unwrap();
+    confirmed
+        .submitted(
+            PreparedPayment {
+                intent: i.clone(),
+                authorization: "public-proof".into(),
+            },
+            11,
+        )
+        .unwrap();
+    confirmed
+        .confirmed(
+            PaymentReceipt {
+                receipt_id: i.operation_id.clone(),
+                intent: i,
+                status: ConfirmationStatus::Confirmed,
+                external_reference: None,
+            },
+            12,
+        )
+        .unwrap();
+    let mut failed =
+        PaymentRecord::new(intent(PaymentPurpose::Refund), PaymentMode::Mock, 10).unwrap();
+    failed.status = OperationStatus::Failed;
+    for mut record in [confirmed, failed] {
+        let before = record.clone();
+        assert!(record
+            .retry(EconomyError::RpcUnavailable("retry".into()), 20)
+            .is_err());
+        assert_eq!(record, before);
+    }
 }

@@ -112,6 +112,14 @@ impl PaymentRecord {
         Ok(())
     }
     pub fn retry(&mut self, error: EconomyError, now: u64) -> Result<()> {
+        if matches!(
+            self.status,
+            OperationStatus::Confirmed | OperationStatus::Failed
+        ) {
+            return Err(EconomyError::InvalidTransition(
+                "Terminal payment cannot be retried".into(),
+            ));
+        }
         self.retry_count = self
             .retry_count
             .checked_add(1)
