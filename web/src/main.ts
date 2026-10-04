@@ -77,6 +77,12 @@ $<HTMLInputElement>('scrub').oninput=()=>player.seek(Number($<HTMLInputElement>(
 $('favorite').onclick=()=>{favorites.has(selected)?favorites.delete(selected):favorites.add(selected);try{localStorage.setItem('last-seat-favorites',JSON.stringify([...favorites]));}catch{}update();};
 document.addEventListener('click',e=>{const target=(e.target as HTMLElement).closest<HTMLElement>('[data-agent],[data-turn]');if(target?.dataset.agent){selected=target.dataset.agent;$<HTMLDetailsElement>('agent-drawer').open=true;update();}if(target?.dataset.turn){player.seek(Number(target.dataset.turn));}});
 const dialog=$<HTMLDialogElement>('config-dialog');
+void api<{funded_modes:string[];payment_notice:string}>('/api/capabilities').then(capabilities=>{
+  const mode=$<HTMLSelectElement>('economy-mode');
+  for(const option of [...mode.options])if(option.value!=='none'&&!capabilities.funded_modes.includes(option.value))option.remove();
+  $<HTMLElement>('economy-options').hidden=capabilities.funded_modes.length===0;
+  $('payment-notice').textContent=capabilities.payment_notice;
+}).catch(()=>{$<HTMLElement>('economy-options').hidden=true;$('payment-notice').textContent='Payment modes are unavailable.';});
 $('new').onclick=()=>{player.pause();if(player.run){$<HTMLTextAreaElement>('config-json').value=JSON.stringify(player.run.config,null,2);$<HTMLInputElement>('seed').value=String(player.run.seed);$<HTMLSelectElement>('population').value=String(player.run.config.agents.length);$<HTMLInputElement>('credits').value=String(player.run.config.agents[0]!.starting_credits);$<HTMLInputElement>('max-turns').value=String(player.run.config.max_turns);}$('config-error').textContent='';dialog.showModal();};
 $('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(crypto.getRandomValues(new Uint32Array(1))[0]||1);};
 $('close-config').onclick=()=>dialog.close();

@@ -110,6 +110,12 @@ const server = http.createServer(async (req, res) => {
       await access(directory,constants.W_OK);
       return json(res,200,{ok:true,engine:'Rust',storage:'ok',payments:'disabled',...metadata});
     }
+    if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
+      public_site:production,
+      game_modes:['last-seat','rps','tictactoe'],
+      funded_modes:production?[]:process.env.ECONOMY_LAB==='1'?['mock','local']:[],
+      payment_notice:production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
+    });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
       const data = await body(req);

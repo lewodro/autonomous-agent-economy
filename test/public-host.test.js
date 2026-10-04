@@ -54,6 +54,9 @@ test('public games are visible after restart while only the host can advance the
     const health = await request(running.base, '/api/health');
     assert.equal(health.status, 200);
     assert.equal(health.body.storage, 'ok');
+    const capabilities = await request(running.base, '/api/capabilities');
+    assert.deepEqual(capabilities.body.funded_modes, []);
+    assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'rps', 'tictactoe']);
     const config = (await request(running.base, '/api/config?agents=2')).body;
     const created = await request(running.base, '/api/matches', { config });
     assert.equal(created.status, 201);
