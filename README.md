@@ -40,17 +40,19 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Local validator funding | **WORKING / TEST-ONLY** | Verified local entries, payout, refunds and actual process-crash recovery; trusted backend custody |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
-| Public hosted matches | **PLANNED** | Local HTTP service and JSON archives are the foundation |
+| Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
+| Public paid entries | **NOT IMPLEMENTED** | Local-validator funding is test-only; production rejects paid endpoints |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
 
 ## Live Match
 
-Open **http://localhost:3000** after `npm start`. The board is the main screen.
+Open **http://localhost:3000** after `npm run dev`. The board is the main screen.
 
 | HUD/control | What it tells you |
 |---|---|
 | READY / LIVE / THINKING / PAUSED / ENDED | Actual presentation/runtime phase; archived playback is labeled HISTORY |
 | Watch live | Copy a read-only live link; viewer pause never steps the match |
+| Games ongoing | Open an active hosted match from the lobby; completed games leave this list |
 | Turn + remaining seats | Progress and eliminations |
 | Agent credits / bar / ◇ | Survival runway and the current credit leader |
 | Action queue | Selected action, active agent, resolved action |
@@ -61,7 +63,7 @@ Open **http://localhost:3000** after `npm start`. The board is the main screen.
 | New / remix / random seed / restart | Configure and fork the experiment |
 | Mobile drawer | Agent detail without filling the board with desktop panels |
 
-The host launches turns as you watch; **Watch live** shares `/?watch=<session>` with read-only viewers. Viewers can pause, inspect and remix independently. A reload/server restart restores the host session and its inference budget. [Live transport](docs/live-spectators.md) · [Persistence guarantees](docs/persistence.md).
+The host launches turns as you watch; **Watch live** shares `/?watch=<session>` with read-only viewers. Viewers can pause, inspect and remix independently. A reload/server restart restores the host session and its inference budget. In production, only the browser holding the signed host cookie can advance that match. [Live transport](docs/live-spectators.md) · [Persistence guarantees](docs/persistence.md).
 
 There is no replay clip/video exporter. Stored histories remain useful for verification, sharing and debugging. Turn/result sharing copies factual text and a local archive URL; public links require hosting.
 
@@ -287,10 +289,16 @@ Install Node 22+, Rust stable/Cargo and Git. `curl` is required only for the net
 ```bash
 git clone https://github.com/lewodro/autonomous-agent-economy.git
 cd autonomous-agent-economy
-npm start
+npm run dev
 ```
 
-First start installs the locked TypeScript compiler, builds Rust and compiles the browser. Open **http://localhost:3000**. `PORT=3001 npm start` changes the local port. The preserved RPS economy lives at **/rps**.
+First development start installs the locked TypeScript compiler, builds Rust and compiles the browser. Open **http://localhost:3000**. `PORT=3001 npm run dev` changes the local port. The preserved RPS economy lives at **/rps**, with tic-tac-toe selectable there; both use explicitly simulated stakes.
+
+## Public deployment
+
+The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](docs/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
+
+After `npm ci && npm run build`, set `NODE_ENV=production`, a HTTPS `PUBLIC_ORIGIN`, absolute persistent `MATCHES_DIR`, and a stable `HOST_SESSION_SECRET` of at least 32 characters. Run `npm run verify:production`, then `npm start`. There are no database migrations in this file-backed topology.
 
 ```bash
 npm run match -- --agents 2 --seed 9 --out match.json

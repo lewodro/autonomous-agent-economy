@@ -1,0 +1,12 @@
+.git
+node_modules
+rust/target
+web/dist
+matches
+economy-data
+validator-ledger
+.env*
+*.wallet.bin
+*.keypair.json
+artifacts
+test-results
