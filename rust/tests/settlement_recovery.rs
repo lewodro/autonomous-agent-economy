@@ -28,6 +28,8 @@ fn settled_host_recovery_rejects_semantic_corruption_and_missing_attestation() {
         "payout",
         "participants",
         "config",
+        "entry_policy",
+        "settlement_identity",
     ] {
         let mut bad = original.clone();
         match field {
@@ -38,6 +40,12 @@ fn settled_host_recovery_rejects_semantic_corruption_and_missing_attestation() {
             "participants" => {
                 bad["economy"]["economy"]["required_agents"] =
                     serde_json::json!(["outsider", "agent-2"])
+            }
+            "entry_policy" => {
+                bad["config"]["economy"]["entry_amount_sol"] = serde_json::json!("0.03")
+            }
+            "settlement_identity" => {
+                bad["settlement"]["settlement_id"] = serde_json::json!("other-operation")
             }
             _ => bad["config"]["simulation"]["seed"] = serde_json::json!(43),
         }

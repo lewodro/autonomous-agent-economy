@@ -12,6 +12,12 @@ pub enum BackendRail {
     Local(LocalPaymentRail),
 }
 impl BackendRail {
+    pub fn mode(&self) -> super::config::PaymentMode {
+        match self {
+            Self::Mock(_) => super::config::PaymentMode::Mock,
+            Self::Local(_) => super::config::PaymentMode::Local,
+        }
+    }
     pub fn reload(&mut self) -> Result<()> {
         match self {
             Self::Mock(r) => r.reload(),

@@ -47,7 +47,11 @@ impl FundedHost {
             return Err(EconomyError::Conflict);
         }
         snapshot.config.validate()?;
-        if snapshot.config.simulation != snapshot.simulation.config
+        let policy = snapshot.config.economy.validate()?;
+        if policy.entry != snapshot.economy.view().entry_amount
+            || policy.mode != snapshot.economy.rail.mode()
+            || snapshot.economy.view().match_id != snapshot.economy.binding.run_id(&id)?
+            || snapshot.config.simulation != snapshot.simulation.config
             || snapshot.config.economy.mode != snapshot.economy.view().payment_mode
         {
             return Err(EconomyError::Conflict);
@@ -64,7 +68,14 @@ impl FundedHost {
             let pot = view
                 .entry_amount
                 .multiply(view.required_agents.len() as u64)?;
-            if record.match_id != view.match_id
+            let expected_id = operation_id(
+                &view.match_id,
+                PaymentPurpose::Payout,
+                &snapshot.economy.escrow.status()?.account,
+                &AccountId::new(record.winner_id.as_str())?,
+            )?;
+            if record.settlement_id != expected_id
+                || record.match_id != view.match_id
                 || Some(record.winner_id.as_str()) != snapshot.simulation.winner.as_deref()
                 || record.pot_amount != pot
                 || record.payout_amount != pot
