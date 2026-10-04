@@ -160,6 +160,10 @@ impl FundedHost {
     }
     fn admit(&mut self) -> Result<()> {
         if self.snapshot.economy.view().state == EconomyState::Funded {
+            // Read-only reconciliation cannot admit a late deposit or initiate refunds.
+            if now() >= self.snapshot.funding_deadline {
+                return Err(EconomyError::FundingClosed);
+            }
             self.snapshot.economy.lock()?;
             self.snapshot.economy.start()?;
             self.save()?;
@@ -400,7 +404,10 @@ impl FundedHost {
             let reason = self.snapshot.cancellation.ok_or(EconomyError::Conflict)?;
             self.cancel(reason)
         } else if now() >= self.snapshot.funding_deadline
-            && self.snapshot.economy.view().state == EconomyState::Funding
+            && matches!(
+                self.snapshot.economy.view().state,
+                EconomyState::Funding | EconomyState::Funded
+            )
         {
             self.cancel(RefundReason::FundingFailed)
         } else {
@@ -412,6 +419,33 @@ impl FundedHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn late_verified_funding_cannot_bypass_deadline_or_refund_during_reconciliation() {
+        let root = std::env::temp_dir().join(format!(
+            "late-funding-{}",
+            crate::wallet::address(&crate::wallet::key().unwrap())
+        ));
+        let config=serde_json::from_value(json!({"simulation":crate::config::default_config(2,42),"economy":{"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"}})).unwrap();
+        let mut host = FundedHost::create(&root, "late", config).unwrap();
+        host.fund("agent-1").unwrap();
+        host.snapshot
+            .economy
+            .fund(&AgentId::new("agent-2").unwrap())
+            .unwrap();
+        host.snapshot.funding_deadline = 0;
+        host.save().unwrap();
+        drop(host);
+        let mut host = FundedHost::load(&root, "late").unwrap();
+        assert_eq!(host.reconcile(), Err(EconomyError::FundingClosed));
+        assert_eq!(host.replay().final_state.turn, 0);
+        assert_eq!(host.view()["economy"]["pot_amount"], "40000000");
+        assert_eq!(host.view()["operations"].as_array().unwrap().len(), 2);
+        let refunded = host.expire().unwrap();
+        assert_eq!(refunded["economy"]["state"], "refunded");
+        assert_eq!(refunded["wallets"][0]["balance"], "1000000000");
+        drop(host);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn scheduler_resumes_pending_refund_with_original_reason_after_restart() {
         let root = std::env::temp_dir().join(format!(

@@ -1,6 +1,6 @@
 import {economyLog} from './economy-log.js';
 import {randomUUID} from 'node:crypto';
-const State=Object.freeze({Funding:'funding',Running:'running',SettlementPending:'settlement_pending',RefundPending:'refund_pending'});
+const State=Object.freeze({Funding:'funding',Funded:'funded',Running:'running',SettlementPending:'settlement_pending',RefundPending:'refund_pending'});
 /** Admission is Rust-owned. This host schedules turns and publishes verified public projections. */
 export class FundedRuntime {
  constructor(core,runtime,events,sessions){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
@@ -28,6 +28,7 @@ export class FundedRuntime {
   if(!this.matches.has(session))throw Object.assign(Error('Funded session not found'),{status:404});
   if(this.busy.has(session)||this.runtime.busy.has(session))throw Object.assign(Error('Match operation already resolving'),{status:409});
   this.busy.add(session);
+  const known=this.matches.get(session);known.failures=0;known.nextAttempt=0;
   try{
    const fund=async id=>{
     const current=await this.command(session,'get');
@@ -47,21 +48,22 @@ export class FundedRuntime {
   if(this.running||!this.matches.size)return;this.running=true;
   try{
    const entries=[...this.matches.entries()];const [session,known]=entries[this.cursor++%entries.length];
-   if(this.busy.has(session)||this.runtime.busy.has(session)||Date.now()<(known.nextAttempt||0))return;
+   if(this.busy.has(session)||this.runtime.busy.has(session)||(known.failures||0)>=8||Date.now()<(known.nextAttempt||0))return;
    const state=known.economy.economy.state;let result;
-   if(state===State.Funding&&Date.now()/1000>=known.economy.funding_deadline)result=await this.command(session,'expire');
+   if([State.Funding,State.Funded].includes(state)&&Date.now()/1000>=known.economy.funding_deadline)result=await this.command(session,'expire');
    else if(state===State.Running&&!known.replay.final_state.ended){result=await this.runtime.step(this.core,session,{expected_turn:known.replay.final_state.turn});this.events.publish(session,result);}
    else if(state===State.SettlementPending||(state===State.Running&&known.replay.final_state.ended))result=await this.command(session,'settle');
    else if(state===State.RefundPending)result=await this.command(session,'expire');
    if(result)this.publish({...result,session});
   }catch(error){
    const entries=[...this.matches.entries()];const row=entries[(this.cursor-1)%entries.length];
-   if(row){const [session,known]=row;known.nextAttempt=Date.now()+5000;known.lastError=error.message;economyLog('reconciliation_retry',{session,payment_mode:known.economy.economy.payment_mode,code:error.code||'operation_failed'});try{const current=await this.command(session,'get');this.publish(current);this.matches.get(session).nextAttempt=Date.now()+5000;}catch{}}
+   if(row){const [session,known]=row;const failures=(known.failures||0)+1,nextAttempt=Date.now()+Math.min(60000,2000*2**(failures-1));Object.assign(known,{failures,nextAttempt,lastError:error.message});economyLog('reconciliation_retry',{session,payment_mode:known.economy.economy.payment_mode,code:error.code||'operation_failed'});try{const current=await this.command(session,'get');this.publish(current);Object.assign(this.matches.get(session),{failures,nextAttempt,lastError:error.message});}catch{}}
   }finally{this.running=false;}
  }
  health(){
   const rows=[...this.matches.values()];
   const health={matches:rows.length,pending_intents:0,pending_receipts:0,pending_settlements:0,pending_refunds:0,modes:[...new Set(rows.map(r=>r.economy.economy.payment_mode))],mainnet_enabled:false,rpc_status:rows.length?'ready':'not_observed',storage_status:rows.length?'opened':'not_observed'};
+  health.automatic_retry_limit=8;health.automatic_retries_exhausted=rows.filter(r=>(r.failures||0)>=8).length;
   for(const row of rows){const observed=row.economy.health;
    for(const key of ['pending_intents','pending_receipts','pending_settlements','pending_refunds'])health[key]+=observed?.[key]??0;
    if(observed?.rpc_ready===false)health.rpc_status='unavailable';
