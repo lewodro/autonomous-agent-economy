@@ -10,7 +10,7 @@ pub struct SimulationBinding {
 }
 impl SimulationBinding {
     pub fn from_initial(initial: &Replay) -> Result<Self> {
-        replay::verify(initial).map_err(|e| EconomyError::InvalidInput(e))?;
+        replay::verify(initial).map_err(EconomyError::InvalidInput)?;
         if initial.final_state.turn != 0 || initial.final_state.ended {
             return Err(EconomyError::InvalidInput(
                 "Economy must bind before the first turn".into(),

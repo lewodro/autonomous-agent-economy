@@ -47,7 +47,7 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
                     || observation.recent_decisions.iter().any(|d| {
                         d.action == Action::Challenge && d.target.as_ref() == Some(&me.id)
                     }))
-                && observation.turn % 3 != 0
+                && !observation.turn.is_multiple_of(3)
             {
                 result.action = Action::Guard;
                 result.reason = "I am a wealthy target; guard blocks every challenge.".into();
@@ -100,8 +100,7 @@ pub fn choose(config: &Config, observation: &Observation, index: usize) -> Decis
                         .seed
                         .wrapping_add(observation.turn)
                         .wrapping_add(index as u32))
-                        % 3
-                        == 0
+                    .is_multiple_of(3)
                 {
                     result.action = Action::Cooperate;
                     result.target = Some(friend.id.clone());

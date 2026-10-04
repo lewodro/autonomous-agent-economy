@@ -267,14 +267,8 @@ mod confirmation_tests {
             &json!({"confirmationStatus":"finalized","err":{"InstructionError":0}})
         )
         .is_err());
-        assert_eq!(confirmed_status(&json!(null)).unwrap(), false);
-        assert_eq!(
-            confirmed_status(&json!({"confirmationStatus":"processed","err":null})).unwrap(),
-            false
-        );
-        assert_eq!(
-            confirmed_status(&json!({"confirmationStatus":"confirmed","err":null})).unwrap(),
-            true
-        );
+        assert!(!confirmed_status(&json!(null)).unwrap());
+        assert!(!confirmed_status(&json!({"confirmationStatus":"processed","err":null})).unwrap());
+        assert!(confirmed_status(&json!({"confirmationStatus":"confirmed","err":null})).unwrap());
     }
 }

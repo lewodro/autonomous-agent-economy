@@ -529,8 +529,10 @@ fn mock_signatures_are_deterministic_tamper_resistant_and_domain_separated() {
 use agent_arena_demo::economy::devnet::*;
 #[test]
 fn devnet_foundation_rejects_mainnet_bad_keys_rpc_data_and_payment_submission() {
-    let mut cfg = DevnetRailConfig::default();
-    cfg.mode = PaymentMode::Mainnet;
+    let mut cfg = DevnetRailConfig {
+        mode: PaymentMode::Mainnet,
+        ..Default::default()
+    };
     assert_eq!(
         cfg.validate().unwrap_err(),
         EconomyError::MainnetNotImplemented

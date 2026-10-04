@@ -44,6 +44,8 @@ impl Amount {
     pub const fn units(self) -> u64 {
         self.0
     }
+    // Checked arithmetic intentionally returns Result rather than implementing infallible Add.
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, other: Self) -> Result<Self> {
         self.0
             .checked_add(other.0)

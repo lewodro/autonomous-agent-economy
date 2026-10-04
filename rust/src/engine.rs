@@ -640,13 +640,16 @@ fn advance_inner(run: &mut Replay, submitted: Option<Vec<Decision>>) -> Result<(
         };
         run.final_state.winner = winner.clone();
         run.final_state.end_reason = Some(why.clone());
-        if run.simulation_version != "last-seat-v1" && winner.is_some() {
+        if let Some(winner) = winner
+            .as_ref()
+            .filter(|_| run.simulation_version != "last-seat-v1")
+        {
             emit(
                 run,
                 Kind::WinnerDeclared,
-                winner.as_deref(),
+                Some(winner.as_str()),
                 None,
-                format!("{} wins the table.", name(run, winner.as_ref().unwrap())),
+                format!("{} wins the table.", name(run, winner)),
             );
         }
         emit(run, Kind::MatchEnded, winner.as_deref(), None, why);
