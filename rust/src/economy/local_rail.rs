@@ -25,6 +25,12 @@ pub struct LocalPaymentRail {
     pub(super) records: BTreeMap<OperationId, PaymentRecord>,
 }
 pub fn rpc(method: &str, params: Value) -> Result<Value> {
+    #[cfg(debug_assertions)]
+    if std::env::var("ECONOMY_TEST_RPC_FAIL_METHOD").as_deref() == Ok(method) {
+        return Err(EconomyError::RpcUnavailable(
+            "Injected development RPC failure".into(),
+        ));
+    }
     rpc_on(&Network::Local, method, params).map_err(EconomyError::RpcUnavailable)
 }
 pub fn validate_genesis(expected: &str) -> Result<()> {
@@ -235,7 +241,20 @@ impl PaymentRail for LocalPaymentRail {
     }
     fn prepare_payment(&mut self, intent: PaymentIntent) -> Result<PreparedPayment> {
         self.reload()?;
-        validate_genesis(&self.genesis)?;
+        if intent.operation_id
+            != operation_id(
+                &intent.match_id,
+                intent.purpose,
+                &intent.payer,
+                &intent.payee,
+            )?
+            || intent.payer.as_str() == "fee-sponsor"
+            || intent.payee.as_str() == "fee-sponsor"
+            || !self.accounts.contains_key(&intent.payer)
+            || !self.accounts.contains_key(&intent.payee)
+        {
+            return Err(EconomyError::UnverifiedPayment);
+        }
         if let Some(record) = self.records.get(&intent.operation_id) {
             if record.intent != intent {
                 return Err(EconomyError::Conflict);
@@ -251,6 +270,37 @@ impl PaymentRail for LocalPaymentRail {
             );
             self.save()?;
         }
+        let result = self.build_payment(&intent);
+        match result {
+            Ok(prepared) => {
+                self.records.get_mut(&intent.operation_id).unwrap().prepared =
+                    Some(prepared.clone());
+                self.save()?;
+                Ok(prepared)
+            }
+            Err(error) => {
+                self.records
+                    .get_mut(&intent.operation_id)
+                    .unwrap()
+                    .retry(error.clone(), now())?;
+                self.save()?;
+                Err(error)
+            }
+        }
+    }
+    fn submit_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
+        self.submit_known_payment(p)
+    }
+    fn verify_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
+        self.verify_known_payment(r, i)
+    }
+    fn reconcile_payment(&mut self, i: &PaymentIntent) -> Result<Option<PaymentReceipt>> {
+        self.reconcile_known_payment(i)
+    }
+}
+impl LocalPaymentRail {
+    fn build_payment(&self, intent: &PaymentIntent) -> Result<PreparedPayment> {
+        validate_genesis(&self.genesis)?;
         if intent.operation_id
             != operation_id(
                 &intent.match_id,
@@ -311,11 +361,9 @@ impl PaymentRail for LocalPaymentRail {
             authorization: serde_json::to_string(&signed)
                 .map_err(|_| EconomyError::UnverifiedPayment)?,
         };
-        self.records.get_mut(&intent.operation_id).unwrap().prepared = Some(prepared.clone());
-        self.save()?;
         Ok(prepared)
     }
-    fn submit_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
+    fn submit_known_payment(&mut self, p: &PreparedPayment) -> Result<PaymentReceipt> {
         self.reload()?;
         validate_genesis(&self.genesis)?;
         let id = &p.intent.operation_id;
@@ -357,6 +405,19 @@ impl PaymentRail for LocalPaymentRail {
         if result?.as_str() != Some(&signed.reference) {
             return Err(EconomyError::UnverifiedPayment);
         }
+        // Development-only process-crash probe, after the signed operation has been fsynced and sent.
+        #[cfg(debug_assertions)]
+        if std::env::var("ECONOMY_TEST_CRASH_AFTER_SUBMIT")
+            .ok()
+            .as_deref()
+            == Some(match p.intent.purpose {
+                PaymentPurpose::Entry => "entry",
+                PaymentPurpose::Payout => "payout",
+                PaymentPurpose::Refund => "refund",
+            })
+        {
+            std::process::exit(86);
+        }
         for _ in 0..20 {
             if let Some(r) = self.confirmed_receipt(p)? {
                 self.records
@@ -377,7 +438,7 @@ impl PaymentRail for LocalPaymentRail {
         self.save()?;
         Err(error)
     }
-    fn verify_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
+    fn verify_known_payment(&self, r: &PaymentReceipt, i: &PaymentIntent) -> Result<()> {
         validate_genesis(&self.genesis)?;
         let record = self
             .records
@@ -400,7 +461,7 @@ impl PaymentRail for LocalPaymentRail {
         }
         Ok(())
     }
-    fn reconcile_payment(&mut self, i: &PaymentIntent) -> Result<Option<PaymentReceipt>> {
+    fn reconcile_known_payment(&mut self, i: &PaymentIntent) -> Result<Option<PaymentReceipt>> {
         self.reload()?;
         validate_genesis(&self.genesis)?;
         let Some(record) = self.records.get(&i.operation_id) else {
@@ -414,6 +475,9 @@ impl PaymentRail for LocalPaymentRail {
         };
         let r = self.confirmed_receipt(&p)?;
         if let Some(r) = &r {
+            if self.records[&i.operation_id].receipt.as_ref() == Some(r) {
+                return Ok(Some(r.clone()));
+            }
             if self.records[&i.operation_id].status == OperationStatus::Created {
                 self.records
                     .get_mut(&i.operation_id)
