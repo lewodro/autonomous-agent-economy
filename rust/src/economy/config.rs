@@ -74,17 +74,34 @@ pub fn parse_sol(value: &str) -> Result<Amount> {
 impl EconomyConfig {
     pub fn validate(&self) -> Result<ValidatedConfig> {
         self.mode.validate()?;
-        let entry = parse_sol(&self.entry_amount_sol)?;
-        let starting_balance = parse_sol(&self.starting_balance_sol)?;
-        let maximum = parse_sol(&self.maximum_entry_sol)?;
-        let reserve = parse_sol(&self.minimum_reserve_sol)?;
-        if entry > maximum || (!self.enabled && entry != Amount::ZERO) {
+        let amount = |field: &str, value: &str| {
+            parse_sol(value).map_err(|error| {
+                EconomyError::InvalidInput(format!(
+                    "{field}: {error}; use an unsigned SOL decimal string"
+                ))
+            })
+        };
+        let entry = amount("entry_amount_sol", &self.entry_amount_sol)?;
+        let starting_balance = amount("starting_balance_sol", &self.starting_balance_sol)?;
+        let maximum = amount("maximum_entry_sol", &self.maximum_entry_sol)?;
+        let reserve = amount("minimum_reserve_sol", &self.minimum_reserve_sol)?;
+        if entry > maximum {
+            return Err(EconomyError::InvalidInput("entry_amount_sol exceeds maximum_entry_sol; lower the entry or adjust the test policy".into()));
+        }
+        if !self.enabled && entry != Amount::ZERO {
             return Err(EconomyError::InvalidInput(
-                "Entry exceeds policy or disabled economy must be free".into(),
+                "entry_amount_sol must be zero when enabled is false".into(),
             ));
         }
-        if self.enabled {
-            starting_balance.subtract(entry)?.subtract(reserve)?;
+        if self.enabled
+            && starting_balance
+                .subtract(entry)
+                .and_then(|balance| balance.subtract(reserve))
+                .is_err()
+        {
+            return Err(EconomyError::InvalidInput(
+                "starting_balance_sol must cover entry_amount_sol plus minimum_reserve_sol".into(),
+            ));
         }
         Ok(ValidatedConfig {
             enabled: self.enabled,
