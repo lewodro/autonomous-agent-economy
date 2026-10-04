@@ -33,7 +33,8 @@
     "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --",
     "examples:check": "node scripts/validate-examples.js",
     "docs:check": "node scripts/check-docs.js",
-    "verify:production": "node scripts/verify-production.js"
+    "verify:production": "node scripts/verify-production.js",
+    "demo:devnet-wallets": "node scripts/devnet-wallets.js"
   },
   "engines": {
     "node": ">=22"
