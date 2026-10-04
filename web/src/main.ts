@@ -22,6 +22,7 @@ const mobile=matchMedia('(max-width:760px)');const log=document.querySelector<HT
 renderer.reducedMotion=motion.matches;motion.addEventListener('change',()=>{renderer.reducedMotion=motion.matches;update();});
 function update(event?:GameEvent) {
   const run=player.run,state=player.state;if(!run||!state)return;
+  economyHUD.present(state.turn,state.ended);
   renderer.selected=selected;renderer.favorite=favorites;renderer.paused=!player.playing&&!player.manual;renderer.speed=player.speed;renderer.thinking=player.waiting;renderer.update(state,run.config,event);hud.render(run,state,player.cursor,player.playing,player.waiting,player.session,event,player.observing,watchConnected);
   $('turn').textContent=`TURN ${String(state.turn).padStart(2,'0')}`;
   const count=state.agents.filter(a=>a.alive).length;

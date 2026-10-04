@@ -14,6 +14,7 @@ export function fundingStatus(view:PublicEconomy,id:string):string {
 }
 export class EconomyHUD {
  private view:PublicEconomy|null=null;
+ private presentation:{turn:number;ended:boolean}|null=null;
  constructor(private root:HTMLElement,private error:(text:string)=>void){}
  clear(){this.view=null;this.root.hidden=true;}
  accept(raw:unknown){
@@ -24,6 +25,10 @@ export class EconomyHUD {
   formatSol(data.expected_pot);this.view=structuredClone(data);this.render();
  }
  decorate(){if(!this.view)return;for(const button of document.querySelectorAll<HTMLElement>('.agent-tab[data-agent]')){button.dataset.funding=fundingStatus(this.view,button.dataset.agent!);button.title=`Funding ${button.dataset.funding}`;}}
+ present(turn:number,ended:boolean){
+  this.presentation={turn,ended};const note=this.root.querySelector<HTMLElement>('.economy-presentation');
+  if(note){note.hidden=!this.view||!['settled','refunded'].includes(this.view.economy.state)||ended;note.textContent=`HOST COMPLETE · WATCHING T${String(turn).padStart(2,'0')}`;}
+ }
  private render(){
   const v=this.view!;const e=v.economy;this.root.hidden=false;this.root.replaceChildren();
   const label=document.createElement('span');label.className='pot-label';
@@ -31,6 +36,7 @@ export class EconomyHUD {
   else if(e.state==='funding')label.textContent=`POT ${formatSol(e.pot_amount)} / ${formatSol(v.expected_pot)} ${e.payment_mode==='mock'?'MOCK ':''}SOL · ${e.funded_agents.length}/${e.required_agents.length} FUNDED`;
   else label.textContent=`POT ${formatSol(e.pot_amount)} ${e.payment_mode==='mock'?'MOCK ':''}SOL · ${e.state==='running'?'LOCKED':e.state.replaceAll('_',' ').toUpperCase()}`;
   this.root.append(label);
+  const presentation=document.createElement('small');presentation.className='economy-presentation';presentation.hidden=true;this.root.append(presentation);if(this.presentation)this.present(this.presentation.turn,this.presentation.ended);
   const status=document.createElement('span');status.className='funding-statuses';status.textContent=e.required_agents.map(id=>`${id} ${fundingStatus(v,id)}`).join(' · ');this.root.append(status);
   if(e.state==='funding')for(const [action,text] of [['fund-all','Fund test entries'],['cancel','Cancel / refund']]){const b=document.createElement('button');b.textContent=text!;b.className='small-button';b.onclick=async()=>{b.disabled=true;try{const r=await fetch(`/api/funded-matches/${encodeURIComponent(v.session)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const result=await r.json();if(!r.ok)throw Error(result.error);this.accept(result.economy);}catch(error){this.error((error as Error).message);}finally{b.disabled=false;}};this.root.append(b);}
   this.decorate();

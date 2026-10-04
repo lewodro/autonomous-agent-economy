@@ -73,6 +73,23 @@ Funded HTTP commands live under `/api/funded-matches`; health is
 `/api/economy/health`. All remain local development controls without production
 authentication or participant wallet consent.
 
+## Final local validation
+
+| Check | Result |
+|---|---|
+| Node suite | 93 passed; four validator-only tests skipped in the default run |
+| Validator recovery suite | All six passed, including those four optional tests |
+| Rust suite | 85 passed; two opt-in tests skipped by default |
+| Rust opt-in tests | Native local transfer/restart and release maximum-size stress both passed |
+| TypeScript, syntax lint, rustfmt, strict Clippy, build | Passed |
+| Markdown links and Mermaid headers | Passed; full Mermaid rendering is not covered |
+| Free and funded browser suites | Passed on desktop and mobile |
+| Persistent mock and native local CLI demos | Passed, restart and duplicate payout verified |
+
+CI now also runs the persistent mock funded CLI demo. Native validator tests remain
+explicit local checks. The game HUD shows `HOST COMPLETE · WATCHING T…` when the
+authoritative host has paid while this spectator's animations are still catching up.
+
 ## Next five tasks
 
 1. Persist last-valid block height and prove non-landing before authorizing expired-transaction replacement.
