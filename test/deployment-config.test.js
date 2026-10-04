@@ -4,7 +4,7 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
 });
 
@@ -17,6 +17,7 @@ test('Railway production accepts its assigned HTTPS host and mounted persistent 
   assert.deepEqual(config.publicOrigins, ['https://axile.up.railway.app']);
   assert.equal(config.host, '0.0.0.0');
   assert.equal(config.port, 8080);
+  assert.equal(config.publicDevnet, false);
 });
 
 test('custom domain and Railway domain are both valid public origins', () => {
@@ -33,8 +34,17 @@ test('production refuses missing origin, ephemeral storage, and enabled economy 
   assert.throws(() => validateDeploymentConfig({ ...base, HOST_SESSION_SECRET: 'short' }), /HOST_SESSION_SECRET/);
   assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_LAB: '1' }), /disabled in public production/);
   assert.throws(() => validateDeploymentConfig({ ...base, MACHINE_PAYMENTS_DEMO: '1' }), /disabled in public production/);
-  assert.throws(() => validateDeploymentConfig({ ...base, ENTRY_FEE_ENABLED: 'true' }), /free matches only/);
-  assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_MODE: 'LOCAL' }), /free matches only/);
+  assert.throws(() => validateDeploymentConfig({ ...base, ENTRY_FEE_ENABLED: 'true' }), /DEVNET/);
+  assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_MODE: 'LOCAL' }), /SIMULATED or DEVNET/);
+});
+
+test('production devnet needs an explicit test-SOL acknowledgement and dedicated HTTPS RPC', () => {
+  const base = { NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches',
+    HOST_SESSION_SECRET: 'a'.repeat(32), ENTRY_FEE_ENABLED: 'true', ECONOMY_MODE: 'DEVNET' };
+  assert.throws(() => validateDeploymentConfig(base), /test SOL/);
+  assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY' }), /dedicated HTTPS/);
+  const config = validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc' });
+  assert.equal(config.publicDevnet, true);
 });
 
 test('rejects origins with paths and invalid port settings', () => {

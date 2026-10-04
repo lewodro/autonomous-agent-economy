@@ -9,13 +9,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-async function start(directory) {
+async function start(directory, extraEnv = {}) {
   const child = spawn(process.execPath, ['server.js'], {
     cwd: root,
     env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0',
       PUBLIC_ORIGIN: 'https://seat.example', RAILWAY_PUBLIC_DOMAIN: '', MATCHES_DIR: directory,
       HOST_SESSION_SECRET: 'local-integration-secret-value-long-enough', ECONOMY_LAB: '0',
-      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED' },
+      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -74,6 +74,28 @@ test('public games are visible after restart while only the host can advance the
     assert.equal((await request(running.base, route, {}, cookie)).status, 200);
     assert.equal((await request(running.base, '/api/funded-matches')).status, 404);
     assert.equal((await request(running.base, '/premium-tool')).status, 404);
+  } finally {
+    if (running) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('public Devnet mode is explicit and cannot be downgraded to a mock funded match', {
+  skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
+  timeout: 30_000,
+}, async () => {
+  const directory = await mkdtemp(`${os.tmpdir()}/last-seat-devnet-public-`);
+  let running;
+  try {
+    running = await start(directory, { ENTRY_FEE_ENABLED: 'true', ECONOMY_MODE: 'DEVNET',
+      PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc' });
+    const headers = { Host: 'seat.example', Origin: 'https://seat.example' };
+    const capabilities = await fetch(`${running.base}/api/capabilities`, { headers }).then(response => response.json());
+    assert.deepEqual(capabilities.funded_modes, ['devnet']);
+    const health = await fetch(`${running.base}/api/health`, { headers }).then(response => response.json());
+    assert.equal(health.payments, 'devnet_test_sol');
+    const response = await fetch(`${running.base}/api/funded-matches`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'mock', config: {} }) });
+    assert.equal(response.status, 400);
   } finally {
     if (running) await stop(running.child);
     await rm(directory, { recursive: true, force: true });

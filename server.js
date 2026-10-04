@@ -17,7 +17,8 @@ import { validateDeploymentConfig } from './service/deployment-config.js';
 import { hostCookie, hasHostCookie } from './service/host-auth.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
-const { production, publicOrigins } = deployment;
+const { production, publicDevnet, publicOrigins } = deployment;
+const fundedApiEnabled=process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
@@ -73,19 +74,25 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});return res.end(await readFile(path.join(root,'labs/funded.html')));
     }
     if(req.method==='GET'&&route==='/api/funded-matches'){
-      if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Funded match API disabled'});
+      if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
       return json(res,200,{matches:[...funded.matches.entries()].map(([session,value])=>({session,state:value.economy.economy.state,mode:value.economy.economy.payment_mode}))});
     }
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
     if(req.method==='POST'&&route==='/api/funded-matches'){
-      if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Funded match API disabled'});
-      const data=await body(req);return json(res,201,await funded.create(await resolveConfig(core,data.config),data));
+      if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
+      const data=await body(req);
+      if(publicDevnet&&data.mode!=='devnet')return json(res,400,{error:'Public funded matches require Devnet test SOL'});
+      const created=await funded.create(await resolveConfig(core,data.config),data);
+      return json(res,201,created,{'Set-Cookie':hostCookie(created.session)});
     }
     const economyRoute=route.match(/^\/api\/funded-matches\/([a-f0-9-]{36})(?:\/(fund|fund-all|cancel|settle|reconcile))?$/);
     if(economyRoute){
-      if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Funded match API disabled'});
+      if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
       if(req.method==='GET'&&!economyRoute[2])return json(res,200,await funded.command(economyRoute[1],'get'));
-      if(req.method==='POST'&&economyRoute[2])return json(res,200,await funded.act(economyRoute[1],economyRoute[2],await body(req)));
+      if(req.method==='POST'&&economyRoute[2]){
+        if(production&&!hasHostCookie(req,economyRoute[1]))return json(res,403,{error:'Only the match host can change funding or settlement'});
+        return json(res,200,await funded.act(economyRoute[1],economyRoute[2],await body(req)));
+      }
       return json(res,405,{error:'Method not allowed'});
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
@@ -108,13 +115,13 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',payments:'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
       game_modes:['last-seat','rps','tictactoe'],
-      funded_modes:production?[]:process.env.ECONOMY_LAB==='1'?['mock','local']:[],
-      payment_notice:production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
+      funded_modes:publicDevnet?['devnet']:production?[]:process.env.ECONOMY_LAB==='1'?['mock','local']:[],
+      payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if (req.method === 'POST' && route === '/api/matches') {
@@ -130,7 +137,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='GET'&&route==='/api/games/ongoing'){
       const games=[...sessions.entries()].flatMap(([session,value])=>{
         const replay=value&&typeof value==='object'&&'replay' in value?value.replay:funded.matches.get(session)?.replay;
-        if(!replay||replay.final_state.ended||(production&&funded.matches.has(session)))return [];
+        if(!replay||replay.final_state.ended)return [];
         return [{session,match_id:replay.match_id,turn:replay.final_state.turn,
           alive:replay.final_state.agents.filter(agent=>agent.alive).length,
           seats:replay.config.agents.length,agents:replay.config.agents.map(agent=>({id:agent.id,name:agent.name,provider:agent.provider})),
