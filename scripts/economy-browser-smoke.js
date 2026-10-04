@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-const targets=await fetch('http://127.0.0.1:9322/json').then(r=>r.json());
+const targets=await fetch((process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322')+'/json').then(r=>r.json());
 const target=targets.find(t=>t.type==='page');if(!target)throw Error('Start Chrome with --remote-debugging-port=9322');
 const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolve=>ws.addEventListener('open',resolve,{once:true}));
 let sequence=0;const pending=new Map(),errors=[];

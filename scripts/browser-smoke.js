@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-const targets = await fetch('http://127.0.0.1:9322/json').then(r => r.json());
+const targets = await fetch((process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322')+'/json').then(r => r.json());
 const target = targets.find(t => t.type === 'page');
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));

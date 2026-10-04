@@ -49,3 +49,12 @@ This deliberately expensive 20-agent/200-turn case also runs in CI. All other Ru
 ## Live spectator and persistence checks
 
 Integration tests restart the service and compare the same session/history, subscribe to SSE, advance host turns, and reconnect. Browser checks verify independent viewer pause, zero viewer step requests, reconnect/reload and a separate remix. Store tests cover queued writes, corrupt checkpoints, restored inference budgets and preventing paid requests when reservation persistence fails. Stream tests cover connection limits, slow readers and socket-write failures.
+
+## Isolated debug port
+
+If another dedicated Chrome already uses :9322, start your own profile on :9337
+and run `CHROME_DEBUG_URL=http://127.0.0.1:9337 GAME_URL=http://localhost:3017 npm run test:browser`.
+For the opt-in lab use `ECONOMY_URL=http://localhost:3017 npm run test:browser:economy`
+with the same CHROME_DEBUG_URL. These scripts clear replay/favorite storage in the
+selected profile, so always use an isolated test profile. They never require a
+project browser automation dependency.
