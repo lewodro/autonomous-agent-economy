@@ -2,7 +2,7 @@
 
 The project includes a small Model Context Protocol server for creating and operating free Last Seat arenas from an MCP-enabled model host. The MCP client supplies model reasoning and decisions; the Rust engine remains authoritative for action validation, turn resolution, elimination, and winners.
 
-This is a **local stdio MCP server**. It connects only to an HTTP loopback address on the same computer. It is not a public hosted MCP endpoint, a general MCP proxy, or a model provider. It has no wallet, funding, or payout tools. Agent model names are labels in the arena; inference is performed by the MCP host that calls the tools.
+This is a **local stdio MCP server**. It connects only to an HTTP loopback address on the same computer. It is not a public hosted MCP endpoint, a general MCP proxy, or a model provider. It has no wallet, funding, or payout tools. Agent model names are labels in the arena; inference is performed by the MCP host that calls the tools. It supports arenas with 2–20 identities; the MCP host decides how to call and coordinate the models for those identities.
 
 ## Start the app and MCP server
 
@@ -54,13 +54,19 @@ Example arena request:
 }
 ```
 
-The `model` field identifies a seat for spectators. The MCP client is responsible for asking the corresponding model for a decision and submitting the complete set for the turn. The MCP server does not claim that it called Claude, GPT, or any other provider. No paid model is needed: the built-in mock strategies are available in the browser game.
+The `model` field identifies a seat for spectators. The MCP host is the orchestrator: it asks whichever models it has access to for decisions, gathers one decision from every living identity, and submits that complete batch with the observed turn number. The bridge does not call providers, keep provider keys, or claim that it called Claude, GPT, or another model. No paid model is needed: the built-in mock strategies are available in the browser game.
+
+Each turn is one simultaneous batch. The `expected_turn` check prevents an old observation from silently advancing the match; if two callers race, only a valid current turn can be accepted by the API/runtime. Rust remains authoritative for legal identities, action requirements, state changes, event order, elimination, and the winner. Submitted `reason` strings are public spectator data, so send only a short explanation suitable for the match record. Do not send private reasoning or secrets.
+
+`submit_turn` needs the arena-scoped host cookie returned by the local create endpoint. The MCP process stores that cookie in `matches/mcp/host-sessions.json` (or `MCP_ARENA_SESSION_FILE`) with owner-only file permissions so the same MCP host can continue after a process restart. It stores no app signing key, API key, wallet secret, or model credential. The cookie is sent only to that arena's local step route and is never included in tool output. If you delete the local session file, create a new arena from that MCP host. Back up the file only if you intentionally want to preserve host control access; treat it like a local credential.
+
+The current boundary is one MCP host process coordinating a turn batch. The site does not yet provide public multi-tenant MCP, per-user identity, hosted model orchestration, or independent MCP clients coordinating partial turns. This keeps the engine and turn order authoritative without inventing a distributed coordination protocol.
 
 ## Wallets and treasury boundary
 
 Free MCP arenas start with game credits only. The MCP server forces `wallet_enabled` off and exposes no signing or transfer tool. The repository’s separate mock/local-validator/Devnet economy paths remain outside this bridge; Devnet is public test SOL, and mainnet is disabled. See [the economy architecture](economy-architecture.md), [public Devnet guide](public-devnet.md), and [mainnet readiness requirements](mainnet-readiness.md).
 
-The longer-term treasury idea needs separate identities and accounting:
+The longer-term treasury idea needs separate identities and accounting. The current MCP server does not fund, rebirth, or transact for agents:
 
 | Concept | Intended boundary |
 |---|---|
@@ -71,6 +77,10 @@ The longer-term treasury idea needs separate identities and accounting:
 | Operating treasury | A separate balance and policy for other ongoing project activity; never mixed into match pots |
 
 Before a real treasury can distribute SOL, the project needs an approved allocation cap, eligible actions, per-agent exposure and loss limits, refill/rebirth rules, fee budget, emergency pause, custody design, and operator approval flow. MCP model output may propose an action, but a deterministic policy service must authorize it before any signer can move funds. No such treasury disbursement is implemented by this MCP server.
+
+## Checks
+
+`npm run test:mcp` starts a temporary local HTTP fixture, speaks MCP over stdio, creates a free arena, restarts the bridge, and advances the existing arena using the persisted scoped cookie. `node --test test/mcp-cookie-store.test.js` checks cookie binding, invalid values, reload, and restrictive file permissions. The bridge does not require a public provider or blockchain to pass these checks.
 
 ## Protocol and implementation
 

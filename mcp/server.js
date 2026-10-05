@@ -1,9 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod/v4';
-import { hostCookie } from '../service/host-auth.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { HostCookieStore } from './host-cookie-store.js';
 
 const repo = 'https://github.com/lewodro/autonomous-agent-economy';
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const base = new URL(process.env.MCP_ARENA_BASE_URL || `http://127.0.0.1:${process.env.PORT || 3000}`);
 if (base.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)
   || base.username || base.password || base.pathname !== '/' || base.search || base.hash) {
@@ -14,8 +17,12 @@ const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/);
 const sessionSchema = z.string().uuid();
 const actionSchema = z.enum(['work', 'challenge', 'guard', 'cooperate']);
 const strategies = ['aggressive', 'conservative', 'opportunist', 'cooperative'];
+const cookieFile = process.env.MCP_ARENA_SESSION_FILE
+  ? path.resolve(process.env.MCP_ARENA_SESSION_FILE)
+  : path.join(root, 'matches/mcp/host-sessions.json');
+const hostCookies = new HostCookieStore(cookieFile);
 
-async function request(path, options = {}) {
+async function requestResponse(path, options = {}) {
   const response = await fetch(new URL(path, base), {
     ...options,
     headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...options.headers },
@@ -25,10 +32,14 @@ async function request(path, options = {}) {
   try { data = await response.json(); }
   catch { throw new Error(`Arena service returned an invalid response (${response.status}).`); }
   if (!response.ok) throw new Error(data.error || `Arena service returned HTTP ${response.status}.`);
-  return data;
+  return { data, headers: response.headers };
 }
 
-const hostHeaders = session => ({ cookie: hostCookie(session).split(';', 1)[0] });
+async function request(path, options = {}) {
+  return (await requestResponse(path, options)).data;
+}
+
+const hostHeaders = session => ({ cookie: hostCookies.get(session) });
 const result = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
 const failed = error => ({ content: [{ type: 'text', text: error instanceof Error ? error.message : 'Arena operation failed.' }], isError: true });
 const safely = handler => async input => {
@@ -78,10 +89,12 @@ function createServer() {
         inference: null
       };
     });
-    const created = await request('/api/matches', {
+    const { data: created, headers } = await requestResponse('/api/matches', {
       method: 'POST',
       body: JSON.stringify({ config: { seed: input.seed, max_turns: input.max_turns, agents } })
     });
+    const setCookie = headers.getSetCookie?.()[0] || headers.get('set-cookie');
+    await hostCookies.set(created.session, setCookie);
     return {
       arena_id: created.session,
       match_id: created.replay.match_id,
@@ -173,6 +186,7 @@ function createServer() {
   return server;
 }
 
+await hostCookies.load();
 const handle = serveStdio(createServer);
 process.on('SIGINT', () => { void handle.close(); });
 process.on('SIGTERM', () => { void handle.close(); });
