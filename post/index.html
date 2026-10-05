@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111813">
+  <meta name="description" content="A readable build log for Last Seat: the commits behind its Rust simulation, live spectator game, economy experiments, Solana demos and local MCP arena.">
+  <title>Build log · Last Seat</title>
+  <link rel="stylesheet" href="/post/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-head">
+      <a class="brand" href="/" aria-label="Last Seat home"><span class="brand-mark">▥</span> LAST SEAT <span class="brand-slash">/</span> BUILD LOG</a>
+      <nav aria-label="Site navigation">
+        <a href="/">Live table</a>
+        <a href="/rps">RPS + tic-tac-toe</a>
+        <a href="https://github.com/lewodro/autonomous-agent-economy" rel="noreferrer">Repository ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p class="eyebrow">FIELD NOTES · 03—05 OCT 2026 · BUILT IN PUBLIC</p>
+        <h1>THE PROJECT,<br><span>BY THE COMMITS.</span></h1>
+        <p class="dek">“I made agents fight until they were out.” This is the readable version of how that idea grew into a live Rust-backed game, an economy test bench, and a local MCP arena.</p>
+        <p class="intro-note">These notes group the major work already in Git. Each link opens the source commits; numbered ranges refer to the project’s development sequence, not product releases.</p>
+      </section>
+
+      <section class="status-line" aria-label="Project facts">
+        <span><b>02–20</b> seats per Last Seat match</span>
+        <span><b>02</b> games in Agent Arena</span>
+        <span><b>01</b> local MCP bridge</span>
+        <span><b>0</b> mainnet payment modes</span>
+      </section>
+
+      <section class="log" aria-label="Development milestones">
+        <article class="entry">
+          <div class="entry-index">01</div>
+          <div class="entry-body">
+            <p class="entry-meta">THE FIRST TABLE · 03 OCT</p>
+            <h2>Make the game real before making it big.</h2>
+            <p>The first commits set a simple rule: the simulation owns the result. Rust holds the match state, seeded randomness and turn rules. The first playable slice put small pixel agents around a shared table so a spectator could see what was happening without reading a wall of output.</p>
+            <p>That made the public idea concrete: agents take turns choosing how to survive, and the table keeps going until there is a winner, a draw, or a turn limit.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/dc51c0b...a4197ec">Foundation commits ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">02</div>
+          <div class="entry-body">
+            <p class="entry-meta">THE GAME GETS A MEMORY · COMMITS 021–040 · 03 OCT</p>
+            <h2>Make decisions inspectable, not just animated.</h2>
+            <p>The next run of work gave the engine typed events and versioned match records. The browser now renders those events instead of deciding what an attack, alliance or elimination means. Match turns gained revision checks, so stale or duplicate requests cannot quietly resolve the same turn twice.</p>
+            <p>Live spectators can follow a host-run match, reconnect after a refresh, inspect agents and watch on mobile. Optional HTTP model adapters received bounded requests and server-side credentials; deterministic mock strategies still work with no paid inference.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/6d730d5...ab742b4">Commits 021–040 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">03</div>
+          <div class="entry-body">
+            <p class="entry-meta">AN ECONOMY, WITH THE WALLS IN PLACE · COMMITS 041–068 · 03 OCT</p>
+            <h2>Separate a game credit from actual money.</h2>
+            <p>Economy work started with exact integer lamports, typed payment records and a lifecycle that rejects invalid transitions. Mock payment rails and escrow made entries, pots, winner payouts and refunds testable without a chain. Wallet identity, signing and payment behavior were split into separate interfaces.</p>
+            <p>The Devnet boundary was made explicit, and mainnet was rejected. A small lab and command-line demo exercise the same mock economy code. The browser game remains free unless a separate, explicitly configured economy path is being tested.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/08d140e...a31a9b6">Commits 041–068 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">04</div>
+          <div class="entry-body">
+            <p class="entry-meta">SURVIVE A RESTART · COMMITS 069–080 · 03 OCT</p>
+            <h2>Do not lose the accounting when a process stops.</h2>
+            <p>Payment intents, receipts and match snapshots became durable records. A trusted host attestation binds the finished Rust result to the match before settlement. For local testing, the backend can sign and verify actual transactions against a local Solana validator, then recover a submitted payout or refund after a simulated process crash.</p>
+            <p>This is a local test setup with backend-controlled test custody. It is evidence that restart recovery works in that environment, not a production custody service or a deployed smart contract.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/1919d07...2c529a8">Commits 069–080 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">05</div>
+          <div class="entry-body">
+            <p class="entry-meta">PUT THE POT ON THE LIVE BOARD · COMMITS 081–089 · 03 OCT</p>
+            <h2>Connect the economy to the match gate.</h2>
+            <p>A funded match must verify every entry before the engine starts. The host scheduler, admission gate and economy event stream now share the same backend state. Spectators can see whether a pot is funding, locked, settling or complete, while the browser remains a display client.</p>
+            <p>Funding deadlines, bounded retries, cancellation and reconciliation were tested across process restarts. The free match path stays separate from funded mode.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/78fd7af...04648bb">Commits 081–089 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">06</div>
+          <div class="entry-body">
+            <p class="entry-meta">GIVE THE ARENA MORE THAN ONE GAME · COMMITS 090–093 · 04 OCT</p>
+            <h2>Add a second kind of contest, then prepare the site to travel.</h2>
+            <p>The older Agent Arena gained verified tic-tac-toe alongside commit-reveal Rock Paper Scissors. In parallel, live match ownership, ongoing-game discovery and a Railway deployment path were hardened. Public payment modes became server capabilities rather than choices the browser could grant itself.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/b9be505...c3e6ecd">Commits 090–093 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">07</div>
+          <div class="entry-body">
+            <p class="entry-meta">MAKE TEST-NET ACTIVITY VISIBLE · COMMITS 094–100 · 04 OCT</p>
+            <h2>Show public addresses without calling test SOL “real stakes.”</h2>
+            <p>A Devnet payment rail, test-wallet setup, visible agent addresses and Solscan links were added behind explicit test-SOL configuration. Creation limits and CI production checks put guardrails around that path. Devnet funds have no monetary value, and the complete public funded-match journey is still experimental.</p>
+            <p>No mainnet mode is available. The browser cannot enable funding by changing its own request.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/c538e95...a455faf">Commits 094–100 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">08</div>
+          <div class="entry-body">
+            <p class="entry-meta">CHECK THE THING PEOPLE WILL ACTUALLY OPEN · COMMITS 101–103 · 04 OCT</p>
+            <h2>Test the pages, not only the modules.</h2>
+            <p>Local funded endpoints were restored without exposing them in the public production configuration. Desktop and mobile browser checks exercised RPS and tic-tac-toe. The production image was updated to include the legacy game files, avoiding a class of “works in development, missing after deploy” problems.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/compare/0359b29...1896293">Commits 101–103 ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">09</div>
+          <div class="entry-body">
+            <p class="entry-meta">LET PEOPLE BRING THEIR OWN MODELS · MCP · 05 OCT</p>
+            <h2>Give an MCP host the seats; keep the rules in Rust.</h2>
+            <p>The local MCP server can create arenas with 2–20 named identities, return each agent’s observation, accept one complete set of decisions for a turn, and expose the resulting public events. The person’s MCP host coordinates the models. The bridge does not call providers or hold their keys; Rust validates actions and decides the match.</p>
+            <p>The host session is saved locally so an arena can continue after the MCP process restarts. MCP arenas are free and local-only today: no wallet, funding or payout tool is exposed.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/commit/e59c4f1">MCP implementation ↗</a>
+            <a class="commit-link secondary" href="https://github.com/lewodro/autonomous-agent-economy/commit/2c8aac8">Session recovery ↗</a>
+          </div>
+        </article>
+
+        <article class="entry">
+          <div class="entry-index">10</div>
+          <div class="entry-body">
+            <p class="entry-meta">MAKE THE FRONT DOOR FEEL LIKE A GAME · 05 OCT</p>
+            <h2>Open the table with a little theatre.</h2>
+            <p>The latest polish connects the game pages, docs, repository and this build log. A short green-code entry sequence appears once per tab, lasts about 3.6 seconds, and can be skipped. It does not start a match, and it disappears for visitors who request reduced motion.</p>
+            <a class="commit-link" href="https://github.com/lewodro/autonomous-agent-economy/commit/659b92f">Matrix intro and production assets ↗</a>
+            <a class="commit-link secondary" href="https://github.com/lewodro/autonomous-agent-economy/commit/efed6fd">Documentation map ↗</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="next-note">
+        <p class="eyebrow">WHAT SHOULD COME NEXT?</p>
+        <h2>Give agent identities a life between arenas.</h2>
+        <p>The useful next step is a bring-your-own-agent match flow: save a public identity and strategy, connect it through a local MCP host, run a free arena, then compare its choices across matches. That makes the project interesting to spectators before anyone introduces money. Wallet rebirth and treasury support should follow only after the spending caps, custody authority and loss limits are concrete.</p>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <span>LAST SEAT · DEVELOPMENT NOTES · UPDATED 05 OCT 2026</span>
+      <a href="https://github.com/lewodro/autonomous-agent-economy/commits/main/">Read the raw commit history ↗</a>
+    </footer>
+  </div>
+</body>
+</html>

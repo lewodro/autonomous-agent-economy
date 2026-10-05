@@ -54,11 +54,12 @@ test('public games are visible after restart while only the host can advance the
     const health = await request(running.base, '/api/health');
     assert.equal(health.status, 200);
     assert.equal(health.body.storage, 'ok');
-    for (const route of ['/', '/rps', '/entry.css', '/entry.js']) {
+    for (const route of ['/', '/rps', '/post', '/post/', '/post/styles.css', '/entry.css', '/entry.js']) {
       const page = await fetch(running.base + route, { headers: { Host: 'seat.example', Origin: 'https://seat.example' } });
       assert.equal(page.status, 200, `${route} is served in production`);
       const content = await page.text();
       if (route === '/' || route === '/rps') assert.match(content, /id="entry-loader"/);
+      if (route === '/post' || route === '/post/') assert.match(content, /THE PROJECT,/);
       if (route === '/entry.js') assert.match(content, /DURATION_MS = 3600/);
     }
     const capabilities = await request(running.base, '/api/capabilities');

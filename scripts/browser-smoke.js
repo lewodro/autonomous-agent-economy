@@ -117,6 +117,14 @@ await send('Page.captureScreenshot',{format:'png'}).then(r=>writeFile(path.join(
 await send('Page.reload');await wait("document.getElementById('turn').textContent==='TURN 02'&&document.getElementById('live').textContent==='LIVE'");
 await evaluate("document.getElementById('new').click();document.getElementById('config-form').requestSubmit()");
 await wait("document.getElementById('turn').textContent==='TURN 00'&&document.getElementById('live').textContent==='READY'");
+await send('Page.navigate',{url:base+'/post/'});
+await wait("document.title==='Build log · Last Seat'&&document.querySelectorAll('.entry').length===10");
+assert.equal(await evaluate('document.documentElement.scrollWidth<=390'),true);
+assert.equal(await evaluate("document.body.textContent.includes('public funded-match journey is still experimental')"),true);
+assert.equal(await evaluate("document.querySelector('a[href=\"/\"]')?.textContent.includes('LAST SEAT')"),true);
+await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
+assert.equal(await evaluate('document.documentElement.scrollWidth<=1280'),true);
+assert.ok(await evaluate("document.querySelectorAll('.commit-link').length>=10"));
 assert.deepEqual(errors,[]);
 console.log('PASS: Rust-backed turns, four-agent outcome, animations, pause/resume, 4x, inspect/follow, event-only replay, seek, verified share URL, mobile layout, two-agent remix, restart, no browser errors');
 console.log('PASS: live watcher receives host turns, pauses independently, never steps the engine, reconnects and forks a separate match');

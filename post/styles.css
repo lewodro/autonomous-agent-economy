@@ -1,0 +1,81 @@
+:root {
+  color-scheme: dark;
+  --background: #111813;
+  --panel: #171f19;
+  --line: #344238;
+  --text: #e8eee4;
+  --muted: #9fae9f;
+  --green: #a6da8b;
+  --bright: #d0f6ad;
+  --gold: #e6c982;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font: 15px/1.72 Georgia, "Times New Roman", serif;
+}
+a { color: inherit; }
+a:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.page-shell { width: min(980px, calc(100% - 44px)); margin: 0 auto; }
+.site-head, .site-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px/1.5 var(--mono);
+}
+.brand { color: var(--text); text-decoration: none; letter-spacing: .1em; white-space: nowrap; }
+.brand-mark { color: var(--gold); font-size: 17px; }
+.brand-slash { color: var(--green); }
+.site-head nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 18px; }
+.site-head nav a, .site-foot a { text-decoration: none; }
+.site-head nav a:hover, .site-foot a:hover { color: var(--bright); }
+.intro { max-width: 750px; padding: clamp(50px, 10vw, 104px) 0 52px; }
+.eyebrow, .entry-meta { margin: 0 0 14px; color: var(--green); font: 10px/1.6 var(--mono); letter-spacing: .12em; }
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: 22px; font: 700 clamp(38px, 8vw, 76px)/.98 var(--mono); letter-spacing: -.08em; }
+h1 span { color: var(--green); }
+.dek { max-width: 690px; margin-bottom: 22px; color: #e1e8dc; font-size: clamp(19px, 3vw, 24px); line-height: 1.45; }
+.intro-note { max-width: 620px; margin-bottom: 0; color: var(--muted); font: 12px/1.8 var(--mono); }
+.status-line { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.status-line span { padding: 17px 14px; border-right: 1px solid var(--line); color: var(--muted); font: 10px/1.5 var(--mono); text-transform: uppercase; }
+.status-line span:first-child { padding-left: 0; }
+.status-line span:last-child { border: 0; }
+.status-line b { display: block; margin-bottom: 6px; color: var(--gold); font-size: 18px; }
+.log { padding: 12px 0 4px; }
+.entry { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 16px; padding: 44px 0 47px; border-bottom: 1px solid var(--line); }
+.entry-index { padding-top: 2px; color: #67786a; font: 17px/1 var(--mono); }
+.entry-body { max-width: 710px; }
+.entry-meta { margin-bottom: 9px; font-size: 9px; }
+.entry h2, .next-note h2 { margin-bottom: 13px; color: var(--text); font: 600 clamp(21px, 3.5vw, 28px)/1.24 Georgia, "Times New Roman", serif; letter-spacing: -.025em; }
+.entry-body p:not(.entry-meta), .next-note p:not(.eyebrow) { margin-bottom: 13px; color: #c3cec1; }
+.commit-link { display: inline-block; margin: 5px 14px 0 0; color: var(--bright); font: 10px/1.5 var(--mono); text-decoration: none; border-bottom: 1px solid #506b51; }
+.commit-link:hover { color: #f1ffdc; border-color: var(--bright); }
+.commit-link.secondary { color: var(--muted); }
+.next-note { margin: 46px 0 70px; padding: 25px 28px 20px; border-left: 2px solid var(--gold); background: var(--panel); }
+.next-note .eyebrow { margin-bottom: 9px; color: var(--gold); }
+.next-note h2 { font-size: 23px; }
+.next-note p:last-child { margin-bottom: 0; }
+.site-foot { margin-top: 0; border-top: 1px solid var(--line); border-bottom: 0; }
+@media (max-width: 700px) {
+  .page-shell { width: min(100% - 30px, 620px); }
+  .site-head { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .site-head nav { justify-content: flex-start; gap: 14px; }
+  .status-line { grid-template-columns: repeat(2, 1fr); }
+  .status-line span:nth-child(2) { border-right: 0; }
+  .status-line span:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .status-line span:nth-child(3) { padding-left: 0; }
+  .entry { grid-template-columns: 36px minmax(0, 1fr); gap: 8px; padding: 33px 0 36px; }
+  .entry-index { font-size: 13px; }
+  .entry-body p:not(.entry-meta), .next-note p:not(.eyebrow) { font-size: 14px; }
+  .next-note { margin: 35px 0 48px; padding: 20px 18px; }
+  .site-foot { align-items: flex-start; flex-direction: column; gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

@@ -21,6 +21,7 @@ COPY package.json server.js index.html styles.css entry.css entry.js ./
 COPY service ./service
 COPY src ./src
 COPY legacy ./legacy
+COPY post ./post
 COPY labs ./labs
 COPY assets ./assets
 RUN mkdir -p /data/matches && chown -R node:node /data/matches
