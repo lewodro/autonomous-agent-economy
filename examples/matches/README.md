@@ -12,5 +12,5 @@ These are existing full JSON schemas, not a new TOML format.
 Run `npm run build && npm run examples:check`. The Rust checker validates the
 actual schemas without contacting RPC or model services. The funded CLI currently
 accepts flags, not config files: use `npm run demo:funded-local -- --mode mock`.
-See [API mapping](../../docs/api.md) and [local validator setup](../../docs/local-validator.md).
+See [API mapping](../../docs/architecture/api.md) and [local validator setup](../../docs/economy/local-validator.md).
 Never put credentials or seed material in profiles; profiles are public.

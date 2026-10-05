@@ -5,7 +5,7 @@ durable mock payments, an isolated local-validator rail, and an opt-in Devnet na
 transfer rail. Devnet agent/escrow address creation and reads are live-verified; a faucet
 failure still blocks the first complete public-chain funded match.
 The separate wallet demo retains its tiny test-transfer cap and is not funded escrow.
-See the [2026 audit](crypto-audit-2026.md) for current implementation and evidence.
+See the [2026 audit](./crypto-audit-2026.md) for current implementation and evidence.
 
 | Area | Required before any real funded service |
 |---|---|

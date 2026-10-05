@@ -64,7 +64,7 @@ The current boundary is one MCP host process coordinating a turn batch. The site
 
 ## Wallets and treasury boundary
 
-Free MCP arenas start with game credits only. The MCP server forces `wallet_enabled` off and exposes no signing or transfer tool. The repository’s separate mock/local-validator/Devnet economy paths remain outside this bridge; Devnet is public test SOL, and mainnet is disabled. See [the economy architecture](economy-architecture.md), [public Devnet guide](public-devnet.md), and [mainnet readiness requirements](mainnet-readiness.md).
+Free MCP arenas start with game credits only. The MCP server forces `wallet_enabled` off and exposes no signing or transfer tool. The repository’s separate mock/local-validator/Devnet economy paths remain outside this bridge; Devnet is public test SOL, and mainnet is disabled. See [the economy architecture](../economy/economy-architecture.md), [public Devnet guide](../economy/public-devnet.md), and [mainnet readiness requirements](../security/mainnet-readiness.md).
 
 The longer-term treasury idea needs separate identities and accounting. The current MCP server does not fund, rebirth, or transact for agents:
 

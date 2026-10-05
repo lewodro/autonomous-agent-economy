@@ -24,7 +24,7 @@ Research checked against publisher repositories, documentation and published art
 
 ## Bundle evidence
 
-[Measured artifacts](library-sizes.json) include exact versions, source URLs, raw bytes and locally gzip-compressed bytes. These are published full/UMD artifacts, **not** comparable tree-shaken app bundles. Pixi/Phaser can be reduced with selective imports; Rive/Lottie also require asset payloads. Anime's requested path returned 404, so no number is invented. Re-run `node scripts/measure-libraries.js` to update the snapshot without installing packages.
+[Measured artifacts](./library-sizes.json) include exact versions, source URLs, raw bytes and locally gzip-compressed bytes. These are published full/UMD artifacts, **not** comparable tree-shaken app bundles. Pixi/Phaser can be reduced with selective imports; Rive/Lottie also require asset payloads. Anime's requested path returned 404, so no number is invented. Re-run `node scripts/measure-libraries.js` to update the snapshot without installing packages.
 
 The current Canvas driver is tested, bounded to 96 tracks / 160 rendered particles, uses one presentation clock, supports reduced motion and exposes a swappable port. Browser RAF timing is measured in the visual smoke test. Add a dependency when a measured feature or performance need justifies it, rather than because a library advertises animation.
 

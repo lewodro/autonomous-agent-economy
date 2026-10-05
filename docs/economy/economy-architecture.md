@@ -119,7 +119,7 @@ clients fetch a complete snapshot rather than calculating replacement balances.
 `replay::verify` proves rule consistency, not that an untrusted tape came from the
 host. FundedHost implements trusted completion and durable journals, under test-only
 backend custody. Production gaps are described
-in [mainnet-readiness](mainnet-readiness.md) and [threat model](threat-model.md).
+in [mainnet-readiness](../security/mainnet-readiness.md) and [threat model](../security/threat-model.md).
 
-See [API](api.md), [event schemas](events.md), [recovery diagrams](failure-recovery.md),
-and [trust boundary diagram](trust-boundaries.md).
+See [API](../architecture/api.md), [event schemas](../architecture/events.md), [recovery diagrams](./failure-recovery.md),
+and [trust boundary diagram](../security/trust-boundaries.md).

@@ -63,7 +63,7 @@ Open **http://localhost:3000** after `npm run dev`. The board is the main screen
 | New / remix / random seed / restart | Configure and fork the experiment |
 | Mobile drawer | Agent detail without filling the board with desktop panels |
 
-The host launches turns as you watch; **Watch live** shares `/?watch=<session>` with read-only viewers. Viewers can pause, inspect and remix independently. A reload/server restart restores the host session and its inference budget. In production, only the browser holding the signed host cookie can advance that match. [Live transport](docs/live-spectators.md) · [Persistence guarantees](docs/persistence.md).
+The host launches turns as you watch; **Watch live** shares `/?watch=<session>` with read-only viewers. Viewers can pause, inspect and remix independently. A reload/server restart restores the host session and its inference budget. In production, only the browser holding the signed host cookie can advance that match. [Live transport](./docs/architecture/live-spectators.md) · [Persistence guarantees](./docs/architecture/persistence.md).
 
 There is no replay clip/video exporter. Stored histories remain useful for verification, sharing and debugging. Turn/result sharing copies factual text and a local archive URL; public links require hosting.
 
@@ -95,6 +95,8 @@ One survivor wins. Zero survivors is a draw. At the limit, the unique richest su
 | Wallet/payment | Rust capability / local mock service | Separate authority, spending policy and activity streams |
 
 **The UI never resolves game rules.** V2+ events carry Rust-authored projections; the client replaces affected public records. Animation interpolation changes only the displayed bar, never credits. Full `RoundEnded` checkpoints reconcile presentation. V1 archives use isolated compatibility projection.
+
+On the first visit in a tab, a skippable 3.6-second Matrix-style entry overlay introduces the arena; it never starts or pauses a match and is bypassed for reduced-motion preferences.
 
 ## Simulation Engine
 
@@ -138,7 +140,7 @@ Upkeep starts at 1 and increases every four turns. Wallet funds and game credits
 | Opportunist | Medium/high | Exposed workers; vulnerable ally betrayal | Accepts prior offers | Public actions, wealth gaps, rising upkeep |
 | Cooperative | Medium | None by default | Seeks mutual bonuses | Defends after being targeted; avoids attackers |
 
-V6 makes guarding a survival choice rather than another income source. Across 120 tuning matches, conservative wins fell from **82 to 67**, with **103 alliances / 75 betrayals**. Independent four-agent validation reduced conservative wins from **87 to 61**; eight-agent validation reduced them from **84 to 68** out of 100. Draws increased and cooperation still needs improvement. [Actual metrics, cohorts and rejected experiments](docs/balance.md).
+V6 makes guarding a survival choice rather than another income source. Across 120 tuning matches, conservative wins fell from **82 to 67**, with **103 alliances / 75 betrayals**. Independent four-agent validation reduced conservative wins from **87 to 61**; eight-agent validation reduced them from **84 to 68** out of 100. Draws increased and cooperation still needs improvement. [Actual metrics, cohorts and rejected experiments](./docs/research/balance.md).
 
 ## Model Adapters
 
@@ -165,7 +167,7 @@ No paid provider calls are needed to run/test. Tests exercise compatible HTTP pa
 
 ## Bring your own MCP host
 
-The local stdio MCP server lets an MCP-enabled model host create a free 2–20 identity arena, inspect each seat’s observation, submit simultaneous decisions, and read verified game events. The arena is visible in the regular live spectator UI. The MCP client provides the model reasoning; the Rust engine validates and resolves the match. This MCP bridge has no wallet or money-moving tools. [Setup, client configuration, and treasury boundaries](docs/mcp-arena.md).
+The local stdio MCP server lets an MCP-enabled model host create a free 2–20 identity arena, inspect each seat’s observation, submit simultaneous decisions, and read verified game events. The arena is visible in the regular live spectator UI. The MCP client provides the model reasoning; the Rust engine validates and resolves the match. This MCP bridge has no wallet or money-moving tools. [Setup, client configuration, and treasury boundaries](./docs/integrations/mcp-arena.md).
 
 ## Match economy foundation
 
@@ -209,9 +211,9 @@ npm run economy:reconcile -- SESSION_ID
 ```
 
 Keep the validator ledger, authority/test keys and journals across restarts.
-[Local setup](docs/local-validator.md) · [Verified funded-pass results](docs/funded-pass.md).
+[Local setup](./docs/economy/local-validator.md) · [Verified funded-pass results](./docs/economy/funded-pass.md).
 
-For a public test-SOL deployment, follow the separate [Devnet funded-match guide](docs/public-devnet.md). It explains the trusted-backend custody model, dedicated RPC, persistent keys, public Solscan links, funding workflow and the current faucet verification blocker. Mainnet remains rejected.
+For a public test-SOL deployment, follow the separate [Devnet funded-match guide](./docs/economy/public-devnet.md). It explains the trusted-backend custody model, dedicated RPC, persistent keys, public Solscan links, funding workflow and the current faucet verification blocker. Mainnet remains rejected.
 
 ```sh
 npm run demo:economy
@@ -235,12 +237,12 @@ uses the durable host and creates new instances without erasing old journals.
 Funded commands accept actions, not user-supplied winners or receipts.
 The normal free game still uses game credits only.
 
-[Economy architecture and Mermaid diagrams](docs/economy-architecture.md) ·
+[Economy architecture and Mermaid diagrams](./docs/economy/economy-architecture.md) ·
 [Example configurations](examples/economy/README.md) ·
-[Threat model](docs/threat-model.md) ·
-[Funded-test prerequisites](docs/mainnet-readiness.md) ·
-[Live economy transport](docs/live-economy-transport.md) ·
-[Animation migration candidates](docs/animation-stack.md)
+[Threat model](./docs/security/threat-model.md) ·
+[Funded-test prerequisites](./docs/security/mainnet-readiness.md) ·
+[Live economy transport](./docs/economy/live-economy-transport.md) ·
+[Animation migration candidates](./docs/frontend/animation-stack.md)
 
 ## Wallet System
 
@@ -274,7 +276,7 @@ npm run demo:wallet -- --devnet --save-test-wallet /tmp/seat-test.wallet.bin
 
 The transfer is capped at **0.001 test SOL**, to a generated approved recipient. Fees are recorded separately. Devnet read/signing has been verified; the current public faucet returned an RPC internal error, preventing a funded send/confirmation check. A failed request is not reported as a confirmed transaction.
 
-For a separately installed local validator on `127.0.0.1:8899`, obtain its genesis hash, set `LOCAL_GENESIS_HASH`, then run `npm run demo:wallet -- --local --fund --transfer`. An explicit pin is required before any local wallet activity. No mainnet mode exists. [Crypto architecture](docs/architecture-live.md#crypto-capability).
+For a separately installed local validator on `127.0.0.1:8899`, obtain its genesis hash, set `LOCAL_GENESIS_HASH`, then run `npm run demo:wallet -- --local --fund --transfer`. An explicit pin is required before any local wallet activity. No mainnet mode exists. [Crypto architecture](./docs/architecture/architecture-live.md#crypto-capability).
 
 ## Machine Payments
 
@@ -286,7 +288,7 @@ npm run demo:payments
 
 The agent requests `/premium-tool`, receives **HTTP 402**, pays two **mock tool credits**, retries with an HMAC-authenticated `X-Demo-Payment` receipt, and receives the result. Quotes bind nonce, resource, amount and expiry. Repeated payment/delivery is idempotent; forged receipts and exhausted budgets are rejected.
 
-**EXPERIMENTAL: x402-inspired, not x402 wire compatible.** No real blockchain settlement or facilitator is implemented. [Protocol boundary diagram](docs/architecture-live.md#payment-experiment), [official x402 project](https://github.com/coinbase/x402).
+**EXPERIMENTAL: x402-inspired, not x402 wire compatible.** No real blockchain settlement or facilitator is implemented. [Protocol boundary diagram](./docs/architecture/architecture-live.md#payment-experiment), [official x402 project](https://github.com/coinbase/x402).
 
 ## Running Locally
 
@@ -302,7 +304,7 @@ First development start installs the locked TypeScript compiler, builds Rust and
 
 ## Public deployment
 
-The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](docs/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
+The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
 
 After `npm ci && npm run build`, set `NODE_ENV=production`, a HTTPS `PUBLIC_ORIGIN`, absolute persistent `MATCHES_DIR`, and a stable `HOST_SESSION_SECRET` of at least 32 characters. Run `npm run verify:production`, then `npm start`. There are no database migrations in this file-backed topology.
 
@@ -335,9 +337,9 @@ Custom strategies return decisions from [`rust/src/strategy.rs`](rust/src/strate
 
 ## Example Match
 
-The bundled [seed-42 four-agent history](docs/example-match.json) is generated by the current engine: **turn 14, Pip wins**. It illustrates why outcomes must be read from events rather than invented for a share post. Open it with **Open replay**, inspect decisions, or remix the setup. New matches are live; retained history is supporting evidence.
+The bundled [seed-42 four-agent history](./docs/architecture/example-match.json) is generated by the current engine: **turn 14, Pip wins**. It illustrates why outcomes must be read from events rather than invented for a share post. Open it with **Open replay**, inspect decisions, or remix the setup. New matches are live; retained history is supporting evidence.
 
-Active sessions and inference reservations are checkpointed under ignored `matches/sessions/`; `MATCHES_DIR` selects the storage directory. Startup verifies every checkpoint. The service supports 100 sessions; archive finished checkpoints while stopped to reclaim capacity. Completed/shared histories are stored separately in `matches/`. Share links use `/?match=seat-<hash>&turn=11`. Local links require the local server. [Bounds and version compatibility](docs/replay-limits.md).
+Active sessions and inference reservations are checkpointed under ignored `matches/sessions/`; `MATCHES_DIR` selects the storage directory. Startup verifies every checkpoint. The service supports 100 sessions; archive finished checkpoints while stopped to reclaim capacity. Completed/shared histories are stored separately in `matches/`. Share links use `/?match=seat-<hash>&turn=11`. Local links require the local server. [Bounds and version compatibility](./docs/architecture/replay-limits.md).
 
 ## Project Structure
 
@@ -365,7 +367,7 @@ docs/                     diagrams, research, actual balance data, screenshots
 | Crypto | Ed25519 / fixed test RPC | Test capability with explicit authority |
 | Storage | Atomic JSON checkpoints + verified archives | Restart recovery and portable local experiments |
 
-[Frontend stack research](docs/frontend-stack.md) compares Pixi, Phaser, Tween.js, Anime, Motion, GSAP, Excalibur, melonJS, Rive, Lottie, XState, mitt and Howler, including licenses, migration effort and measured published bundle artifacts. No library was added without a demonstrated need.
+[Frontend stack research](./docs/frontend/frontend-stack.md) compares Pixi, Phaser, Tween.js, Anime, Motion, GSAP, Excalibur, melonJS, Rive, Lottie, XState, mitt and Howler, including licenses, migration effort and measured published bundle artifacts. No library was added without a demonstrated need.
 
 ## Architecture Diagrams
 
@@ -408,7 +410,7 @@ flowchart LR
  Registry -. future .-> Other[Other provider SDKs]
 ```
 
-Expanded code-matching diagrams: [live architecture](docs/architecture-live.md). Contract details: [semantic events](docs/event-contract.md). Original economy material remains in [ARCHITECTURE.md](ARCHITECTURE.md).
+Expanded code-matching diagrams: [live architecture](./docs/architecture/architecture-live.md). Contract details: [semantic events](./docs/architecture/event-contract.md). Original economy material remains in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tests
 
@@ -431,11 +433,11 @@ npm run test:browser       # dedicated Chrome debug port 9322 + running app
 | Browser | Full match, live controls, history without engine calls, 20 seats, mobile widths, reduced motion, RAF timing |
 | Legacy economy | Commit/reveal, settlement, treasury, storage, tournament retry/scoring |
 
-[Browser setup](docs/TESTING.md). CI runs Node versions 22/24/26 and Rust checks, including the release-mode full-size replay stress test. Network faucet availability is separate from offline correctness.
+[Browser setup](./docs/operations/TESTING.md). CI runs Node versions 22/24/26 and Rust checks, including the release-mode full-size replay stress test. Network faucet availability is separate from offline correctness.
 
 ## Security
 
-See the [2026 dependency and competition-payment audit](docs/crypto-audit-2026.md) for the exact mock/local/devnet/mainnet boundaries, verified controls, fixes, and remaining custody risks.
+See the [2026 dependency and competition-payment audit](./docs/security/crypto-audit-2026.md) for the exact mock/local/devnet/mainnet boundaries, verified controls, fixes, and remaining custody risks.
 
 Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
 
@@ -457,10 +459,10 @@ This is a local developer application. Public deployment still needs authenticat
 validates canonical JSON with Rust, and `npm run docs:check` checks local links.
 `ECONOMY_LOG=1 npm start` enables safe economy transition/retry logs on stderr.
 
-[API](docs/api.md) · [Events](docs/events.md) · [Trust boundaries](docs/trust-boundaries.md) ·
-[Recovery](docs/failure-recovery.md) · [Local validator](docs/local-validator.md) ·
-[Commands](docs/commands.md) · [Troubleshooting](docs/troubleshooting.md) ·
-[Security reporting](SECURITY.md) · [Dependencies](docs/dependencies.md) ·
+[API](./docs/architecture/api.md) · [Events](./docs/architecture/events.md) · [Trust boundaries](./docs/security/trust-boundaries.md) ·
+[Recovery](./docs/economy/failure-recovery.md) · [Local validator](./docs/economy/local-validator.md) ·
+[Commands](./docs/operations/commands.md) · [Troubleshooting](./docs/operations/troubleshooting.md) ·
+[Security reporting](SECURITY.md) · [Dependencies](./docs/operations/dependencies.md) ·
 [Changelog](CHANGELOG.md)
 
 ## Contributing

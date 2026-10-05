@@ -37,7 +37,7 @@ Verification on an isolated checkout, including the concurrent committed changes
 - Free/mock 0.02/mock 0.05 demo bytes retain the original hardening-baseline SHA-256
   hashes: game decisions, history, winner, event stream and pot arithmetic unchanged.
 - RPC :8899 was unavailable in this follow-up; no fresh chain payment claim is made.
-  The prior isolated-validator evidence remains in [funded-pass.md](funded-pass.md).
+  The prior isolated-validator evidence remains in [funded-pass.md](../economy/funded-pass.md).
 - Dependency manifests/lockfiles were not changed by these fixes. This pass does
   not substitute for a production custody audit or enable mainnet/devnet funding.
 

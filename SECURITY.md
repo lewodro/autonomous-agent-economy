@@ -24,6 +24,6 @@ Never commit keys, wallet seed files, seed phrases, API tokens or populated loca
 journals. Keep secrets in server environment variables or ignored test key paths;
 agent profiles/prompts and replay records are public. Do not use valuable wallets.
 Logs allowlist public IDs; do not add raw provider responses, signed authorization
-blobs or environment dumps. [Trust boundaries](docs/trust-boundaries.md) explain
-what current checks do and do not prove. [Dependency policy](docs/dependencies.md)
+blobs or environment dumps. [Trust boundaries](./docs/security/trust-boundaries.md) explain
+what current checks do and do not prove. [Dependency policy](./docs/operations/dependencies.md)
 records audit and upgrade expectations.

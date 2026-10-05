@@ -41,10 +41,10 @@ pass does not authorize enabling public devnet funded competition or mainnet.
 Use cargo fmt and the strict TypeScript build. JS is dependency-free ESM; preserve
 nearby style and avoid mass formatting. Fixtures are reviewed contract artifacts;
 never blindly refresh them. Relative doc links and canonical examples are checked
-in CI. See [commands](docs/commands.md) for browser and stress checks.
+in CI. See [commands](./docs/operations/commands.md) for browser and stress checks.
 
 Profiles/prompts/replays are public. Keep API keys only in operator-approved server
 environment names and ignored test wallet seeds on disk. Never paste secrets into
 logs, screenshots, PRs or fixtures. [SECURITY.md](SECURITY.md) explains private
-reporting and [trust boundaries](docs/trust-boundaries.md) describe custody limits.
+reporting and [trust boundaries](./docs/security/trust-boundaries.md) describe custody limits.
 No project-wide license is currently declared; discuss redistribution/artwork first.

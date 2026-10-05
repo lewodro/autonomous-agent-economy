@@ -18,7 +18,7 @@ These are scripted policy comparisons, not paid model benchmarks. Rates include 
 
 Validation seeds were run after choosing zero-income guard, without further
 changes. These four paired cohorts total **880 measured matches**. Additional
-exploratory runs informed the change. Raw JSON is in [balance/](balance/).
+exploratory runs informed the change. Raw JSON is in [balance/](./balance).
 
 | Strategy | V5 tuning wins / 120 | V6 tuning wins / 120 | V6 validation wins / 120 |
 |---|---:|---:|---:|
@@ -56,8 +56,8 @@ the mutual bonus looked useful on seeds 1–120: conservative won 67, cooperativ
 26. In exploratory seeds 1001–1120, conservative still won 86/120 and cooperative
 14. Alliances fell to 11 and 7 respectively. We rejected the policy rather than
 remove observable interaction to optimize one cohort. Captured raw results:
-[training](balance/rejected-policy-training.json),
-[exploratory validation](balance/rejected-policy-validation.json).
+[training](./balance/rejected-policy-training.json),
+[exploratory validation](./balance/rejected-policy-validation.json).
 These experiments are not reproducible with the released strategy policy.
 
 One-credit guard and cheaper challenges were also evaluated. The final rule
@@ -76,7 +76,7 @@ npm run balance -- 100 last-seat-v5 5001 8
 
 Invalid counts, seat counts, seed zero and overflowing ranges are rejected. The
 maximum unsigned seed is supported. Metrics remain finite with zero eliminations.
-[baseline.json](balance/baseline.json) retains the original pre-tuning 120-match
+[baseline.json](./balance/baseline.json) retains the original pre-tuning 120-match
 experiment where aggression won every match; changing only a replay version does
 not restore that historical strategy implementation.
 
@@ -108,7 +108,7 @@ Conservative remains dominant and cooperative wins none; this foundation pass
 intentionally leaves V6 rules and recorded replay behavior unchanged. It confirms
 that balance remains a high-value next gameplay task, not that the game is balanced.
 
-[Raw sample](balance/overnight-v6-smoke.json). Reproduce with:
+[Raw sample](./balance/overnight-v6-smoke.json). Reproduce with:
 
 ```sh
 npm run balance -- 120 last-seat-v6 6001 4

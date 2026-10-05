@@ -30,15 +30,15 @@ Start with durable operation/receipt storage and trusted host completion attesta
 Then implement native local-validator payment/escrow/signing adapters and verify
 0.02–0.05 test SOL entries, refunds, fees and interrupted settlement. Only afterward
 repeat on devnet and consider host runtime admission. See
-[mainnet readiness](mainnet-readiness.md) for the exact sequence and blockers.
+[mainnet readiness](../security/mainnet-readiness.md) for the exact sequence and blockers.
 
 Keep economy events separate from game resource events. Public reasons expose a
 brief summary and selected observable facts; wiring that structure into the normal
 spectator inspector is still a next pass. Mock treasury, signer and lab are ephemeral.
 The frontend economy effect port exists but the normal board does not receive paid
-funding events yet. See [architecture](economy-architecture.md),
-[threat model](threat-model.md), [transport](live-economy-transport.md) and
-[animation migration](animation-stack.md).
+funding events yet. See [architecture](../economy/economy-architecture.md),
+[threat model](../security/threat-model.md), [transport](../economy/live-economy-transport.md) and
+[animation migration](../frontend/animation-stack.md).
 
 ## Commits
 

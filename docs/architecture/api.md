@@ -52,10 +52,10 @@ lab requests at 2 KB. Errors return `{error,code?}`; codes include invalid_input
 invalid_attestation, storage_failure, rpc_unavailable, unverified_payment,
 settlement_not_authorized, and mainnet_not_implemented. Statuses include 400,
 404, 405, 409 (busy), 413, 415, and 429 (capacity). Code/detail shapes come from
-[typed Rust errors](../rust/src/economy/primitives.rs); legacy errors may have no code.
+[typed Rust errors](../../rust/src/economy/primitives.rs); legacy errors may have no code.
 
 Health is a cached observation, not a fresh RPC or filesystem probe. `doctor`
 performs preflight checks. Host storage_ready means the journal was opened with a
 writer lease; it does not guarantee future writes or free disk space. Mock
 rpc_ready means ledger reads succeeded, not that an external chain was checked.
-See [events](events.md) and [trust boundaries](trust-boundaries.md).
+See [events](./events.md) and [trust boundaries](../security/trust-boundaries.md).

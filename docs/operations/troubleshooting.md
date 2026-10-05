@@ -20,4 +20,4 @@
 
 `doctor` shows OK / OPTIONAL / BLOCKING; absent optional tools do not block mock
 work. Aggregate health describes the last observed state, not continuous liveness.
-See [commands](commands.md) and [recovery](failure-recovery.md).
+See [commands](./commands.md) and [recovery](../economy/failure-recovery.md).

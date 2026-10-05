@@ -26,7 +26,7 @@
   transfer verification; devnet funded admission unavailable, mainnet disabled.
 - Capped test-wallet demo and separate experimental mock HTTP 402 tool payments.
 - Recent dependency/advisory and CI action updates recorded in the
-  [October 3 audit](docs/audit-2026-10-03.md).
+  [October 3 audit](./docs/research/audit-2026-10-03.md).
 
 There are no invented releases here. Git history is authoritative for chronology;
 package, crate, rules and event schemas use separate version scopes.

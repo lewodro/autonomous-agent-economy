@@ -56,5 +56,5 @@ flowchart LR
  U --> B
 ```
 
-See [security reporting](../SECURITY.md), [recovery](failure-recovery.md), and the
-[existing competition audit](crypto-audit-2026.md) for remaining production gaps.
+See [security reporting](../../SECURITY.md), [recovery](../economy/failure-recovery.md), and the
+[existing competition audit](./crypto-audit-2026.md) for remaining production gaps.

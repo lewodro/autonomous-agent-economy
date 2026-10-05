@@ -5,6 +5,11 @@ existing `AnimationDriver` already has bounded effects, a presentation clock, pa
 speed and reduced motion. `EconomyAnimationDriver` is a second cosmetic port; it maps
 confirmed deposits/payouts without converting money into simulation resources.
 
+Both game pages also use a dependency-free Canvas entry sequence: Matrix-like
+columns, an explicit progress bar, a skip control, and a 3.6-second maximum. It runs
+once per browser tab session; it does not delay the simulation engine. Escape and the
+skip button dismiss it, and `prefers-reduced-motion` bypasses it entirely.
+
 | Candidate | License | Rendering / sprites / particles / camera | React | Bundle implications | Migration / recommendation |
 |---|---|---|---|---|---|
 | PixiJS | MIT | WebGL/WebGPU scene graph; sprites and particle containers; camera via container transforms | Separate React integration | GPU renderer is materially larger than current native Canvas; selectively import and measure | Medium: implement RenderingDriver + AnimationDriver; best later GPU renderer candidate |
@@ -15,7 +20,7 @@ confirmed deposits/payouts without converting money into simulation resources.
 
 These are actively published upstream projects; maintenance quality is not a warranty.
 Recheck release compatibility and plugin licenses when selecting a version. Actual
-shipped bytes depend on version/imports/bundler: [previous measured full-build artifacts](library-sizes.json)
+shipped bytes depend on version/imports/bundler: [previous measured full-build artifacts](./library-sizes.json)
 are comparison evidence, **not** estimates of this app after migration. No dependencies
 were added in this pass.
 

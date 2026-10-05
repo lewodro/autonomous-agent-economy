@@ -100,5 +100,5 @@ authoritative host has paid while this spectator's animations are still catching
 
 Mainnet additionally requires an explicit custody/escrow design, independent security
 review, key management, settlement/refund guarantees and legal review. See
-[readiness](mainnet-readiness.md), [trust boundaries](trust-boundaries.md) and
-[recovery](failure-recovery.md).
+[readiness](../security/mainnet-readiness.md), [trust boundaries](../security/trust-boundaries.md) and
+[recovery](./failure-recovery.md).

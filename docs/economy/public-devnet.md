@@ -15,7 +15,7 @@ The fee sponsor pays transaction fees outside the pot, so a displayed `0.08 SOL`
 
 ## Deployment variables
 
-Start with the free production deployment in [deployment.md](deployment.md), then add:
+Start with the free production deployment in [deployment.md](../operations/deployment.md), then add:
 
 ```text
 ENTRY_FEE_ENABLED=true
@@ -47,4 +47,4 @@ On 2026-10-04, the live official Devnet endpoint returned the expected genesis a
 
 ## Do not use this for mainnet
 
-Mainnet mode fails closed. Before real-value funds, replace raw host keys with a reviewed signer/custody system, add user authentication and abuse controls, use independent RPC verification, define operational payout/refund handling, obtain a security audit and complete the items in [mainnet readiness](mainnet-readiness.md). A successful Devnet demo does not prove those controls.
+Mainnet mode fails closed. Before real-value funds, replace raw host keys with a reviewed signer/custody system, add user authentication and abuse controls, use independent RPC verification, define operational payout/refund handling, obtain a security audit and complete the items in [mainnet readiness](../security/mainnet-readiness.md). A successful Devnet demo does not prove those controls.

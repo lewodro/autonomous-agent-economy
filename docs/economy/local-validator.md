@@ -65,7 +65,7 @@ keys, host authority, pin and journals for recovery. To start fresh, choose a ne
 ECONOMY_DIR and stop the old validator before restarting on :8899. Do not reset an
 active ledger or reuse old journals against a new genesis. No automatic destructive
 reset command is provided. Missing binary, connection refused, low sponsor balance,
-and changed genesis are covered in [troubleshooting](troubleshooting.md).
+and changed genesis are covered in [troubleshooting](../operations/troubleshooting.md).
 
 The funded implementation pass verified native transactions against an isolated
 Agave 4.3.0 validator, including actual worker crashes after broadcast. These chain
@@ -79,5 +79,5 @@ GAME_URL=http://localhost:3001 node scripts/funded-browser-smoke.js
 
 The browser check requires Chrome remote debugging at `CHROME_DEBUG_URL`
 (default `http://127.0.0.1:9322`) and an app with `ECONOMY_LAB=1`.
-See [actual results](funded-pass.md). This proves local test settlement, not devnet
+See [actual results](./funded-pass.md). This proves local test settlement, not devnet
 or production custody.

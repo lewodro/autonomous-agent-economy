@@ -3,7 +3,7 @@
 There are two authoritative streams. Rust simulation events describe game credits
 and results; Rust economy events describe verified mock/local funds. Node transports
 them; the browser validates and renders projections. Animation completion never
-authorizes payments. The game contract is detailed in [event-contract.md](event-contract.md).
+authorizes payments. The game contract is detailed in [event-contract.md](./event-contract.md).
 
 Simulation `Event` includes seq, turn, type, participants/resources/action data,
 and resulting public projection (see `rust/src/model.rs`). MatchStarted begins the
@@ -59,7 +59,7 @@ Profiles/prompts, safe addresses/references and concise reasons can be displayed
 operators must never place secrets in public profiles. The economy view excludes
 prepared authorization. Errors must be reviewed before broader public deployment.
 
-[Reviewed fixtures](../test/fixtures/economy/README.md) protect game outcomes,
+[Reviewed fixtures](../../test/fixtures/economy/README.md) protect game outcomes,
 settlement, and refunds across Rust and TypeScript. Required field/name/unit changes
 need a deliberate schema migration and fixture review; additive fields need
 compatibility tests. PaymentReceipt currently ignores unknown ancillary fields;

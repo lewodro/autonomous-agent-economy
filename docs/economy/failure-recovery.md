@@ -49,4 +49,4 @@ scheduler recovery or an explicit settle/cancel action performs authorized retry
 Stop the app before copying/restoring directories. Keep MATCHES_DIR, ECONOMY_DIR,
 local ledger and host authority together. Do not delete rail revisions, rotate test
 keys or reset a validator while unresolved operations exist. See
-[local validator lifecycle](local-validator.md) and [troubleshooting](troubleshooting.md).
+[local validator lifecycle](./local-validator.md) and [troubleshooting](../operations/troubleshooting.md).

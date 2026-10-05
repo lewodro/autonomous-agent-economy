@@ -46,5 +46,5 @@ checks. FUNDED_AUTO_RUN=0 disables scheduling for manual tests. ECONOMY_LAB=1
 exposes test operator labs, not public hosting. MODEL_BASE_URL / MODEL_API_KEY_ENV
 approve model destinations; never put the actual credential into profiles.
 
-See [browser setup](TESTING.md), [local validator](local-validator.md),
-[API](api.md), [recovery](failure-recovery.md), and [dependency policy](dependencies.md).
+See [browser setup](./TESTING.md), [local validator](../economy/local-validator.md),
+[API](../architecture/api.md), [recovery](../economy/failure-recovery.md), and [dependency policy](./dependencies.md).

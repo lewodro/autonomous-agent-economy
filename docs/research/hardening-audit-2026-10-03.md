@@ -188,5 +188,5 @@ cannot be claimed while those unrelated edits exist. This is not a production au
 5. Generate reviewed API/event JSON schemas from authoritative types and check
    cross-language compatibility and all event variants in CI.
 
-[Post draft](hardening-x-post-2026-10-03.txt) ·
-[Fresh live screenshot](hardening-2026-10-03.png) · [Earlier daily audit](audit-2026-10-03.md).
+[Post draft](./hardening-x-post-2026-10-03.txt) ·
+[Fresh live screenshot](../hardening-2026-10-03.png) · [Earlier daily audit](./audit-2026-10-03.md).

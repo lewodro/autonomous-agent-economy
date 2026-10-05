@@ -1,7 +1,7 @@
 # Economy threat model
 
 Scope: mock sidecar, durable funded host, local-validator native payment rail,
-read-only devnet adapter and loopback lab. The [2026 audit](crypto-audit-2026.md)
+read-only devnet adapter and loopback lab. The [2026 audit](./crypto-audit-2026.md)
 records implemented controls and unresolved risks. This is a prototype boundary
 review, not an independent custody audit. Game credits are unrelated
 to payment units. The browser and custom agents are untrusted.

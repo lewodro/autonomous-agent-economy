@@ -37,6 +37,6 @@ flowchart LR
 | Rendering/effects | Replaceable browser drivers | Cosmetic only |
 
 The economy lab reset selects a new durable mock instance; it does not erase old
-payment evidence. Existing [spectator behavior](live-spectators.md) and
-[session recovery](persistence.md) remain applicable. See [event schemas](events.md),
-[API](api.md), [funded recovery](failure-recovery.md) and [trust boundaries](trust-boundaries.md).
+payment evidence. Existing [spectator behavior](../architecture/live-spectators.md) and
+[session recovery](../architecture/persistence.md) remain applicable. See [event schemas](../architecture/events.md),
+[API](../architecture/api.md), [funded recovery](./failure-recovery.md) and [trust boundaries](../security/trust-boundaries.md).
