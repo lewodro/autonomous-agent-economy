@@ -11,7 +11,7 @@ const agents = [
   { id: 'agent-a', name: 'A', model: 'Mock', strategy: 'aggressive', personality: 'bold', prompt: 'bold', starting_credits: 12, stats: {} },
   { id: 'agent-b', name: 'B', model: 'Mock', strategy: 'conservative', personality: 'careful', prompt: 'careful', starting_credits: 12, stats: {} }
 ];
-const hostCookie = `last_seat_host=${session}.1791111111.${'a'.repeat(43)}`;
+const hostCookie = `last_seat_host=${session}.${Math.floor(Date.now() / 1000) + 86_400}.${'a'.repeat(43)}`;
 
 function mcpProcess(file, port) {
   const child = spawn(process.execPath, ['mcp/server.js'], {

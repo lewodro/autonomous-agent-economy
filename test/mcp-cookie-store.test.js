@@ -6,12 +6,15 @@ import path from 'node:path';
 import { HostCookieStore, sessionCookie } from '../mcp/host-cookie-store.js';
 
 const session = '8d5c778d-64ee-40e1-a392-13cb3992f2da';
-const cookie = `last_seat_host=${session}.1791111111.${'a'.repeat(43)}; Path=/api/matches/${session}/; HttpOnly; SameSite=Strict`;
+const expires = Math.floor(Date.now() / 1000) + 86_400;
+const cookie = `last_seat_host=${session}.${expires}.${'a'.repeat(43)}; Path=/api/matches/${session}/; HttpOnly; SameSite=Strict`;
 
 test('scoped host cookies are accepted only for their matching arena and never include cookie attributes', () => {
   assert.equal(sessionCookie(cookie, session), cookie.split(';', 1)[0]);
   assert.equal(sessionCookie(cookie, '9d5c778d-64ee-40e1-a392-13cb3992f2da'), null);
   assert.equal(sessionCookie('last_seat_host=not-a-session; HttpOnly', session), null);
+  assert.equal(sessionCookie(`last_seat_host=${session}.${Math.floor(Date.now() / 1000) - 1}.${'a'.repeat(43)}`, session), null);
+  assert.equal(sessionCookie(`last_seat_host=${session}.${Math.floor(Date.now() / 1000) + 3_000_000}.${'a'.repeat(43)}`, session), null);
 });
 
 test('host cookie storage survives reload with owner-only local permissions', async () => {
