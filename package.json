@@ -35,12 +35,17 @@
     "examples:check": "node scripts/validate-examples.js",
     "docs:check": "node scripts/check-docs.js",
     "verify:production": "node scripts/verify-production.js",
-    "demo:devnet-wallets": "node scripts/devnet-wallets.js"
+    "demo:devnet-wallets": "node scripts/devnet-wallets.js",
+    "mcp:arena": "node mcp/server.js"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
+    "zod": "^4.6.5"
   }
 }

@@ -83,9 +83,12 @@ fn request(
         .get_mut(&key)
         .ok_or("Session not found; create a match first")?;
     match command {
-        "observe" => Ok(
-            json!({"observation":engine::observe(run),"config":run.config,"ended":run.final_state.ended}),
-        ),
+        "observe" => Ok(json!({
+            "match_id":run.match_id,
+            "observation":engine::observe(run),
+            "config":run.config,
+            "ended":run.final_state.ended
+        })),
         "get" => Ok(json!({"replay":run})),
         "decide" => {
             let observation = engine::observe(run);

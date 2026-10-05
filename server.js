@@ -156,11 +156,12 @@ const server = http.createServer(async (req, res) => {
       const { replay: checked } = await core.request({ command: 'verify', replay });
       return json(res, 200, { replay: checked });
     }
-    const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events))?$/);
+    const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events|observe))?$/);
     if(match&&!sessions.has(match[1]))await funded.register(match[1]);
     if (match && sessions.has(match[1])) {
       const session = match[1];
       if (req.method === 'GET' && !match[2]) return json(res, 200, await core.request({ command: 'get', session }));
+      if (req.method === 'GET' && match[2] === 'observe') return json(res, 200, await core.request({ command: 'observe', session }));
       if (req.method === 'GET' && match[2] === 'events') {const {replay,economy}=await core.request({command:'get',session});liveEvents.connect(session,replay,res,economy);return;}
       if (req.method === 'POST' && match[2] === 'share') {
         if(production&&!hasHostCookie(req,session))return json(res,403,{error:'Only the match host can share this game'});

@@ -163,6 +163,10 @@ Profiles may specify `inference.base_url`, `api_key_env`, `timeout_ms`, `max_tok
 
 No paid provider calls are needed to run/test. Tests exercise compatible HTTP payloads using local/stub services. Actual cloud credentials and model availability remain operator choices.
 
+## Bring your own MCP host
+
+The local stdio MCP server lets an MCP-enabled model host create a free 2–20 identity arena, inspect each seat’s observation, submit simultaneous decisions, and read verified game events. The arena is visible in the regular live spectator UI. The MCP client provides the model reasoning; the Rust engine validates and resolves the match. This MCP bridge has no wallet or money-moving tools. [Setup, client configuration, and treasury boundaries](docs/mcp-arena.md).
+
 ## Match economy foundation
 
 **WORKING MOCK / VERIFIED LOCAL PROTOTYPE** — a separate Rust economy coordinator funds 2–20 agents,
