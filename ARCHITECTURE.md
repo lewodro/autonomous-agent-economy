@@ -14,7 +14,7 @@ The missing executable boundaries are:
 4. **Settlement:** require two verified reveals; consume escrow once; record payouts and update statistics once. Duplicate settlement must return the recorded outcome without creating money.
 5. **Orchestration:** wake strategy functions for a game opportunity; serialize economic changes; update opponent memory from settled matches. Strategies use different priors and learn from observed moves, rather than fixed character scripts.
 6. **Persistence:** save only completed economic transitions. Validate saved state and reconcile the ledger before resuming; retain an append-only event history and exportable commitment proofs.
-
+7. **Dev Logs:** keep a web+github of everyting done and ongoing, issues involving.
 ## Modules
 
 ```text
@@ -27,6 +27,7 @@ Policy validator → integer ledger / escrow
 RPS commitment → reveal verification → deterministic settlement
         ↓
 Agent memory / analytics → validated browser storage
+
 ```
 
 The game engine, strategies, policy, storage, and renderer stay separate. Opportunity descriptors include type, participants, stake, rules, response schema, and settlement conditions so a future service marketplace can reuse these boundaries.
