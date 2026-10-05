@@ -58,8 +58,11 @@ h2 { font:10px ui-monospace,monospace; letter-spacing:1.3px; color:var(--muted);
 .comparison table { width:100%; font-size:11px; text-align:left; border-collapse:collapse; margin-top:10px; }
 .comparison th,.comparison td { padding:8px 10px; border-bottom:1px solid #41443d; white-space:nowrap; }
 .comparison th { font-weight:500; color:var(--muted); font-size:10px; }
-footer { display:flex; gap:16px; font-size:9px; color:#928e81; border-top:1px solid #3f423d; padding-top:14px; }
+footer { display:flex; align-items:center; gap:16px; font-size:9px; color:#928e81; border-top:1px solid #3f423d; padding-top:14px; }
 footer span { flex:1; }
+.site-footer .footer-links { display:flex; align-items:center; flex-wrap:wrap; gap:14px; }
+.site-footer .footer-links a { color:var(--accent); white-space:nowrap; }
+.site-footer .footer-links a:hover { color:var(--gold); }
 dialog { max-width:780px; width:calc(100% - 28px); max-height:90vh; border:2px solid #8d7c5d; background:#30332f; color:var(--ink); padding:24px; }
 dialog::backdrop { background:#10161ace; }
 .dialog-heading { display:flex; align-items:center; justify-content:space-between; }
@@ -73,7 +76,7 @@ dialog p { color:var(--muted); font-size:12px; line-height:1.6; }
 textarea { width:100%; background:#242b26; color:#d0d7b8; border:1px solid #655f4c; padding:12px; resize:vertical; font:11px/1.6 ui-monospace,monospace; }
 .dialog-actions { display:flex; justify-content:space-between; gap:12px; margin-top:14px; }
 #config-error { color:#edb598; }
-@media(max-width:760px) { .game-shell{padding:14px 12px;} h1{font-size:17px;} .seat-mark{font-size:30px;} .wordmark p{font-size:9px;} .scoreboard{margin-left:auto;} .game-header{gap:10px;flex-wrap:wrap;} .controls{flex-wrap:wrap;gap:8px;} .timeline{order:3;flex-basis:100%;} .controls button{font-size:11px;padding:7px 9px;} .spectator-strip{grid-template-columns:1fr;gap:14px;padding:14px 0;} .inspect{border-left:0;border-top:1px solid var(--line);padding:12px 0 0;} .table-legend{gap:10px;font-size:7px;} .ticker{font-size:11px;min-height:46px;} footer{flex-wrap:wrap;} footer span{flex-basis:100%;} }
+@media(max-width:760px) { .game-shell{padding:14px 12px;} h1{font-size:17px;} .seat-mark{font-size:30px;} .wordmark p{font-size:9px;} .scoreboard{margin-left:auto;} .game-header{gap:10px;flex-wrap:wrap;} .controls{flex-wrap:wrap;gap:8px;} .timeline{order:3;flex-basis:100%;} .controls button{font-size:11px;padding:7px 9px;} .spectator-strip{grid-template-columns:1fr;gap:14px;padding:14px 0;} .inspect{border-left:0;border-top:1px solid var(--line);padding:12px 0 0;} .table-legend{gap:10px;font-size:7px;} .ticker{font-size:11px;min-height:46px;} footer{flex-wrap:wrap;} footer span{flex-basis:100%;} .site-footer .footer-links{width:100%;gap:16px;} }
 
 .live-badge{display:inline-flex;align-self:center;align-items:center;gap:5px;border:1px solid #6e765e;padding:3px 8px;font:9px ui-monospace,monospace;color:#c2d89d;border-radius:2px}
 .live-badge::before{content:'';width:5px;height:5px;background:currentColor}.live-badge[data-state=live]{color:#c8e89d}.live-badge[data-state=thinking]{color:#ecc583}.live-badge[data-state=paused],.live-badge[data-state=history]{color:#b7b4a5}

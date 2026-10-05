@@ -84,6 +84,36 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 .brand span {
   color:var(--green)
 }
+.return-link {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+  padding:9px 12px;
+  border:1px solid var(--green);
+  border-radius:4px;
+  background:var(--green);
+  color:#18221a;
+  font:750 10px/1 var(--mono);
+  letter-spacing:.04em
+}
+.return-link:hover {
+  background:#d0ff87;
+  color:#18221a
+}
+.footer-links {
+  display:flex;
+  align-items:center;
+  gap:18px;
+  flex-wrap:wrap
+}
+.footer-links a {
+  color:var(--green);
+  white-space:nowrap
+}
+.footer-links a:hover {
+  color:#d0ff87
+}
 .topbar nav {
   display:flex;
   gap:26px;
