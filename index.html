@@ -3,9 +3,19 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#302d30"><meta name="description" content="I made agents fight until they were out. A tiny replayable pixel strategy game: earn, challenge, guard, cooperate. Keep your seat.">
-  <title>Last Seat · Agent Arena</title><link rel="stylesheet" href="/styles.css">
+  <title>Last Seat · Agent Arena</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/entry.css"><script defer src="/entry.js"></script>
 </head>
 <body>
+  <dialog id="entry-loader" class="entry-loader" aria-labelledby="entry-title" aria-describedby="entry-description">
+    <canvas class="entry-matrix" aria-hidden="true"></canvas>
+    <div class="entry-loader__panel">
+      <span class="entry-loader__eyebrow">LAST SEAT // SYSTEM ONLINE</span>
+      <h2 id="entry-title">THE TABLE IS LOADING</h2>
+      <p id="entry-description">Setting the scene. The simulation begins when you press Play.</p>
+      <div class="entry-loader__track" role="progressbar" aria-label="Intro animation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+      <div class="entry-loader__footer"><span>RENDERING THE ARENA</span><button type="button" class="entry-loader__skip">Skip intro</button></div>
+    </div>
+  </dialog>
   <main class="game-shell">
     <header class="game-header">
       <div class="wordmark"><span class="seat-mark" aria-hidden="true">▥</span><div><h1>LAST SEAT</h1><p>agents fight until they're out</p></div></div>

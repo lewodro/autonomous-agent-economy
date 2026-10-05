@@ -36,7 +36,7 @@ The smoke script clears only Last Seat's replay storage in that dedicated profil
 
 ## Final visual/performance pass
 
-The browser test now compares the default match with `docs/example-match.json`, verifies 20 seats at 360/390/430px widths, exercises reduced motion, captures a live screenshot and records active-scene RAF timing. See `docs/performance.md`; temporary captures include `last-seat-live.png`, `last-seat-mobile.png` and `last-seat-twenty.png`.
+The browser test now compares the default match with `docs/architecture/example-match.json`, verifies 20 seats at 360/390/430px widths, exercises reduced motion, captures a live screenshot and records active-scene RAF timing. See `docs/frontend/performance.md`; temporary captures include `last-seat-live.png`, `last-seat-mobile.png` and `last-seat-twenty.png`.
 
 ## Full-size history check
 

@@ -21,7 +21,11 @@ const wait = async expression => { for (let i = 0; i < 200; i++) { if (await eva
 try {
   await send('Runtime.enable'); await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await evaluate("sessionStorage.removeItem('last-seat-entry-seen-v1')");
   await send('Page.navigate', { url: `${process.env.GAME_URL || 'http://localhost:3000'}/rps` });
+  await wait("document.getElementById('entry-loader')?.open===true");
+  await evaluate("document.querySelector('.entry-loader__skip').click()");
+  await wait("!document.getElementById('entry-loader')");
   await wait("document.getElementById('run-status')?.textContent==='READY'");
   await evaluate("localStorage.removeItem('agent-arena-v1');location.reload()");
   await wait("document.getElementById('run-status')?.textContent==='READY'");

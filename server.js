@@ -188,7 +188,7 @@ const server = http.createServer(async (req, res) => {
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
     const pathname = decodeURIComponent(route), target = path.resolve(root, `.${pathname === '/' ? '/index.html' : pathname === '/rps' ? '/legacy/index.html' : pathname}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|legacy\/(index\.html|styles\.css|script\.js)|src\/[\w-]+\.js|web\/dist\/[\w-]+\.js|assets\/sprites-agent\/[\w-]+\.png)$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles\.css|script\.js)|src\/[\w-]+\.js|web\/dist\/[\w-]+\.js|assets\/sprites-agent\/[\w-]+\.png)$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     let detail;try{detail=JSON.parse(error.message);}catch{}

@@ -10,6 +10,7 @@ test('production image includes every runtime-owned browser and service director
     'COPY legacy ./legacy',
     'COPY labs ./labs',
     'COPY assets ./assets',
+    'COPY package.json server.js index.html styles.css entry.css entry.js ./',
     'COPY --from=build /app/web/dist ./web/dist',
     'COPY --from=build /app/rust/target/debug/table-core ./rust/target/debug/table-core',
   ]) assert.ok(dockerfile.includes(line), `Missing runtime artifact: ${line}`);

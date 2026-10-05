@@ -17,7 +17,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/rust/target/debug/table-core ./rust/target/debug/table-core
 COPY --from=build /app/rust/target/debug/wallet-demo ./rust/target/debug/wallet-demo
 COPY --from=build /app/web/dist ./web/dist
-COPY package.json server.js index.html styles.css ./
+COPY package.json server.js index.html styles.css entry.css entry.js ./
 COPY service ./service
 COPY src ./src
 COPY legacy ./legacy

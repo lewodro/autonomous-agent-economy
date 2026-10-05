@@ -12,10 +12,28 @@ const send = (method, params = {}) => new Promise((resolve, reject) => { const n
 const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
 const wait = async expression => { for (let i = 0; i < 200; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('Timed out: ' + expression); };
 await send('Runtime.enable'); await send('Page.enable');
-const expected=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../docs/example-match.json',import.meta.url),'utf8'));
+const expected=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../docs/architecture/example-match.json',import.meta.url),'utf8'));
 const base=process.env.GAME_URL||'http://localhost:3000';
 await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
 await send('Page.navigate',{url:base});
+await wait("document.readyState==='complete'");
+if (!await evaluate("document.getElementById('entry-loader')?.open===true")) {
+  await evaluate("sessionStorage.removeItem('last-seat-entry-seen-v1');location.reload()");
+}
+const introStarted=Date.now();
+await wait("document.getElementById('entry-loader')?.open===true");
+await send('Page.captureScreenshot',{format:'png'}).then(r=>writeFile(path.join(os.tmpdir(),'last-seat-intro.png'),Buffer.from(r.data,'base64')));
+await wait("document.getElementById('entry-loader')===null");
+assert.ok(Date.now()-introStarted>=3300,'the entry sequence should last about 3.6 seconds');
+assert.equal(await evaluate("sessionStorage.getItem('last-seat-entry-seen-v1')"),'1');
+await evaluate("sessionStorage.removeItem('last-seat-entry-seen-v1');location.reload()");
+await wait("document.getElementById('entry-loader')?.open===true");
+await evaluate("document.querySelector('.entry-loader__skip').click()");
+await wait("document.getElementById('entry-loader')===null");
+await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+await evaluate("sessionStorage.removeItem('last-seat-entry-seen-v1');location.reload()");
+await wait("!document.getElementById('entry-loader')");
+await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
 await wait("document.querySelectorAll('.agent-tab').length>0");
 await evaluate("localStorage.removeItem('last-seat-replay-v1');localStorage.removeItem('last-seat-session');localStorage.removeItem('last-seat-favorites');window.frameTimes=[];let last=performance.now();requestAnimationFrame(function frame(t){window.frameTimes.push(t-last);last=t;if(window.frameTimes.length<180)requestAnimationFrame(frame)});");
 await send('Page.reload');
