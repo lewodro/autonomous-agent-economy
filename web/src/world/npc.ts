@@ -1,6 +1,11 @@
 import { moveActor } from './movement.js';
 import type { WorldActor, Position } from './model.js';
-const WAYPOINTS: Position[] = [{x:430,y:470},{x:680,y:370},{x:730,y:700},{x:900,y:690},{x:350,y:620},{x:400,y:340}];
+const WAYPOINTS: Position[] = [
+  {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:780,y:420},
+  {x:430,y:510},{x:660,y:570},{x:360,y:680},{x:720,y:680},{x:450,y:650},
+  {x:735,y:740},{x:390,y:390},{x:650,y:300},{x:400,y:570},{x:755,y:520},
+  {x:440,y:730},{x:680,y:760},{x:340,y:430},{x:755,y:310},{x:700,y:620},
+];
 export interface AgentController { update(actor:WorldActor, seconds:number):void }
 /** Presence only: neither selects minigame moves nor claims research results. */
 export class NpcController implements AgentController {

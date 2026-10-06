@@ -69,13 +69,18 @@ export class CanvasWorldRenderer implements WorldRenderer {
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
+    const labels:{x:number;y:number;width:number;height:number}[]=[];
     for(const actor of [...frame.actors].sort((a,b)=>a.position.y-b.position.y)) {
       if(actor.position.x<frame.camera.x-64||actor.position.x>frame.camera.x+width+64||actor.position.y<frame.camera.y-64||actor.position.y>frame.camera.y+height+64)continue;
-      this.renderActor(actor,frame.time,reduced);
+      const nameWidth=actor.name.length*6.4+10,label={x:actor.position.x-nameWidth/2,y:actor.position.y-57,width:nameWidth,height:14};
+      const nearby=actor.type==='human'||Math.hypot(actor.position.x-frame.actors.find(a=>a.type==='human')!.position.x,actor.position.y-frame.actors.find(a=>a.type==='human')!.position.y)<150;
+      const showName=nearby&&!labels.some(other=>label.x<other.x+other.width&&label.x+label.width>other.x&&label.y<other.y+other.height&&label.y+label.height>other.y);
+      if(showName)labels.push(label);
+      this.renderActor(actor,frame.time,reduced,showName);
     }
     if(frame.nearby){c.strokeStyle='#e4bc73';c.lineWidth=2;c.beginPath();c.ellipse(frame.nearby.position.x,frame.nearby.position.y+8,22,9,0,0,Math.PI*2);c.stroke();}
   }
-  private renderActor(actor:WorldActor,time:number,reduced:boolean):void {
+  private renderActor(actor:WorldActor,time:number,reduced:boolean,showName:boolean):void {
     const c=this.ctx,{x,y}=actor.position;const sprite=SPRITES.find(s=>s.id===actor.spriteId);const image=this.images.get(actor.spriteId);
     const animation=sprite?.animations[`${actor.movementState==='walking'?'walk':'idle'}_${actor.facing}`]||[0];
     const frame=animation[Math.floor(time/150)%animation.length]||0;
@@ -86,9 +91,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.drawImage(image,frame%columns*sprite.frameWidth,Math.floor(frame/columns)*sprite.frameHeight,sprite.frameWidth,sprite.frameHeight,Math.round(x-24),Math.round(y-40-bob),48,48);
     }else{c.fillStyle='#d5b882';c.fillRect(x-10,y-28,20,28);}
     if(actor.type==='human'){c.strokeStyle='#c4dfbd';c.lineWidth=2;c.beginPath();c.ellipse(x,y+9,20,8,0,0,Math.PI*2);c.stroke();}
-    c.textAlign='center';c.font='bold 10px monospace';const name=actor.name.toUpperCase();
-    c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
-    c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);
+    if(showName){c.textAlign='center';c.font='bold 10px monospace';const name=actor.name.toUpperCase();
+      c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
+      c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);}
     if(actor.recentWinner){c.fillStyle='#edbe66';c.fillRect(x-6,y-68,12,5);c.fillRect(x-6,y-73,3,5);c.fillRect(x-1,y-75,3,7);c.fillRect(x+4,y-73,3,5);}
   }
   destroy():void {this.images.clear();}
