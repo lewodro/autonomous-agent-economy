@@ -30,7 +30,8 @@ test('avatar settings allow registered presets only and survive a JSON roundtrip
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
   assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(settings))),settings);
   assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'explorer');
-  assert.equal(new Set(SPRITES.map(s=>s.id)).size,20);
+  assert.equal(new Set(SPRITES.map(s=>s.id)).size,24);
+  const animated=SPRITES.find(s=>s.id==='visitor_ember');assert.deepEqual(animated.animations.walk_up,[9,10,11]);
 });
 test('NPC controller moves presence without changing strategy or economic fields',()=>{
   const npc={...actor({x:430,y:470}),type:'npc',balance:123,strategy:'test'};

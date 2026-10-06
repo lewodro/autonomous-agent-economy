@@ -69,7 +69,7 @@ function presetButtons():void {
   const presets=$('avatar-presets');presets.replaceChildren();
   for(const id of AVATARS){
     const button=document.createElement('button');button.type='button';button.setAttribute('aria-pressed',String(player.spriteId===id));button.dataset.avatar=id;
-    const image=document.createElement('img');image.src=SPRITES.find(s=>s.id===id)!.sheet;image.alt='';button.append(image,document.createTextNode(id.toUpperCase()));
+    const image=document.createElement('img');const sprite=SPRITES.find(s=>s.id===id)!;image.src=sprite.preview||sprite.sheet;image.alt='';button.append(image,document.createTextNode(id.replace('visitor_','').toUpperCase()));
     button.onclick=()=>{player.spriteId=id;presetButtons();};presets.append(button);
   }
 }
