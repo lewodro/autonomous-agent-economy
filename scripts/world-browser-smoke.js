@@ -53,7 +53,8 @@ try{
  await wait('document.activeElement?.id==="world-canvas"');
  // Walk around the south side of the arena wall, then approach its entrance.
  // The divider ends at y=700; cross south of it before walking east to the Arena.
- await key('s',1650);await key('d',2120);
+ // Use explicit arrows here after the modal interaction; the opening plaza already checks WASD.
+ await key('ArrowDown',1650);await key('ArrowRight',2120);
  try{await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');}
  catch(error){
   const pathInputDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,hasFocus:document.hasFocus(),entered:sessionStorage.getItem("agent-world-entered"),interactionOpen:document.getElementById("interaction-dialog").open,characterOpen:document.getElementById("character-dialog").open,hidden:document.hidden,rafTicks:window.__worldRafTicks})');
