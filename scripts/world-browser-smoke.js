@@ -22,7 +22,9 @@ try{
  await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1');document.querySelector('a[href=\"/world\"]').click()");
  await wait('document.getElementById("character-dialog")?.open');
  await wait('document.querySelectorAll("#avatar-presets img").length===8&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
+ const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
  await evaluate('document.querySelector("[data-avatar=visitor_ember]").click()');
+ assert.equal(await evaluate('document.activeElement?.dataset.avatar'),focusedPreset,'changing a preset must preserve keyboard focus');
  assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).avatar'),'visitor_ember','avatar choice must persist immediately');
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
  await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("20 agents in the plaza")');

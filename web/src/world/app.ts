@@ -68,11 +68,15 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
   else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
 function presetButtons():void {
-  const presets=$('avatar-presets');presets.replaceChildren();
+  const presets=$('avatar-presets');
   for(const id of AVATARS){
-    const button=document.createElement('button');button.type='button';button.setAttribute('aria-pressed',String(player.spriteId===id));button.dataset.avatar=id;
-    const image=document.createElement('img');const sprite=SPRITES.find(s=>s.id===id)!;image.src=sprite.preview||sprite.sheet;image.alt='';button.append(image,document.createTextNode(id.replace('visitor_','').toUpperCase()));
-    button.onclick=()=>{player.spriteId=id;presetButtons();persist();};presets.append(button);
+    let button=presets.querySelector<HTMLButtonElement>(`[data-avatar="${id}"]`);
+    if(!button){
+      button=document.createElement('button');button.type='button';button.dataset.avatar=id;
+      const image=document.createElement('img');const sprite=SPRITES.find(s=>s.id===id)!;image.src=sprite.preview||sprite.sheet;image.alt='';button.append(image,document.createTextNode(id.replace('visitor_','').toUpperCase()));
+      button.onclick=()=>{player.spriteId=id;presetButtons();persist();};presets.append(button);
+    }
+    button.setAttribute('aria-pressed',String(player.spriteId===id));
   }
 }
 $('avatar-change').onclick=()=>{resetInput();presetButtons();character.showModal();};
