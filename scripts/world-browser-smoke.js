@@ -13,7 +13,12 @@ const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}throw new Error('Browser condition timed out: '+expression);};
-const key=async(key,ms)=>{await send('Input.dispatchKeyEvent',{type:'keyDown',key});await delay(ms);await send('Input.dispatchKeyEvent',{type:'keyUp',key});};
+const key=async(key,ms)=>{
+ const code=key.startsWith('Arrow')?key:`Key${key.toUpperCase()}`;
+ const windowsVirtualKeyCode=key.startsWith('Arrow')?({ArrowUp:38,ArrowDown:40,ArrowLeft:37,ArrowRight:39})[key]:key.toUpperCase().charCodeAt(0);
+ const event={key,code,windowsVirtualKeyCode,nativeVirtualKeyCode:windowsVirtualKeyCode};
+ await send('Input.dispatchKeyEvent',{type:'keyDown',...event});await delay(ms);await send('Input.dispatchKeyEvent',{type:'keyUp',...event});
+};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));};
 try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
