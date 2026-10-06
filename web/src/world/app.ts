@@ -12,7 +12,7 @@ const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('i
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection');
 const settings=loadSettings(),gateway=new HttpArenaGateway();
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
-const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
+const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
 let camera={x:Math.max(0,player.position.x-renderer.viewport().width/2),y:Math.max(0,player.position.y-renderer.viewport().height/2)};
 let requestedAgent=new URLSearchParams(location.search).get('agent');
