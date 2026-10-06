@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
+import { moveActor, followCamera } from '../web/dist/world/movement.js';
+import { MAP, safePosition, collides, LANDMARKS } from '../web/dist/world/map.js';
+const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
+test('world input normalizes diagonal speed and rejects nonfinite movement', () => {
+  assert.equal(Math.hypot(...Object.values(normalizeInput(1,1)).slice(0,2)),1);
+  assert.deepEqual(normalizeInput(NaN,Infinity),{x:0,y:0,interact:false});
+});
+test('movement slides at walls, cannot tunnel, and clamps suspended frame time', () => {
+  const a=actor({x:480,y:340});moveActor(a,{x:1,y:1,interact:false},100);
+  assert.ok(!collides(a.position));assert.ok(a.position.x<=488);assert.ok(a.position.y>340);
+  const b=actor({...MAP.spawn});moveActor(b,{x:1,y:0,interact:false},10);
+  assert.equal(b.position.x,MAP.spawn.x+15);
+});
+test('invalid saved positions reset; interactions require spatial proximity', () => {
+  for(const value of [null,{x:NaN,y:20},{x:200,y:200},{x:-1,y:100}])assert.deepEqual(safePosition(value),MAP.spawn);
+  assert.equal(nearestInteraction(MAP.spawn,LANDMARKS),undefined);
+  assert.equal(nearestInteraction({x:928,y:660},LANDMARKS)?.id,'arena-door');
+});
+test('camera remains inside the map',()=>{
+  assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
+  const c=followCamera({x:0,y:0},{x:9999,y:9999},600,400,100);
+  assert.deepEqual(c,{x:552,y:464});
+});
