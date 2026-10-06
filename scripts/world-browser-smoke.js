@@ -33,7 +33,7 @@ try{
  const initialKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
  await key('d',500);await delay(3100);
  const movedKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
- const keyboardDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,entered:sessionStorage.getItem("agent-world-entered"),characterOpen:document.getElementById("character-dialog").open})');
+ const keyboardDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,entered:sessionStorage.getItem("agent-world-entered"),characterOpen:document.getElementById("character-dialog").open,interactionOpen:document.getElementById("interaction-dialog").open,hidden:document.hidden,visibility:document.visibilityState,hasFocus:document.hasFocus()})');
  assert.ok(movedKeyboardX>initialKeyboardX+20,`keyboard must move the player in open plaza (x ${initialKeyboardX} -> ${movedKeyboardX}; ${keyboardDiagnostics})`);
  const focusedAgent=await evaluate('(()=>{document.querySelector(".world-footer details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
