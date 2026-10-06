@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS } from './map.js';
+import { MAP, BUILDINGS, TREES } from './map.js';
 import { SPRITES } from './sprites.js';
 import type { Position, WorldActor, Interactable } from './model.js';
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number }
@@ -56,8 +56,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('RESEARCH ARCHIVE',560,770);
     c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,445);
     // Decorative trees live outside circulation routes.
-    for(const [x,y] of [[60,120],[65,280],[60,710],[340,770],[1060,180],[1056,350],[1030,770]]){
-      rect(x!,y!+24,12,28,'#675542');rect(x!-18,y!,48,34,'#496345');rect(x!-10,y!-12,32,26,'#56734b');
+    for(const {x,y} of TREES){
+      rect(x,y+24,12,28,'#675542');rect(x-18,y,48,34,'#496345');rect(x-10,y-12,32,26,'#56734b');
     }
     rect(32,56,MAP.width-64,8,'#77705b');rect(32,MAP.height-40,MAP.width-64,8,'#77705b');
     rect(32,56,8,MAP.height-88,'#77705b');rect(MAP.width-40,56,8,MAP.height-88,'#77705b');

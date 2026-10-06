@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera } from '../web/dist/world/movement.js';
-import { MAP, safePosition, collides, LANDMARKS } from '../web/dist/world/map.js';
+import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -22,6 +22,11 @@ test('invalid saved positions reset; interactions require spatial proximity', ()
   for(const value of [null,{x:NaN,y:20},{x:200,y:200},{x:-1,y:100}])assert.deepEqual(safePosition(value),MAP.spawn);
   assert.equal(nearestInteraction(MAP.spawn,LANDMARKS),undefined);
   assert.equal(nearestInteraction({x:928,y:660},LANDMARKS)?.id,'arena-door');
+});
+test('tree trunks are shared map obstacles rather than walk-through decoration',()=>{
+ for(const tree of TREES)assert.equal(collides({x:tree.x+6,y:tree.y+38}),true,`tree at ${tree.x},${tree.y} should block its trunk`);
+ const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);
+ assert.ok(visitor.position.x>=84,'movement must stop before crossing the first trunk');assert.ok(!collides(visitor.position));
 });
 test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
