@@ -51,7 +51,13 @@ try{
  // Walk around the south side of the arena wall, then approach its entrance.
  // The divider ends at y=700; cross south of it before walking east to the Arena.
  await key('s',1650);await key('d',2120);
- await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');await screenshot('desktop');await key('e',50);
+ try{await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');}
+ catch(error){
+  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');await delay(1100);
+  const liveWorldState=await evaluate('document.querySelector("#world-lab pre")?.textContent');
+  throw new Error(`${error.message}; saved position=${await evaluate('localStorage.getItem("agent-world-settings-v1")')}; live lab state=${liveWorldState}`);
+ }
+ await screenshot('desktop');await key('e',50);
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('lobby');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await evaluate(`document.querySelector('a[href="/arena/${game}/${id}"]').click()`);
