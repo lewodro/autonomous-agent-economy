@@ -53,9 +53,10 @@ try{
  await key('s',1650);await key('d',2120);
  try{await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');}
  catch(error){
+  const pathInputDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,hasFocus:document.hasFocus(),entered:sessionStorage.getItem("agent-world-entered"),interactionOpen:document.getElementById("interaction-dialog").open,characterOpen:document.getElementById("character-dialog").open,hidden:document.hidden,rafTicks:window.__worldRafTicks})');
   await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');await delay(1100);
   const liveWorldState=await evaluate('document.querySelector("#world-lab pre")?.textContent');
-  throw new Error(`${error.message}; saved position=${await evaluate('localStorage.getItem("agent-world-settings-v1")')}; live lab state=${liveWorldState}`);
+  throw new Error(`${error.message}; path input=${pathInputDiagnostics}; saved position=${await evaluate('localStorage.getItem("agent-world-settings-v1")')}; live lab state=${liveWorldState}`);
  }
  await screenshot('desktop');await key('e',50);
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('lobby');
