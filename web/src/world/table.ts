@@ -42,7 +42,7 @@ export function mountTable(parent:HTMLElement,isActive:()=>boolean):void {
   }
   async function poll():Promise<void>{
     if(!isActive()){if(timer)clearTimeout(timer);return;}
-    if(!busy)try{const fresh=await request<TableView>('/api/world/table');if(!busy&&(!state||fresh.revision!==state.revision||fresh.yourSeat!==state.yourSeat||fresh.status!==state.status)){state=fresh;render();}}catch{error.textContent='Connection interrupted. Reconnecting to the table…';}
+    if(!busy)try{const fresh=await request<TableView>('/api/world/table');if(!busy&&(!state||fresh.revision>=state.revision&&(fresh.revision!==state.revision||fresh.yourSeat!==state.yourSeat||fresh.status!==state.status))){state=fresh;error.textContent='';render();}}catch{error.textContent='Connection interrupted. Reconnecting to the table…';}
     if(isActive())timer=setTimeout(poll,1200);
   }
   status.textContent='Opening the table…';void poll();

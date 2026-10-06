@@ -5,6 +5,7 @@ import { moveActor, followCamera } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS } from '../web/dist/world/map.js';
 import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController } from '../web/dist/world/npc.js';
+import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
 test('world input normalizes diagonal speed and rejects nonfinite movement', () => {
   assert.equal(Math.hypot(...Object.values(normalizeInput(1,1)).slice(0,2)),1);
@@ -38,4 +39,10 @@ test('NPC controller moves presence without changing strategy or economic fields
   const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
+});
+test('arena gateway derives relative room routes and rejects invalid game/slot combinations',()=>{
+ const gateway=new HttpArenaGateway();
+ assert.equal(gateway.watchMatch({game:'rps',id:'rps-1',url:'https://untrusted.example'}),'/arena/rps/rps-1');
+ assert.equal(gateway.watchMatch({game:'tictactoe',id:'ttt-2'}),'/arena/tictactoe/ttt-2');
+ for(const room of [{game:'rps',id:'ttt-1'},{game:'tictactoe',id:'../secret'},{game:'chess',id:'rps-1'}])assert.throws(()=>gateway.watchMatch(room),/Unsupported/);
 });

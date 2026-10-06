@@ -49,7 +49,7 @@ export class ArenaRoomPool {
       const draws=entries.filter(({match})=>match.result==='draw').length;
       const latest=entries.at(-1);
       const live=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
-      return {...base,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
+      return {id:base.id,name:base.name,sprite:base.sprite,strategy:base.strategy,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
         recentWinner:!!latest&&latest.match.result!=='draw'&&latest.match.players[latest.match.result==='a'?0:1]===base.id,
         roomId:live?.id||null,
         memory:entries.slice(-6).map(({run,match})=>({...run.state.agents.find(a=>a.id===base.id).memory.find(m=>m.matchId===match.id),runId:run.runId,game:run.game})),

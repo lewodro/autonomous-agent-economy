@@ -21,7 +21,10 @@ export class TableSession {
       ||!Array.isArray(saved.players)||saved.players.length>2||!Number.isSafeInteger(saved.revision)||saved.revision<0||!Number.isFinite(saved.updatedAt))throw new Error('Invalid table checkpoint');
     const players=saved.players;
     if(players.some(p=>!['human','npc'].includes(p.kind)||!['human-x','human-o','npc-founder'].includes(p.id)||
-      (p.kind==='human'&&!/^[a-f0-9]{64}$/.test(p.credential)))||new Set(players.map(p=>p.id)).size!==players.length)throw new Error('Invalid table seats');
+      (p.kind==='human'&&(!/^[a-f0-9]{64}$/.test(p.credential)||p.id==='npc-founder'))||
+      (p.kind==='npc'&&(p.id!=='npc-founder'||p.credential!==undefined)))||new Set(players.map(p=>p.id)).size!==players.length||
+      new Set(players.filter(p=>p.kind==='human').map(p=>p.credential)).size!==players.filter(p=>p.kind==='human').length||
+      (players[0]&&players[0].id!=='human-x')||(players[1]&&!['human-o','npc-founder'].includes(players[1].id)))throw new Error('Invalid table seats');
     if((saved.status==='empty')!==(players.length===0)||(saved.status==='waiting')!==(players.length===1)||
       (players.length<2)!==(saved.match===null))throw new Error('Invalid table lifecycle');
     if(saved.match){
