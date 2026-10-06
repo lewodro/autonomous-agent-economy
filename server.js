@@ -17,6 +17,7 @@ import { validateDeploymentConfig } from './service/deployment-config.js';
 import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
+import { TableSession, visitorIdentity } from './service/world-table.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -29,6 +30,8 @@ const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
+const worldTable=new TableSession(path.join(directory,'world'));
+const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -84,6 +87,16 @@ const server = http.createServer(async (req, res) => {
       return json(res,200,{matches:[...funded.matches.entries()].map(([session,value])=>({session,state:value.economy.economy.state,mode:value.economy.economy.payment_mode}))});
     }
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
+    if(route==='/api/world/table'||/^\/api\/world\/table\/(join|leave|start|move)$/.test(route)){
+      const visitor=visitorIdentity(req);
+      if(req.method==='GET'&&route==='/api/world/table')return json(res,200,worldTable.snapshot(visitor.hash));
+      if(req.method==='POST'&&route!=='/api/world/table'){
+        if(!tableActions.allow())return json(res,429,{error:'Table actions are temporarily limited. Try again shortly.'});
+        const snapshot=await worldTable.act(visitor.hash,route.split('/').at(-1),await body(req,2048));
+        return json(res,200,snapshot,{'Set-Cookie':`world_visitor=${visitor.token}; HttpOnly; SameSite=Strict; Path=/api/world/table; Max-Age=86400${production?'; Secure':''}`});
+      }
+      return json(res,405,{error:'Method not allowed'});
+    }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
       if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms()});
@@ -214,7 +227,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;

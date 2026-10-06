@@ -6,6 +6,7 @@ import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, t
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController } from './npc.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
+import { mountTable } from './table.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection');
@@ -17,10 +18,11 @@ let camera={x:Math.max(0,player.position.x-renderer.viewport().width/2),y:Math.m
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
 const events:WorldEvent[]=[];
+let interactionVersion=0;
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
 function resetInput():void {keyboard.reset();touch.reset();}
-function show(title:string):void {resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();}
+function show(title:string):number {resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
 function showProfile(id:string):void {
@@ -42,9 +44,9 @@ function showProfile(id:string):void {
   if(profile.roomId)link('Watch current match',`/arena/${profile.roomId.startsWith('rps')?'rps':'tictactoe'}/${profile.roomId}`,actions);
 }
 async function showArchive():Promise<void> {
-  show('Research archive');text('p','Loading verified match history…');
+  const version=show('Research archive');text('p','Loading verified match history…');
   try{
-    const matches=await gateway.history();if(!dialog.open)return;content.replaceChildren();
+    const matches=await gateway.history();if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();
     text('p','Completed server matches only. Downloads include the replayable simulation ledger. Older epochs rotate after the retained window.');
     if(!matches.length)text('p','No completed matches yet. Visit the Arena and come back shortly.');
     for(const match of matches.slice(0,20)){
@@ -53,7 +55,7 @@ async function showArchive():Promise<void> {
       link('Watch this room',`/arena/${match.game}/${match.roomId}`,row);link('Download JSON',match.logUrl,row);
       const details=text('details','',row);text('summary','Structured move history',details);text('pre',JSON.stringify(match.moves,null,2),details);
     }
-  }catch{content.replaceChildren();text('p','The archive is unavailable. Close this panel and try again.');}
+  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The archive is unavailable. Close this panel and try again.');}}
 }
 function portal():void {
   persist();resetInput();emit({type:'world:entered-arena',actorId:player.id});document.body.classList.add('leaving');
@@ -63,7 +65,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
   if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showArchive();
-  else {show('Free Tic-Tac-Toe table');text('p','The table is being prepared. The shared agent games are available in the Arena.');link('Visit Arena','/arena');}
+  else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
 function presetButtons():void {
   const presets=$('avatar-presets');presets.replaceChildren();
