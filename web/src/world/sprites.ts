@@ -7,7 +7,7 @@ export interface SpriteDefinition {
 const slugs = ['founder','trader','gambler','analyst','defender','strategist','social','degen','conservative','aggressive','explorer','builder','quant','random','tournament','mentor','rival','observer','adaptive','wild-card'];
 /** Existing art is a complete single-frame character. Sheets can replace entries without actor changes. */
 export const SPRITES: SpriteDefinition[] = slugs.map((id,i)=>({ id, sheet:`/assets/sprites-agent/${String(i+1).padStart(2,'0')}-${id}.png`,
-  frameWidth:128,frameHeight:128,animations:{ idle_down:[0],idle_up:[0],idle_left:[0],idle_right:[0],walk_down:[0],walk_up:[0],walk_left:[0],walk_right:[0] } }));
+  frameWidth:16,frameHeight:16,animations:{ idle_down:[0],idle_up:[0],idle_left:[0],idle_right:[0],walk_down:[0],walk_up:[0],walk_left:[0],walk_right:[0] } }));
 export const AVATARS = ['founder','trader','explorer','mentor'];
 export interface PlayerSettings { version:1; avatar:string; position:Position; muted:boolean }
 export function parseSettings(value: unknown): PlayerSettings {

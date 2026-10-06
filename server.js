@@ -16,6 +16,7 @@ import { authorizeRequest } from './service/http-policy.js';
 import { validateDeploymentConfig } from './service/deployment-config.js';
 import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
+import { ArenaRoomPool } from './service/arena-rooms.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -27,6 +28,7 @@ const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
+const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -81,6 +83,17 @@ const server = http.createServer(async (req, res) => {
       return json(res,200,{matches:[...funded.matches.entries()].map(([session,value])=>({session,state:value.economy.economy.state,mode:value.economy.economy.payment_mode}))});
     }
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
+    if(route.startsWith('/api/arena/')){
+      if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
+      if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms()});
+      if(route==='/api/arena/agents')return json(res,200,{agents:arenaRooms.profiles()});
+      if(route==='/api/arena/history')return json(res,200,{matches:arenaRooms.history()});
+      const room=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])$/);
+      if(room)return json(res,200,arenaRooms.getRoom(room[1]));
+      const log=route.match(/^\/api\/arena\/logs\/([a-f0-9-]{36})$/);
+      if(log)return json(res,200,arenaRooms.log(log[1]),{'Content-Disposition':`attachment; filename="arena-${log[1]}.json"`});
+      return json(res,404,{error:'Arena resource not found'});
+    }
     if(req.method==='POST'&&route==='/api/funded-matches'){
       if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
       if(production&&!publicFundedCreates.allow())return json(res,429,{error:'Funded match creation is temporarily limited. Try again later.'});
@@ -187,7 +200,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : pathname === '/rps' ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
     if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles\.css|script\.js)|post\/(index\.html|styles\.css)|src\/[\w-]+\.js|web\/dist\/[\w-]+\.js|assets\/sprites-agent\/[\w-]+\.png)$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
@@ -200,11 +213,11 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await runtime.restore(core,sessions);await funded.restore();funded.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
   console.log(production?JSON.stringify({event:'server_started',host,port:actualPort,environment:'production'}):`Last Seat · Rust core · http://localhost:${actualPort}`);
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { funded.close();liveEvents.close();core.stop(); server.close(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { arenaRooms.close();funded.close();liveEvents.close();core.stop(); server.close(); process.exit(0); });
 server.on('error', error => { console.error(error.message); core.stop(); process.exit(1); });

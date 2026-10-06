@@ -10,15 +10,18 @@ import { toLamports } from '../src/policy.js';
 import { startTournament, nextTournamentPair, scoreTournament } from '../src/tournament.js';
 
 const $ = id => document.getElementById(id);
+const sharedRoom = location.pathname.match(/^\/arena\/(?:rps|tictactoe)\/(rps-[12]|ttt-[12])$/)?.[1] || null;
 const fmt = n => (n / SOL).toFixed(3);
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 let state = createState(), selected = state.agents[0].id, watching = false, current = null, phase = '', busy = false;
 let orchestrator;
+let sharedRunId=null;
 const agent = id => state.agents.find(a => a.id === id);
 const games = a => a.wins + a.losses + a.draws;
 const notice = text => { $('notice').textContent = text; };
-function save() { saveState(state); }
+function save() { if(!sharedRoom)saveState(state); }
 function connect() {
+  if(sharedRoom)return;
   orchestrator = new Orchestrator(state, { onSave: () => {
     if (state.tournament?.status === 'open') scoreTournament(state, state.matches.at(-1));
     save();
@@ -67,6 +70,11 @@ function render() {
   const t = state.tournament;
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
   $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} simulated SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
+  if(sharedRoom){
+    $('run-status').textContent='LIVE · SHARED ROOM';
+    document.querySelectorAll('.play-controls,.speed-label,#new-run,#treasury-controls').forEach(el=>el.hidden=true);
+    $('share').hidden=true;
+  }
 }
 function renderDetail() {
   const a = agent(selected) || state.agents[0]; selected = a.id;
@@ -120,6 +128,10 @@ $('new-run').addEventListener('submit', event => {
   catch (error) { notice(error.message); }
 });
 $('export').addEventListener('click', () => {
+  if(sharedRoom){
+    if(!sharedRunId)return;
+    const link=document.createElement('a');link.href=`/api/arena/logs/${sharedRunId}`;link.download=`arena-${sharedRunId}.json`;link.click();return;
+  }
   if (busy) { notice('Wait for settlement before exporting.'); return; }
   assertAccounting(state);
   const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
@@ -148,6 +160,7 @@ $('tournament').addEventListener('click', () => {
   catch (error) { notice(error.message); }
 });
 // Loading checks hashes and reconstructs accounting before enabling gameplay.
+if(!sharedRoom){
 document.querySelectorAll('button').forEach(button => button.disabled = true);
 document.body.setAttribute('aria-busy', 'true');
 notice('Verifying saved ledger…');
@@ -156,3 +169,21 @@ catch (error) { notice(`Saved run could not be verified: ${error.message}. A fre
 document.querySelectorAll('button').forEach(button => button.disabled = false);
 document.body.removeAttribute('aria-busy');
 connect(); render();
+}else{
+  document.querySelector('.return-link').href='/arena';document.querySelector('.return-link').textContent='← BACK TO ARENA';
+  document.querySelector('.intro h1').textContent=`ROOM ${sharedRoom.toUpperCase()}`;
+  document.querySelector('.intro .lede').textContent='Shared live simulation. The server runs the existing rules; spectators cannot change moves.';
+  let stopped=false;window.addEventListener('pagehide',()=>{stopped=true;});
+  async function observe(){
+    if(stopped)return;
+    try{
+      const response=await fetch(`/api/arena/rooms/${sharedRoom}`,{signal:AbortSignal.timeout(8000)});
+      if(!response.ok)throw new Error('Room unavailable');
+      const snapshot=await response.json();state=snapshot.state;current=snapshot.current;phase=snapshot.phase;sharedRunId=snapshot.room.runId;
+      render();$('run-status').textContent=snapshot.room.status.toUpperCase()+' · SHARED';
+      notice(snapshot.room.status==='failed'?'This room has stopped. Return to the Arena and choose another room.':'LIVE · adaptive local algorithms · simulated SOL only · shared server room');
+    }catch{notice('Connection interrupted. Reconnecting to the room…');$('run-status').textContent='RECONNECTING';}
+    if(!stopped)setTimeout(observe,750);
+  }
+  observe();
+}
