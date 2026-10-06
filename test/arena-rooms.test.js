@@ -16,6 +16,12 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.ok(await verifyProof(rps));assert.ok(verifyTicTacToeProof(ttt));
   const profiles=pool.profiles();assert.equal(profiles.reduce((sum,a)=>sum+a.matches,0),4);
   const history=pool.history();assert.equal(history.length,2);
+  for(const profile of profiles){
+    if(!profile.latestMatch){assert.equal(profile.recentWinner,false);continue;}
+    const latest=history.find(match=>match.runId===profile.latestMatch.runId&&match.id===profile.latestMatch.matchId);
+    assert.ok(latest,`latest profile match should be retained for ${profile.id}`);
+    assert.equal(profile.recentWinner,latest.result!=='draw'&&latest.players[latest.result==='a'?0:1].id===profile.id);
+  }
   for(const entry of history)await validateState(pool.log(entry.runId).state);
   const restored=new ArenaRoomPool(dir,{stageMs:0});await restored.restore();
   assert.deepEqual(restored.history(),history);assert.deepEqual(restored.profiles(),profiles);
