@@ -18,10 +18,10 @@ test('movement slides at walls, cannot tunnel, and clamps suspended frame time',
   const b=actor({...MAP.spawn});moveActor(b,{x:1,y:0,interact:false},10);
   assert.equal(b.position.x,MAP.spawn.x+15);
 });
-test('visitor movement respects NPC footprints while keeping them in interaction range',()=>{
+test('visitor can pass ambient NPCs while keeping them in interaction range',()=>{
  const visitor=actor({x:100,y:100}),npc={...actor({x:140,y:100}),id:'npc-ember',type:'npc'};
- moveActor(visitor,{x:1,y:0,interact:false},.1,150,presenceObstacles([npc],visitor));
- assert.ok(visitor.position.x<=114,'visitor should stop before entering the NPC footprint');
+ moveActor(visitor,{x:1,y:0,interact:false},.1,150);
+ assert.ok(visitor.position.x>114,'ambient NPC presence cannot block visitor movement');
  assert.ok(Math.hypot(visitor.position.x-npc.position.x,visitor.position.y-npc.position.y)<=72,'NPC remains reachable for profile interaction');
  assert.equal(presenceObstacles([visitor,npc],npc).length,1,'NPC controllers use the same presence collision geometry');
 });
