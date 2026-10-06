@@ -13,6 +13,7 @@
     "demo:solana": "node demos/solana.js",
     "test:browser": "node scripts/browser-smoke.js",
     "test:browser:legacy": "node scripts/legacy-browser-smoke.js",
+    "test:browser:world": "node scripts/world-browser-smoke.js",
     "dev": "node scripts/dev.js",
     "build": "cargo build --manifest-path rust/Cargo.toml --locked && tsc -p web/tsconfig.json",
     "typecheck": "tsc -p web/tsconfig.json --noEmit",
