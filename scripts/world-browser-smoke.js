@@ -34,7 +34,12 @@ try{
  await key('d',500);await delay(3100);
  const movedKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
  const keyboardDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,entered:sessionStorage.getItem("agent-world-entered"),characterOpen:document.getElementById("character-dialog").open,interactionOpen:document.getElementById("interaction-dialog").open,hidden:document.hidden,visibility:document.visibilityState,hasFocus:document.hasFocus(),rafTicks:window.__worldRafTicks})');
- assert.ok(movedKeyboardX>initialKeyboardX+20,`keyboard must move the player in open plaza (x ${initialKeyboardX} -> ${movedKeyboardX}; ${keyboardDiagnostics}; runtimeErrors=${JSON.stringify(errors)})`);
+ if(movedKeyboardX<=initialKeyboardX+20){
+  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+  await wait('document.activeElement?.id==="world-canvas"');await key('d',500);await delay(1200);
+  const liveWorldState=await evaluate('document.querySelector("#world-lab pre")?.textContent');
+  assert.ok(movedKeyboardX>initialKeyboardX+20,`keyboard must move the player in open plaza (persisted x ${initialKeyboardX} -> ${movedKeyboardX}; ${keyboardDiagnostics}; live lab state=${liveWorldState}; runtimeErrors=${JSON.stringify(errors)})`);
+ }
  const focusedAgent=await evaluate('(()=>{document.querySelector(".world-footer details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate('document.getElementById("world-canvas").focus()');

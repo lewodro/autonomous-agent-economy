@@ -155,7 +155,7 @@ if(location.pathname==='/labs/world'){
   for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{player.position=safePosition(landmark.position);canvas.focus();};lab.append(b);}
   const spawn=document.createElement('button');spawn.textContent='Spawn next NPC';spawn.onclick=()=>{const profile=profiles.find(p=>!npcs.some(n=>n.agentId===p.id));if(profile)addNpc(profile,npcs.length);};lab.append(spawn);
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
-  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:player.position,events},null,2),1000);
+  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);
 }
 presetButtons();try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 if(!entered)character.showModal();else canvas.focus();void refreshProfiles();raf=requestAnimationFrame(frame);
