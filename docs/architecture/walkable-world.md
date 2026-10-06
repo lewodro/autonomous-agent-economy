@@ -45,6 +45,7 @@ The local browser character, NPC positions, and actor movement are not multiplay
 | `/api/arena/rooms/:slot` | Read current spectator state without the full event ledger |
 | `/api/arena/agents` | Read retained profile summaries |
 | `/api/arena/history` and `/api/arena/logs/:runId` | Read recent completed matches and download a run ledger |
+| `/api/health` | Reports engine/storage health and safe Arena room status; exhausted room retries mark Arena as degraded without exposing error messages |
 | `/api/world/table` | Read public table state; its capability cookie identifies a seat |
 
 `/labs/world` uses the same world controls and renderer. It is disabled by default; set `WORLD_LAB=1` in local development to enable it. It cannot run minigames or alter their results.

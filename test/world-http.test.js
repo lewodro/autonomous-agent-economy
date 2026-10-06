@@ -14,6 +14,7 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   for(const route of ['/','/rps','/world','/arena','/arena/rps/rps-1','/arena/tictactoe/ttt-1','/world/styles.css','/web/dist/world/app.js','/web/dist/world/table.js','/assets/aae_avatar_kit/examples/ember.png','/assets/agent-world-preview.png'])assert.equal((await fetch(base+route)).status,200,route);
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
+  const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
   const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);
   const post=async(action,data={},cookie='')=>{const response=await fetch(base+'/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(data)});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:await response.json()};};

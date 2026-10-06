@@ -38,6 +38,10 @@ export class ArenaRoomPool {
         const a=r.state.agents.find(a=>a.id===pid);return {id:pid,name:a.name,sprite:a.sprite};
       }),url:`/arena/${r.saved.game}/${id}`}));
   }
+  health() {
+    const failedRooms=[...this.rooms.values()].filter(room=>room.status==='failed').map(room=>room.saved.id).sort();
+    return {status:failedRooms.length?'degraded':'ok',roomCount:this.rooms.size,failedRooms};
+  }
   getRoom(id) {
     const room=this.rooms.get(id);if(!room)throw Object.assign(new Error('Room not found'),{status:404});
     const state=structuredClone(room.state);

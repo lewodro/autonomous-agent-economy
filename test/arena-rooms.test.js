@@ -12,6 +12,7 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   const dir=await mkdtemp(path.join(os.tmpdir(),'arena-pool-'));
   const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
   assert.equal(pool.listRooms().length,4);
+  assert.deepEqual(pool.health(),{status:'ok',roomCount:4,failedRooms:[]});
   for(const id of ['rps-1','ttt-1'])await pool.step(id);
   const snapshot=pool.getRoom('rps-1'),rps=snapshot.current,ttt=pool.getRoom('ttt-1').current;
   assert.equal('events' in snapshot.state,false);
@@ -61,6 +62,8 @@ test('room scheduler stops after its bounded retry budget',async()=>{
   let attempts=0;pool.step=async()=>{attempts++;throw new Error('persistent room failure');};
   const running=pool.run('rps-1');await running;
   assert.equal(attempts,4,'one initial attempt plus three retries');
+  pool.rooms.get('rps-1').status='failed';
+  assert.deepEqual(pool.health(),{status:'degraded',roomCount:4,failedRooms:['rps-1']});
   pool.close();
 });
 test('room failure logs expose safe error codes without raw messages',async()=>{
