@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS } from '../web/dist/world/map.js';
+import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
+import { NpcController } from '../web/dist/world/npc.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
 test('world input normalizes diagonal speed and rejects nonfinite movement', () => {
   assert.equal(Math.hypot(...Object.values(normalizeInput(1,1)).slice(0,2)),1);
@@ -23,4 +25,16 @@ test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
   const c=followCamera({x:0,y:0},{x:9999,y:9999},600,400,100);
   assert.deepEqual(c,{x:552,y:464});
+});
+test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
+  const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
+  assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(settings))),settings);
+  assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'explorer');
+  assert.equal(new Set(SPRITES.map(s=>s.id)).size,20);
+});
+test('NPC controller moves presence without changing strategy or economic fields',()=>{
+  const npc={...actor({x:430,y:470}),type:'npc',balance:123,strategy:'test'};
+  const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
+  assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
+  assert.notDeepEqual(npc.position,{x:430,y:470});
 });
