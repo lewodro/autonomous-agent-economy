@@ -111,7 +111,7 @@ function frame(time:number):void {
   const k=keyboard.read(),t=touch.read();
   if(entered&&!dialog.open&&!character.open&&!document.hidden){
     const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);moveActor(player,input,dt);
-    for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt);
+    for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
     const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`Inspect ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();

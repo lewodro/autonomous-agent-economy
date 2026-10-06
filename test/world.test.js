@@ -61,6 +61,20 @@ test('NPC controller moves presence without changing strategy or economic fields
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
 });
+test('NPC routes maintain personal space while all agents walk to the Arena',()=>{
+ const actors=Array.from({length:20},(_,index)=>({...actor(npcSpawnPosition(index)),id:`npc-${index}`,type:'npc'}));
+ const controllers=actors.map((_,index)=>new NpcController(index)),reached=new Set();let minSeparation=Infinity;
+ for(let frame=0;frame<6000;frame++){
+  for(let index=0;index<actors.length;index++){
+   controllers[index].update(actors[index],.1,actors);
+   if(actors[index].activity==='Waiting outside the Arena')reached.add(index);
+  }
+  for(let i=0;i<actors.length;i++)for(let j=i+1;j<actors.length;j++)
+   minSeparation=Math.min(minSeparation,Math.hypot(actors[i].position.x-actors[j].position.x,actors[i].position.y-actors[j].position.y));
+ }
+ assert.ok(minSeparation>=24,`NPCs should not occupy the same space; minimum ${minSeparation}`);
+ assert.equal(reached.size,20,'all NPCs should still reach the Arena entrance');
+});
 test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
  const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));
  assert.ok(positions.every(position=>!collides(position)));
@@ -74,7 +88,7 @@ test('NPC Arena activity follows a reachable entrance waypoint',()=>{
   const npc={...actor(npcSpawnPosition(index)),type:'npc'},control=new NpcController(index);let arrived=false,resumed=false;
   for(let frame=0;frame<4000;frame++){
    const before={...npc.position};control.update(npc,.1);assert.ok(!collides(npc.position));
-   if(npc.activity==='At the Arena entrance')arrived=true;
+   if(npc.activity==='Waiting outside the Arena')arrived=true;
    if(arrived&&npc.activity==='Walking through the plaza'&&Math.hypot(npc.position.x-before.x,npc.position.y-before.y)>.1){resumed=true;break;}
   }
   assert.equal(arrived,true,`agent spawn ${index} should reach the Arena entrance`);

@@ -22,7 +22,7 @@ flowchart TD
 ## Boundaries
 
 - `web/src/world/model.ts`, `map.ts`, `movement.ts`, `input.ts`, `npc.ts`, and `renderer.ts` own presence, movement, collision, camera, and pixels. Tree positions are shared between the map collider and renderer so actors cannot pass through their trunks. These modules do not import Rust or minigame rules.
-- The plaza renders all 20 current agent profiles as NPCs. Spawn points avoid map obstacles and the visitor start; NPC activity text follows its actual waypoint, including a reachable Arena entrance.
+- The plaza renders all 20 current agent profiles as NPCs. Spawn points avoid map obstacles and the visitor start; NPC movement checks nearby actors to prevent overlapping paths and assigns separate approach points outside the Arena. Activity text follows each actual waypoint.
 - `web/src/world/gateway.ts` is the browser's read-only boundary to `/api/arena/*`. Room IDs and game types are checked before navigation.
 - `service/arena-rooms.js` hosts two RPS and two Tic-Tac-Toe slots. Each uses the existing `src/orchestrator.js`, `src/economy.js`, and verified game rules in an isolated simulated run. A run rotates after 64 matches or when its retained mock policies can no longer enter. Three completed runs are retained per slot.
 - `legacy/script.js` observes a room URL and renders its current state. Its local controls are hidden for shared rooms; the browser cannot submit moves or advance those simulations.
