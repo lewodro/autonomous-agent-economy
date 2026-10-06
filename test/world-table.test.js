@@ -28,3 +28,13 @@ test('NPC practice uses existing strategy and rules; concurrent joins cannot cre
  const joins=await Promise.allSettled([t.act(x,'join',{mode:'human'}),t.act(o,'join',{mode:'human'}),t.act(stranger,'join',{mode:'human'})]);
  assert.equal(joins.filter(r=>r.status==='fulfilled').length,2);assert.equal(t.state.players.length,2);
 });
+test('an expired waiting seat releases the table and cannot act in the next session',async()=>{
+ const t=new TableSession(await mkdtemp(path.join(os.tmpdir(),'world-expiry-')));await t.restore();
+ await t.act(x,'join',{mode:'human'});const originalNow=Date.now,expiredAt=t.state.updatedAt+120_001;
+ try{
+  Date.now=()=>expiredAt;
+  assert.equal(t.snapshot(x).status,'empty');assert.equal(t.snapshot(x).expired,true);
+  const next=await t.act(o,'join',{mode:'human'});assert.equal(next.status,'waiting');assert.equal(next.yourSeat,'human-x');
+  await assert.rejects(()=>t.act(x,'move',{cell:0,revision:t.state.revision}),/Sit at the table/);
+ }finally{Date.now=originalNow;}
+});
