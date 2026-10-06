@@ -4,7 +4,7 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicPredictions: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
 });
 
@@ -45,6 +45,8 @@ test('production devnet needs an explicit test-SOL acknowledgement and dedicated
   assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY' }), /dedicated HTTPS/);
   const config = validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc' });
   assert.equal(config.publicDevnet, true);
+  assert.equal(validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc', PREDICTIONS_ENABLED: 'true' }).publicPredictions, true);
+  assert.throws(() => validateDeploymentConfig({ NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32), PREDICTIONS_ENABLED: 'true' }), /predictions require explicit DEVNET/);
 });
 
 test('rejects origins with paths and invalid port settings', () => {
