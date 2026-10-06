@@ -7,12 +7,13 @@ import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
+const MAX_STEP_RETRIES = 3;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -101,8 +102,17 @@ export class ArenaRoomPool {
     for(const id of this.rooms.keys())this.run(id);
   }
   async run(id) {
+    let failures=0;
     while(!this.closed){
-      try{await this.step(id);}catch{console.error(JSON.stringify({event:'arena_room_failed',roomId:id}));break;}
+      try{await this.step(id);failures=0;}
+      catch{
+        failures++;
+        const retrying=failures<=MAX_STEP_RETRIES;
+        console.error(JSON.stringify({event:'arena_room_failed',roomId:id,attempt:failures,retrying}));
+        if(!retrying)break;
+        await this.delay(Math.min(5000,this.retryMs*2**(failures-1)));
+        continue;
+      }
       if(!this.closed)await this.delay(this.restMs);
       if(!this.closed){this.rooms.get(id).status='resetting';this.rooms.get(id).phase='waiting';}
     }

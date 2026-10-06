@@ -43,6 +43,26 @@ test('in-flight rooms reject concurrent steps and only expose completed research
   const step=pool.step('rps-1');await assert.rejects(()=>pool.step('rps-1'),/already running/);
   assert.equal(pool.history().length,0);await step;assert.equal(pool.history().length,1);pool.close();
 });
+test('room scheduler retries one transient checkpoint failure without duplicating the match',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-retry-')),{stageMs:0,restMs:60_000,retryMs:1});await pool.restore();
+  const checkpoint=pool.checkpoint.bind(pool);let injected=false;
+  pool.checkpoint=async room=>{if(!injected){injected=true;throw new Error('temporary checkpoint failure');}return checkpoint(room);};
+  const running=pool.run('rps-1');
+  try{
+    for(let attempt=0;attempt<200&&!injected;attempt++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(injected,true,'the first checkpoint should fail');
+    for(let attempt=0;attempt<200&&pool.history().length===0;attempt++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(pool.rooms.get('rps-1').state.matches.length,1,'the retried room should settle exactly one match');
+    assert.equal(pool.history().length,1);
+  }finally{pool.close();await running;}
+});
+test('room scheduler stops after its bounded retry budget',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-retry-limit-')),{retryMs:1});await pool.restore();
+  let attempts=0;pool.step=async()=>{attempts++;throw new Error('persistent room failure');};
+  const running=pool.run('rps-1');await running;
+  assert.equal(attempts,4,'one initial attempt plus three retries');
+  pool.close();
+});
 test('retained profile and archive chronology stays correct when completion times tie',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-ties-')));await pool.restore();
   const run=(runId,id,result)=>{
