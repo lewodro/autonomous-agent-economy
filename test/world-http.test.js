@@ -11,7 +11,7 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
  let errors='';child.stderr.on('data',b=>errors+=b);
  try{
   const base=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Server startup failed: '+errors)),6000);child.once('exit',()=>{clearTimeout(timer);reject(new Error(errors));});child.stdout.on('data',b=>{const port=b.toString().match(/localhost:(\d+)/)?.[1];if(port){clearTimeout(timer);resolve('http://127.0.0.1:'+port);}});});
-  for(const route of ['/','/rps','/world','/arena','/arena/rps/rps-1','/arena/tictactoe/ttt-1','/world/styles.css','/web/dist/world/app.js','/web/dist/world/table.js','/assets/aae_avatar_kit/examples/ember.png'])assert.equal((await fetch(base+route)).status,200,route);
+  for(const route of ['/','/rps','/world','/arena','/arena/rps/rps-1','/arena/tictactoe/ttt-1','/world/styles.css','/web/dist/world/app.js','/web/dist/world/table.js','/assets/aae_avatar_kit/examples/ember.png','/assets/agent-world-preview.png'])assert.equal((await fetch(base+route)).status,200,route);
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);

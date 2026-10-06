@@ -16,6 +16,10 @@
 
 **Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
 
+[Enter the walkable Agent World →](./world)
+
+[![Walk the plaza, meet agents and reach the live Arena](assets/agent-world-preview.png)](./world)
+
 </div>
 
 ---
@@ -41,6 +45,9 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
 | Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
+| Walkable Agent World | **WORKING DEMO** | Local visitor avatar, collision, keyboard/touch movement, NPC profiles and archive |
+| Shared RPS / Tic-Tac-Toe rooms | **WORKING DEMO** | Four server-hosted room slots reuse existing JavaScript rules and read-only spectator UI |
+| Free plaza Tic-Tac-Toe table | **WORKING DEMO** | One persisted human table or practice against Founder; verified board rules, no stake |
 | Public test-SOL entries | **EXPERIMENTAL** | Explicit Devnet-only production gate, real addresses/receipts; full live funded run remains unverified |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
 
@@ -93,6 +100,28 @@ One survivor wins. Zero survivors is a draw. At the limit, the unique richest su
 | Animation | `AnimationDriver` | Transient poses, effects, particles and camera offsets |
 | Spectator UI | TypeScript + HTML/CSS | Inspection, live log, favorites, configs and sharing |
 | Wallet/payment | Rust capability / local mock service | Separate authority, spending policy and activity streams |
+
+The separate **Agent World** is a presentation and presence layer. Rust remains authoritative for Last Seat; the existing JavaScript orchestrator and rules continue to run RPS and Tic-Tac-Toe. World movement cannot advance a match, select a move, change an outcome, or authorize a payment.
+
+```mermaid
+flowchart TD
+ Visitor[Visitor avatar] --> World[Walkable world: movement and presence]
+ Agents[NPC actors] --> World
+ World --> Gateway[Arena gateway]
+ Gateway --> Pool[Four bounded RPS / Tic-Tac-Toe rooms]
+ Pool --> Existing[Existing JavaScript Orchestrator and rules]
+ Existing --> Logs[Verified completed run ledgers]
+ Logs --> Research[Retained agent profile and research]
+ Gateway --> Spectator[Existing live spectator]
+ World --> Table[Free shared Tic-Tac-Toe table]
+ Table --> Board[Existing Tic-Tac-Toe rules]
+ Visitor --> LastSeat[Existing Last Seat experience]
+ LastSeat --> Rust[Rust authoritative game engine]
+```
+
+Explore `/world`, then enter `/arena` to watch the shared rooms. Visitor appearance and position are local to that browser. NPC profile statistics are reconstructed from verified room ledgers and explicitly cover retained runs. The arena uses simulated SOL only. The separate world table supports two browser seats or free practice against Founder.
+
+The room pool and browser journey are described in [walkable-world architecture](./docs/architecture/walkable-world.md); sprite dimensions and registration are in [world sprites](./docs/sprites.md). Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available.
 
 **The UI never resolves game rules.** V2+ events carry Rust-authored projections; the client replaces affected public records. Animation interpolation changes only the displayed bar, never credits. Full `RoundEnded` checkpoints reconcile presentation. V1 archives use isolated compatibility projection.
 
@@ -430,7 +459,7 @@ npm run test:browser       # dedicated Chrome debug port 9322 + running app
 | Frontend | Rust events → projection, mapper/driver pause/bounds/reduced motion, config parsing, transport recovery |
 | Wallet | Signatures/tamper, cumulative allowance, reserve overflow, simulation proof, uncertain submission |
 | Payments | Idempotence, forged receipts, expiry, spending ceiling |
-| Browser | Full match, live controls, history without engine calls, 20 seats, mobile widths, reduced motion, RAF timing |
+| Browser | Last Seat full match; world character, NPC profile, keyboard and touch movement, live RPS/TTT rooms, mobile layout and read-only room controls |
 | Legacy economy | Commit/reveal, settlement, treasury, storage, tournament retry/scoring |
 
 [Browser setup](./docs/operations/TESTING.md). CI runs Node versions 22/24/26 and Rust checks, including the release-mode full-size replay stress test. Network faucet availability is separate from offline correctness.

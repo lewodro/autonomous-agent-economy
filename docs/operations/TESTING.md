@@ -54,6 +54,13 @@ Integration tests restart the service and compare the same session/history, subs
 
 If another dedicated Chrome already uses :9322, start your own profile on :9337
 and run `CHROME_DEBUG_URL=http://127.0.0.1:9337 GAME_URL=http://localhost:3017 npm run test:browser`.
+The world journey covers character selection, keyboard movement, NPC profile/research, arena entry, shared RPS/Tic-Tac-Toe rooms, return navigation, touch joystick movement/release, and a 390px layout:
+
+```sh
+CHROME_DEBUG_URL=http://127.0.0.1:9322 GAME_URL=http://localhost:3000 npm run test:browser:world
+```
+
+Set `WORLD_SCREENSHOTS=1` to retain journey screenshots in the OS temp folder.
 For the opt-in lab use `ECONOMY_URL=http://localhost:3017 npm run test:browser:economy`
 with the same CHROME_DEBUG_URL. These scripts clear replay/favorite storage in the
 selected profile, so always use an isolated test profile. They never require a
