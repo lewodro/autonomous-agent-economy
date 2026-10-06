@@ -4,7 +4,7 @@ import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS } from '../web/dist/world/map.js';
 import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
-import { NpcController } from '../web/dist/world/npc.js';
+import { NpcController, npcSpawnPosition } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
@@ -40,6 +40,11 @@ test('NPC controller moves presence without changing strategy or economic fields
   const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
+});
+test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
+ const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));
+ assert.ok(positions.every(position=>!collides(position)));
+ for(let i=0;i<positions.length;i++)for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
  const visitor=actor({x:10,y:20}),nearby={...actor({x:100,y:20}),type:'npc'},distant={...actor({x:500,y:20}),type:'npc'};

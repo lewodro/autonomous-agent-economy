@@ -4,7 +4,7 @@ import { moveActor, followCamera } from './movement.js';
 import { MAP, LANDMARKS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
-import { NpcController } from './npc.js';
+import { NpcController, npcSpawnPosition } from './npc.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 import { mountTable } from './table.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -90,13 +90,13 @@ canvas.addEventListener('pointerdown',event=>{
 });
 function addNpc(profile:AgentProfile,index:number):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:{x:400+(index%5)*60,y:455+Math.floor(index/5)*76},facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:'Walking through the plaza',recentWinner:profile.recentWinner});
+  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:'Walking through the plaza',recentWinner:profile.recentWinner});
   controllers.set('npc-'+profile.id,new NpcController(index));
 }
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
   try{
-    profiles=await gateway.getAgentProfiles();if(!npcs.length)profiles.slice(0,10).forEach(addNpc);
+    profiles=await gateway.getAgentProfiles();if(!npcs.length)profiles.forEach(addNpc);
     for(const npc of npcs)npc.recentWinner=profiles.find(a=>a.id===npc.agentId)?.recentWinner||false;
     connection.textContent='ARENA ONLINE · SIMULATION';
     const directory=$('agent-directory');directory.replaceChildren();

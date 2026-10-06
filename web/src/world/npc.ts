@@ -6,6 +6,9 @@ const WAYPOINTS: Position[] = [
   {x:735,y:740},{x:390,y:390},{x:650,y:300},{x:400,y:570},{x:755,y:520},
   {x:440,y:730},{x:680,y:760},{x:340,y:430},{x:755,y:310},{x:700,y:620},
 ];
+export function npcSpawnPosition(index:number):Position {
+  return {x:400+(index%5)*60,y:455+Math.floor(index/5)*76};
+}
 export interface AgentController { update(actor:WorldActor, seconds:number):void }
 /** Presence only: neither selects minigame moves nor claims research results. */
 export class NpcController implements AgentController {
