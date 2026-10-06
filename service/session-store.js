@@ -1,6 +1,7 @@
 import {mkdir,open,rename,readFile,readdir,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {withStorageFailure} from './http-error.js';
 const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 /** Storage contains Rust-verifiable history plus orchestration metadata, never keys. */
 export class SessionStore {
@@ -9,7 +10,7 @@ export class SessionStore {
   save(session,replay,budget){
     const target=this.file(session),bytes=JSON.stringify({format:1,session,replay,budget});
     const prior=this.pending.get(session)||Promise.resolve();
-    const writing=prior.catch(()=>{}).then(async()=>{
+    const writing=prior.catch(()=>{}).then(()=>withStorageFailure('match session',async()=>{
       await mkdir(this.directory,{recursive:true});
       const temp=`${target}.${randomUUID()}.tmp`;
       try {
@@ -17,7 +18,7 @@ export class SessionStore {
         try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
         await rename(temp,target);
       } finally {await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
-    });
+    }));
     this.pending.set(session,writing);
     void writing.finally(()=>{if(this.pending.get(session)===writing)this.pending.delete(session);}).catch(()=>{});
     return writing;

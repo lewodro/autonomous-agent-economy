@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createState } from '../src/economy.js';
 import { playCell, verifyTicTacToeProof } from '../src/tictactoe.js';
 import { chooseTicTacToeCell } from '../src/strategies.js';
+import { withStorageFailure } from './http-error.js';
 const empty = revision => ({version:1,id:'plaza-table',status:'empty',revision,players:[],match:null,updatedAt:Date.now()});
 export const visitorHash = token => createHash('sha256').update(token).digest('hex');
 export function visitorIdentity(req) {
@@ -80,7 +81,7 @@ export class TableSession {
       }
       next.revision++;next.updatedAt=Date.now();
       const file=path.join(this.directory,'table.json'),temporary=file+'.'+randomUUID()+'.tmp';
-      await writeFile(temporary,JSON.stringify(next),{mode:0o600});await rename(temporary,file);this.state=next;
+      await withStorageFailure('world table state',async()=>{await writeFile(temporary,JSON.stringify(next),{mode:0o600});await rename(temporary,file);});this.state=next;
       return this.snapshot(credential);
     });this.tail=task.catch(()=>{});return task;
   }

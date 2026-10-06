@@ -18,7 +18,7 @@ import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
-import { requestErrorStatus } from './service/http-error.js';
+import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -55,9 +55,11 @@ async function body(req, limit = 1_000_000) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
 }
 async function persist(replay) {
-  await mkdir(directory, { recursive: true });
-  const target = path.join(directory, `${replay.match_id}.json`), temp = target + `.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify(replay)); await rename(temp, target);
+  await withStorageFailure('replay archive',async()=>{
+    await mkdir(directory, { recursive: true });
+    const target = path.join(directory, `${replay.match_id}.json`), temp = target + `.${randomUUID()}.tmp`;
+    await writeFile(temp, JSON.stringify(replay)); await rename(temp, target);
+  });
 }
 const server = http.createServer(async (req, res) => {
   try {

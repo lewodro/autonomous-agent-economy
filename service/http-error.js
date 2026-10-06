@@ -7,3 +7,12 @@ export function requestErrorStatus(error){
   if(STORAGE_FAILURES.has(error?.code))return 503;
   return 400;
 }
+
+/** Tag filesystem failures at write sites so ENOENT cannot be mistaken for a missing route. */
+export async function withStorageFailure(label,operation){
+  try{return await operation();}
+  catch(cause){
+    const code=typeof cause?.code==='string'&&/^[A-Z0-9_]{1,64}$/.test(cause.code)?cause.code:'STORAGE_FAILURE';
+    throw Object.assign(new Error(`Persistent ${label} could not be saved`),{name:'StorageError',status:503,code,cause});
+  }
+}

@@ -5,6 +5,7 @@ import { configureRun } from '../src/config.js';
 import { createState } from '../src/economy.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
+import { withStorageFailure } from './http-error.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const MAX_STEP_RETRIES = 3;
@@ -82,7 +83,7 @@ export class ArenaRoomPool {
   async checkpoint(room) {
     const saved={...room.saved,state:structuredClone(room.state)};
     const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';
-    await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);room.saved=saved;
+    await withStorageFailure('arena checkpoint',async()=>{await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);});room.saved=saved;
   }
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
