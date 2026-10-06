@@ -83,7 +83,13 @@ $('avatar-change').onclick=()=>{resetInput();presetButtons();character.showModal
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
-$('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{resetInput();canvas.focus();});
+$('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
+  resetInput();
+  requestAnimationFrame(()=>{
+    const active=document.activeElement;
+    if(!dialog.open&&(active===document.body||active===document.documentElement||dialog.contains(active)))canvas.focus();
+  });
+});
 character.addEventListener('close',()=>{
   resetInput();
   requestAnimationFrame(()=>{if(!character.open&&document.activeElement===document.body)canvas.focus();});

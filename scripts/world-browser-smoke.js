@@ -35,8 +35,11 @@ try{
  await wait('document.getElementById("interaction-dialog").open');
  assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
- await key('d',300);await delay(3100);
- assert.ok(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x>590'),'keyboard must move the player');
+ await wait('document.activeElement?.id==="world-canvas"');
+ const beforeKeyboard=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
+ await key('d',500);await delay(3100);
+ const afterKeyboard=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
+ assert.ok(afterKeyboard>beforeKeyboard+20,`keyboard must move the player after closing profile (x ${beforeKeyboard} -> ${afterKeyboard})`);
  // Walk around the south side of the arena wall, then approach its entrance.
  await key('s',1290);await key('d',2120);
  await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');await screenshot('desktop');await key('e',50);
