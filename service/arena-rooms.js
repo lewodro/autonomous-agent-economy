@@ -8,6 +8,7 @@ import { validateState } from '../src/storage.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
+const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
   constructor(directory, { stageMs=1000, restMs=2500 }={}) {
@@ -42,9 +43,11 @@ export class ArenaRoomPool {
   }
   runs() {return [...this.rooms.values()].flatMap(r=>[r.saved,...r.saved.previous].map(run=>({...run,roomId:r.saved.id,game:r.saved.game})));}
   profiles() {
+    // Start with retained epochs oldest-first so timestamp ties remain chronological.
+    const chronologicalRuns=this.runs().reverse();
     return createState().agents.map(base=>{
-      const entries=this.runs().flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
-        .sort((a,b)=>(a.run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===a.match.id)?.time||'').localeCompare(b.run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===b.match.id)?.time||''));
+      const entries=chronologicalRuns.flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
+        .sort((a,b)=>completionTime(a).localeCompare(completionTime(b)));
       const wins=entries.filter(({match})=>match.result!=='draw'&&match.players[match.result==='a'?0:1]===base.id).length;
       const draws=entries.filter(({match})=>match.result==='draw').length;
       const latest=entries.at(-1);
@@ -57,12 +60,12 @@ export class ArenaRoomPool {
     });
   }
   history() {
-    return this.runs().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
+    return this.runs().reverse().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
       players:match.players.map(id=>({id,name:run.state.agents.find(a=>a.id===id).name})),
       moves:match.type==='tictactoe'?match.moves.map((move,i)=>({turn:i+1,agent:move.agentId,action:'place',cell:[Math.floor(move.cell/3),move.cell%3]}))
         :match.players.map(id=>({round:1,agent:id,action:match.reveals[id].move})),
       completedAt:run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===match.id)?.time,
-      logUrl:`/api/arena/logs/${run.runId}`}))).sort((a,b)=>(b.completedAt||'').localeCompare(a.completedAt||'')).slice(0,60);
+      logUrl:`/api/arena/logs/${run.runId}`}))).sort((a,b)=>(a.completedAt||'').localeCompare(b.completedAt||'')).reverse().slice(0,60);
   }
   log(runId) {
     const run=this.runs().find(r=>r.runId===runId);

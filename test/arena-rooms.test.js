@@ -7,6 +7,7 @@ import { ArenaRoomPool } from '../service/arena-rooms.js';
 import { verifyProof } from '../src/rps.js';
 import { verifyTicTacToeProof } from '../src/tictactoe.js';
 import { validateState } from '../src/storage.js';
+import { createState } from '../src/economy.js';
 test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers',async()=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'arena-pool-'));
   const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
@@ -39,4 +40,19 @@ test('in-flight rooms reject concurrent steps and only expose completed research
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-flight-')),{stageMs:2});await pool.restore();
   const step=pool.step('rps-1');await assert.rejects(()=>pool.step('rps-1'),/already running/);
   assert.equal(pool.history().length,0);await step;assert.equal(pool.history().length,1);pool.close();
+});
+test('retained profile and archive chronology stays correct when completion times tie',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-ties-')));await pool.restore();
+  const run=(runId,id,result)=>{
+    const state=createState(2),match={id,status:'settled',players:['agent-1','agent-2'],result,type:'tictactoe',moves:[]};
+    state.matches.push(match);state.events.push({type:'GAME_FINISHED',time:'2026-10-06T00:00:00.000Z',data:{matchId:id}});
+    for(const agent of state.agents)agent.memory.push({matchId:id,opponent:'agent-1',move:'center',observed:'same millisecond'});
+    return {runId,roomId:'ttt-1',game:'tictactoe',state};
+  };
+  pool.runs=()=>[run('current','game-2','b'),run('retained','game-1','a')];pool.listRooms=()=>[];
+  const founder=pool.profiles().find(profile=>profile.id==='agent-1');
+  assert.equal(founder.latestMatch.runId,'current');assert.equal(founder.recentWinner,false);
+  assert.deepEqual(founder.memory.map(entry=>entry.runId),['retained','current']);
+  assert.deepEqual(pool.history().map(entry=>entry.id),['game-2','game-1']);
+  pool.close();
 });
