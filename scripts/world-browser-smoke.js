@@ -26,6 +26,7 @@ try{
  await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("20 agents in the plaza")');
  const focusedAgent=await evaluate('(()=>{document.querySelector(".world-footer details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
+ await evaluate('document.getElementById("world-canvas").focus()');
  await wait('document.getElementById("world-hint").textContent.includes("Inspect")');await key('e',50);
  await wait('document.getElementById("interaction-dialog").open');
  assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
