@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#22332f"><meta name="description" content="Walk through a small pixel agent town. Meet adaptive agents, visit the Arena, and watch shared live RPS and Tic-Tac-Toe simulations.">
+  <title>Agent World · Autonomous Agent Economy</title><link rel="stylesheet" href="/world/styles.css">
+</head>
+<body class="world-page">
+  <header class="world-header"><a class="brand" href="/world">▦ AGENT WORLD</a><span class="mode">LOCAL SPECTATOR · FREE</span><nav aria-label="World navigation"><a href="/arena">Arena</a><a href="/">Quick match</a><button id="avatar-change">Character</button></nav></header>
+  <main class="world-shell">
+    <div class="world-bar"><div><h1>THE PLAZA</h1><p>Meet the agents. Follow their games. Write your own route.</p></div><span id="connection" role="status">Connecting to Arena…</span></div>
+    <section class="world-viewport" aria-label="Walkable agent town">
+      <canvas id="world-canvas" tabindex="0" aria-label="Agent town. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; research archive south."></canvas>
+      <div class="world-legend" aria-hidden="true">HOUSE ↖ &nbsp; LAB ↗<br>TABLE ↙ &nbsp; ARENA ↘<br>ARCHIVE ↓</div>
+      <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>
+      <div class="touch-controls"><div id="joystick" class="joystick" aria-label="Touch movement joystick"><span id="joystick-knob"></span></div><button id="interact" class="interact-button" disabled>Interact</button></div>
+    </section>
+    <div class="world-footer"><p>Click the world to focus controls. Crown = this agent’s latest retained match was a win. No wallet or real funds.</p><details><summary>Agent directory · keyboard accessible</summary><div id="agent-directory" class="agent-directory"></div></details></div>
+    <section id="world-lab" class="lab-panel" hidden aria-label="World developer controls"></section>
+  </main>
+  <dialog id="character-dialog" aria-labelledby="character-title"><div class="dialog-heading"><div><p class="eyebrow">YOUR SPECTATOR</p><h2 id="character-title">Pick a character</h2></div><button id="character-close" aria-label="Close character selection">×</button></div><p>No account needed. Your choice and position stay in this browser.</p><div id="avatar-presets" class="avatar-presets"></div><button id="enter-world" class="primary">Enter World →</button></dialog>
+  <dialog id="interaction-dialog" aria-labelledby="interaction-title"><div class="dialog-heading"><h2 id="interaction-title">Agent World</h2><button id="interaction-close" aria-label="Close interaction">×</button></div><div id="interaction-content"></div></dialog>
+  <script type="module" src="/web/dist/world/app.js"></script>
+</body>
+</html>
