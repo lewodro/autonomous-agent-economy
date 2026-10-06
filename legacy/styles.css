@@ -768,8 +768,11 @@ footer {
   html {
   scroll-behavior:auto
 }
+
 .sprite-token.fighting img {
   animation:none
 }
-
 }
+
+[hidden]{display:none!important}
+.shared-room .play-controls,.shared-room .speed-label,.shared-room #new-run,.shared-room #treasury-controls{display:none!important}

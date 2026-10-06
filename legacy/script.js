@@ -71,8 +71,10 @@ function render() {
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
   $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} simulated SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
   if(sharedRoom){
+    document.body.classList.add('shared-room');
     $('run-status').textContent='LIVE · SHARED ROOM';
     document.querySelectorAll('.play-controls,.speed-label,#new-run,#treasury-controls').forEach(el=>el.hidden=true);
+    document.querySelectorAll('.play-controls button,.speed-label input,.speed-label select,#new-run button,#new-run input,#new-run select,#treasury-controls button,#treasury-controls input').forEach(el=>el.disabled=true);
     $('share').hidden=true;
   }
 }
