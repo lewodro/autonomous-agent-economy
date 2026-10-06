@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { requestErrorStatus, withStorageFailure } from '../service/http-error.js';
+import { WorkerError } from '../service/worker-error.js';
 
 test('HTTP error mapping separates client errors from unavailable local storage',()=>{
   assert.equal(requestErrorStatus(Object.assign(new Error('malformed request'),{status:409})),409);
@@ -18,4 +19,12 @@ test('persistence ENOENT remains a service failure while missing reads remain 40
     assert.equal(requestErrorStatus(error),503);return true;
   });
   assert.equal(requestErrorStatus(failure),404);
+});
+
+test('typed Rust storage and RPC failures are reported as service unavailable',()=>{
+  for(const code of ['storage_failure','rpc_unavailable']){
+    const error=new WorkerError(JSON.stringify({code,detail:'internal provider detail'}));
+    assert.equal(error.code,code);
+    assert.equal(requestErrorStatus(error),503);
+  }
 });
