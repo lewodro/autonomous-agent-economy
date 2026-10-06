@@ -28,6 +28,21 @@ test('tree trunks are shared map obstacles rather than walk-through decoration',
  const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);
  assert.ok(visitor.position.x>=84,'movement must stop before crossing the first trunk');assert.ok(!collides(visitor.position));
 });
+test('all plaza interactions remain reachable from the visitor spawn',()=>{
+ const step=8,start={x:Math.round(MAP.spawn.x/step),y:Math.round(MAP.spawn.y/step)};
+ const seen=new Set([`${start.x},${start.y}`]),queue=[start];
+ for(let index=0;index<queue.length;index++){
+  const point=queue[index];
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const next={x:point.x+dx,y:point.y+dy},key=`${next.x},${next.y}`;
+   if(!seen.has(key)&&!collides({x:next.x*step,y:next.y*step})){seen.add(key);queue.push(next);}
+  }
+ }
+ for(const target of LANDMARKS){
+  const reachable=[...seen].some(key=>{const [x,y]=key.split(',').map(Number);return Math.hypot(x*step-target.position.x,y*step-target.position.y)<=target.radius;});
+  assert.equal(reachable,true,`${target.label} should be reachable from the visitor spawn`);
+ }
+});
 test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
   const c=followCamera({x:0,y:0},{x:9999,y:9999},600,400,100);
