@@ -39,11 +39,12 @@ try{
  await key('d',500);await delay(3100);
  let movedKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
  if(movedKeyboardX<=initialKeyboardX+20){
+  const keyboardDiagnostics=await evaluate('JSON.stringify({events:window.__worldKeyDiagnostics,active:document.activeElement?.id,canvasFocused:document.activeElement===document.getElementById("world-canvas"),hasFocus:document.hasFocus(),entered:sessionStorage.getItem("agent-world-entered"),interactionOpen:document.getElementById("interaction-dialog").open,characterOpen:document.getElementById("character-dialog").open,hidden:document.hidden,rafTicks:window.__worldRafTicks})');
   // A page reload forces the production pagehide checkpoint before reading saved position.
   await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');await delay(1100);
   const liveWorldState=JSON.parse(await evaluate('document.querySelector("#world-lab pre")?.textContent||"{}"'));
   movedKeyboardX=liveWorldState.player?.x??initialKeyboardX;
-  assert.ok(movedKeyboardX>initialKeyboardX+20,`keyboard must move the player (saved x ${initialKeyboardX}; live x ${movedKeyboardX}; state=${JSON.stringify(liveWorldState)}; runtimeErrors=${JSON.stringify(errors)})`);
+  assert.ok(movedKeyboardX>initialKeyboardX+20,`keyboard must move the player (saved x ${initialKeyboardX}; live x ${movedKeyboardX}; keys=${keyboardDiagnostics}; state=${JSON.stringify(liveWorldState)}; runtimeErrors=${JSON.stringify(errors)})`);
   await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');await wait('document.activeElement?.id==="world-canvas"');
   await evaluate('window.__worldKeyDiagnostics=[];window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe);window.addEventListener("keydown",event=>setTimeout(()=>window.__worldKeyDiagnostics.push({key:event.key,target:event.target?.id||event.target?.tagName,active:document.activeElement?.id,prevented:event.defaultPrevented}),0),true)');
  }
