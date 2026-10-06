@@ -41,7 +41,7 @@ export class TableSession {
   snapshot(credential){
     const state=structuredClone(this.state);
     const expires=state.updatedAt+(state.status==='waiting'?120_000:600_000);
-    if(state.status!=='empty'&&Date.now()>expires)return {...empty(state.revision),yourSeat:null,mode:'free',expired:true};
+    if(state.status!=='empty'&&Date.now()>=expires)return {...empty(state.revision),yourSeat:null,mode:'free',expired:true};
     const yourSeat=state.players.find(p=>p.credential===credential)?.id||null;
     return {...state,mode:'free',yourSeat,players:state.players.map(({credential,...safe})=>safe)};
   }
@@ -49,7 +49,7 @@ export class TableSession {
     const task=this.tail.then(async()=>{
       if(!/^[a-f0-9]{64}$/.test(credential))throw new Error('Invalid visitor capability');
       let next=structuredClone(this.state);
-      if(next.status!=='empty'&&Date.now()>next.updatedAt+(next.status==='waiting'?120_000:600_000))next=empty(next.revision);
+      if(next.status!=='empty'&&Date.now()>=next.updatedAt+(next.status==='waiting'?120_000:600_000))next=empty(next.revision);
       const member=next.players.find(p=>p.credential===credential);
       if(action==='join'){
         if(!['human','npc'].includes(data.mode))throw new Error('Choose human or NPC practice');
