@@ -121,7 +121,7 @@ flowchart TD
 
 Explore `/world`, then enter `/arena` to watch the shared rooms. Visitor appearance and position are local to that browser. NPC profile statistics are reconstructed from verified room ledgers and explicitly cover retained runs. The arena uses simulated SOL only. The separate world table supports two browser seats or free practice against Founder.
 
-The room pool and browser journey are described in [walkable-world architecture](./docs/architecture/walkable-world.md); sprite dimensions and registration are in [world sprites](./docs/sprites.md). Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available.
+The room pool and browser journey are described in [walkable-world architecture](./docs/architecture/walkable-world.md); sprite dimensions and registration are in [world sprites](./docs/sprites.md). Run the browser journey locally with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome automatically with `npm run test:browser:world:ci`.
 
 **The UI never resolves game rules.** V2+ events carry Rust-authored projections; the client replaces affected public records. Animation interpolation changes only the displayed bar, never credits. Full `RoundEnded` checkpoints reconcile presentation. V1 archives use isolated compatibility projection.
 

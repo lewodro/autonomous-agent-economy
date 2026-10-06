@@ -19,6 +19,7 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=low
       - run: npm test
+      - run: npm run test:browser:world:ci
       - run: npm run typecheck
       - run: npm run check
       - run: npm run docs:check
