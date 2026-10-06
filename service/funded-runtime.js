@@ -47,7 +47,7 @@ export class FundedRuntime {
    await this.runtime.checkpoint(session,result.replay);return this.publish(result);
   }finally{this.busy.delete(session);}
  }
- start(){if(this.timer||process.env.FUNDED_AUTO_RUN==='0')return;this.timer=setInterval(()=>{void this.tick();},250);this.timer.unref();}
+ start(){if(this.timer||process.env.FUNDED_AUTO_RUN==='0')return;this.timer=setInterval(()=>{if(!this.activeTick)this.activeTick=this.tick().then(()=>{this.activeTick=null;},()=>{this.activeTick=null;});},250);this.timer.unref();}
  async tick(){
   if(this.running||!this.matches.size)return;this.running=true;let active=null;
   try{
@@ -76,5 +76,5 @@ export class FundedRuntime {
   }
   return health;
  }
- close(){clearInterval(this.timer);}
+ async close(){clearInterval(this.timer);this.timer=null;await this.activeTick;}
 }

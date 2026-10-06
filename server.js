@@ -32,6 +32,7 @@ const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000})
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+let shuttingDown=false;
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -59,6 +60,7 @@ async function persist(replay) {
 }
 const server = http.createServer(async (req, res) => {
   try {
+    if(shuttingDown){req.resume();return json(res,503,{error:'Service is shutting down'});}
     const denied = authorizeRequest(req, req.socket.localPort, publicOrigins);
     if (denied) return json(res, denied.status, { error: denied.error });
     const url = new URL(req.url, 'http://localhost'), route = url.pathname;
@@ -233,5 +235,27 @@ server.listen(port, host, () => {
   const actualPort=server.address().port;
   console.log(production?JSON.stringify({event:'server_started',host,port:actualPort,environment:'production'}):`Last Seat · Rust core · http://localhost:${actualPort}`);
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { arenaRooms.close();funded.close();liveEvents.close();core.stop(); server.close(); process.exit(0); });
+let shutdownTask;
+async function shutdown(signal){
+  if(shutdownTask)return shutdownTask;
+  shuttingDown=true;
+  shutdownTask=(async()=>{
+    console.log(JSON.stringify({event:'server_shutdown_started',signal}));
+    liveEvents.close();
+    const httpDrained=new Promise(resolve=>server.close(resolve));
+    server.closeIdleConnections?.();
+    let timeout;
+    const drained=Promise.allSettled([httpDrained,arenaRooms.close(),funded.close()]).then(()=>true);
+    const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
+    clearTimeout(timeout);
+    if(!completed){
+      console.error(JSON.stringify({event:'server_shutdown_timeout',timeout_ms:10_000}));
+      server.closeAllConnections?.();
+    }
+    core.stop();
+    console.log(JSON.stringify({event:'server_shutdown_complete',drained:completed}));
+  })();
+  return shutdownTask;
+}
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { void shutdown(signal); });
 server.on('error', error => { console.error(error.message); core.stop(); process.exit(1); });

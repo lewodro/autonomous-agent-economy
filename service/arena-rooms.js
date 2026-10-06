@@ -13,7 +13,7 @@ const completionTime = ({run,match}) => run.state.events.find(event=>event.type=
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
   constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -100,10 +100,12 @@ export class ArenaRoomPool {
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}
   }
-  delay(ms) {return new Promise(resolve=>{const done=()=>{clearTimeout(timer);this.waiters.delete(done);resolve();};const timer=setTimeout(done,ms);this.waiters.add(done);});}
+  delay(ms) {if(this.closed)return Promise.resolve();return new Promise(resolve=>{const done=()=>{clearTimeout(timer);this.waiters.delete(done);resolve();};const timer=setTimeout(done,ms);this.waiters.add(done);});}
   start() {
     if(this.started)return;this.started=true;
-    for(const id of this.rooms.keys())this.run(id);
+    for(const id of this.rooms.keys()){
+      const task=this.run(id);this.tasks.add(task);void task.then(()=>this.tasks.delete(task),()=>this.tasks.delete(task));
+    }
   }
   async run(id) {
     let failures=0;
@@ -122,5 +124,5 @@ export class ArenaRoomPool {
       if(!this.closed){this.rooms.get(id).status='resetting';this.rooms.get(id).phase='waiting';}
     }
   }
-  close(){this.closed=true;for(const done of this.waiters)done();}
+  async close(){this.closed=true;for(const done of this.waiters)done();await Promise.allSettled([...this.tasks]);}
 }
