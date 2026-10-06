@@ -100,8 +100,14 @@ async function refreshProfiles():Promise<void> {
     profiles=await gateway.getAgentProfiles();if(!npcs.length)profiles.forEach(addNpc);
     for(const npc of npcs)npc.recentWinner=profiles.find(a=>a.id===npc.agentId)?.recentWinner||false;
     connection.textContent='ARENA ONLINE · SIMULATION';
-    const directory=$('agent-directory');directory.replaceChildren();
-    for(const profile of profiles){const b=document.createElement('button');b.textContent=profile.name;b.onclick=()=>showProfile(profile.id);directory.append(b);}
+    const directory=$('agent-directory'),current=new Set<string>();
+    for(const profile of profiles){
+      const id='directory-agent-'+profile.id;current.add(id);
+      let b=document.getElementById(id) as HTMLButtonElement|null;
+      if(!b){b=document.createElement('button');b.id=id;b.onclick=()=>showProfile(profile.id);directory.append(b);}
+      b.textContent=profile.name;
+    }
+    for(const b of directory.querySelectorAll<HTMLButtonElement>('button'))if(!current.has(b.id))b.remove();
     if(requestedAgent&&entered){showProfile(requestedAgent);requestedAgent=null;}
   }catch{connection.textContent='ARENA OFFLINE · retrying';}
   if(!stopped)setTimeout(refreshProfiles,5000);
