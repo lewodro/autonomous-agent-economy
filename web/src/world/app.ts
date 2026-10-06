@@ -1,6 +1,6 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
-import { moveActor, followCamera, presenceObstacles } from './movement.js';
+import { moveActor, followCamera } from './movement.js';
 import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
