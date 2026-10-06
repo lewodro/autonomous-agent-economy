@@ -20,6 +20,18 @@ async function refresh():Promise<void>{
   if(!stopped)setTimeout(refresh,1500);
 }
 async function profiles():Promise<void>{
-  try{for(const profile of await gateway.getAgentProfiles()){const a=document.createElement('a');a.href='/world?agent='+encodeURIComponent(profile.id);a.textContent=`${profile.recentWinner?'♛ ':''}${profile.name} · ${profile.matches} matches / ${profile.wins} wins`;a.className='button';agents.append(a);}}catch{node('p','Agent profiles are temporarily unavailable. Try reloading.',agents);}
+  if(stopped)return;
+  try{
+    const list=await gateway.getAgentProfiles();if(stopped)return;
+    document.getElementById('agents-unavailable')?.remove();
+    for(const profile of list){
+      let a=document.getElementById('agent-'+profile.id) as HTMLAnchorElement|null;
+      if(!a){a=document.createElement('a');a.id='agent-'+profile.id;a.href='/world?agent='+encodeURIComponent(profile.id);a.className='button';agents.append(a);}
+      a.textContent=`${profile.recentWinner?'♛ ':''}${profile.name} · ${profile.matches} matches / ${profile.wins} wins`;
+    }
+  }catch{
+    if(!stopped&&!document.getElementById('agents-unavailable')){const warning=node('p','Agent profiles are temporarily unavailable. Reconnecting…',agents);warning.id='agents-unavailable';}
+  }
+  if(!stopped)setTimeout(profiles,5000);
 }
 void refresh();void profiles();
