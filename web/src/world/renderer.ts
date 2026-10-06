@@ -7,6 +7,9 @@ export interface WorldRenderer {
   render(frame:WorldFrame):void;
   destroy():void;
 }
+export function isActorNearVisitor(actor:WorldActor,visitor:WorldActor|undefined,distance=150):boolean {
+  return actor.type==='human'||!!visitor&&Math.hypot(actor.position.x-visitor.position.x,actor.position.y-visitor.position.y)<distance;
+}
 /** Rendering accepts presence snapshots only; it cannot advance or settle a game. */
 export class CanvasWorldRenderer implements WorldRenderer {
   private ctx:CanvasRenderingContext2D;
@@ -70,10 +73,11 @@ export class CanvasWorldRenderer implements WorldRenderer {
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
     const labels:{x:number;y:number;width:number;height:number}[]=[];
+    const visitor=frame.actors.find(actor=>actor.type==='human');
     for(const actor of [...frame.actors].sort((a,b)=>a.position.y-b.position.y)) {
       if(actor.position.x<frame.camera.x-64||actor.position.x>frame.camera.x+width+64||actor.position.y<frame.camera.y-64||actor.position.y>frame.camera.y+height+64)continue;
       const nameWidth=actor.name.length*6.4+10,label={x:actor.position.x-nameWidth/2,y:actor.position.y-57,width:nameWidth,height:14};
-      const nearby=actor.type==='human'||Math.hypot(actor.position.x-frame.actors.find(a=>a.type==='human')!.position.x,actor.position.y-frame.actors.find(a=>a.type==='human')!.position.y)<150;
+      const nearby=isActorNearVisitor(actor,visitor);
       const showName=nearby&&!labels.some(other=>label.x<other.x+other.width&&label.x+label.width>other.x&&label.y<other.y+other.height&&label.y+label.height>other.y);
       if(showName)labels.push(label);
       this.renderActor(actor,frame.time,reduced,showName);
