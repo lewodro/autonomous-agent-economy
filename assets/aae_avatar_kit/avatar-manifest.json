@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "frame": {
+    "width": 32,
+    "height": 32
+  },
+  "sheet": {
+    "width": 96,
+    "height": 128,
+    "columns": 3,
+    "rows": 4
+  },
+  "directions": {
+    "0": "down",
+    "1": "left",
+    "2": "right",
+    "3": "up"
+  },
+  "framesPerDirection": 3,
+  "compositionOrder": [
+    "body",
+    "outfit",
+    "hair",
+    "accessory"
+  ],
+  "layers": {
+    "body": [
+      "body_brown.png",
+      "body_deep.png",
+      "body_ebony.png",
+      "body_light.png",
+      "body_porcelain.png",
+      "body_tan.png"
+    ],
+    "hair": [
+      "hair_bob_black.png",
+      "hair_bob_blonde.png",
+      "hair_bob_blue.png",
+      "hair_bob_brown.png",
+      "hair_bob_red.png",
+      "hair_bob_silver.png",
+      "hair_buzz_black.png",
+      "hair_buzz_blonde.png",
+      "hair_buzz_blue.png",
+      "hair_buzz_brown.png",
+      "hair_buzz_red.png",
+      "hair_buzz_silver.png",
+      "hair_curly_black.png",
+      "hair_curly_blonde.png",
+      "hair_curly_blue.png",
+      "hair_curly_brown.png",
+      "hair_curly_red.png",
+      "hair_curly_silver.png",
+      "hair_long_black.png",
+      "hair_long_blonde.png",
+      "hair_long_blue.png",
+      "hair_long_brown.png",
+      "hair_long_red.png",
+      "hair_long_silver.png",
+      "hair_mohawk_black.png",
+      "hair_mohawk_blonde.png",
+      "hair_mohawk_blue.png",
+      "hair_mohawk_brown.png",
+      "hair_mohawk_red.png",
+      "hair_mohawk_silver.png",
+      "hair_short_black.png",
+      "hair_short_blonde.png",
+      "hair_short_blue.png",
+      "hair_short_brown.png",
+      "hair_short_red.png",
+      "hair_short_silver.png"
+    ],
+    "outfits": [
+      "outfit_hoodie_charcoal.png",
+      "outfit_hoodie_cream.png",
+      "outfit_hoodie_forest.png",
+      "outfit_hoodie_navy.png",
+      "outfit_hoodie_rust.png",
+      "outfit_hoodie_violet.png",
+      "outfit_jacket_charcoal.png",
+      "outfit_jacket_cream.png",
+      "outfit_jacket_forest.png",
+      "outfit_jacket_navy.png",
+      "outfit_jacket_rust.png",
+      "outfit_jacket_violet.png",
+      "outfit_overalls_charcoal.png",
+      "outfit_overalls_cream.png",
+      "outfit_overalls_forest.png",
+      "outfit_overalls_navy.png",
+      "outfit_overalls_rust.png",
+      "outfit_overalls_violet.png",
+      "outfit_tee_charcoal.png",
+      "outfit_tee_cream.png",
+      "outfit_tee_forest.png",
+      "outfit_tee_navy.png",
+      "outfit_tee_rust.png",
+      "outfit_tee_violet.png"
+    ],
+    "accessories": [
+      "accessory_cap.png",
+      "accessory_glasses.png",
+      "accessory_headphones.png"
+    ]
+  }
+}

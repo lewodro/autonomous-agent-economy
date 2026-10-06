@@ -12,7 +12,9 @@ playwright-report/
 
 # Local agent instructions
 AGENTS.md
+
 agents.md
+
 CLAUDE.md
 
 /web/dist/
