@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {TableSession,visitorHash} from '../service/world-table.js';
 import {verifyTicTacToeProof} from '../src/tictactoe.js';
+import {mountTable} from '../web/dist/world/table.js';
 const x=visitorHash('x'),o=visitorHash('o'),stranger=visitorHash('stranger');
 test('free human table enforces seating, turns, revisions, terminal result and restart proof',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'world-table-')),t=new TableSession(dir);await t.restore();
@@ -37,4 +38,28 @@ test('an expired waiting seat releases the table and cannot act in the next sess
   const next=await t.act(o,'join',{mode:'human'});assert.equal(next.status,'waiting');assert.equal(next.yourSeat,'human-x');
   await assert.rejects(()=>t.act(x,'move',{cell:0,revision:t.state.revision}),/Sit at the table/);
  }finally{Date.now=originalNow;}
+});
+test('table polling clears a transient connection warning after recovery without a state change',async()=>{
+ class Element {
+  children=[];textContent='';
+  append(...children){this.children.push(...children);}
+  replaceChildren(...children){this.children=children;}
+  setAttribute(){}
+ }
+ const oldDocument=globalThis.document,oldFetch=globalThis.fetch,parent=new Element(),state={status:'empty',revision:0,mode:'free',yourSeat:null,players:[],match:null};
+ let calls=0,active=true;globalThis.document={createElement:()=>new Element()};
+ globalThis.fetch=async()=>{
+  calls++;
+  if(calls===2)throw new Error('temporary network failure');
+  return {ok:true,json:async()=>state};
+ };
+ try{
+  mountTable(parent,()=>active,2);const alert=parent.children[4];
+  for(let attempt=0;attempt<100&&(!alert.textContent||calls<3);attempt++)await new Promise(resolve=>setTimeout(resolve,2));
+  assert.equal(calls>=3,true,'polling should retry after a failed request');
+  assert.equal(alert.textContent,'','a successful unchanged snapshot should clear the reconnect warning');
+ }finally{
+  active=false;await new Promise(resolve=>setTimeout(resolve,5));
+  globalThis.document=oldDocument;globalThis.fetch=oldFetch;
+ }
 });

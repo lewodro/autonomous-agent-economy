@@ -5,7 +5,7 @@ interface TableView {
   match:null|{id:string;players:string[];board:('a'|'b'|null)[];moves:{agentId:string;cell:number}[];result:'a'|'b'|'draw'|null};
 }
 /** All board changes go to the server; this component only renders and submits a cell. */
-export function mountTable(parent:HTMLElement,isActive:()=>boolean):void {
+export function mountTable(parent:HTMLElement,isActive:()=>boolean,pollIntervalMs=1200):void {
   let state:TableView|null=null,busy=false,timer:ReturnType<typeof setTimeout>|undefined;
   const status=document.createElement('p'),actions=document.createElement('div'),board=document.createElement('div'),error=document.createElement('p');
   const explanation=document.createElement('p');explanation.textContent='One shared free table. Wait for another visitor, or practice against the existing Founder policy. World avatars are local; only seating and board moves are shared.';
@@ -42,8 +42,15 @@ export function mountTable(parent:HTMLElement,isActive:()=>boolean):void {
   }
   async function poll():Promise<void>{
     if(!isActive()){if(timer)clearTimeout(timer);return;}
-    if(!busy)try{const fresh=await request<TableView>('/api/world/table');if(!busy&&(!state||fresh.revision>=state.revision&&(fresh.revision!==state.revision||fresh.yourSeat!==state.yourSeat||fresh.status!==state.status))){state=fresh;error.textContent='';render();}}catch{error.textContent='Connection interrupted. Reconnecting to the table…';}
-    if(isActive())timer=setTimeout(poll,1200);
+    if(!busy)try{
+      const fresh=await request<TableView>('/api/world/table');
+      if(!busy){
+        const changed=!state||fresh.revision>=state.revision&&(fresh.revision!==state.revision||fresh.yourSeat!==state.yourSeat||fresh.status!==state.status);
+        if(changed){state=fresh;render();}
+        error.textContent='';
+      }
+    }catch{error.textContent='Connection interrupted. Reconnecting to the table…';}
+    if(isActive())timer=setTimeout(poll,pollIntervalMs);
   }
   status.textContent='Opening the table…';void poll();
 }
