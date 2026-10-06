@@ -3,7 +3,7 @@ export class KeyboardInput implements InputSource {
   private keys = new Set<string>();
   private interaction = false;
   private down = (event: KeyboardEvent) => {
-    if (event.target instanceof HTMLElement && (event.target.matches('input,select,textarea,button,a,summary') || event.target.isContentEditable)) return;
+    if (event.target instanceof HTMLElement && (event.target.matches('input,select,textarea') || event.target.isContentEditable)) return;
     const key = event.key.toLowerCase();
     if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','e'].includes(key)) return;
     event.preventDefault(); this.keys.add(key);
@@ -11,8 +11,8 @@ export class KeyboardInput implements InputSource {
   };
   private up = (event: KeyboardEvent) => { this.keys.delete(event.key.toLowerCase()); };
   private blur = () => this.reset();
-  constructor() {
-    window.addEventListener('keydown', this.down); window.addEventListener('keyup', this.up);
+  constructor(private target: HTMLElement) {
+    target.addEventListener('keydown', this.down); window.addEventListener('keyup', this.up);
     window.addEventListener('blur', this.blur); document.addEventListener('visibilitychange', this.blur);
   }
   read(): WorldInput {
@@ -22,7 +22,7 @@ export class KeyboardInput implements InputSource {
   }
   reset(): void { this.keys.clear(); this.interaction = false; }
   destroy(): void {
-    window.removeEventListener('keydown', this.down); window.removeEventListener('keyup', this.up);
+    this.target.removeEventListener('keydown', this.down); window.removeEventListener('keyup', this.up);
     window.removeEventListener('blur', this.blur); document.removeEventListener('visibilitychange', this.blur); this.reset();
   }
 }
