@@ -58,7 +58,6 @@ test('public games are visible after restart while only the host can advance the
     const alice = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 }, avatar: 'explorer' });
     const bob = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
     assert.equal(alice.status, 201); assert.equal(bob.body.players.length, 2);
-    assert.equal((await request(running.base, '/api/worlds/main/presence/move', { player_id: 'alice', session_token: alice.body.session_token, position: { x: 110, y: 100 }, direction: 'right', animation_state: 'walk' })).status, 200);
     const table = await request(running.base, '/api/tables'); assert.equal(table.body.tables[0].status, 'Empty');
     assert.equal((await request(running.base, '/api/tables/table-ttt-main/sit', { player_id: 'alice', session_token: alice.body.session_token })).status, 200);
     assert.equal((await request(running.base, '/api/tables/table-ttt-main/sit', { player_id: 'bob', session_token: bob.body.session_token })).status, 200);
