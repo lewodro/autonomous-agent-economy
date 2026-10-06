@@ -39,7 +39,9 @@ export class ArenaRoomPool {
   }
   getRoom(id) {
     const room=this.rooms.get(id);if(!room)throw Object.assign(new Error('Room not found'),{status:404});
-    return structuredClone({room:this.listRooms().find(r=>r.id===id),state:room.state,phase:room.phase,current:room.current});
+    const state=structuredClone(room.state);
+    delete state.events; // Full verified ledgers are available through the explicit log route.
+    return {room:this.listRooms().find(r=>r.id===id),state,phase:room.phase,current:structuredClone(room.current)};
   }
   runs() {return [...this.rooms.values()].flatMap(r=>[r.saved,...r.saved.previous].map(run=>({...run,roomId:r.saved.id,game:r.saved.game})));}
   profiles() {

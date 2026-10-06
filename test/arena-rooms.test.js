@@ -13,7 +13,9 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
   assert.equal(pool.listRooms().length,4);
   for(const id of ['rps-1','ttt-1'])await pool.step(id);
-  const rps=pool.getRoom('rps-1').current,ttt=pool.getRoom('ttt-1').current;
+  const snapshot=pool.getRoom('rps-1'),rps=snapshot.current,ttt=pool.getRoom('ttt-1').current;
+  assert.equal('events' in snapshot.state,false);
+  assert.ok(pool.log(snapshot.room.runId).state.events.length>0,'verified event ledger remains available through the log route');
   assert.ok(await verifyProof(rps));assert.ok(verifyTicTacToeProof(ttt));
   const profiles=pool.profiles();assert.equal(profiles.reduce((sum,a)=>sum+a.matches,0),4);
   const history=pool.history();assert.equal(history.length,2);

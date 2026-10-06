@@ -42,6 +42,7 @@ The local browser character, NPC positions, and actor movement are not multiplay
 | `/arena/rps/rps-1` and `/arena/rps/rps-2` | Watch shared RPS rooms |
 | `/arena/tictactoe/ttt-1` and `/arena/tictactoe/ttt-2` | Watch shared Tic-Tac-Toe rooms |
 | `/api/arena/rooms` | Read room status |
+| `/api/arena/rooms/:slot` | Read current spectator state without the full event ledger |
 | `/api/arena/agents` | Read retained profile summaries |
 | `/api/arena/history` and `/api/arena/logs/:runId` | Read recent completed matches and download a run ledger |
 | `/api/world/table` | Read public table state; its capability cookie identifies a seat |
