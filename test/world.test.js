@@ -51,12 +51,14 @@ test('all twenty current agent profiles have safe, separated world spawn positio
 });
 test('NPC Arena activity follows a reachable entrance waypoint',()=>{
  for(let index=0;index<20;index++){
-  const npc={...actor(npcSpawnPosition(index)),type:'npc'},control=new NpcController(index);let arrived=false;
+  const npc={...actor(npcSpawnPosition(index)),type:'npc'},control=new NpcController(index);let arrived=false,resumed=false;
   for(let frame=0;frame<4000;frame++){
-   control.update(npc,.1);assert.ok(!collides(npc.position));
-   if(npc.activity==='At the Arena entrance'){arrived=true;break;}
+   const before={...npc.position};control.update(npc,.1);assert.ok(!collides(npc.position));
+   if(npc.activity==='At the Arena entrance')arrived=true;
+   if(arrived&&npc.activity==='Walking through the plaza'&&Math.hypot(npc.position.x-before.x,npc.position.y-before.y)>.1){resumed=true;break;}
   }
   assert.equal(arrived,true,`agent spawn ${index} should reach the Arena entrance`);
+  assert.equal(resumed,true,`agent spawn ${index} should resume its plaza route`);
  }
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
