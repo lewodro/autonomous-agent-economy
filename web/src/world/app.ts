@@ -84,7 +84,10 @@ $('character-close').onclick=()=>{if(entered)character.close();else $('enter-wor
 $('enter-world').onclick=()=>{entered=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{resetInput();canvas.focus();});
-character.addEventListener('close',()=>{resetInput();canvas.focus();});
+character.addEventListener('close',()=>{
+  resetInput();
+  requestAnimationFrame(()=>{if(!character.open&&document.activeElement===document.body)canvas.focus();});
+});
 canvas.addEventListener('pointerdown',event=>{
   canvas.focus();if(dialog.open||character.open)return;
   const rect=canvas.getBoundingClientRect(),view=renderer.viewport();
