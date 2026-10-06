@@ -17,6 +17,7 @@ const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profi
 let camera={x:Math.max(0,player.position.x-renderer.viewport().width/2),y:Math.max(0,player.position.y-renderer.viewport().height/2)};
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
+let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
@@ -81,7 +82,7 @@ function presetButtons():void {
 }
 $('avatar-change').onclick=()=>{resetInput();presetButtons();character.showModal();};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
-$('enter-world').onclick=()=>{entered=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
+$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
   resetInput();
@@ -92,7 +93,10 @@ $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close
 });
 character.addEventListener('close',()=>{
   resetInput();
-  requestAnimationFrame(()=>{if(!character.open&&document.activeElement===document.body)canvas.focus();});
+  requestAnimationFrame(()=>{
+    if(!character.open&&(restoreWorldFocus||document.activeElement===document.body))canvas.focus();
+    restoreWorldFocus=false;
+  });
 });
 canvas.addEventListener('pointerdown',event=>{
   canvas.focus();if(dialog.open||character.open)return;

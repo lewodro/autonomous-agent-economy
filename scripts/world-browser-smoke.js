@@ -28,6 +28,7 @@ try{
  assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).avatar'),'visitor_ember','avatar choice must persist immediately');
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
  await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("20 agents in the plaza")');
+ await wait('document.activeElement?.id==="world-canvas"');
  const initialKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
  await key('d',500);await delay(3100);
  const movedKeyboardX=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
