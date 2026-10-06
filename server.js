@@ -18,6 +18,7 @@ import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
+import { requestErrorStatus } from './service/http-error.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -222,7 +223,7 @@ const server = http.createServer(async (req, res) => {
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     let detail;try{detail=JSON.parse(error.message);}catch{}
-    const status=error.status||(error.code==='ENOENT'?404:400);
+    const status=requestErrorStatus(error);
     const code=error.code||detail?.code;
     if(status>=500)console.error(JSON.stringify({event:'request_failed',code:typeof code==='string'?code:'INTERNAL_ERROR'}));
     const safeMessage=production?(status===404?'Not found':status===413?'Request too large':status===429?'Too many requests':status<500?'Request rejected':'Service temporarily unavailable'):error.message;
