@@ -44,7 +44,15 @@ test('NPC controller moves presence without changing strategy or economic fields
 test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
  const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));
  assert.ok(positions.every(position=>!collides(position)));
- for(let i=0;i<positions.length;i++)for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
+ for(let i=0;i<positions.length;i++){
+  assert.ok(Math.hypot(positions[i].x-MAP.spawn.x,positions[i].y-MAP.spawn.y)>=80);
+  for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
+ }
+});
+test('NPC Arena activity follows a reachable entrance waypoint',()=>{
+ const npc={...actor({x:700,y:620}),type:'npc'},control=new NpcController(20);let arrived=false;
+ for(let i=0;i<1000;i++){control.update(npc,.1);assert.ok(!collides(npc.position));if(npc.activity==='At the Arena entrance')arrived=true;}
+ assert.equal(arrived,true);
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
  const visitor=actor({x:10,y:20}),nearby={...actor({x:100,y:20}),type:'npc'},distant={...actor({x:500,y:20}),type:'npc'};
