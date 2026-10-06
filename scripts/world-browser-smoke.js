@@ -22,6 +22,7 @@ try{
  await wait('document.getElementById("character-dialog")?.open');
  await wait('document.querySelectorAll("#avatar-presets img").length===8&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
  await evaluate('document.querySelector("[data-avatar=visitor_ember]").click();document.getElementById("enter-world").click()');await screenshot('plaza');
+ await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("20 agents in the plaza")');
  await wait('document.getElementById("world-hint").textContent.includes("Inspect")');await key('e',50);
  await wait('document.getElementById("interaction-dialog").open');
  assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));

@@ -92,6 +92,7 @@ function addNpc(profile:AgentProfile,index:number):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
   npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:'Walking through the plaza',recentWinner:profile.recentWinner});
   controllers.set('npc-'+profile.id,new NpcController(index));
+  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} agents in the plaza. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; research archive south.`);
 }
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
