@@ -49,7 +49,8 @@ try{
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
  await wait('document.activeElement?.id==="world-canvas"');
  // Walk around the south side of the arena wall, then approach its entrance.
- await key('s',1290);await key('d',2120);
+ // The divider ends at y=700; cross south of it before walking east to the Arena.
+ await key('s',1650);await key('d',2120);
  await wait('document.getElementById("world-hint").textContent.includes("Enter Arena")');await screenshot('desktop');await key('e',50);
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('lobby');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
