@@ -53,6 +53,9 @@ export class WorldPresenceService {
     const world = this.world(worldId); this.prune(worldId);
     const id = input.player_id && IDENTIFIER.test(input.player_id) ? input.player_id : `player_${randomUUID()}`;
     const existing = world.get(id);
+    if (existing && !equalSecret(existing.token, input.session_token)) {
+      throw fail('PRESENCE_NOT_AUTHORIZED', 'Player identity is already active', 403);
+    }
     if (!existing && world.size >= this.maxPlayers) throw fail('WORLD_FULL', 'This world is full', 429);
     const position = this.sanitizePosition(input.position || { x: 160, y: 180 });
     const now = this.now();
