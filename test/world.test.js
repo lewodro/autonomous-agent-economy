@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
-import { moveActor, followCamera } from '../web/dist/world/movement.js';
+import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition } from '../web/dist/world/npc.js';
@@ -17,6 +17,13 @@ test('movement slides at walls, cannot tunnel, and clamps suspended frame time',
   assert.ok(!collides(a.position));assert.ok(a.position.x<=488);assert.ok(a.position.y>340);
   const b=actor({...MAP.spawn});moveActor(b,{x:1,y:0,interact:false},10);
   assert.equal(b.position.x,MAP.spawn.x+15);
+});
+test('visitor movement respects NPC footprints while keeping them in interaction range',()=>{
+ const visitor=actor({x:100,y:100}),npc={...actor({x:140,y:100}),id:'npc-ember',type:'npc'};
+ moveActor(visitor,{x:1,y:0,interact:false},.1,150,presenceObstacles([npc],visitor));
+ assert.ok(visitor.position.x<=114,'visitor should stop before entering the NPC footprint');
+ assert.ok(Math.hypot(visitor.position.x-npc.position.x,visitor.position.y-npc.position.y)<=72,'NPC remains reachable for profile interaction');
+ assert.equal(presenceObstacles([visitor,npc],npc).length,1,'NPC controllers use the same presence collision geometry');
 });
 test('invalid saved positions reset; interactions require spatial proximity', () => {
   for(const value of [null,{x:NaN,y:20},{x:200,y:200},{x:-1,y:100}])assert.deepEqual(safePosition(value),MAP.spawn);

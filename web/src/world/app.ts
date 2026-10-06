@@ -1,7 +1,7 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
-import { moveActor, followCamera } from './movement.js';
-import { MAP, LANDMARKS, safePosition } from './map.js';
+import { moveActor, followCamera, presenceObstacles } from './movement.js';
+import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, npcSpawnPosition } from './npc.js';
@@ -110,7 +110,8 @@ function frame(time:number):void {
   const dt=Math.min(.1,(time-previous)/1000);previous=time;
   const k=keyboard.read(),t=touch.read();
   if(entered&&!dialog.open&&!character.open&&!document.hidden){
-    const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);moveActor(player,input,dt);
+    const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);
+    moveActor(player,input,dt,150,[...WALLS,...presenceObstacles(npcs,player)]);
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
     const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`Inspect ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);

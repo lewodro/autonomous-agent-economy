@@ -1,4 +1,4 @@
-import { moveActor } from './movement.js';
+import { moveActor, presenceObstacles } from './movement.js';
 import { WALLS } from './map.js';
 import type { WorldActor, Position } from './model.js';
 const PLAZA_WAYPOINTS: Position[] = [
@@ -32,7 +32,7 @@ export class NpcController implements AgentController {
     const before={...actor.position};
     actor.activity=waypoint.travel;
     const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
-    const obstacles=[...WALLS,...nearby.map(other=>({x:other.position.x-14,y:other.position.y-14,width:28,height:28}))];
+    const obstacles=[...WALLS,...presenceObstacles(nearby,actor)];
     moveActor(actor,{x:dx,y:dy,interact:false},seconds,48,obstacles);
     const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y);
     this.stuck=moved<.1?this.stuck+seconds:0;
