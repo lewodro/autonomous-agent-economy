@@ -63,6 +63,15 @@ test('room scheduler stops after its bounded retry budget',async()=>{
   assert.equal(attempts,4,'one initial attempt plus three retries');
   pool.close();
 });
+test('room failure logs expose safe error codes without raw messages',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-error-log-')),{retryMs:1});await pool.restore();
+  pool.step=async()=>{throw Object.assign(new Error('private path /data/matches/secret'),{code:'EIO'});};
+  const logs=[],write=console.error;console.error=value=>logs.push(value);
+  try{await pool.run('rps-1');}finally{console.error=write;pool.close();}
+  const events=logs.map(line=>JSON.parse(line));
+  assert.equal(events.length,4);assert.ok(events.every(event=>event.errorType==='Error'&&event.code==='EIO'));
+  assert.ok(logs.every(line=>!line.includes('/data/matches/secret')));
+});
 test('retained profile and archive chronology stays correct when completion times tie',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-ties-')));await pool.restore();
   const run=(runId,id,result)=>{

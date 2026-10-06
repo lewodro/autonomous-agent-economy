@@ -105,10 +105,11 @@ export class ArenaRoomPool {
     let failures=0;
     while(!this.closed){
       try{await this.step(id);failures=0;}
-      catch{
+      catch(error){
         failures++;
         const retrying=failures<=MAX_STEP_RETRIES;
-        console.error(JSON.stringify({event:'arena_room_failed',roomId:id,attempt:failures,retrying}));
+        const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,64}$/.test(error.code)?error.code:undefined;
+        console.error(JSON.stringify({event:'arena_room_failed',roomId:id,attempt:failures,retrying,errorType:error instanceof Error?error.name:'UnknownError',...(code?{code}:{})}));
         if(!retrying)break;
         await this.delay(Math.min(5000,this.retryMs*2**(failures-1)));
         continue;
