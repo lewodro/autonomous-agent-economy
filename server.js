@@ -116,7 +116,10 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='POST'&&route==='/api/auth/wallet/verify'){
       if(!walletVerifyRequests.allow())return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,4096),verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature);
-      const owner=await ownershipStore.createWalletOwner(verified.publicKey);
+      const currentOwnerId=ownerIdFromRequest(req),currentOwner=currentOwnerId?ownershipStore.owner(currentOwnerId):null;
+      const owner=currentOwner?.identity_type==='anonymous'
+        ?await ownershipStore.linkWalletOwner(currentOwner.id,verified.publicKey)
+        :await ownershipStore.createWalletOwner(verified.publicKey);
       console.log(JSON.stringify({event:'wallet_login_verified'}));
       return json(res,200,{owner},{'Set-Cookie':ownerCookie(owner.id)});
     }

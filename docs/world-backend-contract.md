@@ -52,7 +52,9 @@ The earlier in-memory table-session prototype is intentionally not mounted. Ther
 Ownership is an optional profile service, separate from world-presence identity.
 Visitors can still enter and play without creating a profile or connecting a
 wallet. Wallet sign-in verifies a short-lived Solana message; it does not fund
-an agent. The server issues an HttpOnly owner cookie.
+an agent. Connecting a wallet while signed in as a guest upgrades that owner
+record and preserves its agents. A wallet already linked to another profile is
+not merged automatically. The server issues an HttpOnly owner cookie.
 
 | Endpoint | Behavior |
 |---|---|

@@ -33,6 +33,16 @@ test('wallet owners validate canonical public keys and are reused idempotently',
  await assert.rejects(store.createWalletOwner('not-a-wallet'),{code:'INVALID_WALLET_ADDRESS'});
 });
 
+test('linking a verified wallet upgrades a guest without orphaning agents and forbids implicit account merge',async t=>{
+ const {store}=await fixture(t),guest=await store.createAnonymous(),agent=await store.createAgent(guest.id,valid,avatars),pair=generateKeyPairSync('ed25519');
+ const key=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
+ const linked=await store.linkWalletOwner(guest.id,key);
+ assert.equal(linked.id,guest.id);assert.equal(linked.identity_type,'solana');assert.equal(store.agentForOwner(linked.id,agent.id).id,agent.id);
+ const other=await store.createAnonymous();
+ await assert.rejects(store.linkWalletOwner(other.id,key),{code:'WALLET_ALREADY_OWNED'});
+ assert.equal(store.owner(other.id).identity_type,'anonymous');
+});
+
 test('agent import accepts only the public schema and export excludes ownership and treasury data',async t=>{
  const {store}=await fixture(t),owner=await store.createAnonymous();
  const agent=await store.createAgent(owner.id,{format:'aae-agent-v1',...valid},avatars,{importing:true});

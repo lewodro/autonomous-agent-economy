@@ -28,7 +28,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   assert.equal((await fetch(`${base}/profile/`)).status,200);
   const {value:capabilities}=await call('/api/capabilities');assert.equal(capabilities.ownership.agent_creation_available,true);assert.equal(capabilities.ownership.mainnet_match_wagering_enabled,false);
   const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
-  const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);
+  const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
   const created=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'})});
   assert.equal(created.response.status,201,JSON.stringify(created.value));const id=created.value.agent.id;
   const imported=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Imported',avatar:'visitor_atlas',strategy:'cooperative',personality:'Calm.'})});
@@ -43,8 +43,9 @@ test('owner API supports guest and wallet identity, private agent management, an
   const pair=generateKeyPairSync('ed25519'),publicKey=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
   const issued=await call('/api/auth/wallet/challenge',{method:'POST',body:JSON.stringify({public_key:publicKey})});assert.equal(issued.response.status,200);
   const signature=sign(null,Buffer.from(issued.value.message),pair.privateKey).toString('base64url');
-  const verified=await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});
-  assert.equal(verified.response.status,200);assert.equal(verified.value.owner.identity_type,'solana');assert.ok(verified.cookie);
+  const verified=await call('/api/auth/wallet/verify',{method:'POST',cookie:guest.cookie,body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});
+  assert.equal(verified.response.status,200);assert.equal(verified.value.owner.identity_type,'solana');assert.equal(verified.value.owner.id,guestOwnerId);assert.ok(verified.cookie);
+  const linkedAgents=await call('/api/me/agents',{cookie:verified.cookie});assert.ok(linkedAgents.value.agents.some(agent=>agent.id===id),'guest-created agent should remain accessible after wallet linking');
   assert.equal((await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})})).response.status,401);
   await stop();base=undefined;await start();
   const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');

@@ -82,6 +82,14 @@ export class OwnershipStore{
   if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});
   const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'solana',wallet_public_key:publicKey};state.owners.push(owner);return cleanOwner(owner);
  });}
+ async linkWalletOwner(ownerId,publicKey){return this.mutate(state=>{
+  try{decodeSolanaAddress(publicKey);}catch{throw Object.assign(new Error('Invalid Solana wallet address'),{status:400,code:'INVALID_WALLET_ADDRESS'});}
+  const owner=state.owners.find(value=>value.id===ownerId);if(!owner)throw Object.assign(new Error('Owner profile not found'),{status:401,code:'OWNER_NOT_FOUND'});
+  const linked=state.owners.find(value=>value.wallet_public_key===publicKey);
+  if(linked&&linked.id!==owner.id)throw Object.assign(new Error('This wallet already belongs to another profile. Sign out and connect that profile directly; accounts are not merged automatically.'),{status:409,code:'WALLET_ALREADY_OWNED'});
+  if(owner.identity_type==='solana'&&owner.wallet_public_key!==publicKey)throw Object.assign(new Error('A different wallet is already linked to this profile.'),{status:409,code:'OWNER_WALLET_ALREADY_LINKED'});
+  owner.identity_type='solana';owner.wallet_public_key=publicKey;return cleanOwner(owner);
+ });}
  agentsForOwner(ownerId){this.requireReady();return structuredClone(this.state.agents.filter(agent=>agent.owner_id===ownerId));}
  listPublicAgents(){this.requireReady();return this.state.agents.map(agent=>{
   const owner=this.state.owners.find(value=>value.id===agent.owner_id),wallet=owner?.wallet_public_key||null;
