@@ -86,6 +86,14 @@ test('presence SSE viewers are capped and released on disconnect',()=>{
   second.emit('close');
 });
 
+test('presence health reports live counts and safe deployment limits',()=>{
+  let now=100;const service=new WorldPresenceService({now:()=>now,staleMs:50,maxPlayers:4,maxViewers:7});
+  service.join('main',{player_id:'active'});
+  assert.deepEqual(service.health(),{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:1,event_streams:0,limits:{players_per_world:4,event_streams_per_world:7}});
+  now+=51;
+  assert.equal(service.health().active_players,0,'health prunes expired sessions before reporting');
+});
+
 test('failed SSE snapshot writes release the viewer slot',()=>{
   class BrokenResponse extends EventEmitter {
     constructor(){super();this.destroyed=false;this.writableLength=0;}

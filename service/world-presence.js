@@ -136,5 +136,18 @@ export class WorldPresenceService {
     }
     return true;
   }
+  health() {
+    for (const worldId of this.allowedWorlds) this.prune(worldId);
+    let activePlayers = 0, eventStreams = 0;
+    for (const worldId of this.allowedWorlds) {
+      activePlayers += this.worlds.get(worldId)?.size || 0;
+      eventStreams += this.listeners.get(worldId)?.size || 0;
+    }
+    return {
+      status: 'ok', mode: 'single_process_ephemeral', configured_worlds: this.allowedWorlds.size,
+      active_players: activePlayers, event_streams: eventStreams,
+      limits: { players_per_world: this.maxPlayers, event_streams_per_world: this.maxViewers }
+    };
+  }
   close() { for (const listeners of this.listeners.values()) for (const res of listeners) res.destroy(); this.listeners.clear(); this.worlds.clear(); }
 }
