@@ -42,7 +42,7 @@ async function refresh(){
   else message(error.message);
  }
 }
-byId('guest').addEventListener('click',async()=>{try{await request('/api/auth/anonymous',{method:'POST',body:'{}'});await refresh();message('Free identity ready. No wallet or payment is needed.');}catch(error){message(error.message);}});
+byId('guest').addEventListener('click',async()=>{try{const {owner}=await request('/api/auth/anonymous',{method:'POST',body:'{}'});await refresh();message(owner.identity_type==='solana'?'Wallet profile restored. No transfer was requested.':'Free identity ready. No wallet or payment is needed.');}catch(error){message(error.message);}});
 byId('connect').addEventListener('click',async()=>{
  try{
   const wallet=window.solana;if(!wallet?.connect||!wallet?.signMessage)throw new Error('No compatible Solana wallet was found. Continue free is always available.');

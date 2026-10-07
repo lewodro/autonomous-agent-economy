@@ -123,7 +123,8 @@ try{
  await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Wallet Browser Agent';form.requestSubmit()})()");await wait("document.getElementById('agents').textContent.includes('Wallet Browser Agent')");
  const walletAgentOwner=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.find(agent=>agent.name==='Wallet Browser Agent')?.owner_id)");assert.equal(walletAgentOwner,undefined,'agent roster must not expose its internal owner ID');
  const walletOwnedAgents=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.map(agent=>agent.name))");assert.ok(walletOwnedAgents.includes('Wallet Browser Agent'),'wallet-authenticated user should own the created agent');
- await evaluate('document.getElementById("guest").click()');await wait("document.getElementById('identity').textContent.includes('Free browser identity')&&!document.getElementById('create-panel').classList.contains('hidden')");
+ await evaluate('document.getElementById("guest").click()');await wait("document.getElementById('identity').textContent.includes('Verified wallet')&&!document.getElementById('create-panel').classList.contains('hidden')");
+ assert.ok(await evaluate("document.getElementById('agents').textContent.includes('Wallet Browser Agent')"),'continuing through the free-entry button must keep the signed-in owner and agents');
  await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Browser Agent';form.requestSubmit()})()");
  await wait("document.getElementById('agents').textContent.includes('Browser Agent')");
  assert.ok(await evaluate("document.getElementById('agents').textContent.includes('read_only')"),'new agents must default to read-only treasury policy');
