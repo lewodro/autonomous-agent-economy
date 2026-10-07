@@ -148,6 +148,8 @@ test('public agent directory uses bounded cursor pages and sanitized owner refer
  assert.equal(second.agents[0].owner_id,undefined);assert.equal(second.agents[0].treasury,undefined);
  assert.throws(()=>store.listPublicAgents({limit:101}),{code:'INVALID_PAGE_SIZE'});
  assert.throws(()=>store.listPublicAgents({after:'invalid'}),{code:'INVALID_AGENT_CURSOR'});
+ assert.deepEqual(store.recentPublicAgents(2).map(agent=>agent.id),[agents[2].id,agents[1].id]);
+ assert.equal(store.recentPublicAgents(2)[0].treasury,undefined);
 });
 
 test('directory-sync failure after atomic rename keeps memory aligned with the committed snapshot',async t=>{

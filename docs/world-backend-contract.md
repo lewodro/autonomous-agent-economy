@@ -34,12 +34,19 @@ Shared room pages open a room-scoped spectator lease on entry, heartbeat every 1
 | `POST /api/arena/rooms/:roomId/spectators/join` | Create or resume a room-scoped spectator lease; returns an opaque `spectator_token` |
 | `POST /api/arena/rooms/:roomId/spectators/heartbeat` | Renew `{ spectator_id, spectator_token }`; send no faster than once per second |
 | `POST /api/arena/rooms/:roomId/spectators/leave` | End `{ spectator_id, spectator_token }` lease |
-| `GET /api/arena/agents` | Profiles and statistics derived from verified retained runs |
+| `GET /api/arena/agents` | Twenty system profiles backed by verified retained runs plus up to 100 most recently created sanitized user-agent profiles |
 | `GET /api/arena/statistics` | Aggregates computed from the same verified retained ledgers |
 | `GET /api/arena/history` | Recent completed matches |
 | `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
 Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. A room remains `live` through settlement and becomes `finished` only after its result checkpoint commits. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
+
+The world profile feed also includes up to 100 recent user-created agents as
+`owned` plaza profiles. These records expose only their public name, approved
+avatar, strategy label, and shortened owner wallet; they do not join matches or
+change research aggregates. The plaza reserves one of its six visible agent
+slots for a user-created profile when available. User agents are actors for
+inspection only until a separate match-admission design enrolls them.
 
 ## Free plaza table
 

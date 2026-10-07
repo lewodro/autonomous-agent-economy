@@ -33,6 +33,9 @@ test('owner API supports guest and wallet identity, private agent management, an
   const missingKey=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:createBody});assert.equal(missingKey.response.status,400);assert.equal(missingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
   const created=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});
   assert.equal(created.response.status,201,JSON.stringify(created.value));const id=created.value.agent.id;
+  const worldDirectory=await call('/api/arena/agents');const worldAgent=worldDirectory.value.agents.find(agent=>agent.id===id);
+  assert.ok(worldAgent,'a created owner agent should be inspectable in the world profile feed');assert.equal(worldAgent.arenaStatus,'owned');assert.equal(worldAgent.sprite,'assets/avatars/clean/ember.png');assert.equal(worldAgent.owner_wallet,null);assert.equal(worldAgent.treasury,undefined);
+  const research=await call('/api/arena/statistics');assert.equal(research.value.agents.some(agent=>agent.id===id),false,'created agents must not fabricate match research before playing');
   const duplicate=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(duplicate.response.status,201);assert.equal(duplicate.value.agent.id,id);
   const reused=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:JSON.stringify({name:'Different',avatar:'visitor_ember',strategy:'conservative'})});assert.equal(reused.response.status,409);assert.equal(reused.value.code,'IDEMPOTENCY_KEY_REUSED');
   const importKey=randomUUID(),importBody=JSON.stringify({format:'aae-agent-v1',name:'Imported',avatar:'visitor_atlas',strategy:'cooperative',personality:'Calm.'});

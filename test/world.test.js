@@ -7,6 +7,7 @@ import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
+import { toWorldAgentProfiles } from '../service/world-agent-profiles.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
 test('world input normalizes diagonal speed and rejects nonfinite movement', () => {
   assert.equal(Math.hypot(...Object.values(normalizeInput(1,1)).slice(0,2)),1);
@@ -79,6 +80,16 @@ test('plaza keeps six visitors, excludes fighters and reserves space for finishe
  assert.deepEqual(selected.slice(0,2).map(profile=>profile.id),['agent-0','agent-1']);
  assert.ok(selected.every(profile=>profile.arenaStatus!=='fighting'));
  assert.ok(selected.some(profile=>profile.id==='agent-10'),'existing plaza visitors should keep their place');
+});
+test('plaza reserves one readable actor slot for a user-owned agent',()=>{
+ const profiles=[...Array.from({length:20},(_,index)=>({id:`system-${index}`,arenaStatus:'queued'})),{id:'user-agent',arenaStatus:'owned',ownership_status:'user'}];
+ const selected=selectPlazaAgents(profiles);assert.equal(selected.length,MAX_PLAZA_AGENTS);assert.ok(selected.some(profile=>profile.id==='user-agent'));
+});
+test('owned agent world profiles use approved transparent avatar paths and public fields only',()=>{
+ const [profile]=toWorldAgentProfiles([{id:'u-1',name:'Builder',avatar:'visitor_ember',strategy:'conservative',owner_wallet:'Abcd…Wxyz'}]);
+ assert.equal(profile.sprite,'assets/avatars/clean/ember.png');assert.equal(profile.arenaStatus,'owned');assert.equal(profile.ownership_status,'user');assert.equal(profile.owner_wallet,'Abcd…Wxyz');
+ assert.equal('treasury' in profile,false);assert.equal('personality' in profile,false);
+ assert.deepEqual(toWorldAgentProfiles([{id:'u-2',name:'Debug',avatar:'debug_placeholder',strategy:'aggressive'}]),[]);
 });
 test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
  const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));

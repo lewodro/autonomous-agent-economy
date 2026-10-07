@@ -122,6 +122,12 @@ try{
  const mockFundClicks=await evaluate("(()=>{const button=[...document.querySelectorAll('#agents .agent .actions button')].find(value=>value.textContent.includes('Add 100 mock credits'));if(!button)return false;button.click();button.click();return true})()");
  assert.equal(mockFundClicks,true,'mock mode should expose the labeled profile funding action');
  await wait("document.getElementById('agents').textContent.includes('MOCK_CREDIT 100')&&document.getElementById('agents').textContent.includes('Receipts: 1')");
+ const ownedAgentId=await evaluate("fetch('/api/me/agents').then(r=>r.json()).then(value=>value.agents.find(agent=>agent.name==='Browser Agent').id)");
+ await send('Page.navigate',{url:`${base}/world?agent=${encodeURIComponent(ownedAgentId)}`});
+ await wait("document.getElementById('interaction-dialog')?.open&&document.getElementById('interaction-title').textContent==='Browser Agent'");
+ assert.ok(await evaluate("document.getElementById('interaction-content').textContent.includes('Community-owned agent')"),'owned agent inspection should identify public ownership');
+ assert.equal(await evaluate(`document.getElementById(${JSON.stringify(`directory-agent-${ownedAgentId}`)})?.textContent.includes('OWNED · PLAZA')`),true);
+ await wait("document.querySelector('#interaction-content .agent-profile-head img')?.complete&&document.querySelector('#interaction-content .agent-profile-head img')?.naturalWidth>0");
  assert.deepEqual(errors,[]);
- console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, agent creation, idempotent mock funding and read-only treasury');
+ console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, owned world profile, agent creation, idempotent mock funding and read-only treasury');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}

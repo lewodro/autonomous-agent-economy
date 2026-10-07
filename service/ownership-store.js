@@ -110,11 +110,17 @@ export class OwnershipStore{
    const index=this.state.agents.findIndex(agent=>agent.id===after);if(index<0)throw Object.assign(new Error('Agent directory cursor was not found'),{status:400,code:'INVALID_AGENT_CURSOR'});start=index+1;
   }
   const owners=new Map(this.state.owners.map(owner=>[owner.id,owner]));
-  const page=this.state.agents.slice(start,start+limit+1),hasMore=page.length>limit,agents=page.slice(0,limit).map(agent=>{
-   const wallet=owners.get(agent.owner_id)?.wallet_public_key||null;
-   return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
-  });
+  const page=this.state.agents.slice(start,start+limit+1),hasMore=page.length>limit,agents=page.slice(0,limit).map(agent=>this.publicSummary(agent,owners));
   return {agents,next_cursor:hasMore?agents.at(-1).id:null};
+ }
+ recentPublicAgents(limit=100){
+  this.requireReady();if(!Number.isInteger(limit)||limit<1||limit>100)throw Object.assign(new Error('Recent agent page size must be from 1 to 100'),{status:400,code:'INVALID_PAGE_SIZE'});
+  const owners=new Map(this.state.owners.map(owner=>[owner.id,owner]));
+  return this.state.agents.slice(-limit).reverse().map(agent=>this.publicSummary(agent,owners));
+ }
+ publicSummary(agent,owners=new Map(this.state.owners.map(owner=>[owner.id,owner]))){
+  const wallet=owners.get(agent.owner_id)?.wallet_public_key||null;
+  return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
  }
  agentForOwner(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);return agent?structuredClone(agent):null;}
  publicAgent(id){

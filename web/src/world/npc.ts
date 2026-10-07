@@ -22,15 +22,17 @@ export function npcSpawnPosition(index:number):Position {
 export function arenaExitPosition(index:number):Position {
   return {x:880+(index%3)*32,y:724+Math.floor(index/3)*24};
 }
-export interface PlazaAgent {id:string;arenaStatus:'fighting'|'finished'|'queued'}
+export interface PlazaAgent {id:string;arenaStatus:'fighting'|'finished'|'queued'|'owned';ownership_status?:'user'}
 /** Keep the plaza readable while reserving two visitor slots for recent finishers. */
 export function selectPlazaAgents<T extends PlazaAgent>(profiles:T[],currentIds:string[]=[]):T[] {
   const eligible=profiles.filter(profile=>profile.arenaStatus!=='fighting');
   const returning=eligible.filter(profile=>profile.arenaStatus==='finished').slice(0,2);
   const returningIds=new Set(returning.map(profile=>profile.id));
-  const current=eligible.filter(profile=>currentIds.includes(profile.id)&&!returningIds.has(profile.id));
-  const waiting=eligible.filter(profile=>!returningIds.has(profile.id)&&!currentIds.includes(profile.id));
-  const selected=[...returning,...current,...waiting];
+  const owned=eligible.filter(profile=>profile.ownership_status==='user'&&!returningIds.has(profile.id)).slice(0,1);
+  const ownedIds=new Set(owned.map(profile=>profile.id));
+  const current=eligible.filter(profile=>currentIds.includes(profile.id)&&!returningIds.has(profile.id)&&!ownedIds.has(profile.id));
+  const waiting=eligible.filter(profile=>!returningIds.has(profile.id)&&!ownedIds.has(profile.id)&&!currentIds.includes(profile.id));
+  const selected=[...returning,...owned,...current,...waiting];
   return selected.slice(0,MAX_PLAZA_AGENTS);
 }
 export interface AgentController { update(actor:WorldActor, seconds:number):void }

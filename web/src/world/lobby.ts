@@ -38,7 +38,7 @@ async function profiles():Promise<void>{
       let a=document.getElementById('agent-'+profile.id) as HTMLAnchorElement|null;
       if(!a){a=document.createElement('a');a.id='agent-'+profile.id;a.href='/world?agent='+encodeURIComponent(profile.id);a.className='button';agents.append(a);}
       a.dataset.status=profile.arenaStatus;
-      const state=profile.arenaStatus==='fighting'?`FIGHTING · ${profile.roomId}`:profile.arenaStatus==='finished'?'JUST FINISHED':'QUEUED';
+      const state=profile.arenaStatus==='fighting'?`FIGHTING · ${profile.roomId}`:profile.arenaStatus==='finished'?'JUST FINISHED':profile.arenaStatus==='owned'?'OWNED · PLAZA':'QUEUED';
       a.textContent=`${profile.recentWinner?'♛ ':''}${profile.name} · ${state} · ${profile.matches} matches / ${profile.wins} wins`;
     }
   }catch{

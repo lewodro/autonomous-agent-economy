@@ -4,7 +4,8 @@ export interface ArenaRoom {
 }
 export interface AgentProfile {
   id:string;name:string;sprite:string;strategy:string;matches:number;wins:number;losses:number;draws:number;
-  scope:string;recentWinner:boolean;roomId:string|null;arenaStatus:'fighting'|'finished'|'queued';
+  scope:string;recentWinner:boolean;roomId:string|null;arenaStatus:'fighting'|'finished'|'queued'|'owned';
+  ownership_status?:'user';owner_wallet?:string|null;
   memory:{matchId:string;opponent:string;move:string;observed:string;runId:string;game:string}[];
   latestMatch:{runId:string;matchId:string;game:string}|null;
 }
