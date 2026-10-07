@@ -16,7 +16,7 @@ checks fall back to a local action without consuming inference budget or making
 a network request.
 
 Public production rejects model-backed match creation by default, including
-provider-backed replay imports. To opt in, set
+funded Devnet matches and provider-backed replay imports. To opt in, set
 `ENABLE_PUBLIC_MODEL_INFERENCE=true`; the server then accepts at most two new
 model-backed sessions per minute per process. This is a server-paid capability:
 each match has a bounded inference budget, but enabling it lets visitors spend

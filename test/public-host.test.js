@@ -130,6 +130,12 @@ test('public Devnet mode is explicit and cannot be downgraded to a mock funded m
     assert.equal(health.payments, 'devnet_test_sol');
     const response = await fetch(`${running.base}/api/funded-matches`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'mock', config: {} }) });
     assert.equal(response.status, 400);
+    const config = await fetch(`${running.base}/api/config?agents=2`, { headers }).then(result => result.json());
+    config.agents[0].provider = 'openai-compatible';
+    config.agents[0].model = 'configured-server-model';
+    const modelMatch = await fetch(`${running.base}/api/funded-matches`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'devnet', config }) });
+    assert.equal(modelMatch.status, 403);
+    assert.equal((await modelMatch.json()).code, 'PUBLIC_MODEL_INFERENCE_DISABLED', 'funded Devnet matches cannot bypass the public model gate');
   } finally {
     if (running) await stop(running.child);
     await rm(directory, { recursive: true, force: true });
@@ -142,11 +148,12 @@ test('public model inference requires explicit opt-in and limits backed match cr
 },async()=>{
  const directory=await mkdtemp(`${os.tmpdir()}/last-seat-public-models-`);let running;
  try{
-  running=await start(directory,{ENABLE_PUBLIC_MODEL_INFERENCE:'true'});
+  running=await start(directory,{ENABLE_PUBLIC_MODEL_INFERENCE:'true',ENTRY_FEE_ENABLED:'true',ECONOMY_MODE:'DEVNET',PUBLIC_DEVNET_ACK:'I_UNDERSTAND_TEST_SOL_ONLY',SOLANA_DEVNET_RPC_URL:'https://devnet.example/rpc'});
   const headers={Host:'seat.example',Origin:'https://seat.example','Content-Type':'application/json'};
   const capabilities=await fetch(`${running.base}/api/capabilities`,{headers}).then(response=>response.json());assert.equal(capabilities.public_model_inference_enabled,true);
   const config=await fetch(`${running.base}/api/config?agents=2`,{headers}).then(response=>response.json());config.agents[0].provider='openai-compatible';config.agents[0].model='configured-server-model';
   for(let index=0;index<2;index++){const response=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(response.status,201);}
   const limited=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(limited.status,429);assert.equal((await limited.json()).code,'PUBLIC_MODEL_MATCH_RATE_LIMITED');
+  const fundedLimited=await fetch(`${running.base}/api/funded-matches`,{method:'POST',headers,body:JSON.stringify({mode:'devnet',config})});assert.equal(fundedLimited.status,429);assert.equal((await fundedLimited.json()).code,'PUBLIC_MODEL_MATCH_RATE_LIMITED','funded matches share the same server model budget');
  }finally{if(running)await stop(running.child);await rm(directory,{recursive:true,force:true});}
 });

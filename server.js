@@ -64,13 +64,15 @@ const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds})
 const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
+function enforcePublicModelAdmission(config){
+  const usesServerModel=config?.agents?.some(agent=>['http','openai-compatible'].includes(agent.provider));
+  if(!production||!usesServerModel)return;
+  if(!publicModelInferenceEnabled)throw Object.assign(new Error('Server-paid model inference is disabled for public matches.'),{status:403,code:'PUBLIC_MODEL_INFERENCE_DISABLED'});
+  if(!publicModelMatchCreates.allow())throw Object.assign(new Error('Model-backed match creation is temporarily limited.'),{status:429,code:'PUBLIC_MODEL_MATCH_RATE_LIMITED'});
+}
 async function createSession(command, data) {
   const config=command==='start'?data.config:data.replay?.config;
-  const usesServerModel=config?.agents?.some(agent=>['http','openai-compatible'].includes(agent.provider));
-  if(production&&usesServerModel){
-    if(!publicModelInferenceEnabled)throw Object.assign(new Error('Server-paid model inference is disabled for public matches.'),{status:403,code:'PUBLIC_MODEL_INFERENCE_DISABLED'});
-    if(!publicModelMatchCreates.allow())throw Object.assign(new Error('Model-backed match creation is temporarily limited.'),{status:429,code:'PUBLIC_MODEL_MATCH_RATE_LIMITED'});
-  }
+  enforcePublicModelAdmission(config);
   await ensureSessionCapacity();
   const session = randomUUID();
   sessions.set(session, true);
@@ -273,7 +275,9 @@ const server = http.createServer(async (req, res) => {
       if(production&&!publicFundedCreates.allow())return json(res,429,{error:'Funded match creation is temporarily limited. Try again later.'});
       const data=await body(req);
       if(publicDevnet&&data.mode!=='devnet')return json(res,400,{error:'Public funded matches require Devnet test SOL'});
-      const created=await funded.create(await resolveConfig(core,data.config),data);
+      const config=await resolveConfig(core,data.config);
+      enforcePublicModelAdmission(config);
+      const created=await funded.create(config,data);
       return json(res,201,created,{'Set-Cookie':hostCookie(created.session,process.env,Date.now(),'funded-matches')});
     }
     const economyRoute=route.match(/^\/api\/funded-matches\/([a-f0-9-]{36})(?:\/(fund|fund-all|cancel|settle|reconcile))?$/);
