@@ -1,0 +1,117 @@
+import {mkdir,open,readFile,rename,unlink} from 'node:fs/promises';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {decodeSolanaAddress} from './wallet-auth.js';
+
+const strategies=new Set(['aggressive','conservative','opportunist','cooperative']);
+const capabilities=new Set(['compute','tools','games']);
+const inputFields=new Set(['format','name','avatar','strategy','personality','capabilities','provider','model']);
+const cleanOwner=owner=>({id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null});
+function validateAgentInput(value,approvedAvatars,{importing=false}={}){
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Object.assign(new Error('Agent configuration must be an object'),{status:400,code:'INVALID_AGENT_CONFIG'});
+ for(const key of Object.keys(value))if(!inputFields.has(key))throw Object.assign(new Error(`Unsupported agent field: ${key}`),{status:400,code:'UNSUPPORTED_AGENT_FIELD'});
+ if(importing&&value.format!=='aae-agent-v1')throw Object.assign(new Error('Unsupported agent export format'),{status:400,code:'INVALID_AGENT_FORMAT'});
+ if(!importing&&value.format!==undefined)throw Object.assign(new Error('Use the agent import route for exported files'),{status:400,code:'INVALID_AGENT_FORMAT'});
+ const name=typeof value.name==='string'?value.name.trim():'';
+ if(!name||[...name].length>28)throw Object.assign(new Error('Agent name must contain 1–28 characters'),{status:400,code:'INVALID_AGENT_NAME'});
+ const avatar=value.avatar;
+ if(typeof avatar!=='string'||!approvedAvatars.has(avatar))throw Object.assign(new Error('Choose an approved avatar ID'),{status:400,code:'INVALID_AGENT_AVATAR'});
+ const strategy=value.strategy||'opportunist';
+ if(!strategies.has(strategy))throw Object.assign(new Error('Unknown strategy'),{status:400,code:'INVALID_AGENT_STRATEGY'});
+ if(value.provider!==undefined&&value.provider!=='mock')throw Object.assign(new Error('User agents currently support the deterministic mock provider only'),{status:400,code:'UNSUPPORTED_AGENT_PROVIDER'});
+ const model=value.model??`mock/${strategy}`;
+ if(model!==`mock/${strategy}`)throw Object.assign(new Error('Mock model must match the selected strategy'),{status:400,code:'INVALID_AGENT_MODEL'});
+ const personality=value.personality??'Compete using observable state and the selected strategy.';
+ if(typeof personality!=='string'||personality.trim().length>240)throw Object.assign(new Error('Personality must be 240 characters or fewer'),{status:400,code:'INVALID_AGENT_PERSONALITY'});
+ const requested=value.capabilities??['games'];
+ if(!Array.isArray(requested)||requested.length>3||new Set(requested).size!==requested.length||requested.some(capability=>!capabilities.has(capability)))throw Object.assign(new Error('Capabilities may contain only compute, tools, and games'),{status:400,code:'INVALID_AGENT_CAPABILITIES'});
+ return {name,avatar,strategy,personality:personality.trim(),provider:'mock',model,capabilities:requested};
+}
+function validateState(state){
+ if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||state.owners.length>10_000||state.agents.length>100_000)throw new Error('Invalid ownership store format or capacity');
+ const owners=new Set(),wallets=new Set(),agents=new Set();
+ for(const owner of state.owners){
+  if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string')throw new Error('Invalid owner record');
+  owners.add(owner.id);
+  if(owner.identity_type==='solana'&&typeof owner.wallet_public_key!=='string')throw new Error('Wallet owner is missing its public key');
+  if(owner.identity_type==='anonymous'&&owner.wallet_public_key!==null&&owner.wallet_public_key!==undefined)throw new Error('Anonymous owner cannot have a wallet key');
+  if(owner.wallet_public_key!==null&&owner.wallet_public_key!==undefined){if(typeof owner.wallet_public_key!=='string'||wallets.has(owner.wallet_public_key))throw new Error('Invalid or duplicate owner wallet');decodeSolanaAddress(owner.wallet_public_key);wallets.add(owner.wallet_public_key);}
+ }
+ for(const agent of state.agents){
+  if(!/^u-[a-f0-9-]{36}$/.test(agent.id)||agents.has(agent.id)||!owners.has(agent.owner_id)||!strategies.has(agent.strategy)||typeof agent.name!=='string'||!agent.name.trim()||agent.name.length>28||typeof agent.avatar!=='string'||!/^[-a-z0-9]{1,40}$/.test(agent.avatar)||typeof agent.personality!=='string'||agent.personality.length>240||agent.provider!=='mock'||agent.model!==`mock/${agent.strategy}`||!Array.isArray(agent.capabilities)||agent.capabilities.length>3||new Set(agent.capabilities).size!==agent.capabilities.length||agent.capabilities.some(capability=>!capabilities.has(capability)))throw new Error('Invalid owned agent record');
+  const treasury=agent.treasury,policy=treasury?.spending_policy;
+  if(!treasury||!['none','mock'].includes(treasury.network)||!['NONE','MOCK_CREDIT'].includes(treasury.currency)||typeof treasury.available_base_units!=='string'||!/^(0|[1-9][0-9]{0,15})$/.test(treasury.available_base_units)||typeof treasury.reserved_base_units!=='string'||!/^(0|[1-9][0-9]{0,15})$/.test(treasury.reserved_base_units)||!Array.isArray(treasury.receipts)||treasury.receipts.length>100_000||!['read_only','manual'].includes(policy?.mode)||typeof policy.max_per_action!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(policy.max_per_action)||typeof policy.max_per_day!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(policy.max_per_day)||!Array.isArray(policy.allowed_capabilities)||policy.allowed_capabilities.length>3||new Set(policy.allowed_capabilities).size!==policy.allowed_capabilities.length||policy.allowed_capabilities.some(capability=>!capabilities.has(capability)))throw new Error('Invalid agent treasury record');
+  if(treasury.network==='none'&&(treasury.currency!=='NONE'||treasury.available_base_units!=='0'||treasury.reserved_base_units!=='0'||treasury.receipts.length))throw new Error('Unfunded treasury has inconsistent accounting');
+  for(const receipt of treasury.receipts)if(typeof receipt.id!=='string'||receipt.agent_id!==agent.id||receipt.owner_id!==agent.owner_id||receipt.network!=='mock'||receipt.currency!=='MOCK_CREDIT'||receipt.status!=='simulated'||typeof receipt.amount!=='string'||!/^[1-9][0-9]*$/.test(receipt.amount)||receipt.capability!=='mock_funding'||typeof receipt.created_at!=='string')throw new Error('Invalid agent treasury receipt');
+  agents.add(agent.id);
+ }
+}
+
+/** Single-process durable owner/agent registry. It stores no keys or provider credentials. */
+export class OwnershipStore{
+ constructor(directory,{now=Date.now}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.state={format:1,owners:[],agents:[]};this.pending=Promise.resolve();this.ready=false;}
+ async init(){
+  await mkdir(this.directory,{recursive:true});
+  try{this.state=JSON.parse(await readFile(this.file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
+  validateState(this.state);this.ready=true;
+ }
+ requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
+ write(state){
+  const temp=`${this.file}.${randomUUID()}.tmp`;
+  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
+ }
+ mutate(fn){
+  this.requireReady();
+  const operation=this.pending.then(async()=>{const next=structuredClone(this.state),result=fn(next);validateState(next);await this.write(next);this.state=next;return structuredClone(result);});
+  this.pending=operation.catch(()=>{});return operation;
+ }
+ owner(id){this.requireReady();const value=this.state.owners.find(owner=>owner.id===id);return value?structuredClone(value):null;}
+ ownerByWallet(publicKey){this.requireReady();const value=this.state.owners.find(owner=>owner.wallet_public_key===publicKey);return value?structuredClone(value):null;}
+ async createAnonymous(){return this.mutate(state=>{if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'anonymous',wallet_public_key:null};state.owners.push(owner);return cleanOwner(owner);});}
+ async createWalletOwner(publicKey){return this.mutate(state=>{
+  try{decodeSolanaAddress(publicKey);}catch{throw Object.assign(new Error('Invalid Solana wallet address'),{status:400,code:'INVALID_WALLET_ADDRESS'});}
+  const existing=state.owners.find(owner=>owner.wallet_public_key===publicKey);if(existing)return cleanOwner(existing);
+  if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});
+  const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'solana',wallet_public_key:publicKey};state.owners.push(owner);return cleanOwner(owner);
+ });}
+ agentsForOwner(ownerId){this.requireReady();return structuredClone(this.state.agents.filter(agent=>agent.owner_id===ownerId));}
+ listPublicAgents(){this.requireReady();return this.state.agents.map(agent=>{
+  const owner=this.state.owners.find(value=>value.id===agent.owner_id),wallet=owner?.wallet_public_key||null;
+  return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
+ });}
+ agentForOwner(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);return agent?structuredClone(agent):null;}
+ publicAgent(id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id);if(!agent)return null;return this.listPublicAgents().find(value=>value.id===id)||null;}
+ async createAgent(ownerId,input,approvedAvatars,{importing=false}={}){
+  const config=validateAgentInput(input,approvedAvatars,{importing});
+  return this.mutate(state=>{
+   if(!state.owners.some(owner=>owner.id===ownerId))throw Object.assign(new Error('Owner profile not found'),{status:401,code:'OWNER_NOT_FOUND'});
+   if(state.agents.filter(agent=>agent.owner_id===ownerId).length>=100)throw Object.assign(new Error('Agent limit reached for this owner'),{status:429,code:'AGENT_LIMIT'});
+   const id=`u-${randomUUID()}`;
+   const agent={id,owner_id:ownerId,...config,created_at:new Date(this.now()).toISOString(),ownership_status:'user',treasury:{network:'none',currency:'NONE',available_base_units:'0',reserved_base_units:'0',spending_policy:{mode:'read_only',max_per_action:'0',max_per_day:'0',allowed_capabilities:[]},receipts:[]}};
+   state.agents.push(agent);return agent;
+  });
+ }
+ async mockFund(ownerId,id,units){
+  if(!Number.isSafeInteger(units)||units<1||units>1_000_000)throw Object.assign(new Error('Mock funding must be 1–1,000,000 test credits'),{status:400,code:'INVALID_MOCK_AMOUNT'});
+  return this.mutate(state=>{
+   const agent=state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)throw Object.assign(new Error('Agent not found'),{status:404,code:'AGENT_NOT_FOUND'});
+   const treasury=agent.treasury,balance=BigInt(treasury.available_base_units)+BigInt(units);if(balance>BigInt(Number.MAX_SAFE_INTEGER))throw Object.assign(new Error('Mock balance limit reached'),{status:409,code:'BALANCE_LIMIT'});
+   treasury.network='mock';treasury.currency='MOCK_CREDIT';treasury.available_base_units=balance.toString();
+   const receipt={id:`mock-${randomUUID()}`,agent_id:id,owner_id:ownerId,capability:'mock_funding',amount:String(units),currency:'MOCK_CREDIT',network:'mock',transaction_reference:null,status:'simulated',created_at:new Date(this.now()).toISOString()};
+   treasury.receipts.push(receipt);return {treasury,receipt};
+  });
+ }
+ async setSpendingPolicy(ownerId,id,input){
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['mode','allowed_capabilities','max_per_action','max_per_day'].includes(key)))throw Object.assign(new Error('Invalid spending policy'),{status:400,code:'INVALID_SPENDING_POLICY'});
+  const mode=input.mode;
+  if(!['read_only','manual'].includes(mode))throw Object.assign(new Error('Budgeted/autonomous spending is not implemented; use read_only or manual'),{status:409,code:'AGENT_SPENDING_NOT_IMPLEMENTED'});
+  const allowed=input.allowed_capabilities??[];
+  if(!Array.isArray(allowed)||allowed.length>3||new Set(allowed).size!==allowed.length||allowed.some(capability=>!capabilities.has(capability)))throw Object.assign(new Error('Unknown spending capability'),{status:400,code:'INVALID_SPENDING_CAPABILITY'});
+  if(mode==='read_only'&&allowed.length)throw Object.assign(new Error('Read-only policy cannot allow spending capabilities'),{status:400,code:'READ_ONLY_CAPABILITIES'});
+  const maxPerAction=input.max_per_action??'0',maxPerDay=input.max_per_day??'0';
+  if(![maxPerAction,maxPerDay].every(value=>typeof value==='string'&&/^(0|[1-9][0-9]{0,18})$/.test(value)))throw Object.assign(new Error('Spending limits must be nonnegative integer base-unit strings'),{status:400,code:'INVALID_SPENDING_LIMIT'});
+  if(mode==='manual'&&(BigInt(maxPerAction)!==0n||BigInt(maxPerDay)!==0n||allowed.length))throw Object.assign(new Error('Manual policy requires owner approval for each future action and does not enable automated spending'),{status:400,code:'MANUAL_APPROVAL_REQUIRED'});
+  return this.mutate(state=>{const agent=state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)throw Object.assign(new Error('Agent not found'),{status:404,code:'AGENT_NOT_FOUND'});agent.treasury.spending_policy={mode,max_per_action:maxPerAction,max_per_day:maxPerDay,allowed_capabilities:allowed};return agent.treasury.spending_policy;});
+ }
+ exportAgent(ownerId,id){const agent=this.agentForOwner(ownerId,id);if(!agent)return null;return {format:'aae-agent-v1',name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,capabilities:agent.capabilities};}
+}
