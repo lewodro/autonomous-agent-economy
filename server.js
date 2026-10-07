@@ -49,6 +49,7 @@ const walletChallengeRequests=new KeyedSlidingWindowLimiter({limit:20,windowMs:6
 const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
 const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentFundingRequests=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
+const agentPolicyChanges=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
 function clientRateKey(req){
   if(trustProxy){const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();if(isIP(forwarded))return forwarded;}
@@ -172,7 +173,10 @@ const server = http.createServer(async (req, res) => {
         const data=await body(req,1024),result=await ownershipStore.mockFund(ownerId,id,data.amount,{idempotencyKey:req.headers['idempotency-key']});
         console.log(JSON.stringify({event:'agent_mock_funded',network:'mock'}));return json(res,200,result);
       }
-      if(action==='spending-policy'&&req.method==='POST')return json(res,200,{spending_policy:await ownershipStore.setSpendingPolicy(ownerId,id,await body(req,2048))});
+      if(action==='spending-policy'&&req.method==='POST'){
+        if(!agentPolicyChanges.allow(ownerId))return json(res,429,{error:'Agent policy changes are temporarily limited',code:'RATE_LIMITED'});
+        return json(res,200,{spending_policy:await ownershipStore.setSpendingPolicy(ownerId,id,await body(req,2048))});
+      }
       return json(res,405,{error:'Method not allowed'});
     }
     if(route==='/api/agents'&&req.method==='GET'){

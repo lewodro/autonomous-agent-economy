@@ -74,6 +74,12 @@ test('owner API supports guest and wallet identity, private agent management, an
   }
   const limitedFunding=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':randomUUID()},body:'{"amount":1}'});
   assert.equal(limitedFunding.response.status,429);assert.equal(limitedFunding.value.code,'RATE_LIMITED');
+  for(let index=0;index<30;index++){
+    const response=await call(`/api/me/agents/${id}/spending-policy`,{method:'POST',cookie:guest.cookie,body:'{"mode":"read_only"}'});
+    assert.equal(response.response.status,200);
+  }
+  const limitedPolicy=await call(`/api/me/agents/${id}/spending-policy`,{method:'POST',cookie:guest.cookie,body:'{"mode":"read_only"}'});
+  assert.equal(limitedPolicy.response.status,429);assert.equal(limitedPolicy.value.code,'RATE_LIMITED');
   for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,201);
   assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,429);
   assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'198.51.100.30'}})).response.status,201,'one visitor rate limit must not block other addresses');
