@@ -269,7 +269,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',identity_storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,wallet_auth_available:true,agent_funding:appMode==='mock'?'simulated_only':'disabled',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,ownership:{wallet_auth_available:true,agent_creation_available:true,mock_agent_funding:appMode==='mock',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},

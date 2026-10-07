@@ -26,9 +26,14 @@ test('owner API supports guest and wallet identity, private agent management, an
   await start();
   assert.equal((await fetch(`${base}/profile/`)).status,200);
   const {value:capabilities}=await call('/api/capabilities');assert.equal(capabilities.ownership.agent_creation_available,true);assert.equal(capabilities.ownership.mainnet_match_wagering_enabled,false);
+  const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
   const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);
   const created=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'})});
   assert.equal(created.response.status,201,JSON.stringify(created.value));const id=created.value.agent.id;
+  const imported=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Imported',avatar:'visitor_atlas',strategy:'cooperative',personality:'Calm.'})});
+  assert.equal(imported.response.status,201,JSON.stringify(imported.value));
+  const rejectedImport=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Unsafe',avatar:'visitor_ember',strategy:'cooperative',private_key:'do-not-accept'})});
+  assert.equal(rejectedImport.response.status,400);
   const publicResult=await call(`/api/agents/${id}`);assert.equal(publicResult.value.agent.owner_id,undefined);assert.equal(publicResult.value.agent.treasury,undefined);
   const funded=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,body:JSON.stringify({amount:123})});assert.equal(funded.value.treasury.available_base_units,'123');
   const isolated=await call('/api/auth/anonymous',{method:'POST',body:'{}'});

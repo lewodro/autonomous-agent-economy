@@ -8,11 +8,12 @@ function button(label,handler){const value=document.createElement('button');valu
 function showAgent(agent,root){
  const card=document.createElement('article');card.className='agent';
  const title=document.createElement('h3');title.textContent=agent.name;card.append(title);
- const details=[`${agent.strategy} · ${agent.provider}`,`Avatar: ${agent.avatar}`,`Ownership: ${agent.ownership_status}`,`Treasury: ${agent.treasury.currency} ${agent.treasury.available_base_units} · ${agent.treasury.network}`,`Policy: ${agent.treasury.spending_policy.mode}`];
+ const details=[`${agent.strategy} · ${agent.provider}`,`Avatar: ${agent.avatar}`,`Ownership: ${agent.ownership_status}`,`Treasury: ${agent.treasury.currency} ${agent.treasury.available_base_units} · ${agent.treasury.network}`,`Policy: ${agent.treasury.spending_policy.mode} · automated spending disabled`,`Receipts: ${agent.treasury.receipts.length}`,...agent.treasury.receipts.slice(-3).reverse().map(receipt=>`${receipt.status}: ${receipt.amount} ${receipt.currency} (${receipt.capability})`)];
  for(const text of details){const line=document.createElement('p');line.textContent=text;card.append(line);}
  const controls=document.createElement('div');controls.className='actions';
  controls.append(button('Export agent.json',async()=>{try{const {agent:config}=await request(`/api/me/agents/${agent.id}/export`);const file=new Blob([JSON.stringify(config,null,2)],{type:'application/json'}),url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=`${agent.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}.json`;link.click();URL.revokeObjectURL(url);}catch(error){message(error.message);}}));
  controls.append(button('Set read-only',async()=>{try{await request(`/api/me/agents/${agent.id}/spending-policy`,{method:'POST',body:JSON.stringify({mode:'read_only'})});await refresh();message('Agent spending remains disabled.');}catch(error){message(error.message);}}));
+ controls.append(button('Require manual approval',async()=>{try{await request(`/api/me/agents/${agent.id}/spending-policy`,{method:'POST',body:JSON.stringify({mode:'manual'})});await refresh();message('Manual policy recorded; agent spending is not implemented.');}catch(error){message(error.message);}}));
  card.append(controls);
  root.append(card);
 }
