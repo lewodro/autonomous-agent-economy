@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ArenaRoomPool } from '../service/arena-rooms.js';
@@ -36,6 +36,17 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.deepEqual(restored.history(),history);assert.deepEqual(restored.profiles(),profiles);
   assert.throws(()=>pool.getRoom('missing'),/not found/);
   pool.close();restored.close();
+});
+test('arena checkpoint flushes file and directory and preserves state after sync failure',async t=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'arena-checkpoint-sync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  let failSync=false;const pool=new ArenaRoomPool(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});await pool.restore();
+  const room=pool.rooms.get('rps-1'),nextRng=room.state.rng===4294967295?1:room.state.rng+1;room.state.rng=nextRng;failSync=true;
+  await assert.rejects(pool.checkpoint(room),{status:503,code:'EIO'});
+  assert.equal(room.saved.state.rng,nextRng);
+  const disk=JSON.parse(await readFile(path.join(dir,'rps-1.json'),'utf8'));assert.equal(disk.state.rng,nextRng);
+  assert.deepEqual(await readdir(dir),['rps-1.json']);
+  const reopened=new ArenaRoomPool(dir);await reopened.restore();assert.equal(reopened.rooms.get('rps-1').state.rng,nextRng);
+  await pool.close();await reopened.close();
 });
 test('recently finished agents remain visible in the plaza when their room starts another fight',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-finish-flow-')),{stageMs:0});await pool.restore();

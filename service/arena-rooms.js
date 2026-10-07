@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, randomInt } from 'node:crypto';
 import { configureRun } from '../src/config.js';
@@ -12,10 +12,11 @@ const MAX_STEP_RETRIES = 3;
 const RECENT_FINISH_MS = 15_000;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, syncFolder=syncDirectory }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.syncFolder=syncFolder;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -110,8 +111,14 @@ export class ArenaRoomPool {
   }
   async checkpoint(room) {
     const saved={...room.saved,state:structuredClone(room.state)};
-    const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';
-    await withStorageFailure('arena checkpoint',async()=>{await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);});room.saved=saved;
+    const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';let renamed=false;
+    try{
+      await withStorageFailure('arena checkpoint',async()=>{
+        const handle=await open(temp,'wx',0o600);
+        try{await handle.writeFile(JSON.stringify(saved));await handle.sync();}finally{await handle.close();}
+        await rename(temp,target);renamed=true;room.saved=saved;await this.syncFolder(this.directory);
+      });
+    }finally{if(!renamed)await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
   }
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
