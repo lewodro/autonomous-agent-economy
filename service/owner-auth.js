@@ -23,7 +23,7 @@ export function ownerSessionFromRequest(req,env=process.env,now=Date.now()){
   const legacy=parts.length===3,[ownerId,expiry,versionText,signature]=legacy?[parts[0],parts[1],'0',parts[2]]:parts;
   if((!legacy&&parts.length!==4)||!/^[a-f0-9-]{36}$/.test(ownerId||'')||!/^[0-9]{10}$/.test(expiry||'')||!/^(0|[1-9][0-9]{0,15})$/.test(versionText||'')||!signature)return null;
   const seconds=Number(expiry),current=Math.floor(now/1000);
-  if(seconds<current||seconds>current+lifetimeSeconds)return null;
+  if(seconds<=current||seconds>current+lifetimeSeconds)return null;
   const sessionVersion=Number(versionText),payload=legacy?`${ownerId}.${expiry}`:`${ownerId}.${expiry}.${versionText}`;
   const expected=Buffer.from(mac(payload,env)),actual=Buffer.from(signature);
   return Number.isSafeInteger(sessionVersion)&&actual.length===expected.length&&timingSafeEqual(actual,expected)?{ownerId,sessionVersion}:null;

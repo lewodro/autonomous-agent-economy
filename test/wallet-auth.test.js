@@ -39,6 +39,7 @@ test('owner cookie is scoped, HttpOnly, tamper-resistant and expires',()=>{
  const req={headers:{cookie:cookie.split(';')[0]}};
  assert.equal(ownerIdFromRequest(req,env,now),owner);
  assert.equal(ownerIdFromRequest({headers:{cookie:req.headers.cookie.replace(owner,'b1f0c2d4-1111-4222-8333-123456789abc')}},env,now),null);
+ assert.equal(ownerIdFromRequest(req,env,now+30*24*60*60_000),null,'owner cookie is invalid at its exact expiry second');
  assert.equal(ownerIdFromRequest(req,env,now+31*24*60*60_000),null);
  assert.match(ownerCookieClear(env),/Max-Age=0/);
 });

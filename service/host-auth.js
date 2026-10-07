@@ -29,7 +29,7 @@ export function hasHostCookie(req, session, env = process.env, now = Date.now())
   const [id, expiry, mac, extra] = value.split('.');
   if (extra || id !== session || !/^\d{10}$/.test(expiry || '') || !mac) return false;
   const seconds = Number(expiry), current = Math.floor(now / 1000);
-  if (seconds < current || seconds > current + lifetimeSeconds) return false;
+  if (seconds <= current || seconds > current + lifetimeSeconds) return false;
   const expected = Buffer.from(signature(`${id}.${expiry}`, env));
   const actual = Buffer.from(mac);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
