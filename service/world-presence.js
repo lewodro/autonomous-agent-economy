@@ -36,7 +36,8 @@ export class WorldPresenceService {
   }
   snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...player }) => player) }; }
   sanitizePosition(position) {
-    const x = Number(position?.x), y = Number(position?.y);
+    const x = position?.x, y = position?.y;
+    if (typeof x !== 'number' || typeof y !== 'number') throw fail('INVALID_POSITION', 'Position coordinates must be numbers');
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > this.bounds.width || y > this.bounds.height) {
       throw fail('INVALID_POSITION', 'Position is outside the world bounds');
     }

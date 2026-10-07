@@ -28,6 +28,9 @@ test('presence limits update frequency and does not expose session tokens', () =
   assert.throws(() => service.move('main', { player_id: 'visitor', session_token: joined.session_token, position: { x: 11, y: 10 } }), { code: 'PRESENCE_RATE_LIMITED' });
   assert.throws(() => service.join('bad/world', {}), { code: 'WORLD_NOT_FOUND' });
   assert.throws(() => service.join('unconfigured-world-1', {}), { code: 'WORLD_NOT_FOUND' });
+  for(const position of [{x:'10',y:10},{x:true,y:10},{x:10,y:null},{x:NaN,y:10}]){
+    assert.throws(()=>service.join('main',{player_id:'invalid',position}),{code:'INVALID_POSITION'});
+  }
   assert.equal(service.worlds.has('unconfigured-world-1'),false,'unknown world requests cannot allocate process-local state');
 });
 
