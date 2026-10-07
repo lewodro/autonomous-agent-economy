@@ -31,6 +31,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
   const staleSession=await call('/api/me',{cookie:ownerCookie(randomUUID(),{NODE_ENV:'test',HOST_SESSION_SECRET:'test-owner-session-secret-for-api'}).split(';')[0]});
   assert.equal(staleSession.response.status,401);assert.equal(staleSession.value.code,'OWNER_SESSION_REQUIRED');assert.match(staleSession.response.headers.get('set-cookie')||'',/^aae_owner=;/);
+  const oversizedGuest=await call('/api/auth/anonymous',{method:'POST',headers:{'Idempotency-Key':randomUUID()},body:JSON.stringify({padding:'x'.repeat(2048)})});assert.equal(oversizedGuest.response.status,413);
   const missingGuestKey=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(missingGuestKey.response.status,400);assert.equal(missingGuestKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
   const guestKey=randomUUID(),guestHeaders={'Idempotency-Key':guestKey};
   const guest=await call('/api/auth/anonymous',{method:'POST',headers:guestHeaders,body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;

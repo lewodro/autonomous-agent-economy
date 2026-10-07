@@ -119,6 +119,7 @@ const server = http.createServer(async (req, res) => {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
     }
     if(req.method==='POST'&&route==='/api/auth/anonymous'){
+      await body(req,1024);
       const currentOwner=authenticatedOwner(req);
       if(currentOwner)return json(res,200,{owner:{id:currentOwner.id,created_at:currentOwner.created_at,identity_type:currentOwner.identity_type,wallet_public_key:currentOwner.wallet_public_key||null}},{'Set-Cookie':ownerCookie(currentOwner.id,process.env,Date.now(),currentOwner.session_version)});
       if(!identityCreates.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
