@@ -138,6 +138,7 @@ const server = http.createServer(async (req, res) => {
       const data=await body(req,4096),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`,currentOwner=authenticatedOwner(req);
       const ownerContext=currentOwner?{ownerId:currentOwner.id,sessionVersion:currentOwner.session_version}:null;
       const verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature,origin,ownerContext);
+      if(currentOwner?.identity_type==='solana'&&currentOwner.wallet_public_key!==verified.publicKey)return json(res,409,{error:'This profile already has a different wallet. Sign out before signing in with another wallet.',code:'OWNER_WALLET_ALREADY_LINKED'});
       const owner=currentOwner?.identity_type==='anonymous'
         ?await ownershipStore.linkWalletOwner(currentOwner.id,verified.publicKey)
         :await ownershipStore.createWalletOwner(verified.publicKey);

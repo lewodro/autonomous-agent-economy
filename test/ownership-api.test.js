@@ -71,6 +71,12 @@ test('owner API supports guest and wallet identity, private agent management, an
   const verified=await call('/api/auth/wallet/verify',{method:'POST',cookie:guest.cookie,body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});
   assert.equal(verified.response.status,200);assert.equal(verified.value.owner.identity_type,'solana');assert.equal(verified.value.owner.id,guestOwnerId);assert.ok(verified.cookie);
   const linkedAgents=await call('/api/me/agents',{cookie:verified.cookie});assert.ok(linkedAgents.value.agents.some(agent=>agent.id===id),'guest-created agent should remain accessible after wallet linking');
+  const secondPair=generateKeyPairSync('ed25519'),secondPublicKey=encodeBase58(secondPair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
+  const secondChallenge=await call('/api/auth/wallet/challenge',{method:'POST',cookie:verified.cookie,body:JSON.stringify({public_key:secondPublicKey})});
+  const secondSignature=sign(null,Buffer.from(secondChallenge.value.message),secondPair.privateKey).toString('base64url');
+  const secondWallet=await call('/api/auth/wallet/verify',{method:'POST',cookie:verified.cookie,body:JSON.stringify({challenge_id:secondChallenge.value.challenge_id,public_key:secondPublicKey,signature:secondSignature})});
+  assert.equal(secondWallet.response.status,409);assert.equal(secondWallet.value.code,'OWNER_WALLET_ALREADY_LINKED');
+  assert.equal((await call('/api/me',{cookie:verified.cookie})).value.owner.wallet_public_key,publicKey,'a rejected second wallet must leave the existing owner session unchanged');
   assert.equal((await call('/api/me',{cookie:guest.cookie})).response.status,401,'wallet linking invalidates the old anonymous session');
   guest.cookie=verified.cookie;
   assert.equal((await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})})).response.status,401);
