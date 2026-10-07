@@ -15,7 +15,7 @@ async function start(directory, extraEnv = {}) {
     env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0',
       PUBLIC_ORIGIN: 'https://seat.example', RAILWAY_PUBLIC_DOMAIN: '', MATCHES_DIR: directory,
       HOST_SESSION_SECRET: 'local-integration-secret-value-long-enough', ECONOMY_LAB: '0',
-      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ...extraEnv },
+      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ENABLE_PUBLIC_MODEL_INFERENCE:'false', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -89,6 +89,9 @@ test('public games are visible after restart while only the host can advance the
     assert.deepEqual(capabilities.body.funded_modes, []);
     assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'rps', 'tictactoe']);
     const config = (await request(running.base, '/api/config?agents=2')).body;
+    const modelConfig=structuredClone(config);modelConfig.agents[0].provider='openai-compatible';modelConfig.agents[0].model='server-test-model';
+    const modelMatch=await request(running.base,'/api/matches',{config:modelConfig});assert.equal(modelMatch.status,403);assert.equal(modelMatch.body.code,'PUBLIC_MODEL_INFERENCE_DISABLED');
+    const importedModel=await request(running.base,'/api/replays/import',{replay:{config:modelConfig}});assert.equal(importedModel.status,403);assert.equal(importedModel.body.code,'PUBLIC_MODEL_INFERENCE_DISABLED','replay imports cannot bypass the server model gate');
     const created = await request(running.base, '/api/matches', { config });
     assert.equal(created.status, 201);
     assert.match(created.cookie, /HttpOnly; SameSite=Strict/);
@@ -131,4 +134,19 @@ test('public Devnet mode is explicit and cannot be downgraded to a mock funded m
     if (running) await stop(running.child);
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('public model inference requires explicit opt-in and limits backed match creation',{
+ skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
+ timeout:30_000,
+},async()=>{
+ const directory=await mkdtemp(`${os.tmpdir()}/last-seat-public-models-`);let running;
+ try{
+  running=await start(directory,{ENABLE_PUBLIC_MODEL_INFERENCE:'true'});
+  const headers={Host:'seat.example',Origin:'https://seat.example','Content-Type':'application/json'};
+  const capabilities=await fetch(`${running.base}/api/capabilities`,{headers}).then(response=>response.json());assert.equal(capabilities.public_model_inference_enabled,true);
+  const config=await fetch(`${running.base}/api/config?agents=2`,{headers}).then(response=>response.json());config.agents[0].provider='openai-compatible';config.agents[0].model='configured-server-model';
+  for(let index=0;index<2;index++){const response=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(response.status,201);}
+  const limited=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(limited.status,429);assert.equal((await limited.json()).code,'PUBLIC_MODEL_MATCH_RATE_LIMITED');
+ }finally{if(running)await stop(running.child);await rm(directory,{recursive:true,force:true});}
 });

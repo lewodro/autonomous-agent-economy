@@ -46,10 +46,11 @@ There are **no database migrations** in this topology. `npm ci` and `npm run bui
 | `PORT` | Hosting-provided | HTTP listener port; defaults to 3000 |
 | `TRUST_PROXY` | Optional, default `false` | Set `true` behind trusted ingress; Railway supplies `X-Real-IP`, other proxies must overwrite `X-Real-IP` or `X-Forwarded-For` |
 | `MODEL_BASE_URL`, `MODEL_API_KEY_ENV` | Optional | Explicit approved model endpoint and server-side key variable name |
+| `ENABLE_PUBLIC_MODEL_INFERENCE` | Optional, default `false` | Explicitly allow public matches to use the server's model provider; limited to two new model-backed sessions per minute |
 | `ECONOMY_LAB`, `MACHINE_PAYMENTS_DEMO` | Must remain off | Local development demonstrations only |
 | `ENTRY_FEE_ENABLED` | Off for free launch | Set only with the complete experimental Devnet variable set |
 
-Mock strategies need no provider key. Optional `/profile/` wallet sign-in stores only the verified public key; user agents are persisted on the mounted volume. Mainnet agent funding is not implemented, mock credits are local-only, and mainnet match wagering remains disabled. If an optional model provider fails, the bounded fallback policy applies. Never put API keys in agent JSON, frontend files, logs or public Railway variables.
+Mock strategies need no provider key. Public production blocks server-paid model inference unless explicitly enabled; provider spending limits should be set before opting in. Optional `/profile/` wallet sign-in stores only the verified public key; user agents are persisted on the mounted volume. Mainnet agent funding is not implemented, mock credits are local-only, and mainnet match wagering remains disabled. If an optional model provider fails, the bounded fallback policy applies. Never put API keys in agent JSON, frontend files, logs or public Railway variables.
 
 ## Verify and recover
 

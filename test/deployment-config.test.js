@@ -4,7 +4,7 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicPredictions: false, appMode:'free', solanaNetwork:'none', trustProxy:false, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicPredictions: false, publicModelInferenceEnabled:false, appMode:'free', solanaNetwork:'none', trustProxy:false, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
 });
 
@@ -21,6 +21,8 @@ test('runtime modes are explicit and mainnet ownership and wagering fail closed'
   assert.throws(()=>validateDeploymentConfig({APP_MODE:'mainnet-ownership'}),{code:'MAINNET_AGENT_FUNDING_NOT_IMPLEMENTED'});
   assert.equal(validateDeploymentConfig({TRUST_PROXY:'true'}).trustProxy,true);
   assert.throws(()=>validateDeploymentConfig({TRUST_PROXY:'1'}),/TRUST_PROXY must be true or false/);
+  assert.equal(validateDeploymentConfig({ENABLE_PUBLIC_MODEL_INFERENCE:'true'}).publicModelInferenceEnabled,true);
+  assert.throws(()=>validateDeploymentConfig({ENABLE_PUBLIC_MODEL_INFERENCE:'yes'}),/ENABLE_PUBLIC_MODEL_INFERENCE must be true or false/);
 });
 
 test('Railway production accepts its assigned HTTPS host and mounted persistent directory', () => {

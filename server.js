@@ -33,7 +33,7 @@ const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approv
 const approvedAvatarSet = new Set(approvedAvatarIds);
 const approvedAvatarSprites=approvedAvatarSpritesFromManifest(avatarManifest);
 const deployment = validateDeploymentConfig();
-const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
+const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, trustProxy, publicModelInferenceEnabled, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const replayArchive=new ReplayArchive(directory);
@@ -42,6 +42,7 @@ const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions,{ensureCapacity:ensureSessionCapacity});
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
+const publicModelMatchCreates=new SlidingWindowLimiter({limit:2,windowMs:60_000});
 const publicReplayShares=new KeyedSlidingWindowLimiter({limit:10,windowMs:60_000});
 const publicReplayImports=new KeyedSlidingWindowLimiter({limit:6,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
@@ -64,6 +65,12 @@ const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
+  const config=command==='start'?data.config:data.replay?.config;
+  const usesServerModel=config?.agents?.some(agent=>['http','openai-compatible'].includes(agent.provider));
+  if(production&&usesServerModel){
+    if(!publicModelInferenceEnabled)throw Object.assign(new Error('Server-paid model inference is disabled for public matches.'),{status:403,code:'PUBLIC_MODEL_INFERENCE_DISABLED'});
+    if(!publicModelMatchCreates.allow())throw Object.assign(new Error('Model-backed match creation is temporarily limited.'),{status:429,code:'PUBLIC_MODEL_MATCH_RATE_LIMITED'});
+  }
   await ensureSessionCapacity();
   const session = randomUUID();
   sessions.set(session, true);
@@ -300,10 +307,10 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',identity_storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,wallet_auth_available:true,agent_funding:appMode==='mock'?'simulated_only':'disabled',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',identity_storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,wallet_auth_available:true,public_model_inference_enabled:publicModelInferenceEnabled,agent_funding:appMode==='mock'?'simulated_only':'disabled',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
-      public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,ownership:{wallet_auth_available:true,agent_creation_available:true,mock_agent_funding:appMode==='mock',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},
+      public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,public_model_inference_enabled:publicModelInferenceEnabled,ownership:{wallet_auth_available:true,agent_creation_available:true,mock_agent_funding:appMode==='mock',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},
       game_modes:['last-seat','rps','tictactoe'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'

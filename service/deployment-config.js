@@ -24,6 +24,8 @@ export function validateDeploymentConfig(env = process.env) {
   if (wagering === 'true') throw Object.assign(new Error('MAINNET_MATCH_WAGERING_DISABLED: wagering is not implemented and remains disabled.'),{code:'MAINNET_MATCH_WAGERING_DISABLED'});
   const mainnetFunding = env.ENABLE_MAINNET_AGENT_FUNDING;
   if (mainnetFunding !== undefined && !['true','false'].includes(mainnetFunding)) throw new Error('ENABLE_MAINNET_AGENT_FUNDING must be true or false.');
+  const publicModelInference=env.ENABLE_PUBLIC_MODEL_INFERENCE;
+  if(publicModelInference!==undefined&&!['true','false'].includes(publicModelInference))throw new Error('ENABLE_PUBLIC_MODEL_INFERENCE must be true or false.');
   const solanaNetwork = env.SOLANA_NETWORK || (env.ECONOMY_MODE === 'DEVNET' || env.APP_MODE === 'devnet' ? 'devnet' : env.ECONOMY_MODE === 'LOCAL' || env.APP_MODE === 'local-validator' ? 'localnet' : 'none');
   if (!['none','localnet','devnet','mainnet-beta'].includes(solanaNetwork)) throw new Error('SOLANA_NETWORK must be none, localnet, devnet, or mainnet-beta.');
   if (solanaNetwork === 'mainnet-beta' || mainnetFunding === 'true') {
@@ -56,5 +58,5 @@ export function validateDeploymentConfig(env = process.env) {
   }
 
   const publicOrigins = [...new Set([publicOrigin, env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : null].filter(Boolean))];
-  return { production, publicDevnet, publicPredictions, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
+  return { production, publicDevnet, publicPredictions, publicModelInferenceEnabled:publicModelInference==='true', appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
 }
