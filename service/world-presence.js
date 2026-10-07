@@ -125,8 +125,13 @@ export class WorldPresenceService {
     let closed = false; const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); group.delete(res); if (!group.size) this.listeners.delete(worldId); };
     const heartbeat = setInterval(() => { this.prune(worldId); if (res.destroyed || res.writableLength > 1_000_000) return res.destroy(); try { res.write(': keepalive\n\n'); } catch { res.destroy(); } }, 15_000); heartbeat.unref();
     res.on('close', cleanup); res.on('error', cleanup);
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-    res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);
+    try {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);
+    } catch {
+      cleanup();
+      try { res.destroy(); } catch { /* response is already gone */ }
+    }
     return true;
   }
   close() { for (const listeners of this.listeners.values()) for (const res of listeners) res.destroy(); this.listeners.clear(); this.worlds.clear(); }

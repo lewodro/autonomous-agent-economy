@@ -69,3 +69,19 @@ test('presence SSE viewers are capped and released on disconnect',()=>{
   assert.equal(service.connect('main',second),true);
   second.emit('close');
 });
+
+test('failed SSE snapshot writes release the viewer slot',()=>{
+  class BrokenResponse extends EventEmitter {
+    constructor(){super();this.destroyed=false;this.writableLength=0;}
+    writeHead(){throw new Error('socket closed');}
+    write(){return false;}
+    destroy(){this.destroyed=true;this.emit('close');}
+  }
+  const service=new WorldPresenceService({maxViewers:1}),failed=new BrokenResponse(),next=new BrokenResponse();
+  assert.equal(service.connect('main',failed),true);
+  assert.equal(failed.destroyed,true);
+  assert.equal(service.listeners.has('main'),false);
+  next.writeHead=()=>{};
+  assert.equal(service.connect('main',next),true,'a failed response must not consume the viewer slot');
+  next.emit('close');
+});
