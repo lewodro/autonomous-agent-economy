@@ -70,10 +70,12 @@ not merged automatically. The server issues an HttpOnly owner cookie.
 | `POST /api/auth/wallet/verify` | `{ challenge_id, public_key, signature }` (base64url) → verified owner cookie |
 | `POST /api/auth/logout` | Clear the owner cookie |
 | `GET /api/me` | Current owner; 401 without a valid session |
-| `GET /api/me/agents` | Private owner agent list, including that owner's treasury ledger |
+| `GET /api/me/agents` | Private owner agent list with treasury balances, receipt counts, and up to three recent receipts per agent |
 | `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID; requires UUID v4 `Idempotency-Key` header |
 | `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected; requires UUID v4 `Idempotency-Key` header |
 | `GET /api/me/agents/:agentId/export` | Download non-secret agent config, only for its owner |
+| `GET /api/me/agents/:agentId/treasury` | Bounded treasury summary with recent receipts |
+| `GET /api/me/agents/:agentId/transactions?limit=50&before=:receiptId` | Private receipt history page (1–100 newest-first); `next_cursor` is the `before` value for the next page |
 | `POST /api/me/agents/:agentId/mock-fund` | Add mock credits only in `APP_MODE=mock`; requires UUID v4 `Idempotency-Key` header |
 | `GET /api/agents?limit=50&after=:agentId` | Public sanitized directory page (1–100 items); returns `agents` and `next_cursor` |
 | `GET /api/agents/:agentId` | Public sanitized agent profile; no owner ID, treasury, credentials, or private key |

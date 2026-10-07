@@ -22,8 +22,8 @@ test('anonymous owner can create a free agent and state survives restart',async 
  const agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.match(agent.id,/^u-/);assert.equal(agent.treasury.network,'none');
  const reopened=new OwnershipStore(dir);await reopened.init();
- assert.equal(reopened.agentForOwner(owner.id,agent.id).name,'Builder');
- assert.equal(reopened.agentForOwner('some-other-owner',agent.id),null);
+ assert.equal(reopened.agentSummaryForOwner(owner.id,agent.id).name,'Builder');
+ assert.equal(reopened.agentSummaryForOwner('some-other-owner',agent.id),null);
 });
 
 test('agent creation retries reuse the durable result and reject key reuse with changed config',async t=>{
@@ -66,7 +66,7 @@ test('linking a verified wallet upgrades a guest without orphaning agents and fo
  const {store}=await fixture(t),guest=await store.createAnonymous(),agent=await store.createAgent(guest.id,valid,avatars,{idempotencyKey:requestKey()}),pair=generateKeyPairSync('ed25519');
  const key=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
  const linked=await store.linkWalletOwner(guest.id,key);
- assert.equal(linked.id,guest.id);assert.equal(linked.identity_type,'solana');assert.equal(store.agentForOwner(linked.id,agent.id).id,agent.id);
+ assert.equal(linked.id,guest.id);assert.equal(linked.identity_type,'solana');assert.equal(store.agentSummaryForOwner(linked.id,agent.id).id,agent.id);
  const other=await store.createAnonymous();
  await assert.rejects(store.linkWalletOwner(other.id,key),{code:'WALLET_ALREADY_OWNED'});
  assert.equal(store.owner(other.id).identity_type,'anonymous');
@@ -92,7 +92,7 @@ test('mock funding persists an auditable simulated receipt and rejects duplicate
  await assert.rejects(store.mockFund(owner.id,agent.id,251,{idempotencyKey:key}),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});
  assert.equal(first.treasury.available_base_units,'250');assert.equal(first.receipt.status,'simulated');
  const reopened=new OwnershipStore(dir);await reopened.init();
- const restored=reopened.agentForOwner(owner.id,agent.id);
+ const restored=reopened.agentSummaryForOwner(owner.id,agent.id);
  assert.equal(restored.treasury.available_base_units,'250');assert.equal(restored.treasury.receipts.length,1);
  const afterRestart=await reopened.mockFund(owner.id,agent.id,250,{idempotencyKey:key});assert.equal(afterRestart.receipt.id,first.receipt.id);
  await assert.rejects(store.mockFund('other-owner',agent.id,250,{idempotencyKey:requestKey()}),{code:'AGENT_NOT_FOUND'});
@@ -104,7 +104,7 @@ test('simultaneous mock funding retries create one credit receipt',async t=>{
  const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),key=requestKey();
  const results=await Promise.all(Array.from({length:8},()=>store.mockFund(owner.id,agent.id,100,{idempotencyKey:key})));
  assert.equal(new Set(results.map(result=>result.receipt.id)).size,1);
- assert.equal(store.agentForOwner(owner.id,agent.id).treasury.available_base_units,'100');
+ assert.equal(store.agentSummaryForOwner(owner.id,agent.id).treasury.available_base_units,'100');
 });
 
 test('spending defaults to read-only and autonomous budgets remain unavailable',async t=>{

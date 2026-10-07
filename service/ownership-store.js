@@ -100,7 +100,7 @@ export class OwnershipStore{
   if(owner.identity_type==='solana'&&owner.wallet_public_key!==publicKey)throw Object.assign(new Error('A different wallet is already linked to this profile.'),{status:409,code:'OWNER_WALLET_ALREADY_LINKED'});
   owner.identity_type='solana';owner.wallet_public_key=publicKey;return cleanOwner(owner);
  });}
- agentsForOwner(ownerId){this.requireReady();return structuredClone(this.state.agents.filter(agent=>agent.owner_id===ownerId));}
+ agentsForOwner(ownerId){this.requireReady();return this.state.agents.filter(agent=>agent.owner_id===ownerId).map(agent=>this.privateSummary(agent));}
  listPublicAgents({after=null,limit=50}={}){
   this.requireReady();
   if(!Number.isInteger(limit)||limit<1||limit>100)throw Object.assign(new Error('Agent directory page size must be from 1 to 100'),{status:400,code:'INVALID_PAGE_SIZE'});
@@ -122,7 +122,17 @@ export class OwnershipStore{
   const wallet=owners.get(agent.owner_id)?.wallet_public_key||null;
   return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
  }
- agentForOwner(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);return agent?structuredClone(agent):null;}
+ agentExists(ownerId,id){this.requireReady();return this.state.agents.some(value=>value.id===id&&value.owner_id===ownerId);}
+ agentSummaryForOwner(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);return agent?this.privateSummary(agent):null;}
+ privateSummary(agent){const treasury=agent.treasury;return {...structuredClone({...agent,treasury:undefined}),treasury:{...structuredClone({...treasury,receipts:undefined}),receipt_count:treasury.receipts.length,receipts:structuredClone(treasury.receipts.slice(-3))}};}
+ transactionsForOwner(ownerId,id,{before=null,limit=50}={}){
+  this.requireReady();if(!Number.isInteger(limit)||limit<1||limit>100)throw Object.assign(new Error('Transaction page size must be from 1 to 100'),{status:400,code:'INVALID_PAGE_SIZE'});
+  const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)return null;
+  let end=agent.treasury.receipts.length;
+  if(before!==null){if(typeof before!=='string'||before.length>64)throw Object.assign(new Error('Invalid transaction cursor'),{status:400,code:'INVALID_TRANSACTION_CURSOR'});end=agent.treasury.receipts.findIndex(receipt=>receipt.id===before);if(end<0)throw Object.assign(new Error('Transaction cursor was not found'),{status:400,code:'INVALID_TRANSACTION_CURSOR'});}
+  const start=Math.max(0,end-limit),receipts=agent.treasury.receipts.slice(start,end).reverse().map(receipt=>structuredClone(receipt));
+  return {transactions:receipts,next_cursor:start>0?receipts.at(-1).id:null};
+ }
  publicAgent(id){
   this.requireReady();const agent=this.state.agents.find(value=>value.id===id);if(!agent)return null;
   const wallet=this.state.owners.find(value=>value.id===agent.owner_id)?.wallet_public_key||null;
@@ -174,5 +184,5 @@ export class OwnershipStore{
   if(mode==='manual'&&(BigInt(maxPerAction)!==0n||BigInt(maxPerDay)!==0n||allowed.length))throw Object.assign(new Error('Manual policy requires owner approval for each future action and does not enable automated spending'),{status:400,code:'MANUAL_APPROVAL_REQUIRED'});
   return this.mutate(state=>{const agent=state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)throw Object.assign(new Error('Agent not found'),{status:404,code:'AGENT_NOT_FOUND'});agent.treasury.spending_policy={mode,max_per_action:maxPerAction,max_per_day:maxPerDay,allowed_capabilities:allowed};return agent.treasury.spending_policy;});
  }
- exportAgent(ownerId,id){const agent=this.agentForOwner(ownerId,id);if(!agent)return null;return {format:'aae-agent-v1',name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,capabilities:agent.capabilities};}
+ exportAgent(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)return null;return {format:'aae-agent-v1',name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,capabilities:[...agent.capabilities]};}
 }

@@ -164,9 +164,14 @@ const server = http.createServer(async (req, res) => {
     const agentAction=route.match(/^\/api\/me\/agents\/(u-[a-f0-9-]{36})\/(mock-fund|spending-policy|treasury|transactions)$/);
     if(agentAction){
       const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Owner session required',code:'OWNER_SESSION_REQUIRED'});
-      const [,id,action]=agentAction,agent=ownershipStore.agentForOwner(ownerId,id);if(!agent)return json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
-      if(action==='treasury'&&req.method==='GET')return json(res,200,{treasury:agent.treasury});
-      if(action==='transactions'&&req.method==='GET')return json(res,200,{transactions:agent.treasury.receipts});
+      const [,id,action]=agentAction;if(!ownershipStore.agentExists(ownerId,id))return json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
+      if(action==='treasury'&&req.method==='GET')return json(res,200,{treasury:ownershipStore.agentSummaryForOwner(ownerId,id).treasury});
+      if(action==='transactions'&&req.method==='GET'){
+        const rawLimit=url.searchParams.get('limit'),limit=rawLimit===null?50:Number(rawLimit);
+        if(rawLimit!==null&&!/^(?:[1-9][0-9]?)$|^100$/.test(rawLimit))return json(res,400,{error:'Page size must be an integer from 1 to 100',code:'INVALID_PAGE_SIZE'});
+        try{return json(res,200,ownershipStore.transactionsForOwner(ownerId,id,{limit,before:url.searchParams.get('before')}));}
+        catch(error){if(error.status)return json(res,error.status,{error:error.message,code:error.code});throw error;}
+      }
       if(action==='mock-fund'&&req.method==='POST'){
         if(appMode!=='mock')return json(res,409,{error:'Simulated credits are available only in mock mode',code:'MOCK_MODE_REQUIRED'});
         if(!agentFundingRequests.allow(ownerId))return json(res,429,{error:'Agent funding requests are temporarily limited',code:'RATE_LIMITED'});

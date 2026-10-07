@@ -74,6 +74,11 @@ test('owner API supports guest and wallet identity, private agent management, an
   }
   const limitedFunding=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':randomUUID()},body:'{"amount":1}'});
   assert.equal(limitedFunding.response.status,429);assert.equal(limitedFunding.value.code,'RATE_LIMITED');
+  const roster=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(roster.value.agents[0].treasury.receipt_count,30);assert.equal(roster.value.agents[0].treasury.receipts.length,3);
+  const treasury=await call(`/api/me/agents/${id}/treasury`,{cookie:guest.cookie});assert.equal(treasury.value.treasury.receipt_count,30);assert.equal(treasury.value.treasury.receipts.length,3);
+  const firstTransactions=await call(`/api/me/agents/${id}/transactions?limit=2`,{cookie:guest.cookie});assert.equal(firstTransactions.value.transactions.length,2);assert.ok(firstTransactions.value.next_cursor);
+  const olderTransactions=await call(`/api/me/agents/${id}/transactions?limit=2&before=${encodeURIComponent(firstTransactions.value.next_cursor)}`,{cookie:guest.cookie});assert.equal(olderTransactions.value.transactions.length,2);assert.ok(olderTransactions.value.transactions.every(receipt=>!firstTransactions.value.transactions.some(recent=>recent.id===receipt.id)));
+  assert.equal((await call(`/api/me/agents/${id}/transactions?limit=101`,{cookie:guest.cookie})).response.status,400);
   for(let index=0;index<30;index++){
     const response=await call(`/api/me/agents/${id}/spending-policy`,{method:'POST',cookie:guest.cookie,body:'{"mode":"read_only"}'});
     assert.equal(response.response.status,200);
