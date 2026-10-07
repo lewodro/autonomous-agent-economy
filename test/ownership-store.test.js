@@ -192,6 +192,18 @@ test('directory-sync failure after atomic rename keeps memory aligned with the c
  assert.ok(restored.owner(first));assert.equal(restored.state.owners.length,1);
 });
 
+test('mock funding retry recovers an atomically committed receipt after directory-sync failure',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-funding-fsync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ let failSync=false;
+ const store=new OwnershipStore(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});
+ await store.init();const owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),key=requestKey();
+ failSync=true;await assert.rejects(store.mockFund(owner.id,agent.id,75,{idempotencyKey:key}),{code:'EIO'});
+ const committed=store.agentSummaryForOwner(owner.id,agent.id);assert.equal(committed.treasury.available_base_units,'75');assert.equal(committed.treasury.receipts.length,1);
+ const retry=await store.mockFund(owner.id,agent.id,75,{idempotencyKey:key});assert.equal(retry.receipt.id,committed.treasury.receipts[0].id);assert.equal(retry.treasury.available_base_units,'75');
+ const restored=new OwnershipStore(dir);await restored.init();const persisted=restored.agentSummaryForOwner(owner.id,agent.id);
+ assert.equal(persisted.treasury.available_base_units,'75');assert.equal(persisted.treasury.receipts.length,1);
+});
+
 test('ownership registry caps durable growth without losing the last valid snapshot',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-capacity-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const store=new OwnershipStore(dir,{maxBytes:512,now:()=>1_800_000_000_000});await store.init();
