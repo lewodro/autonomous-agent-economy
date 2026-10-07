@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COOKIE = /^last_seat_host=([0-9a-f-]{36})\.(\d{10})\.([A-Za-z0-9_-]{43})$/;
 const MAX_SESSIONS = 100;
+const MAX_STORE_BYTES = 64 * 1024;
 const COOKIE_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 
@@ -31,9 +32,13 @@ export class HostCookieStore {
       const handle = await open(this.file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
       let entries;
       try {
-        if (!(await handle.stat()).isFile()) throw new Error('host session store is not a regular file');
-        entries = JSON.parse(await handle.readFile('utf8'));
-        await handle.chmod(0o600);
+        const metadata=await handle.stat();
+        if (!metadata.isFile()) throw new Error('host session store is not a regular file');
+        if (metadata.size > MAX_STORE_BYTES) throw new Error('host session store exceeds the 64 KiB size limit');
+        if (process.platform !== 'win32' && metadata.mode & 0o077) throw new Error('host session store must have private file permissions');
+        const buffer=Buffer.alloc(MAX_STORE_BYTES+1),{bytesRead}=await handle.read(buffer,0,buffer.length,0);
+        if(bytesRead>MAX_STORE_BYTES)throw new Error('host session store exceeds the 64 KiB size limit');
+        entries = JSON.parse(buffer.subarray(0,bytesRead).toString('utf8'));
       } finally {
         await handle.close();
       }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { HostCookieStore, sessionCookie } from '../mcp/host-cookie-store.js';
@@ -42,6 +42,18 @@ test('host cookie persistence flushes the directory and recovers after a sync er
     assert.equal(store.get(session),cookie.split(';',1)[0]);
     assert.deepEqual(await readdir(directory),['sessions.json']);
     const recovered=await new HostCookieStore(file).load();assert.equal(recovered.get(session),cookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('host cookie loading rejects oversized and broadly readable stores before accepting secrets',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-bound-')),file=path.join(directory,'sessions.json');
+  try{
+    await writeFile(file,JSON.stringify({[session]:cookie.split(';',1)[0]}));
+    await chmod(file,0o644);
+    await assert.rejects(new HostCookieStore(file).load(),/private file permissions/);
+    await chmod(file,0o600);
+    await writeFile(file,' '.repeat(64*1024+1));
+    await assert.rejects(new HostCookieStore(file).load(),/64 KiB size limit/);
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
