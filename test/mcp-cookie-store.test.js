@@ -49,9 +49,11 @@ test('concurrent arena creation persists every host cookie across reload',async(
   const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-concurrent-')),file=path.join(directory,'sessions.json');
   const otherSession='9d5c778d-64ee-40e1-a392-13cb3992f2da';
   const otherCookie=`last_seat_host=${otherSession}.${expires}.${'b'.repeat(43)}; Path=/api/matches/${otherSession}/; HttpOnly; SameSite=Strict`;
+  let activeSyncs=0,maxActiveSyncs=0;
   try{
-    const store=await new HostCookieStore(file).load();
+    const store=await new HostCookieStore(file,{syncFolder:async()=>{activeSyncs++;maxActiveSyncs=Math.max(maxActiveSyncs,activeSyncs);await new Promise(resolve=>setTimeout(resolve,10));activeSyncs--;}}).load();
     await Promise.all([store.set(session,cookie),store.set(otherSession,otherCookie)]);
+    assert.equal(maxActiveSyncs,1,'session store writes must not overlap their durable commits');
     const recovered=await new HostCookieStore(file).load();
     assert.equal(recovered.get(session),cookie.split(';',1)[0]);
     assert.equal(recovered.get(otherSession),otherCookie.split(';',1)[0]);
