@@ -57,6 +57,20 @@ test('room epoch rollover is checkpointed before the next match begins',async t=
   assert.equal(disk.runId,room.saved.runId);
   assert.equal(disk.previous[0].runId,oldRunId);
   assert.equal(disk.state.matches.length,1);
+  for(let i=1;i<64;i++)await pool.step('rps-1');
+  const stableRunId=room.saved.runId;let failAfterRename=true;
+  pool.checkpoint=async(value,epoch)=>{
+    await checkpoint(value,epoch);
+    if(epoch&&failAfterRename){failAfterRename=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}
+  };
+  await assert.rejects(pool.step('rps-1'),{code:'EIO'});
+  const committedRunId=room.saved.runId;assert.notEqual(committedRunId,stableRunId);
+  assert.equal(room.state.matches.length,0,'the in-memory state follows the renamed checkpoint');
+  const retriedEpochs=[];
+  pool.checkpoint=async(value,epoch)=>{if(epoch)retriedEpochs.push({runId:epoch.runId,matches:epoch.state.matches.length});return checkpoint(value,epoch);};
+  await pool.step('rps-1');
+  assert.deepEqual(retriedEpochs[0],{runId:committedRunId,matches:0},'retry must reconfirm the same epoch before simulating');
+  assert.equal(room.saved.state.matches.length,1);
   await pool.close();
 });
 test('arena checkpoint flushes file and directory and preserves state after sync failure',async t=>{

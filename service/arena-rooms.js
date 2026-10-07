@@ -34,7 +34,7 @@ export class ArenaRoomPool {
       } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};
       const state=structuredClone(saved.state),latest=state.matches.filter(match=>match.status==='settled').at(-1);
       const lastCompletedAt=latest?Date.parse(completionTime({run:{state},match:latest})):0;
-      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0});
+      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0,epochCheckpointPending:null});
       if(latest&&Number.isFinite(lastCompletedAt)&&Date.now()-lastCompletedAt<RECENT_FINISH_MS){
         for(const agentId of latest.players)this.recentFinishes.set(agentId,{roomId:id,at:lastCompletedAt});
       }
@@ -123,15 +123,15 @@ export class ArenaRoomPool {
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
     if(room.running)throw new Error('Room is already running');
-    let nextEpoch=null;
-    if(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2){
+    let nextEpoch=room.epochCheckpointPending;
+    if(!nextEpoch&&(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2)){
       nextEpoch={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
     }
     room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
     try {
       // A new run ID is visible through the room snapshot, so persist the epoch
       // rollover before starting work that could be interrupted or fail.
-      if(nextEpoch){await this.checkpoint(room,nextEpoch);room.state=structuredClone(room.saved.state);}
+      if(nextEpoch){room.epochCheckpointPending=nextEpoch;await this.checkpoint(room,nextEpoch);room.state=structuredClone(room.saved.state);room.epochCheckpointPending=null;}
       const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
         // The terminal result is not public until the final checkpoint succeeds.
         room.phase=phase;room.current=match;room.status='live';
