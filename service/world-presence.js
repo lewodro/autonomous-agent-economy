@@ -103,9 +103,13 @@ export class WorldPresenceService {
     const elapsed = Math.min(Math.max(0, now - player.lastMoveAt), 250);
     const distance = Math.hypot(next.x - player.position.x, next.y - player.position.y);
     if (distance > elapsed * 0.15 + 6) throw fail('INVALID_POSITION', 'Movement exceeded the world speed limit');
-    player.position = next; player.direction = DIRECTIONS.has(direction) ? direction : player.direction;
-    player.animation_state = ANIMATIONS.has(animation_state) ? animation_state : 'idle'; player.lastUpdateAt = now;player.lastMoveAt=now;player.updated_at = new Date(now).toISOString();
-    this.emit(worldId, 'PlayerMoved', { player: this.publicPlayer(player) });
+    const nextDirection = DIRECTIONS.has(direction) ? direction : player.direction;
+    const nextAnimation = ANIMATIONS.has(animation_state) ? animation_state : 'idle';
+    const changed = next.x !== player.position.x || next.y !== player.position.y
+      || nextDirection !== player.direction || nextAnimation !== player.animation_state;
+    player.position = next; player.direction = nextDirection; player.animation_state = nextAnimation;
+    player.lastUpdateAt = now; player.lastMoveAt = now; player.updated_at = new Date(now).toISOString();
+    if (changed) this.emit(worldId, 'PlayerMoved', { player: this.publicPlayer(player) });
     return { player: this.publicPlayer(player) };
   }
   heartbeat(worldId, { player_id, session_token, activity }) {

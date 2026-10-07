@@ -96,6 +96,19 @@ test('heartbeats are rate limited and only broadcast changed activity',()=>{
   assert.equal(service.snapshot('main').players[0].lastHeartbeatAt,undefined);
 });
 
+test('unchanged movement refreshes presence without broadcasting duplicate snapshots',()=>{
+  let now=1_000;const service=new WorldPresenceService({now:()=>now,minUpdateMs:50});
+  const joined=service.join('main',{player_id:'visitor',position:{x:100,y:100}}),events=[];
+  service.listeners.set('main',new Set([{destroyed:false,writableLength:0,write:value=>events.push(value)}]));
+  now+=60;
+  service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:100,y:100},direction:'down',animation_state:'idle'});
+  assert.equal(events.length,0,'idle network ticks should not fan out redundant PlayerMoved events');
+  assert.equal(service.snapshot('main').players[0].updated_at,new Date(now).toISOString());
+  now+=60;
+  service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:100,y:100},direction:'right',animation_state:'walk'});
+  assert.equal(events.length,1,'a real animation/direction change is still broadcast');
+});
+
 test('presence SSE viewers are capped and released on disconnect',()=>{
   class Response extends EventEmitter {
     constructor(){super();this.destroyed=false;this.writableLength=0;}
