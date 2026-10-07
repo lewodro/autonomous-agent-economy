@@ -7,12 +7,13 @@ import path from 'node:path';
 import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
 import {createServer as createNetServer} from 'node:net';
 import {encodeBase58} from '../service/wallet-auth.js';
+import {ownerCookie} from '../service/owner-auth.js';
 
 test('owner API supports guest and wallet identity, private agent management, and restart persistence',async t=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'aae-owner-api-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  let child,output='',stderr='',base;
  const start=async()=>{
-  output='';stderr='';child=spawn(process.execPath,['server.js'],{cwd:path.resolve('.'),env:{...process.env,NODE_ENV:'test',APP_MODE:'mock',TRUST_PROXY:'true',HOST:'127.0.0.1',PORT:'0',MATCHES_DIR:directory},stdio:['ignore','pipe','pipe']});
+  output='';stderr='';child=spawn(process.execPath,['server.js'],{cwd:path.resolve('.'),env:{...process.env,NODE_ENV:'test',HOST_SESSION_SECRET:'test-owner-session-secret-for-api',APP_MODE:'mock',TRUST_PROXY:'true',HOST:'127.0.0.1',PORT:'0',MATCHES_DIR:directory},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',chunk=>{output+=chunk.toString();const found=output.match(/http:\/\/localhost:(\d+)/);if(found)base=`http://127.0.0.1:${found[1]}`;});
   child.stderr.on('data',chunk=>stderr+=chunk.toString());
   const until=Date.now()+12_000;while(!base&&Date.now()<until){if(child.exitCode!==null)throw Error(`server exited ${child.exitCode}: ${stderr}`);await new Promise(resolve=>setTimeout(resolve,30));}
@@ -28,6 +29,8 @@ test('owner API supports guest and wallet identity, private agent management, an
   assert.equal((await fetch(`${base}/profile/`)).status,200);
   const {value:capabilities}=await call('/api/capabilities');assert.equal(capabilities.ownership.agent_creation_available,true);assert.equal(capabilities.ownership.mainnet_match_wagering_enabled,false);
   const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
+  const staleSession=await call('/api/me',{cookie:ownerCookie(randomUUID(),{NODE_ENV:'test',HOST_SESSION_SECRET:'test-owner-session-secret-for-api'}).split(';')[0]});
+  assert.equal(staleSession.response.status,401);assert.equal(staleSession.value.code,'OWNER_SESSION_REQUIRED');assert.match(staleSession.response.headers.get('set-cookie')||'',/^aae_owner=;/);
   const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
   const createKey=randomUUID(),createBody=JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'});
   const missingKey=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:createBody});assert.equal(missingKey.response.status,400);assert.equal(missingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');

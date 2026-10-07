@@ -133,7 +133,9 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='POST'&&route==='/api/auth/logout')return json(res,200,{ok:true},{'Set-Cookie':ownerCookieClear()});
     if(route==='/api/me'){
       if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
-      const ownerId=ownerIdFromRequest(req);return ownerId?json(res,200,{owner:ownershipStore.owner(ownerId)}):json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+      const ownerId=ownerIdFromRequest(req),owner=ownerId?ownershipStore.owner(ownerId):null;
+      if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'},{'Set-Cookie':ownerCookieClear()});
+      return json(res,200,{owner});
     }
     if(route==='/api/me/agents'){
       const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
