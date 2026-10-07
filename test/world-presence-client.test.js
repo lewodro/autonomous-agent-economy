@@ -70,6 +70,25 @@ test('closing while join is pending does not create a late spectator stream',asy
   assert.equal(streams.length,0,'unmounted clients must not open an SSE stream after their join resolves');
 });
 
+test('reconnecting after close waits for an in-flight join before opening a fresh stream',async()=>{
+  const completions=[];
+  const fetcher=(url)=>{
+    if(!url.endsWith('/join'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
+    return new Promise(resolve=>completions.push(()=>resolve({ok:true,status:201,json:async()=>({
+      world_id:'main',players:[player('player_local',100)],session_token:'reconnect-capability',
+    })})));
+  };
+  const{client,streams}=setup({fetcher});
+  const first=client.connect();client.close();const reconnected=client.connect();
+  assert.equal(completions.length,1,'the second join waits until the first has established its capability');
+  completions[0]();await first;
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(completions.length,2,'connect after close starts a fresh join once the first request settles');
+  completions[1]();await reconnected;
+  assert.equal(streams.length,1,'only the reconnected client opens an event stream');
+  await client.leave();
+});
+
 test('leaving while join is pending waits for the capability and releases the server session',async()=>{
   let finishJoin;const requests=[];
   const fetcher=(url,init)=>{

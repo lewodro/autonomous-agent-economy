@@ -62,7 +62,11 @@ export class WorldPresenceClient {
   }
 
   async connect():Promise<PresenceSnapshot>{
-    if(this.connecting)return this.connecting;
+    if(this.connecting){
+      if(!this.closed)return this.connecting;
+      await this.connecting.catch(()=>undefined);
+      return this.connect();
+    }
     this.closed=false;this.source?.close();this.source=undefined;
     const connection=this.connectAndSubscribe();
     this.connecting=connection;
