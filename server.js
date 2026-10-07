@@ -42,6 +42,7 @@ const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions,{ensureCapacity:ensureSessionCapacity});
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicReplayShares=new KeyedSlidingWindowLimiter({limit:10,windowMs:60_000});
+const publicReplayImports=new KeyedSlidingWindowLimiter({limit:6,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
@@ -310,6 +311,7 @@ const server = http.createServer(async (req, res) => {
       return json(res,201,created,{'Set-Cookie':hostCookie(created.session)});
     }
     if (req.method === 'POST' && route === '/api/replays/import') {
+      if(!publicReplayImports.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Replay imports are temporarily limited. Try again shortly.',code:'RATE_LIMITED'});
       const data = await body(req, 32_000_000);
       const created=await createSession('import', { replay: data.replay });
       return json(res,200,created,{'Set-Cookie':hostCookie(created.session)});

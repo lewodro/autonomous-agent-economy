@@ -35,4 +35,6 @@ multi-instance database. The browser uses same-origin HTTP and SSE routes; the
 site is served over HTTPS by the host. `PORT` is provided by Railway. There is
 no database migration step. Verified replay archives are capped at 1,000
 records and 256 MiB; older records are pruned as new ones are saved. Public
-replay sharing is limited to 10 requests per client IP per minute.
+replay sharing is limited to 10 requests and replay imports to 6 requests per
+client IP per minute. Imported sessions receive a scoped host cookie so only
+the importing browser can continue that run in production.

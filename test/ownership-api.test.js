@@ -120,5 +120,12 @@ test('production-shaped free deployment serves the profile and sets secure owner
  assert.equal(created.status,201);const createdValue=await created.json();
  const rejectedFund=await fetch(`${base}/api/me/agents/${createdValue.agent.id}/mock-fund`,{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({amount:100})});
  assert.equal(rejectedFund.status,409);assert.equal((await rejectedFund.json()).code,'MOCK_MODE_REQUIRED');
+ const config=await fetch(base+'/api/config?agents=2',{headers}).then(response=>response.json());
+ const started=await fetch(base+'/api/matches',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({config})});assert.equal(started.status,201);
+ const run=await started.json();
+ const imported=await fetch(base+'/api/replays/import',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({replay:run.replay})});assert.equal(imported.status,200);
+ const importedRun=await imported.json(),hostCookie=imported.headers.get('set-cookie')||'';assert.match(hostCookie,/; Path=\/api\/matches\/[^;]+; HttpOnly;.*Secure/);
+ const blockedAdvance=await fetch(`${base}/api/matches/${importedRun.session}/step`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});assert.equal(blockedAdvance.status,403);
+ const resumed=await fetch(`${base}/api/matches/${importedRun.session}/step`,{method:'POST',headers:{...headers,Cookie:hostCookie.split(';')[0],'Content-Type':'application/json'},body:'{}'});assert.equal(resumed.status,200);
  const crossOrigin=await fetch(base+'/api/auth/wallet/challenge',{method:'POST',headers:{...headers,Origin:'https://attacker.example','Content-Type':'application/json'},body:JSON.stringify({public_key:publicKey})});assert.equal(crossOrigin.status,403);
 });

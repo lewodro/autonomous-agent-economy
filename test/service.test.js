@@ -52,11 +52,12 @@ test('service reclaims completed sessions while preserving their replay and spec
     const largeImport = await fetch(base + '/api/replays/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(8_100_000) + JSON.stringify({ replay: firstStep.data.replay }) });
     assert.equal(largeImport.status, 200);
     await largeImport.json();
-    const responses = await Promise.all(Array.from({ length: 105 }, (_, i) => i % 2
-      ? post('/api/matches', { config })
-      : post('/api/replays/import', { replay: firstStep.data.replay })));
+    const responses = await Promise.all(Array.from({ length: 105 }, (_, i) => i % 21 === 0
+      ? post('/api/replays/import', { replay: firstStep.data.replay })
+      : post('/api/matches', { config })));
     assert.equal(responses.filter(r => r.status === 201 || r.status === 200).length, 105,JSON.stringify(responses.filter(r=>r.status>=300)));
     assert.equal(responses.filter(r => r.status >= 300).length, 0,JSON.stringify(responses.filter(r=>r.status>=300)));
+    const limitedImport=await post('/api/replays/import',{replay:firstStep.data.replay});assert.equal(limitedImport.status,429);assert.equal(limitedImport.data.code,'RATE_LIMITED');
     const archived = await fetch(base + `/api/matches/${started.data.session}`).then(r => r.json());
     assert.equal(archived.replay.match_id, firstStep.data.replay.match_id);
     const snapshot = await fetch(base + `/api/matches/${started.data.session}/events`).then(r => r.text());
