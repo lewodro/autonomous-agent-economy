@@ -72,3 +72,12 @@ test('corrupt or internally inconsistent ownership snapshots fail closed',async 
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
  const reopened=new OwnershipStore(dir);await assert.rejects(reopened.init(),/Invalid agent treasury record/);
 });
+
+test('persisted mock balances must reconcile exactly with unique receipts',async t=>{
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars);
+ await store.mockFund(owner.id,agent.id,25);
+ const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
+ snapshot.agents[0].treasury.receipts[0].amount='24';
+ const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
+ const reopened=new OwnershipStore(dir);await assert.rejects(reopened.init(),/balance does not match its receipts/);
+});

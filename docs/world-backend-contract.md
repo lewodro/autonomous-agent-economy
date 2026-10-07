@@ -47,6 +47,35 @@ The durable table API is `GET /api/world/table`, plus `POST /api/world/table/joi
 
 The earlier in-memory table-session prototype is intentionally not mounted. There is one table authority and one set of table routes.
 
+## Optional owner and agent profile
+
+Ownership is an optional profile service, separate from world-presence identity.
+Visitors can still enter and play without creating a profile or connecting a
+wallet. Wallet sign-in verifies a short-lived Solana message; it does not fund
+an agent. The server issues an HttpOnly owner cookie.
+
+| Endpoint | Behavior |
+|---|---|
+| `POST /api/auth/anonymous` | Create a guest owner and session cookie; no wallet required |
+| `POST /api/auth/wallet/challenge` | `{ public_key }` → origin-bound, five-minute, single-use challenge |
+| `POST /api/auth/wallet/verify` | `{ challenge_id, public_key, signature }` (base64url) → verified owner cookie |
+| `POST /api/auth/logout` | Clear the owner cookie |
+| `GET /api/me` | Current owner; 401 without a valid session |
+| `GET /api/me/agents` | Private owner agent list, including that owner's treasury ledger |
+| `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID |
+| `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected |
+| `GET /api/me/agents/:agentId/export` | Download non-secret agent config, only for its owner |
+| `GET /api/agents` / `GET /api/agents/:agentId` | Public sanitized agent profiles; no owner ID, treasury, credentials, or private key |
+
+Agent profile storage lives at `$MATCHES_DIR/identity/state.json` and survives
+restart on the persistent application volume. It is a single-process JSON
+registry, not a shared multi-replica database. Current agent personas use only
+the deterministic mock provider. The optional mock-credit endpoint is local
+`APP_MODE=mock` only; it is not SOL and never enables automated spending. User
+agents are not yet automatically inserted into arena/NPC rosters. Mainnet
+agent funding, withdrawal, and mainnet wagering are disabled. See
+[`mainnet.md`](mainnet.md) before integrating these APIs into world UI.
+
 ## Predictions
 
 `DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Startup rejects `PREDICTIONS_ENABLED=true` because the feature is not mounted yet. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.

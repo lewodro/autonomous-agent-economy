@@ -29,7 +29,7 @@ function validateAgentInput(value,approvedAvatars,{importing=false}={}){
 }
 function validateState(state){
  if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||state.owners.length>10_000||state.agents.length>100_000)throw new Error('Invalid ownership store format or capacity');
- const owners=new Set(),wallets=new Set(),agents=new Set();
+ const owners=new Set(),wallets=new Set(),agents=new Set(),receipts=new Set();
  for(const owner of state.owners){
   if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string')throw new Error('Invalid owner record');
   owners.add(owner.id);
@@ -42,7 +42,15 @@ function validateState(state){
   const treasury=agent.treasury,policy=treasury?.spending_policy;
   if(!treasury||!['none','mock'].includes(treasury.network)||!['NONE','MOCK_CREDIT'].includes(treasury.currency)||typeof treasury.available_base_units!=='string'||!/^(0|[1-9][0-9]{0,15})$/.test(treasury.available_base_units)||typeof treasury.reserved_base_units!=='string'||!/^(0|[1-9][0-9]{0,15})$/.test(treasury.reserved_base_units)||!Array.isArray(treasury.receipts)||treasury.receipts.length>100_000||!['read_only','manual'].includes(policy?.mode)||typeof policy.max_per_action!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(policy.max_per_action)||typeof policy.max_per_day!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(policy.max_per_day)||!Array.isArray(policy.allowed_capabilities)||policy.allowed_capabilities.length>3||new Set(policy.allowed_capabilities).size!==policy.allowed_capabilities.length||policy.allowed_capabilities.some(capability=>!capabilities.has(capability)))throw new Error('Invalid agent treasury record');
   if(treasury.network==='none'&&(treasury.currency!=='NONE'||treasury.available_base_units!=='0'||treasury.reserved_base_units!=='0'||treasury.receipts.length))throw new Error('Unfunded treasury has inconsistent accounting');
-  for(const receipt of treasury.receipts)if(typeof receipt.id!=='string'||receipt.agent_id!==agent.id||receipt.owner_id!==agent.owner_id||receipt.network!=='mock'||receipt.currency!=='MOCK_CREDIT'||receipt.status!=='simulated'||typeof receipt.amount!=='string'||!/^[1-9][0-9]*$/.test(receipt.amount)||receipt.capability!=='mock_funding'||typeof receipt.created_at!=='string')throw new Error('Invalid agent treasury receipt');
+  if(treasury.network==='mock'&&treasury.currency!=='MOCK_CREDIT')throw new Error('Mock treasury has invalid currency');
+  if(policy.mode==='read_only'&&policy.allowed_capabilities.length)throw new Error('Read-only treasury permits a capability');
+  if(policy.mode==='manual'&&(BigInt(policy.max_per_action)!==0n||BigInt(policy.max_per_day)!==0n||policy.allowed_capabilities.length))throw new Error('Manual treasury has an automated spending limit');
+  let receiptTotal=0n;
+  for(const receipt of treasury.receipts){
+   if(typeof receipt.id!=='string'||receipts.has(receipt.id)||receipt.agent_id!==agent.id||receipt.owner_id!==agent.owner_id||receipt.network!=='mock'||receipt.currency!=='MOCK_CREDIT'||receipt.status!=='simulated'||typeof receipt.amount!=='string'||!/^[1-9][0-9]*$/.test(receipt.amount)||receipt.capability!=='mock_funding'||typeof receipt.created_at!=='string'||Number.isNaN(Date.parse(receipt.created_at)))throw new Error('Invalid agent treasury receipt');
+   receipts.add(receipt.id);receiptTotal+=BigInt(receipt.amount);
+  }
+  if(treasury.network==='mock'&&receiptTotal!==BigInt(treasury.available_base_units))throw new Error('Mock treasury balance does not match its receipts');
   agents.add(agent.id);
  }
 }
@@ -58,7 +66,7 @@ export class OwnershipStore{
  requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
  write(state){
   const temp=`${this.file}.${randomUUID()}.tmp`;
-  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
+  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);const directory=await open(this.directory,'r');try{await directory.sync();}finally{await directory.close();}}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
  }
  mutate(fn){
   this.requireReady();
