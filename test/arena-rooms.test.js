@@ -37,6 +37,23 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.throws(()=>pool.getRoom('missing'),/not found/);
   pool.close();restored.close();
 });
+test('room epoch rollover is checkpointed before the next match begins',async t=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'arena-epoch-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
+  for(let i=0;i<64;i++)await pool.step('rps-1');
+  const room=pool.rooms.get('rps-1'),oldRunId=room.saved.runId,checkpoint=pool.checkpoint.bind(pool),observed=[];
+  pool.checkpoint=async value=>{observed.push({runId:value.saved.runId,matches:value.state.matches.length,previous:value.saved.previous.length});return checkpoint(value);};
+  await pool.step('rps-1');
+  assert.equal(observed[0].runId,room.saved.runId);
+  assert.equal(observed[0].matches,0,'the rollover checkpoint precedes simulation work');
+  assert.equal(observed[0].previous,1);
+  assert.notEqual(room.saved.runId,oldRunId);
+  const disk=JSON.parse(await readFile(path.join(dir,'rps-1.json'),'utf8'));
+  assert.equal(disk.runId,room.saved.runId);
+  assert.equal(disk.previous[0].runId,oldRunId);
+  assert.equal(disk.state.matches.length,1);
+  await pool.close();
+});
 test('arena checkpoint flushes file and directory and preserves state after sync failure',async t=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'arena-checkpoint-sync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   let failSync=false;const pool=new ArenaRoomPool(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});await pool.restore();

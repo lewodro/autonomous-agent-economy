@@ -123,9 +123,10 @@ export class ArenaRoomPool {
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
     if(room.running)throw new Error('Room is already running');
+    let rotated=false;
     if(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2){
       room.saved={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
-      room.state=structuredClone(room.saved.state);
+      room.state=structuredClone(room.saved.state);rotated=true;
     }
     room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
     const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
@@ -133,7 +134,11 @@ export class ArenaRoomPool {
       room.phase=phase;room.current=match;room.status='live';
       if(this.stageMs)await this.delay(this.stageMs);
     },onSave:()=>this.checkpoint(room)});
-    try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
+    try {
+      // A new run ID is visible through the room snapshot, so persist the epoch
+      // rollover before starting work that could be interrupted or fail.
+      if(rotated)await this.checkpoint(room);
+      await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
       for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}
