@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { mkdir, open, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -7,6 +7,7 @@ const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 const COOKIE = /^last_seat_host=([0-9a-f-]{36})\.(\d{10})\.([A-Za-z0-9_-]{43})$/;
 const MAX_SESSIONS = 100;
 const COOKIE_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 
 export function sessionCookie(setCookie, session) {
   if (!SESSION_ID.test(session) || typeof setCookie !== 'string') return null;
@@ -19,8 +20,9 @@ export function sessionCookie(setCookie, session) {
 }
 
 export class HostCookieStore {
-  constructor(file = path.resolve('matches/mcp/host-sessions.json')) {
+  constructor(file = path.resolve('matches/mcp/host-sessions.json'),{syncFolder=syncDirectory}={}) {
     this.file = file;
+    this.syncFolder = syncFolder;
     this.sessions = new Map();
   }
 
@@ -66,9 +68,11 @@ export class HostCookieStore {
     const temporary = `${this.file}.${randomUUID()}.tmp`;
     let renamed = false;
     try {
-      await writeFile(temporary, JSON.stringify(Object.fromEntries(this.sessions)), { mode: 0o600, flag: 'wx' });
+      const handle=await open(temporary,'wx',0o600);
+      try{await handle.writeFile(JSON.stringify(Object.fromEntries(this.sessions)));await handle.sync();}finally{await handle.close();}
       await rename(temporary, this.file);
       renamed = true;
+      await this.syncFolder(path.dirname(this.file));
     } catch (error) {
       throw new Error(`Cannot save the local MCP host-session store: ${error.message}`);
     } finally {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { HostCookieStore, sessionCookie } from '../mcp/host-cookie-store.js';
@@ -32,6 +32,17 @@ test('host cookie storage survives reload with owner-only local permissions', as
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('host cookie persistence flushes the directory and recovers after a sync error',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-sync-')),file=path.join(directory,'sessions.json');let failSync=true;
+  try{
+    const store=new HostCookieStore(file,{syncFolder:async()=>{if(failSync){failSync=false;throw new Error('simulated directory sync failure');}}});await store.load();
+    await assert.rejects(store.set(session,cookie),/simulated directory sync failure/);
+    assert.equal(store.get(session),cookie.split(';',1)[0]);
+    assert.deepEqual(await readdir(directory),['sessions.json']);
+    const recovered=await new HostCookieStore(file).load();assert.equal(recovered.get(session),cookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
 test('unknown arena sessions fail clearly instead of fabricating host authority', async () => {
