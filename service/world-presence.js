@@ -19,11 +19,15 @@ function equalSecret(left, right) {
  * It intentionally stores no movement history and owns no game state.
  */
 export class WorldPresenceService {
-  constructor({ worldIds = ['main'], bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
+  constructor({ worldIds = ['main'], allowedAvatars = ['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'], bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
     if (!Array.isArray(worldIds) || !worldIds.length || worldIds.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(worldIds).size !== worldIds.length) {
       throw new Error('World presence requires unique, valid configured world IDs');
     }
+    if (!Array.isArray(allowedAvatars) || !allowedAvatars.length || allowedAvatars.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(allowedAvatars).size !== allowedAvatars.length) {
+      throw new Error('World presence requires unique, valid approved avatar IDs');
+    }
     this.allowedWorlds = new Set(worldIds);
+    this.allowedAvatars = new Set(allowedAvatars);
     this.bounds = bounds; this.maxPlayers = maxPlayers; this.maxViewers = maxViewers; this.staleMs = staleMs;
     this.minUpdateMs = minUpdateMs; this.minHeartbeatMs = minHeartbeatMs; this.now = now;
     this.worlds = new Map(); this.listeners = new Map();
@@ -44,8 +48,8 @@ export class WorldPresenceService {
     return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
   }
   sanitizeAvatar(avatar) {
-    if (avatar == null) return 'explorer';
-    if (typeof avatar !== 'string' || !IDENTIFIER.test(avatar)) throw fail('INVALID_AVATAR', 'Avatar is invalid');
+    if (avatar == null) return 'visitor_ember';
+    if (typeof avatar !== 'string' || !this.allowedAvatars.has(avatar)) throw fail('INVALID_AVATAR', 'Avatar is not approved');
     return avatar;
   }
   publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...value } = player; return value; }

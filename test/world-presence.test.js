@@ -6,7 +6,7 @@ import { WorldPresenceService } from '../service/world-presence.js';
 test('presence joins, validates bounded movement, and removes stale players', () => {
   let now = 1_000;
   const service = new WorldPresenceService({ now: () => now, staleMs: 100, minUpdateMs: 50 });
-  const a = service.join('main', { player_id: 'alice', avatar: 'explorer', position: { x: 100, y: 100 } });
+  const a = service.join('main', { player_id: 'alice', avatar: 'visitor_atlas', position: { x: 100, y: 100 } });
   const b = service.join('main', { player_id: 'bob', position: { x: 120, y: 100 } });
   assert.equal(a.players.length, 1); assert.equal(b.players.length, 2);
   assert.throws(() => service.join('main', { player_id: 'alice', position: { x: 900, y: 100 } }), { code: 'PRESENCE_NOT_AUTHORIZED' });
@@ -28,6 +28,7 @@ test('presence limits update frequency and does not expose session tokens', () =
   assert.throws(() => service.move('main', { player_id: 'visitor', session_token: joined.session_token, position: { x: 11, y: 10 } }), { code: 'PRESENCE_RATE_LIMITED' });
   assert.throws(() => service.join('bad/world', {}), { code: 'WORLD_NOT_FOUND' });
   assert.throws(() => service.join('unconfigured-world-1', {}), { code: 'WORLD_NOT_FOUND' });
+  assert.throws(() => service.join('main', { player_id: 'unapproved', avatar: 'broken_preview' }), { code: 'INVALID_AVATAR' });
   for(const position of [{x:'10',y:10},{x:true,y:10},{x:10,y:null},{x:NaN,y:10}]){
     assert.throws(()=>service.join('main',{player_id:'invalid',position}),{code:'INVALID_POSITION'});
   }

@@ -55,7 +55,7 @@ test('public games are visible after restart while only the host can advance the
     assert.equal(health.status, 200);
     assert.equal(health.body.storage, 'ok');
     assert.equal(health.body.presence.status, 'ok');
-    const alice = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 }, avatar: 'explorer', activity: 'Watching rps-1' });
+    const alice = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 }, avatar: 'visitor_ember', activity: 'Watching rps-1' });
     const bob = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
     assert.equal(alice.status, 201); assert.equal(bob.body.players.length, 2);
     assert.equal((await request(running.base, '/api/health')).body.presence.active_players, 2);
