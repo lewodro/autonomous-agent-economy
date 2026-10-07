@@ -60,8 +60,11 @@ test('owner API supports guest and wallet identity, private agent management, an
   assert.equal((await call(`/api/me/agents/${id}/export`,{cookie:isolated.cookie})).response.status,404);
 
   const pair=generateKeyPairSync('ed25519'),publicKey=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
-  const issued=await call('/api/auth/wallet/challenge',{method:'POST',body:JSON.stringify({public_key:publicKey})});assert.equal(issued.response.status,200);
-  const signature=sign(null,Buffer.from(issued.value.message),pair.privateKey).toString('base64url');
+  let issued=await call('/api/auth/wallet/challenge',{method:'POST',cookie:guest.cookie,body:JSON.stringify({public_key:publicKey})});assert.equal(issued.response.status,200);
+  let signature=sign(null,Buffer.from(issued.value.message),pair.privateKey).toString('base64url');
+  const switched=await call('/api/auth/wallet/verify',{method:'POST',cookie:isolated.cookie,body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});assert.equal(switched.response.status,401);assert.equal(switched.value.code,'CHALLENGE_OWNER_MISMATCH');
+  issued=await call('/api/auth/wallet/challenge',{method:'POST',cookie:guest.cookie,body:JSON.stringify({public_key:publicKey})});assert.equal(issued.response.status,200);
+  signature=sign(null,Buffer.from(issued.value.message),pair.privateKey).toString('base64url');
   const verified=await call('/api/auth/wallet/verify',{method:'POST',cookie:guest.cookie,body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});
   assert.equal(verified.response.status,200);assert.equal(verified.value.owner.identity_type,'solana');assert.equal(verified.value.owner.id,guestOwnerId);assert.ok(verified.cookie);
   const linkedAgents=await call('/api/me/agents',{cookie:verified.cookie});assert.ok(linkedAgents.value.agents.some(agent=>agent.id===id),'guest-created agent should remain accessible after wallet linking');

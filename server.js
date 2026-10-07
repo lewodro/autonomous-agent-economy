@@ -127,15 +127,16 @@ const server = http.createServer(async (req, res) => {
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/challenge'){
       if(!walletChallengeRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet sign-in is temporarily limited',code:'RATE_LIMITED'});
-      const data=await body(req,2048),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
-      const challenge=walletChallenges.issue(data.public_key,origin);
+      const data=await body(req,2048),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`,owner=authenticatedOwner(req);
+      const ownerContext=owner?{ownerId:owner.id,sessionVersion:owner.session_version}:null;
+      const challenge=walletChallenges.issue(data.public_key,origin,ownerContext);
       return json(res,200,challenge);
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/verify'){
       if(!walletVerifyRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
-      const data=await body(req,4096),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
-      const verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature,origin);
-      const currentOwner=authenticatedOwner(req);
+      const data=await body(req,4096),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`,currentOwner=authenticatedOwner(req);
+      const ownerContext=currentOwner?{ownerId:currentOwner.id,sessionVersion:currentOwner.session_version}:null;
+      const verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature,origin,ownerContext);
       const owner=currentOwner?.identity_type==='anonymous'
         ?await ownershipStore.linkWalletOwner(currentOwner.id,verified.publicKey)
         :await ownershipStore.createWalletOwner(verified.publicKey);

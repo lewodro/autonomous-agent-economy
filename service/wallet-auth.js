@@ -31,21 +31,24 @@ export function verifyWalletMessage(publicKey,message,signature){
 
 export class WalletChallengeService{
  constructor({now=Date.now,ttlMs=WALLET_CHALLENGE_TTL_MS,maxPending=5000}={}){this.now=now;this.ttlMs=ttlMs;this.maxPending=maxPending;this.pending=new Map();}
- issue(publicKey,origin){
+ issue(publicKey,origin,ownerContext=null){
   decodeSolanaAddress(publicKey);
   if(typeof origin!=='string'||origin.length>256||!/^https?:\/\/[a-z0-9.:[\]-]+(?::\d+)?$/i.test(origin))throw new Error('Invalid wallet challenge origin');
+  if(ownerContext!==null&&(!ownerContext||typeof ownerContext.ownerId!=='string'||!/^[a-f0-9-]{36}$/.test(ownerContext.ownerId)||!Number.isSafeInteger(ownerContext.sessionVersion)||ownerContext.sessionVersion<0))throw new Error('Invalid wallet challenge owner context');
   const now=this.now();for(const [id,item] of this.pending)if(item.expiresAt<=now)this.pending.delete(id);
   if(this.pending.size>=this.maxPending)throw Object.assign(new Error('Wallet sign-in is temporarily busy'),{status:429,code:'AUTH_CAPACITY'});
   const id=randomUUID(),issued=new Date(now),expiresAt=now+this.ttlMs,nonce=randomBytes(16).toString('hex');
-  const message=`Autonomous Agent Economy\nSign in with Solana\nOrigin: ${origin}\nWallet: ${publicKey}\nNonce: ${nonce}\nIssued At: ${issued.toISOString()}\nExpiration Time: ${new Date(expiresAt).toISOString()}`;
-  this.pending.set(id,{publicKey,origin,message,expiresAt});
+  const intent=ownerContext?`Sign in and link this wallet to profile ${ownerContext.ownerId}`:'Sign in with Solana';
+  const message=`Autonomous Agent Economy\n${intent}\nOrigin: ${origin}\nWallet: ${publicKey}\nNonce: ${nonce}\nIssued At: ${issued.toISOString()}\nExpiration Time: ${new Date(expiresAt).toISOString()}`;
+  this.pending.set(id,{publicKey,origin,message,expiresAt,ownerContext});
   return {challenge_id:id,public_key:publicKey,message,expires_at:new Date(expiresAt).toISOString()};
  }
- verify(challengeId,publicKey,signature,requestOrigin){
+ verify(challengeId,publicKey,signature,requestOrigin,ownerContext=null){
   const challenge=this.pending.get(challengeId);
   if(!challenge||challenge.expiresAt<=this.now()){this.pending.delete(challengeId);throw Object.assign(new Error('Wallet challenge is missing or expired'),{status:401,code:'CHALLENGE_EXPIRED'});}
   this.pending.delete(challengeId);
   if(typeof requestOrigin!=='string'||requestOrigin!==challenge.origin)throw Object.assign(new Error('Wallet challenge must be verified from the origin that requested it'),{status:401,code:'CHALLENGE_ORIGIN_MISMATCH'});
+  if(challenge.ownerContext?.ownerId!==ownerContext?.ownerId||challenge.ownerContext?.sessionVersion!==ownerContext?.sessionVersion)throw Object.assign(new Error('Wallet challenge must be verified in the profile session that requested it'),{status:401,code:'CHALLENGE_OWNER_MISMATCH'});
   if(publicKey!==challenge.publicKey)throw Object.assign(new Error('Wallet does not match the challenge'),{status:401,code:'WALLET_MISMATCH'});
   try{if(!verifyWalletMessage(publicKey,challenge.message,signature))throw new Error('Signature did not verify');}
   catch(error){if(error?.code==='WALLET_MISMATCH')throw error;throw Object.assign(new Error('Wallet signature is invalid'),{status:401,code:'INVALID_SIGNATURE'});}

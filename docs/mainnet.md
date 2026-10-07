@@ -17,9 +17,12 @@ the other.
 ## Ownership/funding boundary in this release
 
 Wallet sign-in uses a random, five-minute, single-use challenge bound to the
-origin and public key. The browser wallet signs the message; the server verifies
-Ed25519 and gives the browser a signed, HttpOnly, SameSite session cookie. The
-private key remains with the user. Owner records and user-created mock agents
+origin, public key, and requesting owner session. When linking a wallet to an
+existing profile, the signed message names that intent and profile ID; a
+different or revoked profile session cannot consume it. The browser wallet
+signs the message; the server verifies Ed25519 and gives the browser a signed,
+HttpOnly, SameSite session cookie. The private key remains with the user. Owner
+records and user-created mock agents
 are stored in `$MATCHES_DIR/identity/state.json` using atomic replacement.
 Owner cookies include a signed session version checked against that durable
 record. Logout revokes existing cookies server-side, and linking a guest profile

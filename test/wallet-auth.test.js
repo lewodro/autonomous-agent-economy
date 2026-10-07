@@ -26,6 +26,13 @@ test('wallet challenges bind origin and wallet, expire, and consume invalid atte
  assert.throws(()=>challenges.verify(mismatch.challenge_id,b.publicKey,'invalid','https://arena.example'),{code:'WALLET_MISMATCH'});
  now+=1001;assert.throws(()=>challenges.verify(mismatch.challenge_id,a.publicKey,'invalid','https://arena.example'),{code:'CHALLENGE_EXPIRED'});
 });
+test('wallet challenges bind linking signatures to the requesting owner session',()=>{
+ const challenges=new WalletChallengeService(),{pair,publicKey}=wallet(),ownerContext={ownerId:'a1f0c2d4-1111-4222-8333-123456789abc',sessionVersion:4};
+ const challenge=challenges.issue(publicKey,'https://arena.example',ownerContext),signature=sign(null,Buffer.from(challenge.message),pair.privateKey).toString('base64url');
+ assert.match(challenge.message,/Sign in and link this wallet to profile a1f0c2d4-1111-4222-8333-123456789abc/);
+ assert.throws(()=>challenges.verify(challenge.challenge_id,publicKey,signature,'https://arena.example',{...ownerContext,sessionVersion:5}),{code:'CHALLENGE_OWNER_MISMATCH'});
+ assert.throws(()=>challenges.verify(challenge.challenge_id,publicKey,signature,'https://arena.example',ownerContext),{code:'CHALLENGE_EXPIRED'},'a mismatched attempt consumes the challenge');
+});
 test('wallet addresses and signatures are canonical and bounded',()=>{
  const {pair,publicKey}=wallet(),message='test message',signature=sign(null,Buffer.from(message),pair.privateKey).toString('base64url');
  assert.equal(decodeSolanaAddress(publicKey).length,32);assert.equal(verifyWalletMessage(publicKey,message,signature),true);
