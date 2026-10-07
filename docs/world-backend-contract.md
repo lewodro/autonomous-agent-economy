@@ -68,7 +68,7 @@ not merged automatically. The server issues an HttpOnly owner cookie.
 
 | Endpoint | Behavior |
 |---|---|
-| `POST /api/auth/anonymous` | Create a guest owner and session cookie; no wallet required |
+| `POST /api/auth/anonymous` | Create a guest owner and session cookie; no wallet required. Reuses a valid current owner session so repeated free-entry actions do not switch profiles. |
 | `POST /api/auth/wallet/challenge` | `{ public_key }` → origin-bound, five-minute, single-use challenge |
 | `POST /api/auth/wallet/verify` | `{ challenge_id, public_key, signature }` (base64url) → verified owner cookie |
 | `POST /api/auth/logout` | Clear the owner cookie |

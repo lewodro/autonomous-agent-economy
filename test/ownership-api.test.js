@@ -32,6 +32,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   const staleSession=await call('/api/me',{cookie:ownerCookie(randomUUID(),{NODE_ENV:'test',HOST_SESSION_SECRET:'test-owner-session-secret-for-api'}).split(';')[0]});
   assert.equal(staleSession.response.status,401);assert.equal(staleSession.value.code,'OWNER_SESSION_REQUIRED');assert.match(staleSession.response.headers.get('set-cookie')||'',/^aae_owner=;/);
   const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
+  const guestResume=await call('/api/auth/anonymous',{method:'POST',cookie:guest.cookie,body:'{}'});assert.equal(guestResume.response.status,200);assert.equal(guestResume.value.owner.id,guestOwnerId);guest.cookie=guestResume.cookie;
   const me=await call('/api/me',{cookie:guest.cookie});assert.equal(me.response.status,200);assert.equal(Object.hasOwn(me.value.owner,'session_version'),false,'internal revocation state is not part of the public owner contract');
   const createKey=randomUUID(),createBody=JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'});
   const missingKey=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:createBody});assert.equal(missingKey.response.status,400);assert.equal(missingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
@@ -119,6 +120,7 @@ test('production-shaped free deployment serves the profile and sets secure owner
  assert.equal(verifiedResponse.status,200);const verified=await verifiedResponse.json();assert.equal(verified.owner.identity_type,'solana');
  const walletCookie=verifiedResponse.headers.get('set-cookie')||'';assert.match(walletCookie,/; HttpOnly; SameSite=Strict;.*Secure/);
  const ownerCookie=walletCookie.split(';')[0];
+ const freeResume=await fetch(base+'/api/auth/anonymous',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:'{}'});assert.equal(freeResume.status,200);assert.equal((await freeResume.json()).owner.identity_type,'solana','the free-entry action must not replace a signed-in wallet owner');
  const created=await fetch(base+'/api/me/agents',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:JSON.stringify({name:'Production Agent',avatar:'visitor_nova',strategy:'opportunist'})});
  assert.equal(created.status,201);const createdValue=await created.json();
  const rejectedFund=await fetch(`${base}/api/me/agents/${createdValue.agent.id}/mock-fund`,{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({amount:100})});
