@@ -29,10 +29,12 @@ test('presence client joins with a browser capability, applies typed SSE and rep
   assert.equal(initial.world_id,'main');assert.equal(client.player_id,'player_stable-id');
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),'capability-secret');
   assert.equal(JSON.stringify(snapshots).includes('capability-secret'),false);
-  streams[0].emit('PlayerJoined',{player:player('other',200)});
-  streams[0].emit('PlayerMoved',{player:player('other',220)});
+  streams[0].emit('PlayerJoined',{world_id:'main',player:player('other',200)});
+  streams[0].emit('PlayerMoved',{world_id:'main',player:player('other',220)});
   assert.deepEqual(client.snapshot().players.map(value=>[value.player_id,value.position.x]),[['player_local',100],['other',220]]);
-  streams[0].emit('PlayerLeft',{player_id:'other'});
+  streams[0].emit('PlayerJoined',{world_id:'different-world',player:player('stray',500)});
+  assert.equal(client.snapshot().players.some(value=>value.player_id==='stray'),false,'events from another world cannot contaminate this snapshot');
+  streams[0].emit('PlayerLeft',{world_id:'main',player_id:'other'});
   assert.equal(client.snapshot().players.length,1);
   streams[0].emit('WorldJoined',{world_id:'main',players:[player('player_local',120),player('reconnected',300)]});
   assert.deepEqual(client.snapshot().players.map(value=>value.player_id),['player_local','reconnected']);

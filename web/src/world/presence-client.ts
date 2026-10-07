@@ -153,8 +153,9 @@ export class WorldPresenceClient {
     if(this.closed)return;
     let value:Record<string,unknown>;
     try{value=JSON.parse(raw) as Record<string,unknown>;}catch{return;}
+    if(value.world_id!==this.worldId)return;
     if(type==='WorldJoined'){
-      if(value.world_id!==this.worldId||!Array.isArray(value.players))return;
+      if(!Array.isArray(value.players))return;
       this.replace(value as unknown as PresenceSnapshot);return;
     }
     if(type==='PlayerLeft'){
