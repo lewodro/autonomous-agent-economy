@@ -25,7 +25,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const deployment = validateDeploymentConfig();
-const { production, publicDevnet, publicOrigins } = deployment;
+const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
@@ -193,10 +193,10 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
-      public_site:production,
+      public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,ownership:{wallet_auth_available:false,mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},
       game_modes:['last-seat','rps','tictactoe'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'

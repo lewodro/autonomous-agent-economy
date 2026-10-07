@@ -4,8 +4,21 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicPredictions: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicPredictions: false, appMode:'free', solanaNetwork:'none', mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
+});
+
+test('runtime modes are explicit and mainnet ownership and wagering fail closed',()=>{
+  assert.equal(validateDeploymentConfig({APP_MODE:'mock'}).appMode,'mock');
+  assert.equal(validateDeploymentConfig({APP_MODE:'local-validator',SOLANA_NETWORK:'localnet'}).solanaNetwork,'localnet');
+  assert.equal(validateDeploymentConfig({APP_MODE:'devnet',SOLANA_NETWORK:'devnet'}).appMode,'devnet');
+  assert.throws(()=>validateDeploymentConfig({APP_MODE:'devnet',SOLANA_NETWORK:'none'}),/do not match/);
+  assert.throws(()=>validateDeploymentConfig({ENABLE_MAINNET_MATCH_WAGERING:'true'}),{code:'MAINNET_MATCH_WAGERING_DISABLED'});
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta',ENABLE_MAINNET_AGENT_FUNDING:'true'}),{code:'MAINNET_AGENT_FUNDING_NOT_IMPLEMENTED'});
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta',ENABLE_MAINNET_AGENT_FUNDING:'false'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'devnet',ENABLE_MAINNET_AGENT_FUNDING:'true'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({APP_MODE:'mainnet-ownership'}),{code:'MAINNET_AGENT_FUNDING_NOT_IMPLEMENTED'});
 });
 
 test('Railway production accepts its assigned HTTPS host and mounted persistent directory', () => {
