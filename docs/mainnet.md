@@ -21,6 +21,10 @@ origin and public key. The browser wallet signs the message; the server verifies
 Ed25519 and gives the browser a signed, HttpOnly, SameSite session cookie. The
 private key remains with the user. Owner records and user-created mock agents
 are stored in `$MATCHES_DIR/identity/state.json` using atomic replacement.
+Owner cookies include a signed session version checked against that durable
+record. Logout revokes existing cookies server-side, and linking a guest profile
+to a wallet invalidates the previous guest cookie. Legacy version-zero cookies
+remain readable until an owner is explicitly upgraded or logs out.
 
 The current agent treasury is a local profile ledger. Its mock-credit receipt is
 not a Solana receipt. No program-derived address, escrow contract, backend

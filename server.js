@@ -26,7 +26,7 @@ import { RoomSpectators } from './service/room-spectators.js';
 import { OwnershipStore } from './service/ownership-store.js';
 import { toWorldAgentProfiles } from './service/world-agent-profiles.js';
 import { WalletChallengeService } from './service/wallet-auth.js';
-import { ownerCookie, ownerCookieClear, ownerIdFromRequest } from './service/owner-auth.js';
+import { ownerCookie, ownerCookieClear, ownerSessionFromRequest } from './service/owner-auth.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
@@ -48,6 +48,7 @@ const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
 const walletChallenges=new WalletChallengeService();
 const ownershipStore=new OwnershipStore(path.join(directory,'identity'));
+function authenticatedOwner(req){const session=ownerSessionFromRequest(req);if(!session)return null;const owner=ownershipStore.owner(session.ownerId);return owner?.session_version===session.sessionVersion?owner:null;}
 const identityCreates=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletChallengeRequests=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
@@ -110,7 +111,7 @@ const server = http.createServer(async (req, res) => {
       if(!identityCreates.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
       const owner=await ownershipStore.createAnonymous();
       console.log(JSON.stringify({event:'owner_created',identity_type:'anonymous'}));
-      return json(res,201,{owner},{'Set-Cookie':ownerCookie(owner.id)});
+      return json(res,201,{owner},{'Set-Cookie':ownerCookie(owner.id,process.env,Date.now(),0)});
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/challenge'){
       if(!walletChallengeRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet sign-in is temporarily limited',code:'RATE_LIMITED'});
@@ -122,47 +123,48 @@ const server = http.createServer(async (req, res) => {
       if(!walletVerifyRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,4096),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
       const verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature,origin);
-      const currentOwnerId=ownerIdFromRequest(req),currentOwner=currentOwnerId?ownershipStore.owner(currentOwnerId):null;
+      const currentOwner=authenticatedOwner(req);
       const owner=currentOwner?.identity_type==='anonymous'
         ?await ownershipStore.linkWalletOwner(currentOwner.id,verified.publicKey)
         :await ownershipStore.createWalletOwner(verified.publicKey);
       console.log(JSON.stringify({event:'wallet_login_verified'}));
-      return json(res,200,{owner},{'Set-Cookie':ownerCookie(owner.id)});
+      const current=ownershipStore.owner(owner.id);
+      return json(res,200,{owner},{'Set-Cookie':ownerCookie(owner.id,process.env,Date.now(),current.session_version)});
     }
-    if(req.method==='POST'&&route==='/api/auth/logout')return json(res,200,{ok:true},{'Set-Cookie':ownerCookieClear()});
+    if(req.method==='POST'&&route==='/api/auth/logout'){const owner=authenticatedOwner(req);if(owner)await ownershipStore.revokeSessions(owner.id,owner.session_version);return json(res,200,{ok:true},{'Set-Cookie':ownerCookieClear()});}
     if(route==='/api/me'){
       if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
-      const ownerId=ownerIdFromRequest(req),owner=ownerId?ownershipStore.owner(ownerId):null;
+      const owner=authenticatedOwner(req);
       if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'},{'Set-Cookie':ownerCookieClear()});
       return json(res,200,{owner});
     }
     if(route==='/api/me/agents'){
-      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
-      if(req.method==='GET')return json(res,200,{agents:ownershipStore.agentsForOwner(ownerId).map(agent=>({...agent,owner_id:undefined}))});
+      const owner=authenticatedOwner(req);if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+      if(req.method==='GET')return json(res,200,{agents:ownershipStore.agentsForOwner(owner.id).map(agent=>({...agent,owner_id:undefined}))});
       if(req.method==='POST'){
-        if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
-        const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{idempotencyKey:req.headers['idempotency-key']});
+        if(!agentCreates.allow(owner.id))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+        const data=await body(req,8192),agent=await ownershipStore.createAgent(owner.id,data,approvedAvatarSet,{idempotencyKey:req.headers['idempotency-key']});
         console.log(JSON.stringify({event:'agent_created',ownership_status:'user',provider:'mock'}));
         return json(res,201,{agent:{...agent,owner_id:undefined}});
       }
       return json(res,405,{error:'Method not allowed'});
     }
     if(route==='/api/me/agents/import'&&req.method==='POST'){
-      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
-      if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
-      const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{importing:true,idempotencyKey:req.headers['idempotency-key']});
+      const owner=authenticatedOwner(req);if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+      if(!agentCreates.allow(owner.id))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+      const data=await body(req,8192),agent=await ownershipStore.createAgent(owner.id,data,approvedAvatarSet,{importing:true,idempotencyKey:req.headers['idempotency-key']});
       console.log(JSON.stringify({event:'agent_imported',ownership_status:'user',provider:'mock'}));
       return json(res,201,{agent:{...agent,owner_id:undefined}});
     }
     const agentExport=route.match(/^\/api\/me\/agents\/(u-[a-f0-9-]{36})\/export$/);
     if(agentExport&&req.method==='GET'){
-      const ownerId=ownerIdFromRequest(req),agent=ownerId?ownershipStore.exportAgent(ownerId,agentExport[1]):null;
-      return agent?json(res,200,{agent}):json(res,ownerId?404:401,{error:ownerId?'Agent not found':'Owner session required',code:ownerId?'AGENT_NOT_FOUND':'OWNER_SESSION_REQUIRED'});
+      const owner=authenticatedOwner(req),agent=owner?ownershipStore.exportAgent(owner.id,agentExport[1]):null;
+      return agent?json(res,200,{agent}):json(res,owner?404:401,{error:owner?'Agent not found':'Owner session required',code:owner?'AGENT_NOT_FOUND':'OWNER_SESSION_REQUIRED'});
     }
     const agentAction=route.match(/^\/api\/me\/agents\/(u-[a-f0-9-]{36})\/(mock-fund|spending-policy|treasury|transactions)$/);
     if(agentAction){
-      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Owner session required',code:'OWNER_SESSION_REQUIRED'});
-      const [,id,action]=agentAction;if(!ownershipStore.agentExists(ownerId,id))return json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
+      const owner=authenticatedOwner(req);if(!owner)return json(res,401,{error:'Owner session required',code:'OWNER_SESSION_REQUIRED'});
+      const ownerId=owner.id,[,id,action]=agentAction;if(!ownershipStore.agentExists(ownerId,id))return json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
       if(action==='treasury'&&req.method==='GET')return json(res,200,{treasury:ownershipStore.agentSummaryForOwner(ownerId,id).treasury});
       if(action==='transactions'&&req.method==='GET'){
         const rawLimit=url.searchParams.get('limit'),limit=rawLimit===null?50:Number(rawLimit);

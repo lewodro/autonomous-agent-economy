@@ -37,7 +37,7 @@ function validateState(state){
  if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||!Array.isArray(state.operations)||state.owners.length>10_000||state.agents.length>100_000||state.operations.length>MAX_IDEMPOTENCY_RECORDS)throw new Error('Invalid ownership store format or capacity');
  const owners=new Set(),wallets=new Set(),agents=new Set(),agentOwners=new Map(),receipts=new Set(),receiptOwners=new Map();
  for(const owner of state.owners){
-  if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string')throw new Error('Invalid owner record');
+  if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string'||!Number.isSafeInteger(owner.session_version)||owner.session_version<0)throw new Error('Invalid owner record');
   owners.add(owner.id);
   if(owner.identity_type==='solana'&&typeof owner.wallet_public_key!=='string')throw new Error('Wallet owner is missing its public key');
   if(owner.identity_type==='anonymous'&&owner.wallet_public_key!==null&&owner.wallet_public_key!==undefined)throw new Error('Anonymous owner cannot have a wallet key');
@@ -86,6 +86,7 @@ export class OwnershipStore{
    }finally{await handle.close();}
   }catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
   if(this.state?.format===1&&this.state.operations===undefined)this.state.operations=[];
+  if(this.state?.format===1&&Array.isArray(this.state.owners))for(const owner of this.state.owners)if(owner.session_version===undefined)owner.session_version=0;
   validateState(this.state);this.ready=true;
  }
  requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
@@ -101,12 +102,12 @@ export class OwnershipStore{
  }
  owner(id){this.requireReady();const value=this.state.owners.find(owner=>owner.id===id);return value?structuredClone(value):null;}
  ownerByWallet(publicKey){this.requireReady();const value=this.state.owners.find(owner=>owner.wallet_public_key===publicKey);return value?structuredClone(value):null;}
- async createAnonymous(){return this.mutate(state=>{if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'anonymous',wallet_public_key:null};state.owners.push(owner);return cleanOwner(owner);});}
+ async createAnonymous(){return this.mutate(state=>{if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'anonymous',wallet_public_key:null,session_version:0};state.owners.push(owner);return cleanOwner(owner);});}
  async createWalletOwner(publicKey){return this.mutate(state=>{
   try{decodeSolanaAddress(publicKey);}catch{throw Object.assign(new Error('Invalid Solana wallet address'),{status:400,code:'INVALID_WALLET_ADDRESS'});}
   const existing=state.owners.find(owner=>owner.wallet_public_key===publicKey);if(existing)return cleanOwner(existing);
   if(state.owners.length>=10_000)throw Object.assign(new Error('Owner capacity reached'),{status:429,code:'OWNER_CAPACITY'});
-  const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'solana',wallet_public_key:publicKey};state.owners.push(owner);return cleanOwner(owner);
+  const owner={id:randomUUID(),created_at:new Date(this.now()).toISOString(),identity_type:'solana',wallet_public_key:publicKey,session_version:0};state.owners.push(owner);return cleanOwner(owner);
  });}
  async linkWalletOwner(ownerId,publicKey){return this.mutate(state=>{
   try{decodeSolanaAddress(publicKey);}catch{throw Object.assign(new Error('Invalid Solana wallet address'),{status:400,code:'INVALID_WALLET_ADDRESS'});}
@@ -114,8 +115,10 @@ export class OwnershipStore{
   const linked=state.owners.find(value=>value.wallet_public_key===publicKey);
   if(linked&&linked.id!==owner.id)throw Object.assign(new Error('This wallet already belongs to another profile. Sign out and connect that profile directly; accounts are not merged automatically.'),{status:409,code:'WALLET_ALREADY_OWNED'});
   if(owner.identity_type==='solana'&&owner.wallet_public_key!==publicKey)throw Object.assign(new Error('A different wallet is already linked to this profile.'),{status:409,code:'OWNER_WALLET_ALREADY_LINKED'});
+  if(owner.identity_type!=='solana'){if(owner.session_version===Number.MAX_SAFE_INTEGER)throw Object.assign(new Error('Owner session version capacity reached'),{status:409,code:'OWNER_SESSION_VERSION_CAPACITY'});owner.session_version++;}
   owner.identity_type='solana';owner.wallet_public_key=publicKey;return cleanOwner(owner);
  });}
+ async revokeSessions(ownerId,expectedVersion){return this.mutate(state=>{const owner=state.owners.find(value=>value.id===ownerId);if(!owner||owner.session_version!==expectedVersion)return false;if(owner.session_version===Number.MAX_SAFE_INTEGER)throw Object.assign(new Error('Owner session version capacity reached'),{status:409,code:'OWNER_SESSION_VERSION_CAPACITY'});owner.session_version++;return true;});}
  agentsForOwner(ownerId){this.requireReady();return this.state.agents.filter(agent=>agent.owner_id===ownerId).map(agent=>this.privateSummary(agent));}
  listPublicAgents({after=null,limit=50}={}){
   this.requireReady();

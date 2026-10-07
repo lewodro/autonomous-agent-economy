@@ -47,11 +47,22 @@ test('simultaneous retries for one agent creation serialize to one durable agent
 test('legacy owner snapshots without operation records remain readable and upgrade on write',async t=>{
  const {store,dir}=await fixture(t),owner=await store.createAnonymous();
  const {writeFile}=await import('node:fs/promises'),snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
- delete snapshot.operations;await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
+ delete snapshot.operations;delete snapshot.owners[0].session_version;await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
  const reopened=new OwnershipStore(dir);await reopened.init();
+ assert.equal(reopened.owner(owner.id).session_version,0);
  const agent=await reopened.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const upgraded=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  assert.equal(upgraded.operations.length,1);assert.equal(upgraded.operations[0].agent_id,agent.id);
+});
+
+test('wallet linking and logout revoke prior owner session versions',async t=>{
+ const {store}=await fixture(t),guest=await store.createAnonymous();
+ assert.equal(await store.revokeSessions(guest.id,0),true);
+ assert.equal(store.owner(guest.id).session_version,1);
+ assert.equal(await store.revokeSessions(guest.id,0),false,'a stale logout cannot revoke a newer session');
+ const pair=generateKeyPairSync('ed25519'),key=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
+ const linked=await store.linkWalletOwner(guest.id,key);
+ assert.equal(linked.id,guest.id);assert.equal(store.owner(guest.id).session_version,2);
 });
 
 test('wallet owners validate canonical public keys and are reused idempotently',async t=>{

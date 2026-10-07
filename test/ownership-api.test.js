@@ -63,11 +63,13 @@ test('owner API supports guest and wallet identity, private agent management, an
   const verified=await call('/api/auth/wallet/verify',{method:'POST',cookie:guest.cookie,body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})});
   assert.equal(verified.response.status,200);assert.equal(verified.value.owner.identity_type,'solana');assert.equal(verified.value.owner.id,guestOwnerId);assert.ok(verified.cookie);
   const linkedAgents=await call('/api/me/agents',{cookie:verified.cookie});assert.ok(linkedAgents.value.agents.some(agent=>agent.id===id),'guest-created agent should remain accessible after wallet linking');
+  assert.equal((await call('/api/me',{cookie:guest.cookie})).response.status,401,'wallet linking invalidates the old anonymous session');
+  guest.cookie=verified.cookie;
   assert.equal((await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})})).response.status,401);
   await stop();base=undefined;await start();
-  const retriedAfterRestart=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(retriedAfterRestart.response.status,201);assert.equal(retriedAfterRestart.value.agent.id,id);
-  const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
-  const fundingRetryAfterRestart=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(fundingRetryAfterRestart.value.receipt.id,funded.value.receipt.id);assert.equal(fundingRetryAfterRestart.value.treasury.available_base_units,'123');
+  const retriedAfterRestart=await call('/api/me/agents',{method:'POST',cookie:verified.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(retriedAfterRestart.response.status,201);assert.equal(retriedAfterRestart.value.agent.id,id);
+  const restored=await call('/api/me/agents',{cookie:verified.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
+  const fundingRetryAfterRestart=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:verified.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(fundingRetryAfterRestart.value.receipt.id,funded.value.receipt.id);assert.equal(fundingRetryAfterRestart.value.treasury.available_base_units,'123');
   for(let index=0;index<29;index++){
     const response=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':randomUUID()},body:'{"amount":1}'});
     assert.equal(response.response.status,200);
@@ -128,4 +130,6 @@ test('production-shaped free deployment serves the profile and sets secure owner
  const blockedAdvance=await fetch(`${base}/api/matches/${importedRun.session}/step`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});assert.equal(blockedAdvance.status,403);
  const resumed=await fetch(`${base}/api/matches/${importedRun.session}/step`,{method:'POST',headers:{...headers,Cookie:hostCookie.split(';')[0],'Content-Type':'application/json'},body:'{}'});assert.equal(resumed.status,200);
  const crossOrigin=await fetch(base+'/api/auth/wallet/challenge',{method:'POST',headers:{...headers,Origin:'https://attacker.example','Content-Type':'application/json'},body:JSON.stringify({public_key:publicKey})});assert.equal(crossOrigin.status,403);
+ const logout=await fetch(base+'/api/auth/logout',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:'{}'});assert.equal(logout.status,200);
+ const revoked=await fetch(base+'/api/me',{headers:{...headers,Cookie:ownerCookie}});assert.equal(revoked.status,401,'logout revokes copied owner cookies on the server');
 });

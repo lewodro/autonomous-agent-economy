@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign} from 'node:crypto';
+import {createHmac,generateKeyPairSync,sign} from 'node:crypto';
 import {WalletChallengeService,encodeBase58,decodeSolanaAddress,verifyWalletMessage} from '../service/wallet-auth.js';
-import {ownerCookie,ownerCookieClear,ownerIdFromRequest} from '../service/owner-auth.js';
+import {ownerCookie,ownerCookieClear,ownerIdFromRequest,ownerSessionFromRequest} from '../service/owner-auth.js';
 
 function wallet(){const pair=generateKeyPairSync('ed25519'),publicKey=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));return {pair,publicKey};}
 test('Solana wallet challenges verify an Ed25519 signature and are single-use',()=>{
@@ -41,4 +41,13 @@ test('owner cookie is scoped, HttpOnly, tamper-resistant and expires',()=>{
  assert.equal(ownerIdFromRequest({headers:{cookie:req.headers.cookie.replace(owner,'b1f0c2d4-1111-4222-8333-123456789abc')}},env,now),null);
  assert.equal(ownerIdFromRequest(req,env,now+31*24*60*60_000),null);
  assert.match(ownerCookieClear(env),/Max-Age=0/);
+});
+test('owner cookie carries a signed session version and accepts legacy version zero cookies',()=>{
+ const owner='a1f0c2d4-1111-4222-8333-123456789abc',env={HOST_SESSION_SECRET:'s'.repeat(32)},now=1_800_000_000_000;
+ const current=ownerCookie(owner,env,now,7),request={headers:{cookie:current.split(';')[0]}};
+ assert.deepEqual(ownerSessionFromRequest(request,env,now),{ownerId:owner,sessionVersion:7});
+ assert.equal(ownerSessionFromRequest({headers:{cookie:current.replace('.7.','.8.').split(';')[0]}},env,now),null);
+ const payload=`${owner}.${Math.floor(now/1000)+30*24*60*60}`;
+ const signature=createHmac('sha256',env.HOST_SESSION_SECRET).update(`aae-owner-v1:${payload}`).digest('base64url');
+ assert.deepEqual(ownerSessionFromRequest({headers:{cookie:`aae_owner=${payload}.${signature}`}},env,now),{ownerId:owner,sessionVersion:0});
 });
