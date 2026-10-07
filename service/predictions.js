@@ -42,7 +42,10 @@ export class DevnetPredictions {
   resolve(predictionId, { match_id, winner_id, attestation }) {
     const market = this.market(predictionId); if (market.status !== 'Locked') throw Object.assign(new Error('Prediction must be locked before resolving'), { code: 'PREDICTION_NOT_LOCKED', status: 409 });
     let verified = false;
-    try { verified = this.verifyAttestation(attestation, structuredClone(market)) === true; } catch { /* verifier errors fail closed */ }
+    try {
+      verified = attestation?.match_id === match_id && attestation?.winner_id === winner_id
+        && this.verifyAttestation(attestation, structuredClone(market)) === true;
+    } catch { /* verifier errors fail closed */ }
     if (market.match_id !== match_id || !market.options.includes(winner_id) || !verified) throw Object.assign(new Error('Match result is not authoritative'), { code: 'INVALID_ATTESTATION', status: 409 });
     market.status = 'Resolved'; market.winner_id = winner_id; market.resolved_at = new Date().toISOString();
     for (const entry of this.entries.values()) if (entry.prediction_id === predictionId && entry.status === 'Confirmed') entry.status = entry.selection === winner_id ? 'Won' : 'Lost';

@@ -7,7 +7,7 @@ test('predictions are Devnet-only, lock before result, and require a verified re
   const predictions = new DevnetPredictions({
     enabled: true,
     verifyReceipt: (receipt, entry) => receipt?.network === 'devnet' && receipt.confirmed === true && receipt.match_id === entry.prediction_id && receipt.payer_id === entry.player_id && receipt.amount_lamports === entry.test_amount_lamports,
-    verifyAttestation: (attestation, market) => attestation?.trusted === true && attestation.match_id === market.match_id,
+    verifyAttestation: (attestation, market) => attestation?.trusted === true && attestation.match_id === market.match_id && attestation.winner_id === 'agent-a',
   });
   predictions.open({ prediction_id: 'market_1', match_id: 'match_1', options: ['agent-a', 'agent-b'] });
   const entry = predictions.enter({ entry_id: 'entry_1', prediction_id: 'market_1', player_id: 'player_1', selection: 'agent-a', test_amount_lamports: 20_000_000, receipt_id: 'receipt_1' });
@@ -17,8 +17,9 @@ test('predictions are Devnet-only, lock before result, and require a verified re
   assert.throws(() => predictions.confirm('entry_1', { id: 'receipt_1', network: 'devnet', verified: true }), { code: 'PAYMENT_NOT_VERIFIED' });
   predictions.confirm('entry_1', { id: 'receipt_1', network: 'devnet', confirmed: true, match_id: 'market_1', payer_id: 'player_1', amount_lamports: 20_000_000 }); predictions.lock('market_1');
   assert.throws(() => predictions.enter({ entry_id: 'entry_2', prediction_id: 'market_1', player_id: 'player_2', selection: 'agent-b', test_amount_lamports: 1, receipt_id: 'receipt_2' }), { code: 'PREDICTION_LOCKED' });
-  assert.throws(() => predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-a', attestation: { trusted: true, match_id: 'elsewhere' } }), { code: 'INVALID_ATTESTATION' });
-  const result = predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-a', attestation: { trusted: true, match_id: 'match_1' } });
+  assert.throws(() => predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-a', attestation: { trusted: true, match_id: 'match_1', winner_id: 'agent-b' } }), { code: 'INVALID_ATTESTATION' });
+  assert.throws(() => predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-b', attestation: { trusted: true, match_id: 'match_1', winner_id: 'agent-a' } }), { code: 'INVALID_ATTESTATION' });
+  const result = predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-a', attestation: { trusted: true, match_id: 'match_1', winner_id: 'agent-a' } });
   assert.equal(result.entries[0].status, 'Won'); assert.throws(() => predictions.resolve('market_1', { match_id: 'match_1', winner_id: 'agent-a', attestation_valid: true }), { code: 'PREDICTION_NOT_LOCKED' });
 });
 
