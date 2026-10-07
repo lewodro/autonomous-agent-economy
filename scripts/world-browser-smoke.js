@@ -65,6 +65,18 @@ try{
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
+ await wait('document.querySelectorAll(".arena-agent").length>=20&&[...document.querySelectorAll(".arena-agent img")].every(image=>image.complete&&image.naturalWidth>0)');
+ assert.ok(await evaluate('document.querySelectorAll(".arena-agent[data-status=queued]").length>0'),'waiting agents must remain visible in the staging roster');
+ await wait('document.querySelector(".room-card[data-status=live]")&&document.querySelectorAll(".arena-agent[data-status=fighting]").length>=2');
+ assert.ok(await evaluate('(()=>{const sprite=document.querySelector(".arena-agent[data-status=fighting] .arena-agent-sprite");return !!sprite&&getComputedStyle(sprite).animationName.startsWith("arena-lean")})()'),'active agent sprites must lean toward their live pairing');
+ assert.ok(await evaluate('(()=>{const card=document.querySelector(".room-card[data-status=live]"),sprite=card?.querySelector(".room-player img");return !!sprite&&getComputedStyle(sprite).animationName==="arena-lean-right"})()'),'live matchup portraits must animate toward each other');
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ assert.ok(await evaluate('getComputedStyle(document.querySelector(".arena-agent[data-status=fighting] .arena-agent-sprite")).animationName==="none"'),'arena motion must respect the reduced-motion preference');
+ await send('Emulation.setEmulatedMedia',{features:[]});await screenshot('arena-live');
+ await evaluate('document.getElementById("agents").scrollIntoView({block:"start"})');await delay(1200);await screenshot('arena-roster');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=390'),'Arena lobby roster must fit a phone viewport');await screenshot('arena-mobile-roster');
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');

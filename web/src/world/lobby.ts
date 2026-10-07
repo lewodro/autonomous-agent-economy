@@ -1,4 +1,4 @@
-import { HttpArenaGateway } from './gateway.js';
+import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 const gateway=new HttpArenaGateway(),rooms=document.getElementById('rooms')!,status=document.getElementById('lobby-status')!,agents=document.getElementById('arena-agents')!;
 let stopped=false;window.addEventListener('pagehide',()=>stopped=true);
 function node(tag:string,text:string,parent:HTMLElement):HTMLElement{const n=document.createElement(tag);n.textContent=text;parent.append(n);return n;}
@@ -34,12 +34,25 @@ async function profiles():Promise<void>{
   try{
     const list=await gateway.getAgentProfiles();if(stopped)return;
     document.getElementById('agents-unavailable')?.remove();
-    for(const profile of list){
+    const pairPositions=new Map<string,number>();
+    const priority=(profile:AgentProfile)=>profile.arenaStatus==='fighting'?0:profile.arenaStatus==='finished'?1:profile.arenaStatus==='queued'?2:3;
+    const roster=[...list].sort((a,b)=>priority(a)-priority(b)||(a.arenaStatus==='fighting'&&b.arenaStatus==='fighting'?a.roomId!.localeCompare(b.roomId!):0)||a.name.localeCompare(b.name));
+    for(const profile of roster){
       let a=document.getElementById('agent-'+profile.id) as HTMLAnchorElement|null;
-      if(!a){a=document.createElement('a');a.id='agent-'+profile.id;a.href='/world?agent='+encodeURIComponent(profile.id);a.className='button';agents.append(a);}
-      a.dataset.status=profile.arenaStatus;
+      if(!a){a=document.createElement('a');a.id='agent-'+profile.id;agents.append(a);}
+      a.href='/world?agent='+encodeURIComponent(profile.id);a.className='arena-agent';a.dataset.status=profile.arenaStatus;
+      a.dataset.winner=String(profile.recentWinner);
       const state=profile.arenaStatus==='fighting'?`FIGHTING · ${profile.roomId}`:profile.arenaStatus==='finished'?'JUST FINISHED':profile.arenaStatus==='owned'?'OWNED · PLAZA':'QUEUED';
-      a.textContent=`${profile.recentWinner?'♛ ':''}${profile.name} · ${state} · ${profile.matches} matches / ${profile.wins} wins`;
+      const sideKey=profile.arenaStatus==='fighting'&&profile.roomId?profile.roomId:'';
+      const sideIndex=sideKey?(pairPositions.get(sideKey)||0):0;
+      if(sideKey)pairPositions.set(sideKey,sideIndex+1);
+      a.dataset.side=sideIndex===0?'left':'right';a.setAttribute('aria-label',`${profile.name}, ${state}, ${profile.wins} wins from ${profile.matches} matches`);
+      a.replaceChildren();
+      const stage=node('span','',a);stage.className='arena-agent-stage';
+      const image=document.createElement('img');image.className='arena-agent-sprite';image.src='/'+profile.sprite;image.alt='';image.loading='lazy';image.decoding='async';stage.append(image);
+      const status=node('span',state,stage);status.className='arena-agent-status';
+      const name=node('strong',`${profile.recentWinner?'♛ ':''}${profile.name}`,a);name.className='arena-agent-name';
+      node('span',`${profile.strategy} · ${profile.wins}W / ${profile.matches}M`,a).className='arena-agent-record';
     }
   }catch{
     if(!stopped&&!document.getElementById('agents-unavailable')){const warning=node('p','Agent profiles are temporarily unavailable. Reconnecting…',agents);warning.id='agents-unavailable';}
