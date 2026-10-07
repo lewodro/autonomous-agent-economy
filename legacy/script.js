@@ -11,6 +11,51 @@ import { startTournament, nextTournamentPair, scoreTournament } from '../src/tou
 
 const $ = id => document.getElementById(id);
 const sharedRoom = location.pathname.match(/^\/arena\/(?:rps|tictactoe)\/(rps-[12]|ttt-[12])$/)?.[1] || null;
+const spectatorKey=sharedRoom?`aae-room-spectator-v1:${sharedRoom}`:null;
+let spectatorLease=loadSpectatorLease(),nextSpectatorAttempt=0,roomPageStopped=false,spectatorOperation=false;
+function loadSpectatorLease(){
+  if(!spectatorKey)return null;
+  try{
+    const value=JSON.parse(sessionStorage.getItem(spectatorKey)||'null');
+    return value&&/^[A-Za-z0-9_-]{1,64}$/.test(value.id)&&typeof value.token==='string'?value:null;
+  }catch{return null;}
+}
+function saveSpectatorLease(value){
+  spectatorLease=value;
+  try{if(value)sessionStorage.setItem(spectatorKey,JSON.stringify(value));else sessionStorage.removeItem(spectatorKey);}catch{/* Spectating still works without session storage. */}
+}
+async function spectatorRequest(action,lease,keepalive=false){
+  const response=await fetch(`/api/arena/rooms/${sharedRoom}/spectators/${action}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spectator_id:lease.id,spectator_token:lease.token}),
+    keepalive,signal:AbortSignal.timeout(keepalive?2_000:5_000),
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw Object.assign(new Error(result.error||'Room spectator connection failed'),{status:response.status,code:result.code});
+  return result;
+}
+async function joinRoomAsSpectator(){
+  const lease=spectatorLease||{id:`viewer_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`,token:''};
+  const result=await spectatorRequest('join',lease);
+  const connected={id:result.spectator_id,token:result.spectator_token};
+  if(roomPageStopped){await spectatorRequest('leave',connected,true).catch(()=>{});return;}
+  saveSpectatorLease(connected);
+}
+async function maintainRoomSpectator(){
+  if(!sharedRoom||roomPageStopped||spectatorOperation||Date.now()<nextSpectatorAttempt)return;
+  spectatorOperation=true;
+  try{
+    if(!spectatorLease)await joinRoomAsSpectator();
+    else await spectatorRequest('heartbeat',spectatorLease);
+    nextSpectatorAttempt=Date.now()+15_000;
+  }catch(error){
+    if(error.status===404||error.status===403){saveSpectatorLease(null);try{await joinRoomAsSpectator();nextSpectatorAttempt=Date.now()+15_000;return;}catch{/* Retry the join on the next backoff window. */}}
+    nextSpectatorAttempt=Date.now()+5_000;
+  }finally{spectatorOperation=false;}
+}
+function leaveRoomSpectator(){
+  if(!sharedRoom||!spectatorLease)return Promise.resolve();
+  return spectatorRequest('leave',spectatorLease,true).then(()=>saveSpectatorLease(null)).catch(()=>{/* The lease expires automatically if navigation interrupts the request. */});
+}
 const fmt = n => (n / SOL).toFixed(3);
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 let state = createState(), selected = state.agents[0].id, watching = false, current = null, phase = '', busy = false;
@@ -175,9 +220,19 @@ connect(); render();
   document.querySelector('.return-link').href='/arena';document.querySelector('.return-link').textContent='← BACK TO ARENA';
   document.querySelector('.intro h1').textContent=`ROOM ${sharedRoom.toUpperCase()}`;
   document.querySelector('.intro .lede').textContent='Shared live simulation. The server runs the existing rules; spectators cannot change moves.';
-  let stopped=false;window.addEventListener('pagehide',()=>{stopped=true;});
+  let stopped=false;window.addEventListener('pagehide',()=>{stopped=true;roomPageStopped=true;});
+  const returnLink=document.querySelector('.return-link');
+  returnLink?.addEventListener('click',event=>{
+    if(!spectatorLease&&!spectatorOperation)return;
+    event.preventDefault();roomPageStopped=true;
+    void (async()=>{
+      while(spectatorOperation)await new Promise(resolve=>setTimeout(resolve,20));
+      await leaveRoomSpectator();location.assign(returnLink.href);
+    })();
+  });
   async function observe(){
     if(stopped)return;
+    void maintainRoomSpectator();
     try{
       const response=await fetch(`/api/arena/rooms/${sharedRoom}`,{signal:AbortSignal.timeout(8000)});
       if(!response.ok)throw new Error('Room unavailable');

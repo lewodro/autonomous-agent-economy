@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile } from 'node:fs/promises';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
@@ -47,22 +46,36 @@ async function serverUrl(child){
   }
   throw new Error(`Axile server did not report its ephemeral port:\n${child.output()}`);
 }
-async function availablePort(){
-  const probe=net.createServer();
-  await new Promise((resolve,reject)=>probe.once('error',reject).listen(0,'127.0.0.1',resolve));
-  const port=probe.address().port;await new Promise((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));return port;
+async function waitForDevTools(profile,chrome){
+  let lastError;
+  // Chrome can take longer to create DevToolsActivePort on a cold GitHub
+  // runner, especially while the parallel Rust job is compiling. Allow a
+  // full minute before treating startup as a CI failure.
+  for(let attempt=0;attempt<300;attempt++){
+    if(chrome.spawnError)throw new Error(`Chrome could not start: ${chrome.spawnError.message}`);
+    if(chrome.exitCode!==null||chrome.signalCode!==null)throw new Error(`Chrome exited before DevTools became ready:\n${chrome.output()}`);
+    try{
+      const [port]= (await readFile(path.join(profile,'DevToolsActivePort'),'utf8')).trim().split('\n');
+      if(/^\d+$/.test(port||'')){
+        const url=`http://127.0.0.1:${port}`;
+        try{const response=await fetch(`${url}/json/version`,{signal:AbortSignal.timeout(750)});if(response.ok)return url;}catch(error){lastError=error;}
+      }
+    }catch(error){lastError=error;}
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  throw new Error(`Chrome DevTools did not become ready (${lastError?.message||'timeout'}):\n${chrome.output()}`);
 }
 
 try{
   console.log(`Using headless Chrome at ${chromePath}`);
-  const debugPort=await availablePort(),debug=`http://127.0.0.1:${debugPort}`;
   const server=launch(process.execPath,[path.join(root,'server.js')],{cwd:root,env:{...process.env,PORT:'0',MATCHES_DIR:path.join(directory,'matches'),WORLD_LAB:'1'}});
   const base=await serverUrl(server);
-  const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-address=127.0.0.1',`--remote-debugging-port=${debugPort}`,'--remote-allow-origins=*',`--user-data-dir=${path.join(directory,'chrome')}`,'about:blank']);
+  const profile=path.join(directory,'chrome');
+  const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--disable-background-networking','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${profile}`,'about:blank']);
   await waitFor(`${base}/api/health`,'Axile server',[server]);
   const [servedApp,builtApp]=await Promise.all([fetch(`${base}/web/dist/world/app.js`).then(response=>response.text()),readFile(path.join(root,'web/dist/world/app.js'),'utf8')]);
   if(servedApp!==builtApp)throw new Error(`Browser test server is not serving this worktree's built app (response ${servedApp.length} bytes, local bundle ${builtApp.length} bytes). Server output: ${server.output()}`);
-  await waitFor(`${debug}/json/version`,'Chrome DevTools',[chrome]);
+  const debug=await waitForDevTools(profile,chrome);
   const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:{...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug}});
   const [code,signal]=await once(smoke,'exit');
   if(code!==0)throw new Error(`World browser journey failed (${signal||code}):\n${smoke.output()}`);

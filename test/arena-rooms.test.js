@@ -61,6 +61,20 @@ test('in-flight rooms reject concurrent steps and only expose completed research
   const step=pool.step('rps-1');await assert.rejects(()=>pool.step('rps-1'),/already running/);
   assert.equal(pool.history().length,0);await step;assert.equal(pool.history().length,1);pool.close();
 });
+test('settling rooms stay live until the final result checkpoint completes',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-settle-')),{stageMs:1});await pool.restore();
+  let reachedSettle,releaseSettle;
+  const atSettle=new Promise(resolve=>{reachedSettle=resolve;});
+  pool.delay=()=>new Promise(resolve=>{if(pool.rooms.get('rps-1').phase==='settle'){releaseSettle=resolve;reachedSettle();}else resolve();});
+  const step=pool.step('rps-1');await atSettle;
+  assert.equal(pool.rooms.get('rps-1').status,'live');
+  assert.equal(pool.listRooms().find(room=>room.id==='rps-1').status,'live');
+  assert.equal(pool.history().length,0,'uncheckpointed completion is excluded from retained research');
+  releaseSettle();await step;
+  assert.equal(pool.rooms.get('rps-1').status,'finished');
+  assert.equal(pool.history().length,1);
+  pool.close();
+});
 test('room scheduler retries one transient checkpoint failure without duplicating the match',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-retry-')),{stageMs:0,restMs:60_000,retryMs:1});await pool.restore();
   const checkpoint=pool.checkpoint.bind(pool);let injected=false;

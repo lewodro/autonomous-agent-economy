@@ -45,8 +45,8 @@ test('production devnet needs an explicit test-SOL acknowledgement and dedicated
   assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY' }), /dedicated HTTPS/);
   const config = validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc' });
   assert.equal(config.publicDevnet, true);
-  assert.equal(validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc', PREDICTIONS_ENABLED: 'true' }).publicPredictions, true);
-  assert.throws(() => validateDeploymentConfig({ NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32), PREDICTIONS_ENABLED: 'true' }), /predictions require explicit DEVNET/);
+  assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_DEVNET_ACK: 'I_UNDERSTAND_TEST_SOL_ONLY', SOLANA_DEVNET_RPC_URL: 'https://devnet.example/rpc', PREDICTIONS_ENABLED: 'true' }), /prediction routes and payment integration are not implemented/);
+  assert.throws(() => validateDeploymentConfig({ NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32), PREDICTIONS_ENABLED: 'true' }), /predictions require explicit production DEVNET/);
 });
 
 test('rejects origins with paths and invalid port settings', () => {

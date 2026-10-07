@@ -67,6 +67,7 @@ async function main() {
       assert.equal(req.headers.cookie, hostCookie);
       let body = ''; for await (const chunk of req) body += chunk;
       const submitted = JSON.parse(body);
+      assert.deepEqual(submitted.decisions.map(({reason})=>reason),['Worked to earn credits.','Guarded to protect against a challenge.']);
       return res.end(JSON.stringify({ replay: { match_id: 'match-one', final_state: { turn: submitted.expected_turn + 1, ended: true, agents: [{ id: 'agent-a', credits: 8, alive: true }] }, winner: 'agent-a' }, events: [{ type: 'ActionResolved' }] }));
     }
     res.statusCode = 404;
@@ -95,7 +96,9 @@ async function main() {
     const restarted = await bridge.call(3, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     assert.ok(restarted.result?.serverInfo);
     bridge.notify('notifications/initialized');
-    const stepped = await bridge.call(4, 'tools/call', { name: 'submit_turn', arguments: { arena_id: session, expected_turn: 0, decisions: [{ agent_id: 'agent-a', action: 'work', reason: 'Gather credits.' }, { agent_id: 'agent-b', action: 'guard', reason: 'Stay safe.' }] } });
+    const privateReason = await bridge.call(4, 'tools/call', { name: 'submit_turn', arguments: { arena_id: session, expected_turn: 0, decisions: [{ agent_id: 'agent-a', action: 'work', reason: 'private reasoning' }, { agent_id: 'agent-b', action: 'guard' }] } });
+    assert.equal(privateReason.result.isError,true,'MCP schema rejects free-text provider reasoning');
+    const stepped = await bridge.call(5, 'tools/call', { name: 'submit_turn', arguments: { arena_id: session, expected_turn: 0, decisions: [{ agent_id: 'agent-a', action: 'work' }, { agent_id: 'agent-b', action: 'guard' }] } });
     assert.equal(stepped.result.isError, undefined);
     assert.equal(JSON.parse(stepped.result.content[0].text).winner, 'agent-a');
     assert.equal(calls.at(-1).cookie, hostCookie);

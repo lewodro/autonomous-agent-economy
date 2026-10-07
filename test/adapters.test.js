@@ -31,8 +31,8 @@ test('oversized streamed decisions are canceled before the entire body is buffer
   });
 });
 
-test('valid decisions preserve UTF-8 characters split between stream chunks', async () => {
-  const result = { action: 'work', target: null, reason: 'Earn credits 🌱' };
+test('valid decisions handle split UTF-8 model text without exposing it publicly', async () => {
+  const result = { action: 'work', target: null, reason: 'private thoughts 🌱' };
   const bytes = new TextEncoder().encode(JSON.stringify(result));
   let offset = 0;
   const response = new Response(new ReadableStream({
@@ -42,6 +42,9 @@ test('valid decisions preserve UTF-8 characters split between stream chunks', as
     },
   }));
   await withResponse(response, async () => {
-    assert.deepEqual(await decisionsFor(config, observation), [{ agent_id: 'agent-1', ...result }]);
+    const [decision] = await decisionsFor(config, observation);
+    assert.equal(decision.action,'work','the JSON response was decoded despite a split multibyte character');
+    assert.equal(decision.reason,'Worked to earn credits.');
+    assert.doesNotMatch(decision.reason,/private thoughts/);
   });
 });

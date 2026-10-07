@@ -115,9 +115,9 @@ flowchart TD
  LastSeat --> Rust[Rust authoritative game engine]
 ```
 
-Explore `/world`, then enter `/arena` to watch the shared rooms. Visitor appearance and position are local to that browser. NPC profile statistics are reconstructed from verified room ledgers and explicitly cover retained runs. The arena uses simulated SOL only. The separate world table supports two browser seats or free practice against Founder.
+Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads verified match, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. Those totals cover the bounded retained match history, not all-time history. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
 
-The room pool and browser journey are described in `docs/architecture/walkable-world.md`; sprite dimensions and registration are in `docs/sprites.md`. Run the browser journey locally with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome automatically with `npm run test:browser:world:ci`.
+Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome with `npm run test:browser:world:ci`.
 
 **The UI never resolves game rules.** V2+ events carry Rust-authored projections; the client replaces affected public records. Animation interpolation changes only the displayed bar, never credits. Full `RoundEnded` checkpoints reconcile presentation. V1 archives use isolated compatibility projection.
 
@@ -173,7 +173,7 @@ V6 makes guarding a survival choice rather than another income source. Across 12
 |---|---|---|
 | `mock` | Default / zero-cost | Rust strategy |
 | `openai-compatible` | Working adapter | `/v1/chat/completions`, structured JSON choice |
-| `http` | Working custom adapter | `{agent,observation,response_schema}` → `{action,target,reason}` |
+| `http` | Working custom adapter | `{agent,observation,response_schema}` → `{action,target}`; server generates the public summary |
 | `recorded` | Working | Explicit decisions on turn API; otherwise fallback |
 | Anthropic / provider-specific SDKs | Planned | Add a factory to the adapter registry |
 | OpenRouter / local models | Optional | Use their compatible base URL if they support the response shape |

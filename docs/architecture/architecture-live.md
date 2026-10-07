@@ -81,7 +81,7 @@ flowchart LR
  Intent --> Rust[Rust rule authorization]
 ```
 
-A provider's explain method returns the public decision reason. It cannot read wallet keys or execute transactions. The server chooses the credential destination and environment variable; public configs cannot redirect secrets. Inference reservations count failed attempts and retries and are checkpointed before provider requests. Startup restores global and per-agent counts.
+Providers return only the structured action and target used by the engine. The server generates the spectator summary from that action; provider free-text reasoning is discarded before it can enter a replay. Adapters cannot read wallet keys or execute transactions. The server chooses the credential destination and environment variable; public configs cannot redirect secrets. Inference reservations count failed attempts and retries and are checkpointed before provider requests. Startup restores global and per-agent counts.
 
 ## Payment experiment
 

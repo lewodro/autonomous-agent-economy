@@ -4,7 +4,7 @@ The browser world is a presentation and presence layer. The server owns player s
 
 ## Presence API
 
-Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
+Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Heartbeats are capped at one per second, and unchanged heartbeat activity is not broadcast. Each world accepts up to 100 concurrent SSE viewers. Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
 
 | Operation | Endpoint | Request / result |
 | --- | --- | --- |
@@ -15,20 +15,31 @@ Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement i
 | Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ player_id, session_token, activity? }` |
 | Leave | `POST /api/worlds/:world/presence/leave` | `{ player_id, session_token }` |
 
-World IDs and player IDs are validated. Positions are bounded to `0..1040 × 0..864`; movement speed and request frequency are limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
+Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Player IDs are also validated. Avatar IDs must be approved in `assets/avatars/index.json`; an omitted avatar uses `visitor_ember`. Presence positions are avatar-center coordinates inside the walkable map rectangle (`x=52..1100`, `y=76..812` for the current 1152×864 map and 12 px collision radius). Moves are limited to the world controller's 150 px/s plus six pixels of jitter, with at most 250 ms of movement time credited per update, and requests are rate limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
+
+SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "main", "players": [] }`; delta events include `world_id` plus `player` or `player_id`. The browser types mirror this wire format.
+
+`web/src/world/presence-client.ts` is the typed browser transport adapter. Construct it with the selected avatar and initial position, call `connect()`, and merge each `onPlayers` snapshot into rendered remote actors. Call `move()` at the local controller's position update cadence, `heartbeat()` at most once per second, and `leave()` on an explicit world exit. `EventSource` reconnects automatically; every `WorldJoined` event replaces the client snapshot before later deltas are applied. The opaque capability stays in session storage and is never included in event callbacks. The world page is not wired to this adapter yet; the current world remains single-browser locally until its owner integrates the adapter.
+
+`GET /api/health` reports presence status, active player/stream counts, configured-world count, and capacity limits. It exposes no player IDs or session capabilities; the mode is explicitly identified as single-process ephemeral.
 
 ## Arena and research
+
+Shared room pages open a room-scoped spectator lease on entry, heartbeat every 15 seconds, and close it when the user follows the room's return link. Refresh preserves the same session-scoped identity and does not create a second viewer. Unexpected tab closure leaves a lease that expires after 45 seconds. The lobby's spectator count is derived from these server leases; it is never estimated by the browser.
 
 | Endpoint | Authority |
 | --- | --- |
 | `GET /api/arena/rooms` | Current shared room status, phase, pairing, and spectator count |
 | `GET /api/arena/rooms/:roomId` | Read-only current room snapshot |
+| `POST /api/arena/rooms/:roomId/spectators/join` | Create or resume a room-scoped spectator lease; returns an opaque `spectator_token` |
+| `POST /api/arena/rooms/:roomId/spectators/heartbeat` | Renew `{ spectator_id, spectator_token }`; send no faster than once per second |
+| `POST /api/arena/rooms/:roomId/spectators/leave` | End `{ spectator_id, spectator_token }` lease |
 | `GET /api/arena/agents` | Profiles and statistics derived from verified retained runs |
 | `GET /api/arena/statistics` | Aggregates computed from the same verified retained ledgers |
 | `GET /api/arena/history` | Recent completed matches |
 | `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
-Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
+Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. A room remains `live` through settlement and becomes `finished` only after its result checkpoint commits. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
 
 ## Free plaza table
 
@@ -38,4 +49,4 @@ The earlier in-memory table-session prototype is intentionally not mounted. Ther
 
 ## Predictions
 
-`DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.
+`DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Startup rejects `PREDICTIONS_ENABLED=true` because the feature is not mounted yet. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.

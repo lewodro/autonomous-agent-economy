@@ -17,7 +17,7 @@ test('offline Rust wallet demo is byte reproducible and rejects unknown or incom
   assert.notEqual(run(['--load-test-wallet']).status,0);
 });
 
-test('HTTP decisions are recorded and replayed without calling their provider again',async()=>{
+test('HTTP decisions store only generated public summaries and replay without provider calls',async()=>{
   let calls=0;
   const adapter=http.createServer(async(req,res)=>{
     let text='';for await(const chunk of req)text+=chunk;
@@ -37,7 +37,8 @@ test('HTTP decisions are recorded and replayed without calling their provider ag
     const decisions=await decisionsFor(config,info.observation);
     const {replay}=await core.request({command:'step',decisions});
     assert.equal(calls,2);
-    assert.equal(replay.events.filter(e=>e.type==='AgentActionSelected'&&e.reason==='This is a recorded external decision.').length,2);
+    assert.equal(replay.events.filter(e=>e.type==='AgentActionSelected'&&e.reason==='Worked to earn credits.').length,2);
+    assert.equal(JSON.stringify(replay).includes('recorded external decision'),false,'provider rationale must not enter persisted replay data');
     assert.deepEqual((await core.request({command:'verify',replay})).replay,replay);
     assert.equal(calls,2);
     process.env.AGENT_HTTP_ENDPOINT='http://127.0.0.1:1';

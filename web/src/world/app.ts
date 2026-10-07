@@ -91,8 +91,9 @@ async function transparentImage(url:string,width:number,height:number):Promise<b
   const sample=document.createElement('canvas');sample.width=width;sample.height=height;
   const context=sample.getContext('2d',{willReadFrequently:true});if(!context)return false;
   context.drawImage(image,0,0);const pixels=context.getImageData(0,0,width,height).data;
-  for(let alpha=3;alpha<pixels.length;alpha+=4)if(pixels[alpha]!<255)return true;
-  return false;
+  let transparent=0,visible=0;
+  for(let alpha=3;alpha<pixels.length;alpha+=4){if(pixels[alpha]===0)transparent++;else visible++;}
+  return visible>0&&transparent/(width*height)>=0.01;
 }
 async function avatarCatalog():Promise<AvatarAsset[]> {
   if(approvedAvatarAssets)return approvedAvatarAssets;

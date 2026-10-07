@@ -26,6 +26,13 @@ export class InferenceBudget {
   }
 }
 export const fallback=(profile,reason)=>({agent_id:profile.id,action:profile.inference?.fallback||'guard',target:null,reason});
+export function publicActionSummary(action,target){
+  if(action==='work')return 'Worked to earn credits.';
+  if(action==='guard')return 'Guarded to protect against a challenge.';
+  if(action==='challenge')return `Challenged ${target}.`;
+  if(action==='cooperate')return `Offered cooperation to ${target}.`;
+  return 'Selected an action.';
+}
 export function settings(profile) {
   const c=profile.inference||{};
   return {base_url:c.base_url||process.env.MODEL_BASE_URL||'https://api.openai.com/v1',api_key_env:c.api_key_env||process.env.MODEL_API_KEY_ENV||'OPENAI_API_KEY',timeout_ms:c.timeout_ms??4000,max_tokens:c.max_tokens??256,max_requests:c.max_requests??40,retries:c.retries??1,fallback:c.fallback||'guard'};
@@ -43,8 +50,9 @@ function approvedEndpoint(options) {
   return `${canonical(base)}/chat/completions`;
 }
 export function validateDecision(result,profile) {
-  if(!['work','challenge','guard','cooperate'].includes(result.action)||typeof result.reason!=='string'||!result.reason.trim()||result.reason.length>300||(result.target!=null&&typeof result.target!=='string'))throw new Error('Invalid structured decision');
-  return {agent_id:profile.id,action:result.action,target:result.target||null,reason:result.reason};
+  if(!['work','challenge','guard','cooperate'].includes(result.action)||(result.target!=null&&(typeof result.target!=='string'||result.target.length>40)))throw new Error('Invalid structured decision');
+  const target=result.target||null;
+  return {agent_id:profile.id,action:result.action,target,reason:publicActionSummary(result.action,target)};
 }
 async function boundedJson(response) {
   if(!response.ok)throw Object.assign(new Error(`HTTP ${response.status}`),{retryable:response.status===429||response.status>=500});
@@ -59,12 +67,12 @@ export class HttpModelAdapter {
   explainPublic(choice,observation){return publicDecisionReason(choice,observation);}
   async decide(observation){
     const p=this.profile,o=this.options,compatible=p.provider==='openai-compatible';
-    const messages=[{role:'system',content:`You compete at Last Seat. Choose one legal action: work, guard, challenge, cooperate. Challenge/cooperate require another living target; work/guard require target:null. Return JSON {action,target,reason}. Reason is public, at most 300 characters. ${p.prompt}\nPersonality: ${p.personality}`},{role:'user',content:JSON.stringify({self:p.id,observation:this.observe(observation)})}];
+    const messages=[{role:'system',content:`You compete at Last Seat. Choose one legal action: work, guard, challenge, cooperate. Challenge/cooperate require another living target; work/guard require target:null. Return JSON {action,target}. Do not return private reasoning; the server generates a short public action summary. ${p.prompt}\nPersonality: ${p.personality}`},{role:'user',content:JSON.stringify({self:p.id,observation:this.observe(observation)})}];
     const endpoint=compatible?approvedEndpoint(o):process.env.AGENT_HTTP_ENDPOINT;
     if(!endpoint)return fallback(p,'HTTP adapter not configured; local fallback.');
     const url=new URL(endpoint);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Use an HTTP endpoint without embedded credentials');
     const credential=compatible?process.env[o.api_key_env]:process.env.AGENT_HTTP_TOKEN;
-    const payload=compatible?{model:p.model,messages,max_tokens:o.max_tokens,temperature:0,response_format:{type:'json_object'}}:{agent:{id:p.id,model:p.model,prompt:p.prompt,personality:p.personality},observation:this.observe(observation),response_schema:{action:['work','guard','challenge','cooperate'],target:'agent ID or null',reason:'brief public explanation'}};
+    const payload=compatible?{model:p.model,messages,max_tokens:o.max_tokens,temperature:0,response_format:{type:'json_object'}}:{agent:{id:p.id,model:p.model,prompt:p.prompt,personality:p.personality},observation:this.observe(observation),response_schema:{action:['work','guard','challenge','cooperate'],target:'agent ID or null'}};
     // Conservative context+output reservation; failed requests/retries count too.
     const cost=new TextEncoder().encode(JSON.stringify(payload)).byteLength+o.max_tokens;
     for(let attempt=0;attempt<=o.retries;attempt++){
@@ -88,7 +96,7 @@ export class HttpModelAdapter {
 
 /** Only the public summary and selected observable facts cross the spectator boundary. */
 export function publicDecisionReason(choice,observation) {
-  return {summary:String(choice.reason||'').slice(0,300),relevant_state:(observation.agents||[])
+  return {summary:publicActionSummary(choice.action,choice.target),relevant_state:(observation.agents||[])
     .filter(a=>a.id===choice.agent_id||a.id===choice.target)
     .map(a=>({agent_id:a.id,credits:a.credits}))};
 }

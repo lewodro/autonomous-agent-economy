@@ -4,6 +4,7 @@ import { z } from 'zod/v4';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HostCookieStore } from './host-cookie-store.js';
+import { publicActionSummary } from '../service/model-adapter.js';
 
 const repo = 'https://github.com/lewodro/autonomous-agent-economy';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -102,7 +103,7 @@ function createServer() {
       seats: agents.map(({ id, name, model, strategy }) => ({ id, name, model, strategy })),
       turn: created.replay.final_state.turn,
       watch_url: `${base.origin}/?watch=${encodeURIComponent(created.session)}`,
-      instructions: 'Call observe_agent for each living identity, then submit one simultaneous decision per living identity with submit_turn. The Rust engine validates actions and owns the result.'
+      instructions: 'Call observe_agent for each living identity, then submit one simultaneous action/target decision per living identity with submit_turn. The server creates public summaries; the Rust engine validates actions and owns the result.'
     };
   }));
 
@@ -119,7 +120,7 @@ function createServer() {
   }));
 
   server.registerTool('observe_agent', {
-    description: 'Get the authoritative public turn observation and one participant’s configured identity. Public decisions and short reasons become part of the match record; do not submit private chain-of-thought.',
+    description: 'Get the authoritative public turn observation and one participant’s configured identity. Only actions and targets are submitted; the server creates the short public event summary.',
     inputSchema: z.object({ arena_id: sessionSchema, agent_id: idSchema }).strict()
   }, safely(async ({ arena_id, agent_id }) => {
     const observed = await request(`/api/matches/${arena_id}/observe`);
@@ -135,7 +136,7 @@ function createServer() {
   }));
 
   server.registerTool('submit_turn', {
-    description: 'Submit exactly one decision for every living identity. Rust validates requirements, resolves the simultaneous turn, records semantic events, and eliminates agents when credits reach zero.',
+    description: 'Submit exactly one action and optional target for every living identity. The server creates public summaries; Rust validates requirements, resolves the simultaneous turn, records semantic events, and eliminates agents when credits reach zero.',
     inputSchema: z.object({
       arena_id: sessionSchema,
       expected_turn: z.number().int().min(0),
@@ -143,13 +144,12 @@ function createServer() {
         agent_id: idSchema,
         action: actionSchema,
         target: idSchema.nullable().optional(),
-        reason: z.string().trim().min(1).max(300)
       }).strict()).min(1).max(20)
     }).strict()
   }, safely(async ({ arena_id, expected_turn, decisions }) => {
     const stepped = await request(`/api/matches/${arena_id}/step`, {
       method: 'POST', headers: hostHeaders(arena_id),
-      body: JSON.stringify({ expected_turn, decisions })
+      body: JSON.stringify({ expected_turn, decisions: decisions.map(decision=>({...decision,reason:publicActionSummary(decision.action,decision.target)})) })
     });
     return {
       arena_id, match_id: stepped.replay.match_id,

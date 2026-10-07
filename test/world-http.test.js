@@ -16,7 +16,7 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   const worldApp=await(await fetch(base+'/web/dist/world/app.js')).text();assert.match(worldApp,/assets\/avatars\/index\.json/);assert.doesNotMatch(worldApp,/assets\/aae_avatar_kit\/examples/);
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json','/assets/sprites-agent/01-founder.png','/assets/avatars/clean/mentor.png'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
-  const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});
+  const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});assert.deepEqual(health.presence,{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:0,event_streams:0,limits:{players_per_world:40,event_streams_per_world:100}});
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
   const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);
   const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'verified retained arena runs');assert.equal(statistics.totals.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0}});

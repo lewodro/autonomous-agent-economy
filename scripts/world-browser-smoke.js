@@ -18,7 +18,8 @@ try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
- await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1');document.querySelector('a[href=\"/world\"]').click()");
+ await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1')");
+ await send('Page.navigate',{url:base+'/world'});
  await wait('document.getElementById("character-dialog")?.open');
  await wait('document.querySelectorAll("#avatar-presets img").length===4&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
  const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
@@ -44,16 +45,35 @@ try{
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
-  await evaluate(`document.querySelector('a[href="/arena/${game}/${id}"]').click()`);
+  await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
   await wait('document.getElementById("match-title").textContent.includes("game-")');
+  const spectatorCount=`fetch('/api/arena/rooms').then(r=>r.json()).then(v=>v.rooms.find(room=>room.id===${JSON.stringify(id)})?.spectators)`;
+  await wait(`${spectatorCount}.then(count=>count===1)`);
   if(game==='tictactoe'){await wait('document.querySelectorAll("#ttt-board span").length===9');await screenshot('tictactoe');}
   else{assert.ok(await evaluate('document.getElementById("duel").textContent.includes("VS")'));await screenshot('rps');}
   assert.equal(await evaluate('getComputedStyle(document.querySelector(".play-controls")).display'),'none','shared room controls must be hidden');
   assert.equal(await evaluate('[...document.querySelectorAll(".play-controls button")].every(button=>button.disabled)'),true,'read-only spectators cannot trigger local moves');
-  await evaluate('document.querySelector(".return-link").click()');await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
+  assert.equal(await evaluate('document.querySelector(".return-link")?.getAttribute("href")'),'/arena');
+  await send('Page.reload');await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
+  await wait(`${spectatorCount}.then(count=>count===1)`);
+  await evaluate('document.querySelector(".return-link").click()');
+  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
+  await wait(`${spectatorCount}.then(count=>count===0)`);
  }
- await evaluate("document.querySelector('a[href=\"/world\"]').click()");await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
+ await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
+ await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Open arena statistics').click()");
+ await wait('!document.getElementById("interact").disabled');
+ await evaluate("window.__researchStats=null;const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/api/arena/statistics'))window.__researchStats=await response.clone().json();return response}");
+ await evaluate('document.getElementById("interact").click()');
+ await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest verified results")');
+ const actualMatches=await evaluate('window.__researchStats.totals.matches');
+ const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified retained arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ await evaluate('document.getElementById("interaction-close").click()');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
  await delay(3100);const before=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
