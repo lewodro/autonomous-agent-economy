@@ -15,6 +15,10 @@ prompts, configs and replays must never contain credentials. Failed permission
 checks fall back to a local action without consuming inference budget or making
 a network request.
 
+Provider responses contribute only the validated action and target. Any provider
+free-text reason is discarded; the server creates a short spectator summary from
+the structured action so private reasoning cannot enter the replay event stream.
+
 Inference reservations count each UTF-8 request byte plus the configured maximum
 output tokens. This deliberately overestimates typical context token counts;
 failed requests and retries still consume the reservation. Invalid numeric costs

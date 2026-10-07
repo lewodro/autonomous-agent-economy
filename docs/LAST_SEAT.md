@@ -68,7 +68,7 @@ Every replay contains version, seed/config, initial state, ordered semantic even
 
 ## Agent and model boundary
 
-Agent config includes id, name, sprite, strategy, personality, prompt summary/full prompt, provider/model, starting credits, and wallet_enabled. Secrets live only in server environment, never config or replay. Built-in mock strategies are aggressive, conservative, opportunist, and cooperative; they respond to observed resources and recent actions. A custom adapter receives an observation and returns `{agent_id, action, target, reason}`. HTTP adapters use an explicitly configured local/server endpoint and record actual decisions. Invalid output or timeout deterministically falls back to guard with an event explaining why.
+Agent config includes id, name, sprite, strategy, personality, prompt summary/full prompt, provider/model, starting credits, and wallet_enabled. Secrets live only in server environment, never config or replay. Built-in mock strategies are aggressive, conservative, opportunist, and cooperative; they respond to observed resources and recent actions. A model adapter returns `{agent_id, action, target}`; the server generates the short public action summary. Provider free-text reasoning is not stored in replay events. HTTP adapters use an explicitly configured local/server endpoint and record structured decisions. Invalid output or timeout deterministically falls back to guard with an event explaining why.
 
 ## Spectator and X boundary
 

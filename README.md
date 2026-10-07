@@ -173,7 +173,7 @@ V6 makes guarding a survival choice rather than another income source. Across 12
 |---|---|---|
 | `mock` | Default / zero-cost | Rust strategy |
 | `openai-compatible` | Working adapter | `/v1/chat/completions`, structured JSON choice |
-| `http` | Working custom adapter | `{agent,observation,response_schema}` → `{action,target,reason}` |
+| `http` | Working custom adapter | `{agent,observation,response_schema}` → `{action,target}`; server generates the public summary |
 | `recorded` | Working | Explicit decisions on turn API; otherwise fallback |
 | Anthropic / provider-specific SDKs | Planned | Add a factory to the adapter registry |
 | OpenRouter / local models | Optional | Use their compatible base URL if they support the response shape |

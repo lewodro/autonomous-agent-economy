@@ -29,7 +29,7 @@ flowchart LR
 | Boundary | Current owner | Limit |
 |---|---|---|
 | Winner / survival | Rust engine | Browser claims never authoritative |
-| Public reason | Validated concise model/mock reason | No private provider metadata |
+| Public reason | Server-generated summary from structured action | Provider free-text reasoning is discarded |
 | Economy identity | Rust binding + explicit instance | Separate from changing history hash |
 | Admission / settlement | FundedHost + escrow + rail | Backend custody, test-only |
 | Recovery | Host snapshot + rail journal + authority key | Single writer/local filesystem |
