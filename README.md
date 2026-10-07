@@ -43,6 +43,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
 | Walkable Agent World | **WORKING DEMO** | Local visitor avatar, collision, keyboard/touch movement, NPC profiles and archive |
 | Shared RPS / Tic-Tac-Toe rooms | **WORKING DEMO** | Four server-hosted room slots reuse existing JavaScript rules and read-only spectator UI |
+| Survival Arena frontend | **WAITING ON BACKEND CONTRACT** | Read-only tactical renderer and mode selector are ready; no authoritative public combat feed exists yet |
 | Free plaza Tic-Tac-Toe table | **WORKING DEMO** | One persisted human table or practice against Founder; verified board rules, no stake |
 | Public test-SOL entries | **EXPERIMENTAL** | Explicit Devnet-only production gate, real addresses/receipts; full live funded run remains unverified |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
