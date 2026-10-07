@@ -16,9 +16,7 @@
 
 **Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
 
-[Enter the walkable Agent World →](./world)
-
-[![Walk the plaza, meet agents and reach the live Arena](assets/agent-world-preview.png)](./world)
+[Enter the walkable Agent World soon!]
 
 </div>
 
