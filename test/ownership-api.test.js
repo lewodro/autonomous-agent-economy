@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {generateKeyPairSync,sign} from 'node:crypto';
+import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
 import {createServer as createNetServer} from 'node:net';
 import {encodeBase58} from '../service/wallet-auth.js';
 
@@ -29,11 +29,16 @@ test('owner API supports guest and wallet identity, private agent management, an
   const {value:capabilities}=await call('/api/capabilities');assert.equal(capabilities.ownership.agent_creation_available,true);assert.equal(capabilities.ownership.mainnet_match_wagering_enabled,false);
   const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
   const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
-  const created=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'})});
+  const createKey=randomUUID(),createBody=JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'});
+  const missingKey=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,body:createBody});assert.equal(missingKey.response.status,400);assert.equal(missingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
+  const created=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});
   assert.equal(created.response.status,201,JSON.stringify(created.value));const id=created.value.agent.id;
-  const imported=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Imported',avatar:'visitor_atlas',strategy:'cooperative',personality:'Calm.'})});
+  const duplicate=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(duplicate.response.status,201);assert.equal(duplicate.value.agent.id,id);
+  const reused=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:JSON.stringify({name:'Different',avatar:'visitor_ember',strategy:'conservative'})});assert.equal(reused.response.status,409);assert.equal(reused.value.code,'IDEMPOTENCY_KEY_REUSED');
+  const importKey=randomUUID(),importBody=JSON.stringify({format:'aae-agent-v1',name:'Imported',avatar:'visitor_atlas',strategy:'cooperative',personality:'Calm.'});
+  const imported=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':importKey},body:importBody});
   assert.equal(imported.response.status,201,JSON.stringify(imported.value));
-  const rejectedImport=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Unsafe',avatar:'visitor_ember',strategy:'cooperative',private_key:'do-not-accept'})});
+  const rejectedImport=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':randomUUID()},body:JSON.stringify({format:'aae-agent-v1',name:'Unsafe',avatar:'visitor_ember',strategy:'cooperative',private_key:'do-not-accept'})});
   assert.equal(rejectedImport.response.status,400);
   const publicResult=await call(`/api/agents/${id}`);assert.equal(publicResult.value.agent.owner_id,undefined);assert.equal(publicResult.value.agent.treasury,undefined);
   const publicPage=await call('/api/agents?limit=1');assert.equal(publicPage.value.agents.length,1);assert.equal(publicPage.value.next_cursor,id);
@@ -51,6 +56,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   const linkedAgents=await call('/api/me/agents',{cookie:verified.cookie});assert.ok(linkedAgents.value.agents.some(agent=>agent.id===id),'guest-created agent should remain accessible after wallet linking');
   assert.equal((await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})})).response.status,401);
   await stop();base=undefined;await start();
+  const retriedAfterRestart=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(retriedAfterRestart.response.status,201);assert.equal(retriedAfterRestart.value.agent.id,id);
   const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
   for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,201);
   assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,429);
@@ -83,7 +89,7 @@ test('production-shaped free deployment serves the profile and sets secure owner
  assert.equal(verifiedResponse.status,200);const verified=await verifiedResponse.json();assert.equal(verified.owner.identity_type,'solana');
  const walletCookie=verifiedResponse.headers.get('set-cookie')||'';assert.match(walletCookie,/; HttpOnly; SameSite=Strict;.*Secure/);
  const ownerCookie=walletCookie.split(';')[0];
- const created=await fetch(base+'/api/me/agents',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({name:'Production Agent',avatar:'visitor_nova',strategy:'opportunist'})});
+ const created=await fetch(base+'/api/me/agents',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:JSON.stringify({name:'Production Agent',avatar:'visitor_nova',strategy:'opportunist'})});
  assert.equal(created.status,201);const createdValue=await created.json();
  const rejectedFund=await fetch(`${base}/api/me/agents/${createdValue.agent.id}/mock-fund`,{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({amount:100})});
  assert.equal(rejectedFund.status,409);assert.equal((await rejectedFund.json()).code,'MOCK_MODE_REQUIRED');

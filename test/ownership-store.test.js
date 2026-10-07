@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,randomUUID} from 'node:crypto';
 import {OwnershipStore} from '../service/ownership-store.js';
 import {encodeBase58} from '../service/wallet-auth.js';
 
@@ -14,15 +14,44 @@ async function fixture(t){
  const store=new OwnershipStore(dir,{now:()=>1_800_000_000_000});await store.init();return {store,dir};
 }
 const valid={name:'Builder',avatar:'visitor_ember',strategy:'conservative',personality:'Patient, measured play.',capabilities:['games']};
+const requestKey=()=>randomUUID();
 
 test('anonymous owner can create a free agent and state survives restart',async t=>{
  const {store,dir}=await fixture(t),owner=await store.createAnonymous();
  assert.equal(owner.identity_type,'anonymous');assert.equal(owner.wallet_public_key,null);
- const agent=await store.createAgent(owner.id,valid,avatars);
+ const agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.match(agent.id,/^u-/);assert.equal(agent.treasury.network,'none');
  const reopened=new OwnershipStore(dir);await reopened.init();
  assert.equal(reopened.agentForOwner(owner.id,agent.id).name,'Builder');
  assert.equal(reopened.agentForOwner('some-other-owner',agent.id),null);
+});
+
+test('agent creation retries reuse the durable result and reject key reuse with changed config',async t=>{
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),key=requestKey();
+ const first=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:key});
+ const retry=await store.createAgent(owner.id,{...valid,name:' Builder '},avatars,{idempotencyKey:key});
+ assert.equal(retry.id,first.id);assert.equal(store.agentsForOwner(owner.id).length,1);
+ await assert.rejects(store.createAgent(owner.id,{...valid,name:'Different'},avatars,{idempotencyKey:key}),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});
+ const reopened=new OwnershipStore(dir);await reopened.init();
+ const afterRestart=await reopened.createAgent(owner.id,valid,avatars,{idempotencyKey:key});
+ assert.equal(afterRestart.id,first.id);assert.equal(reopened.agentsForOwner(owner.id).length,1);
+});
+
+test('simultaneous retries for one agent creation serialize to one durable agent',async t=>{
+ const {store}=await fixture(t),owner=await store.createAnonymous(),key=requestKey();
+ const results=await Promise.all(Array.from({length:8},()=>store.createAgent(owner.id,valid,avatars,{idempotencyKey:key})));
+ assert.equal(new Set(results.map(agent=>agent.id)).size,1);
+ assert.equal(store.agentsForOwner(owner.id).length,1);
+});
+
+test('legacy owner snapshots without operation records remain readable and upgrade on write',async t=>{
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous();
+ const {writeFile}=await import('node:fs/promises'),snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
+ delete snapshot.operations;await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
+ const reopened=new OwnershipStore(dir);await reopened.init();
+ const agent=await reopened.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const upgraded=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
+ assert.equal(upgraded.operations.length,1);assert.equal(upgraded.operations[0].agent_id,agent.id);
 });
 
 test('wallet owners validate canonical public keys and are reused idempotently',async t=>{
@@ -34,7 +63,7 @@ test('wallet owners validate canonical public keys and are reused idempotently',
 });
 
 test('linking a verified wallet upgrades a guest without orphaning agents and forbids implicit account merge',async t=>{
- const {store}=await fixture(t),guest=await store.createAnonymous(),agent=await store.createAgent(guest.id,valid,avatars),pair=generateKeyPairSync('ed25519');
+ const {store}=await fixture(t),guest=await store.createAnonymous(),agent=await store.createAgent(guest.id,valid,avatars,{idempotencyKey:requestKey()}),pair=generateKeyPairSync('ed25519');
  const key=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
  const linked=await store.linkWalletOwner(guest.id,key);
  assert.equal(linked.id,guest.id);assert.equal(linked.identity_type,'solana');assert.equal(store.agentForOwner(linked.id,agent.id).id,agent.id);
@@ -45,18 +74,18 @@ test('linking a verified wallet upgrades a guest without orphaning agents and fo
 
 test('agent import accepts only the public schema and export excludes ownership and treasury data',async t=>{
  const {store}=await fixture(t),owner=await store.createAnonymous();
- const agent=await store.createAgent(owner.id,{format:'aae-agent-v1',...valid},avatars,{importing:true});
+ const agent=await store.createAgent(owner.id,{format:'aae-agent-v1',...valid},avatars,{importing:true,idempotencyKey:requestKey()});
  const exported=store.exportAgent(owner.id,agent.id);
  assert.deepEqual(Object.keys(exported).sort(),['avatar','capabilities','format','model','name','personality','provider','strategy'].sort());
  assert.equal(JSON.stringify(exported).includes(owner.id),false);
- await assert.rejects(store.createAgent(owner.id,{...valid,owner_id:'forged'},avatars),{code:'UNSUPPORTED_AGENT_FIELD'});
- await assert.rejects(store.createAgent(owner.id,{...valid,api_key:'secret'},avatars,{importing:true}),{code:'UNSUPPORTED_AGENT_FIELD'});
- await assert.rejects(store.createAgent(owner.id,{...valid,avatar:'debug_placeholder'},avatars),{code:'INVALID_AGENT_AVATAR'});
- await assert.rejects(store.createAgent(owner.id,{...valid,provider:'custom-http'},avatars),{code:'UNSUPPORTED_AGENT_PROVIDER'});
+ await assert.rejects(store.createAgent(owner.id,{...valid,owner_id:'forged'},avatars,{idempotencyKey:requestKey()}),{code:'UNSUPPORTED_AGENT_FIELD'});
+ await assert.rejects(store.createAgent(owner.id,{...valid,api_key:'secret'},avatars,{importing:true,idempotencyKey:requestKey()}),{code:'UNSUPPORTED_AGENT_FIELD'});
+ await assert.rejects(store.createAgent(owner.id,{...valid,avatar:'debug_placeholder'},avatars,{idempotencyKey:requestKey()}),{code:'INVALID_AGENT_AVATAR'});
+ await assert.rejects(store.createAgent(owner.id,{...valid,provider:'custom-http'},avatars,{idempotencyKey:requestKey()}),{code:'UNSUPPORTED_AGENT_PROVIDER'});
 });
 
 test('mock funding persists an auditable simulated receipt and rejects duplicate configuration fields',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars);
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const first=await store.mockFund(owner.id,agent.id,250);
  assert.equal(first.treasury.available_base_units,'250');assert.equal(first.receipt.status,'simulated');
  const reopened=new OwnershipStore(dir);await reopened.init();
@@ -68,7 +97,7 @@ test('mock funding persists an auditable simulated receipt and rejects duplicate
 });
 
 test('spending defaults to read-only and autonomous budgets remain unavailable',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars);
+ const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.equal(agent.treasury.spending_policy.mode,'read_only');
  const manual=await store.setSpendingPolicy(owner.id,agent.id,{mode:'manual'});assert.equal(manual.mode,'manual');
  await assert.rejects(store.setSpendingPolicy(owner.id,agent.id,{mode:'budgeted',max_per_day:'100'}),{code:'AGENT_SPENDING_NOT_IMPLEMENTED'});
@@ -76,7 +105,7 @@ test('spending defaults to read-only and autonomous budgets remain unavailable',
 });
 
 test('corrupt or internally inconsistent ownership snapshots fail closed',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars);
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  snapshot.agents[0].treasury.available_base_units='-1';
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
@@ -84,7 +113,7 @@ test('corrupt or internally inconsistent ownership snapshots fail closed',async 
 });
 
 test('persisted mock balances must reconcile exactly with unique receipts',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars);
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  await store.mockFund(owner.id,agent.id,25);
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  snapshot.agents[0].treasury.receipts[0].amount='24';
@@ -94,7 +123,7 @@ test('persisted mock balances must reconcile exactly with unique receipts',async
 
 test('public agent directory uses bounded cursor pages and sanitized owner references',async t=>{
  const {store}=await fixture(t),owner=await store.createAnonymous();
- const agents=[];for(const name of ['First','Second','Third'])agents.push(await store.createAgent(owner.id,{...valid,name},avatars));
+ const agents=[];for(const name of ['First','Second','Third'])agents.push(await store.createAgent(owner.id,{...valid,name},avatars,{idempotencyKey:requestKey()}));
  const first=store.listPublicAgents({limit:2});assert.equal(first.agents.length,2);assert.equal(first.next_cursor,agents[1].id);
  const second=store.listPublicAgents({after:first.next_cursor,limit:2});assert.deepEqual(second.agents.map(agent=>agent.id),[agents[2].id]);assert.equal(second.next_cursor,null);
  assert.equal(second.agents[0].owner_id,undefined);assert.equal(second.agents[0].treasury,undefined);

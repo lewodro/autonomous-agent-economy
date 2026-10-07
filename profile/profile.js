@@ -4,6 +4,15 @@ async function request(route,options={}){
  const response=await fetch(route,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
  const value=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(value.error||'Request failed'),{code:value.code,status:response.status});return value;
 }
+async function idempotentAgentCreate(route,config,slot){
+ const serialized=JSON.stringify(config),storageKey=`aae-agent-create-v1:${slot}`;let key;
+ try{const pending=JSON.parse(sessionStorage.getItem(storageKey)||'null');key=pending?.config===serialized?pending.key:null;}catch{}
+ key||=crypto.randomUUID();
+ try{sessionStorage.setItem(storageKey,JSON.stringify({key,config:serialized}));}catch{}
+ const result=await request(route,{method:'POST',body:serialized,headers:{'Idempotency-Key':key}});
+ try{const pending=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(pending?.key===key)sessionStorage.removeItem(storageKey);}catch{}
+ return result;
+}
 function button(label,handler){const value=document.createElement('button');value.type='button';value.textContent=label;value.addEventListener('click',handler);return value;}
 function showAgent(agent,root){
  const card=document.createElement('article');card.className='agent';
@@ -49,15 +58,17 @@ byId('connect').addEventListener('click',async()=>{
 byId('logout').addEventListener('click',async()=>{try{await request('/api/auth/logout',{method:'POST',body:'{}'});location.reload();}catch(error){message(error.message);}});
 byId('create-form').addEventListener('submit',async event=>{
  event.preventDefault();const form=new FormData(event.currentTarget),config=Object.fromEntries(form.entries());
- try{await request('/api/me/agents',{method:'POST',body:JSON.stringify(config)});await refresh();message('Agent created. It is yours, free, and uses the mock strategy provider.');}
- catch(error){message(error.message);}
+ const submit=event.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;
+ try{await idempotentAgentCreate('/api/me/agents',config,'create');await refresh();message('Agent created. It is yours, free, and uses the mock strategy provider.');}
+ catch(error){message(error.message);}finally{submit.disabled=false;}
 });
 byId('import-agent').addEventListener('change',async event=>{
  const file=event.currentTarget.files?.[0];if(!file)return;
+ event.currentTarget.disabled=true;
  try{if(file.size>8192)throw new Error('Agent file must be 8 KB or smaller.');const config=JSON.parse(await file.text());
   if(!config||typeof config!=='object'||Array.isArray(config))throw new Error('Agent file must contain a JSON object.');
-  await request('/api/me/agents/import',{method:'POST',body:JSON.stringify(config)});await refresh();message('Agent imported and assigned to this profile. No claimed owner or secret fields are accepted.');
- }catch(error){message(error.message);}finally{event.currentTarget.value='';}
+  await idempotentAgentCreate('/api/me/agents/import',config,'import');await refresh();message('Agent imported and assigned to this profile. No claimed owner or secret fields are accepted.');
+ }catch(error){message(error.message);}finally{event.currentTarget.disabled=false;event.currentTarget.value='';}
 });
 async function loadAvatars(){
  try{const {avatars}=await request('/assets/avatars/index.json'),select=byId('avatar');select.replaceChildren();

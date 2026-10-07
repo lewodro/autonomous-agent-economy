@@ -64,8 +64,8 @@ not merged automatically. The server issues an HttpOnly owner cookie.
 | `POST /api/auth/logout` | Clear the owner cookie |
 | `GET /api/me` | Current owner; 401 without a valid session |
 | `GET /api/me/agents` | Private owner agent list, including that owner's treasury ledger |
-| `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID |
-| `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected |
+| `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID; requires UUID v4 `Idempotency-Key` header |
+| `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected; requires UUID v4 `Idempotency-Key` header |
 | `GET /api/me/agents/:agentId/export` | Download non-secret agent config, only for its owner |
 | `GET /api/agents?limit=50&after=:agentId` | Public sanitized directory page (1–100 items); returns `agents` and `next_cursor` |
 | `GET /api/agents/:agentId` | Public sanitized agent profile; no owner ID, treasury, credentials, or private key |
@@ -78,6 +78,14 @@ the deterministic mock provider. The optional mock-credit endpoint is local
 agents are not yet automatically inserted into arena/NPC rosters. Mainnet
 agent funding, withdrawal, and mainnet wagering are disabled. See
 [`mainnet.md`](mainnet.md) before integrating these APIs into world UI.
+
+Both agent creation endpoints require an `Idempotency-Key` header containing a
+UUID v4. The server binds that key to the signed-in owner, endpoint kind, and
+normalized configuration. An identical retry within 24 hours returns the
+original agent; using the same key for different configuration returns
+`409 IDEMPOTENCY_KEY_REUSED`. This covers a lost HTTP response without making
+the browser authoritative or creating duplicate agents. Older format-1 owner
+snapshots without operation records are upgraded on the next successful write.
 
 ## Predictions
 

@@ -1,11 +1,13 @@
 import {mkdir,open,readFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {decodeSolanaAddress} from './wallet-auth.js';
 
 const strategies=new Set(['aggressive','conservative','opportunist','cooperative']);
 const capabilities=new Set(['compute','tools','games']);
 const inputFields=new Set(['format','name','avatar','strategy','personality','capabilities','provider','model']);
+const IDEMPOTENCY_TTL_MS=24*60*60_000,MAX_IDEMPOTENCY_RECORDS=20_000;
+const sha256=value=>createHash('sha256').update(value).digest('hex');
 const cleanOwner=owner=>({id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null});
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 function validateAgentInput(value,approvedAvatars,{importing=false}={}){
@@ -29,7 +31,7 @@ function validateAgentInput(value,approvedAvatars,{importing=false}={}){
  return {name,avatar,strategy,personality:personality.trim(),provider:'mock',model,capabilities:requested};
 }
 function validateState(state){
- if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||state.owners.length>10_000||state.agents.length>100_000)throw new Error('Invalid ownership store format or capacity');
+ if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||!Array.isArray(state.operations)||state.owners.length>10_000||state.agents.length>100_000||state.operations.length>MAX_IDEMPOTENCY_RECORDS)throw new Error('Invalid ownership store format or capacity');
  const owners=new Set(),wallets=new Set(),agents=new Set(),receipts=new Set();
  for(const owner of state.owners){
   if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string')throw new Error('Invalid owner record');
@@ -54,14 +56,20 @@ function validateState(state){
   if(treasury.network==='mock'&&receiptTotal!==BigInt(treasury.available_base_units))throw new Error('Mock treasury balance does not match its receipts');
   agents.add(agent.id);
  }
+ const operationKeys=new Set();
+ for(const operation of state.operations){
+  if(!/^[a-f0-9]{64}$/.test(operation.key)||operationKeys.has(operation.key)||!owners.has(operation.owner_id)||!['create','import'].includes(operation.kind)||!/^[a-f0-9]{64}$/.test(operation.request_hash)||!agents.has(operation.agent_id)||typeof operation.created_at!=='string'||Number.isNaN(Date.parse(operation.created_at)))throw new Error('Invalid agent creation idempotency record');
+  operationKeys.add(operation.key);
+ }
 }
 
 /** Single-process durable owner/agent registry. It stores no keys or provider credentials. */
 export class OwnershipStore{
- constructor(directory,{now=Date.now,syncFolder=syncDirectory}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.syncFolder=syncFolder;this.state={format:1,owners:[],agents:[]};this.pending=Promise.resolve();this.ready=false;}
+ constructor(directory,{now=Date.now,syncFolder=syncDirectory}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.syncFolder=syncFolder;this.state={format:1,owners:[],agents:[],operations:[]};this.pending=Promise.resolve();this.ready=false;}
  async init(){
   await mkdir(this.directory,{recursive:true});
   try{this.state=JSON.parse(await readFile(this.file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
+  if(this.state?.format===1&&this.state.operations===undefined)this.state.operations=[];
   validateState(this.state);this.ready=true;
  }
  requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
@@ -113,14 +121,21 @@ export class OwnershipStore{
   const wallet=this.state.owners.find(value=>value.id===agent.owner_id)?.wallet_public_key||null;
   return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
  }
- async createAgent(ownerId,input,approvedAvatars,{importing=false}={}){
+ async createAgent(ownerId,input,approvedAvatars,{importing=false,idempotencyKey}={}){
   const config=validateAgentInput(input,approvedAvatars,{importing});
+  if(typeof idempotencyKey!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(idempotencyKey))throw Object.assign(new Error('A UUID v4 Idempotency-Key is required'),{status:400,code:'IDEMPOTENCY_KEY_REQUIRED'});
+  const kind=importing?'import':'create',operationKey=sha256(`${ownerId}\0${kind}\0${idempotencyKey}`),requestHash=sha256(JSON.stringify({kind,config}));
   return this.mutate(state=>{
+   const now=this.now();state.operations=state.operations.filter(operation=>Date.parse(operation.created_at)>now-IDEMPOTENCY_TTL_MS);
    if(!state.owners.some(owner=>owner.id===ownerId))throw Object.assign(new Error('Owner profile not found'),{status:401,code:'OWNER_NOT_FOUND'});
+   const previous=state.operations.find(operation=>operation.key===operationKey);
+   if(previous){if(previous.request_hash!==requestHash)throw Object.assign(new Error('Idempotency key was already used with another agent configuration'),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});const priorAgent=state.agents.find(agent=>agent.id===previous.agent_id&&agent.owner_id===ownerId);if(!priorAgent)throw new Error('Agent creation idempotency record is inconsistent');return priorAgent;}
    if(state.agents.filter(agent=>agent.owner_id===ownerId).length>=100)throw Object.assign(new Error('Agent limit reached for this owner'),{status:429,code:'AGENT_LIMIT'});
+   if(state.agents.length>=100_000)throw Object.assign(new Error('Agent registry capacity reached'),{status:503,code:'AGENT_STORE_CAPACITY'});
+   if(state.operations.length>=MAX_IDEMPOTENCY_RECORDS)throw Object.assign(new Error('Agent creation retry capacity reached; try again later'),{status:503,code:'IDEMPOTENCY_STORE_CAPACITY'});
    const id=`u-${randomUUID()}`;
-   const agent={id,owner_id:ownerId,...config,created_at:new Date(this.now()).toISOString(),ownership_status:'user',treasury:{network:'none',currency:'NONE',available_base_units:'0',reserved_base_units:'0',spending_policy:{mode:'read_only',max_per_action:'0',max_per_day:'0',allowed_capabilities:[]},receipts:[]}};
-   state.agents.push(agent);return agent;
+   const createdAt=new Date(now).toISOString(),agent={id,owner_id:ownerId,...config,created_at:createdAt,ownership_status:'user',treasury:{network:'none',currency:'NONE',available_base_units:'0',reserved_base_units:'0',spending_policy:{mode:'read_only',max_per_action:'0',max_per_day:'0',allowed_capabilities:[]},receipts:[]}};
+   state.agents.push(agent);state.operations.push({key:operationKey,owner_id:ownerId,kind,request_hash:requestHash,agent_id:id,created_at:createdAt});return agent;
   });
  }
  async mockFund(ownerId,id,units){

@@ -138,7 +138,7 @@ const server = http.createServer(async (req, res) => {
       if(req.method==='GET')return json(res,200,{agents:ownershipStore.agentsForOwner(ownerId).map(agent=>({...agent,owner_id:undefined}))});
       if(req.method==='POST'){
         if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
-        const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet);
+        const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{idempotencyKey:req.headers['idempotency-key']});
         console.log(JSON.stringify({event:'agent_created',ownership_status:'user',provider:'mock'}));
         return json(res,201,{agent:{...agent,owner_id:undefined}});
       }
@@ -147,7 +147,7 @@ const server = http.createServer(async (req, res) => {
     if(route==='/api/me/agents/import'&&req.method==='POST'){
       const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
       if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
-      const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{importing:true});
+      const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{importing:true,idempotencyKey:req.headers['idempotency-key']});
       console.log(JSON.stringify({event:'agent_imported',ownership_status:'user',provider:'mock'}));
       return json(res,201,{agent:{...agent,owner_id:undefined}});
     }
