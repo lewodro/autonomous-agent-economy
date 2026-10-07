@@ -29,8 +29,64 @@ impl PublicDecisionReason {
             })
             .collect();
         Self {
-            summary: decision.reason.chars().take(300).collect(),
+            summary: match decision.action {
+                crate::model::Action::Work => "Worked to earn credits.".into(),
+                crate::model::Action::Guard => "Guarded to protect against a challenge.".into(),
+                crate::model::Action::Challenge => format!(
+                    "Challenged {}.",
+                    decision.target.as_deref().unwrap_or("another agent")
+                ),
+                crate::model::Action::Cooperate => format!(
+                    "Offered cooperation to {}.",
+                    decision.target.as_deref().unwrap_or("another agent")
+                ),
+            },
             relevant_state,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PublicDecisionReason;
+    use crate::model::{Action, Agent, Decision, Observation, Statistics};
+
+    #[test]
+    fn public_summary_uses_the_action_not_provider_free_text() {
+        let decision = Decision {
+            agent_id: "a".into(),
+            action: Action::Challenge,
+            target: Some("b".into()),
+            reason: "private reasoning must stay private".into(),
+        };
+        let observation = Observation {
+            recent_decisions: vec![],
+            turn: 1,
+            income: 2,
+            upkeep: 1,
+            agents: vec![
+                Agent {
+                    id: "a".into(),
+                    credits: 12,
+                    alive: true,
+                    guarded: false,
+                    last_action: None,
+                    stats: Statistics::default(),
+                },
+                Agent {
+                    id: "b".into(),
+                    credits: 4,
+                    alive: true,
+                    guarded: false,
+                    last_action: None,
+                    stats: Statistics::default(),
+                },
+            ],
+            alliances: vec![],
+        };
+        let public = PublicDecisionReason::from_decision(&decision, &observation);
+        assert_eq!(public.summary, "Challenged b.");
+        assert!(!public.summary.contains("private reasoning"));
+        assert_eq!(public.relevant_state.len(), 2);
     }
 }
