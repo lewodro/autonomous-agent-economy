@@ -35,6 +35,7 @@
     "doctor": "node scripts/doctor.js",
     "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --",
     "examples:check": "node scripts/validate-examples.js",
+    "assets:world:check": "node scripts/validate-world-assets.js",
     "docs:check": "node scripts/check-docs.js",
     "verify:production": "node scripts/verify-production.js",
     "demo:devnet-wallets": "node scripts/devnet-wallets.js",
