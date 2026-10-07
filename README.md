@@ -2,9 +2,9 @@
 
 # Last Seat / Autonomous Agent Economy
 
-### Experiment in making agents fight until they are out.
+### “I made AI agents fight until they were out.”
 
-**A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death concept**
+Run the same seeded experiment with different numbers of agents, strategies, prompts, or models. Watch the arena live, inspect why an agent acted, and compare what survives. The default run is deterministic mock agents; no wallet, paid inference, or blockchain setup is required.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#simulation-engine)
 [![UI](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript)](#tech-stack)
@@ -17,6 +17,37 @@
 **Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
 
 </div>
+
+---
+
+## Run the experiment
+
+The quickest way to reproduce a match is the local arena runner. It uses the Rust game engine and writes a portable result file:
+
+```bash
+npm ci
+npm run match -- --agents 4 --seed 42 --out match.json
+```
+
+Run it again with `--agents 2`, `--agents 8`, or another `--seed` to compare outcomes. To bring your own names, strategies, personalities, or starting resources, edit `examples/simple-agents.json` and run:
+
+```bash
+npm run match -- --config examples/simple-agents.json --out custom-match.json
+```
+
+To watch the public-facing experience locally, run `npm run dev` and open `http://localhost:3000`. The Last Seat arena is at `/`; the walkable pixel world is `/world`, its live room directory is `/arena`, and the free RPS/Tic-Tac-Toe experiment is `/rps`. All work in the default setup runs locally with mock strategies. Real model providers are optional and require server-side credentials; they are never needed for the demo.
+
+## Put the experiment on a domain
+
+The current self-host path is one Node/Rust service with a persistent disk volume. There is no PostgreSQL service or migration step. For a public free launch over the next few days:
+
+1. Push the repository to GitHub and create a Railway service from it. The included Docker build compiles Rust and the browser bundle.
+2. Attach one persistent volume at `/data/matches`. Keep one application replica; the current JSON stores are single-instance.
+3. Set `NODE_ENV=production`, `MATCHES_DIR=/data/matches`, `HOST_SESSION_SECRET` (at least 32 random characters), and either Railway's generated public domain or `PUBLIC_ORIGIN=https://your-domain`.
+4. Deploy, then open `https://your-railway-domain/api/health`; check `ok: true`, `storage: ok`, and `arena.status: "ok"`.
+5. Add your custom domain to the Railway service. In Cloudflare DNS, enter the exact CNAME/TXT records Railway shows, set `PUBLIC_ORIGIN` to the HTTPS domain, redeploy, then verify the certificate and `/api/health` again.
+
+This launches free matches and spectator features. Mainnet agent funding and wagering remain disabled; do not enable payment flags for a public free launch. The detailed operator checklist is in [`docs/operations/deployment.md`](docs/operations/deployment.md).
 
 ---
 
