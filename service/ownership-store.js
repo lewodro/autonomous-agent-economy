@@ -7,6 +7,7 @@ const strategies=new Set(['aggressive','conservative','opportunist','cooperative
 const capabilities=new Set(['compute','tools','games']);
 const inputFields=new Set(['format','name','avatar','strategy','personality','capabilities','provider','model']);
 const cleanOwner=owner=>({id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null});
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 function validateAgentInput(value,approvedAvatars,{importing=false}={}){
  if(!value||typeof value!=='object'||Array.isArray(value))throw Object.assign(new Error('Agent configuration must be an object'),{status:400,code:'INVALID_AGENT_CONFIG'});
  for(const key of Object.keys(value))if(!inputFields.has(key))throw Object.assign(new Error(`Unsupported agent field: ${key}`),{status:400,code:'UNSUPPORTED_AGENT_FIELD'});
@@ -57,7 +58,7 @@ function validateState(state){
 
 /** Single-process durable owner/agent registry. It stores no keys or provider credentials. */
 export class OwnershipStore{
- constructor(directory,{now=Date.now}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.state={format:1,owners:[],agents:[]};this.pending=Promise.resolve();this.ready=false;}
+ constructor(directory,{now=Date.now,syncFolder=syncDirectory}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.syncFolder=syncFolder;this.state={format:1,owners:[],agents:[]};this.pending=Promise.resolve();this.ready=false;}
  async init(){
   await mkdir(this.directory,{recursive:true});
   try{this.state=JSON.parse(await readFile(this.file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
@@ -66,7 +67,7 @@ export class OwnershipStore{
  requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
  write(state){
   const temp=`${this.file}.${randomUUID()}.tmp`;
-  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);const directory=await open(this.directory,'r');try{await directory.sync();}finally{await directory.close();}}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
+  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);this.state=state;await this.syncFolder(this.directory);}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
  }
  mutate(fn){
   this.requireReady();

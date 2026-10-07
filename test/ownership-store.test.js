@@ -101,3 +101,15 @@ test('public agent directory uses bounded cursor pages and sanitized owner refer
  assert.throws(()=>store.listPublicAgents({limit:101}),{code:'INVALID_PAGE_SIZE'});
  assert.throws(()=>store.listPublicAgents({after:'invalid'}),{code:'INVALID_AGENT_CURSOR'});
 });
+
+test('directory-sync failure after atomic rename keeps memory aligned with the committed snapshot',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-fsync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ let failSync=false;
+ const store=new OwnershipStore(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});
+ await store.init();failSync=true;
+ await assert.rejects(store.createAnonymous(),{code:'EIO'});
+ const first=store.state.owners[0].id;
+ const second=await store.createAnonymous();
+ const restored=new OwnershipStore(dir);await restored.init();
+ assert.ok(restored.owner(first));assert.ok(restored.owner(second.id));assert.equal(restored.state.owners.length,2);
+});
