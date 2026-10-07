@@ -27,6 +27,8 @@ test('presence limits update frequency and does not expose session tokens', () =
   assert.equal('token' in joined.player, false);
   assert.throws(() => service.move('main', { player_id: 'visitor', session_token: joined.session_token, position: { x: 11, y: 10 } }), { code: 'PRESENCE_RATE_LIMITED' });
   assert.throws(() => service.join('bad/world', {}), { code: 'WORLD_NOT_FOUND' });
+  assert.throws(() => service.join('unconfigured-world-1', {}), { code: 'WORLD_NOT_FOUND' });
+  assert.equal(service.worlds.has('unconfigured-world-1'),false,'unknown world requests cannot allocate process-local state');
 });
 
 test('heartbeat and reconnect timestamps do not distort the movement speed budget',()=>{

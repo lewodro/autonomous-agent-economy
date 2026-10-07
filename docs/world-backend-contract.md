@@ -15,7 +15,7 @@ Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement i
 | Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ player_id, session_token, activity? }` |
 | Leave | `POST /api/worlds/:world/presence/leave` | `{ player_id, session_token }` |
 
-World IDs and player IDs are validated. Positions are bounded to `0..1040 × 0..864`; movement speed and request frequency are limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
+Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Player IDs are also validated. Positions are bounded to `0..1040 × 0..864`; movement speed and request frequency are limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
 
 ## Arena and research
 

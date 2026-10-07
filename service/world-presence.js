@@ -18,13 +18,17 @@ function equalSecret(left, right) {
  * It intentionally stores no movement history and owns no game state.
  */
 export class WorldPresenceService {
-  constructor({ bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
+  constructor({ worldIds = ['main'], bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
+    if (!Array.isArray(worldIds) || !worldIds.length || worldIds.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(worldIds).size !== worldIds.length) {
+      throw new Error('World presence requires unique, valid configured world IDs');
+    }
+    this.allowedWorlds = new Set(worldIds);
     this.bounds = bounds; this.maxPlayers = maxPlayers; this.maxViewers = maxViewers; this.staleMs = staleMs;
     this.minUpdateMs = minUpdateMs; this.minHeartbeatMs = minHeartbeatMs; this.now = now;
     this.worlds = new Map(); this.listeners = new Map();
   }
   world(worldId) {
-    if (!IDENTIFIER.test(worldId)) throw fail('WORLD_NOT_FOUND', 'Unknown world', 404);
+    if (typeof worldId !== 'string' || !this.allowedWorlds.has(worldId)) throw fail('WORLD_NOT_FOUND', 'Unknown world', 404);
     let world = this.worlds.get(worldId);
     if (!world) { world = new Map(); this.worlds.set(worldId, world); }
     return world;
