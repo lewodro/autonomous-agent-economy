@@ -24,13 +24,14 @@ import { ReplayArchive } from './service/replay-archive.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { OwnershipStore } from './service/ownership-store.js';
-import { toWorldAgentProfiles } from './service/world-agent-profiles.js';
+import { approvedAvatarSpritesFromManifest, toWorldAgentProfiles } from './service/world-agent-profiles.js';
 import { WalletChallengeService } from './service/wallet-auth.js';
 import { ownerCookie, ownerCookieClear, ownerSessionFromRequest } from './service/owner-auth.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const approvedAvatarSet = new Set(approvedAvatarIds);
+const approvedAvatarSprites=approvedAvatarSpritesFromManifest(avatarManifest);
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
@@ -249,7 +250,7 @@ const server = http.createServer(async (req, res) => {
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
       if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:roomSpectators.count(room.id)}))});
-      if(route==='/api/arena/agents')return json(res,200,{agents:[...arenaRooms.profiles(),...toWorldAgentProfiles(ownershipStore.recentPublicAgents(100))]});
+      if(route==='/api/arena/agents')return json(res,200,{agents:[...arenaRooms.profiles(),...toWorldAgentProfiles(ownershipStore.recentPublicAgents(100),approvedAvatarSprites)]});
       if(route==='/api/arena/statistics')return json(res,200,arenaRooms.statistics());
       if(route==='/api/arena/history')return json(res,200,{matches:arenaRooms.history()});
       const room=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])$/);

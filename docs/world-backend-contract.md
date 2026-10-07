@@ -46,7 +46,10 @@ The world profile feed also includes up to 100 recent user-created agents as
 avatar, strategy label, and shortened owner wallet; they do not join matches or
 change research aggregates. The plaza reserves one of its six visible agent
 slots for a user-created profile when available. User agents are actors for
-inspection only until a separate match-admission design enrolls them.
+inspection only until a separate match-admission design enrolls them. The world
+sprite adapter reads only approved entries from `assets/avatars/index.json` and
+only accepts local `/assets/avatars/clean/*.png` sheets, matching the profile
+picker and server-side agent validation.
 
 ## Free plaza table
 
