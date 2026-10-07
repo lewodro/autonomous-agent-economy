@@ -15,7 +15,7 @@ Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement i
 | Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ player_id, session_token, activity? }` |
 | Leave | `POST /api/worlds/:world/presence/leave` | `{ player_id, session_token }` |
 
-Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Player IDs are also validated. Avatar IDs must be approved in `assets/avatars/index.json`; an omitted avatar uses `visitor_ember`. Positions are bounded to `0..1040 × 0..864`; movement speed and request frequency are limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
+Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Player IDs are also validated. Avatar IDs must be approved in `assets/avatars/index.json`; an omitted avatar uses `visitor_ember`. Positions are bounded to `0..1040 × 0..864`; moves are limited to the world controller's 150 px/s plus six pixels of jitter, with at most 250 ms of movement time credited per update, and requests are rate limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
 
 `GET /api/health` reports presence status, active player/stream counts, configured-world count, and capacity limits. It exposes no player IDs or session capabilities; the mode is explicitly identified as single-process ephemeral.
 

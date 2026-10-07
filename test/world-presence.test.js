@@ -54,10 +54,20 @@ test('heartbeat and reconnect timestamps do not distort the movement speed budge
   now+=60;service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:115,y:100}});
   now+=60;service.heartbeat('main',{player_id:'visitor',session_token:joined.session_token});
   now+=60;
-  assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:145,y:100}}).player.position.x,145);
+  assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:130,y:100}}).player.position.x,130);
   now+=60;service.join('main',{player_id:'visitor',session_token:joined.session_token,position:{x:900,y:100}});
   now+=60;
   assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:900,y:100}}),{code:'INVALID_POSITION'});
+});
+
+test('movement allowance matches world speed and idle time cannot bank teleport distance',()=>{
+  let now=1_000;const service=new WorldPresenceService({now:()=>now,minUpdateMs:50});
+  const joined=service.join('main',{player_id:'visitor',position:{x:100,y:100}});
+  now+=250;
+  assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:150,y:100}}),{code:'INVALID_POSITION'});
+  assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:143.5,y:100}}).player.position.x,143.5);
+  now+=5_000;
+  assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:190,y:100}}),{code:'INVALID_POSITION'});
 });
 
 test('heartbeats are rate limited and only broadcast changed activity',()=>{
