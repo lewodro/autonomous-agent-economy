@@ -45,7 +45,10 @@ instance**; it is not a multi-writer database. Do not run multiple replicas
 against one directory. The registry is capped at 16 MiB: once full, new owner,
 agent, or mock-funding writes fail with a capacity error while the last valid
 snapshot remains intact. Move ownership data to a shared database before
-growing beyond this prototype store. The application has no database migrations.
+growing beyond this prototype store. Idempotency records are retained with the
+durable agent/receipt data so delayed retries cannot create duplicate agents or
+credits; the registry fails closed when its bounded operation capacity is full.
+The application has no database migrations.
 
 Mock is a local development mode and public production rejects it. The profile
 “mock funding” button only creates simulated `MOCK_CREDIT` receipts. It does

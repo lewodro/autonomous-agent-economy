@@ -7,7 +7,7 @@ import {decodeSolanaAddress} from './wallet-auth.js';
 const strategies=new Set(['aggressive','conservative','opportunist','cooperative']);
 const capabilities=new Set(['compute','tools','games']);
 const inputFields=new Set(['format','name','avatar','strategy','personality','capabilities','provider','model']);
-const IDEMPOTENCY_TTL_MS=24*60*60_000,MAX_IDEMPOTENCY_RECORDS=20_000;
+const MAX_IDEMPOTENCY_RECORDS=20_000;
 const MAX_STORE_BYTES=16*1024*1024;
 const sha256=value=>createHash('sha256').update(value).digest('hex');
 const cleanOwner=owner=>({id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null});
@@ -159,7 +159,7 @@ export class OwnershipStore{
   if(typeof idempotencyKey!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(idempotencyKey))throw Object.assign(new Error('A UUID v4 Idempotency-Key is required'),{status:400,code:'IDEMPOTENCY_KEY_REQUIRED'});
   const kind=importing?'import':'create',operationKey=sha256(`${ownerId}\0${kind}\0${idempotencyKey}`),requestHash=sha256(JSON.stringify({kind,config}));
   return this.mutate(state=>{
-   const now=this.now();state.operations=state.operations.filter(operation=>Date.parse(operation.created_at)>now-IDEMPOTENCY_TTL_MS);
+   const now=this.now();
    if(!state.owners.some(owner=>owner.id===ownerId))throw Object.assign(new Error('Owner profile not found'),{status:401,code:'OWNER_NOT_FOUND'});
    const previous=state.operations.find(operation=>operation.key===operationKey);
    if(previous){if(previous.request_hash!==requestHash)throw Object.assign(new Error('Idempotency key was already used with another agent configuration'),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});const priorAgent=state.agents.find(agent=>agent.id===previous.agent_id&&agent.owner_id===ownerId);if(!priorAgent)throw new Error('Agent creation idempotency record is inconsistent');return priorAgent;}
@@ -176,7 +176,7 @@ export class OwnershipStore{
   if(typeof idempotencyKey!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(idempotencyKey))throw Object.assign(new Error('A UUID v4 Idempotency-Key is required'),{status:400,code:'IDEMPOTENCY_KEY_REQUIRED'});
   const kind='mock_fund',operationKey=sha256(`${ownerId}\0${kind}\0${idempotencyKey}`),requestHash=sha256(JSON.stringify({kind,agent_id:id,units}));
   return this.mutate(state=>{
-   const now=this.now();state.operations=state.operations.filter(operation=>Date.parse(operation.created_at)>now-IDEMPOTENCY_TTL_MS);
+   const now=this.now();
    const agent=state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)throw Object.assign(new Error('Agent not found'),{status:404,code:'AGENT_NOT_FOUND'});
    const previous=state.operations.find(operation=>operation.key===operationKey);
    if(previous){if(previous.request_hash!==requestHash)throw Object.assign(new Error('Idempotency key was already used for another funding request'),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});const receipt=agent.treasury.receipts.find(value=>value.id===previous.receipt_id);if(!receipt)throw new Error('Mock funding idempotency record is inconsistent');return {treasury:agent.treasury,receipt};}

@@ -107,6 +107,22 @@ test('simultaneous mock funding retries create one credit receipt',async t=>{
  assert.equal(store.agentSummaryForOwner(owner.id,agent.id).treasury.available_base_units,'100');
 });
 
+test('agent creation and mock funding idempotency remain durable beyond 24 hours',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-idempotency-age-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ let now=1_800_000_000_000;const store=new OwnershipStore(dir,{now:()=>now});await store.init();
+ const owner=await store.createAnonymous(),createKey=requestKey(),fundKey=requestKey();
+ const agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:createKey});
+ const first=await store.mockFund(owner.id,agent.id,42,{idempotencyKey:fundKey});
+ now+=25*60*60_000;
+ const reopened=new OwnershipStore(dir,{now:()=>now});await reopened.init();
+ const retriedAgent=await reopened.createAgent(owner.id,valid,avatars,{idempotencyKey:createKey});
+ const retriedFunding=await reopened.mockFund(owner.id,agent.id,42,{idempotencyKey:fundKey});
+ assert.equal(retriedAgent.id,agent.id);
+ assert.equal(retriedFunding.receipt.id,first.receipt.id);
+ assert.equal(retriedFunding.treasury.available_base_units,'42');
+ assert.equal(reopened.agentsForOwner(owner.id).length,1);
+});
+
 test('spending defaults to read-only and autonomous budgets remain unavailable',async t=>{
  const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.equal(agent.treasury.spending_policy.mode,'read_only');
