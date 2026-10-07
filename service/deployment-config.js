@@ -18,6 +18,7 @@ export function validateDeploymentConfig(env = process.env) {
   }
 
   const publicDevnet = production && env.ENTRY_FEE_ENABLED === 'true' && env.ECONOMY_MODE === 'DEVNET';
+  const publicPredictions = env.PREDICTIONS_ENABLED === 'true';
   if (production) {
     if (!publicOrigin || !publicOrigin.startsWith('https://')) throw new Error('Set PUBLIC_ORIGIN or assign a Railway public domain before production startup.');
     if (!env.MATCHES_DIR || !path.isAbsolute(env.MATCHES_DIR)) throw new Error('Set MATCHES_DIR to an absolute path on persistent mounted storage.');
@@ -29,8 +30,9 @@ export function validateDeploymentConfig(env = process.env) {
       if (env.PUBLIC_DEVNET_ACK !== 'I_UNDERSTAND_TEST_SOL_ONLY') throw new Error('Acknowledge that public Devnet uses valueless test SOL.');
       if (!env.SOLANA_DEVNET_RPC_URL?.startsWith('https://')) throw new Error('Public Devnet requires a dedicated HTTPS SOLANA_DEVNET_RPC_URL.');
     }
+    if (publicPredictions && !publicDevnet) throw new Error('Public predictions require explicit DEVNET test SOL mode.');
   }
 
   const publicOrigins = [...new Set([publicOrigin, env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : null].filter(Boolean))];
-  return { production, publicDevnet, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
+  return { production, publicDevnet, publicPredictions, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
 }

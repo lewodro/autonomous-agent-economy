@@ -19,6 +19,7 @@ import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
+import { WorldPresenceService } from './service/world-presence.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -34,6 +35,7 @@ const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
+const worldPresence=new WorldPresenceService();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -87,6 +89,16 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});return res.end(await readFile(path.join(root,'labs/funded.html')));
     }
     if(route==='/labs/world'&&(production||process.env.WORLD_LAB!=='1'))return json(res,404,{error:'World lab disabled'});
+    const presenceRoute=route.match(/^\/api\/worlds\/([a-zA-Z0-9_-]{1,64})\/presence(?:\/(join|move|heartbeat|leave|events))?$/);
+    if(presenceRoute) {
+      const [,worldId,action]=presenceRoute;
+      if(req.method==='GET'&&!action)return json(res,200,worldPresence.snapshot(worldId));
+      if(req.method==='GET'&&action==='events'){worldPresence.connect(worldId,res);return;}
+      if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
+      const data=await body(req,4096);
+      const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
+      return json(res,action==='join'?201:200,result);
+    }
     if(req.method==='GET'&&route==='/api/funded-matches'){
       if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
       return json(res,200,{matches:[...funded.matches.entries()].map(([session,value])=>({session,state:value.economy.economy.state,mode:value.economy.economy.payment_mode}))});
@@ -104,7 +116,7 @@ const server = http.createServer(async (req, res) => {
     }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
-      if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms()});
+      if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:worldPresence.snapshot('main').players.filter(player=>player.activity===`Watching ${room.id}`).length}))});
       if(route==='/api/arena/agents')return json(res,200,{agents:arenaRooms.profiles()});
       if(route==='/api/arena/history')return json(res,200,{matches:arenaRooms.history()});
       const room=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])$/);
@@ -151,7 +163,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',presence:'ok',arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -248,7 +260,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,arenaRooms.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),arenaRooms.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){
