@@ -206,6 +206,39 @@ fn local_signer_persists_identity_and_never_serializes_secrets() {
     std::fs::remove_dir_all(path).unwrap();
 }
 #[test]
+fn local_signer_rejects_oversized_key_files() {
+    use agent_arena_demo::economy::local_signer::LocalDevSigner;
+    let path = directory("oversized-key");
+    std::fs::create_dir_all(&path).unwrap();
+    let keypath = path.join("agent.wallet.bin");
+    std::fs::write(&keypath, vec![7_u8; 1024 * 1024]).unwrap();
+    let error = LocalDevSigner::load_or_create(&keypath, AgentId::new("a").unwrap())
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error,
+        agent_arena_demo::economy::primitives::EconomyError::InvalidInput(_)
+    ));
+    std::fs::remove_dir_all(path).unwrap();
+}
+#[cfg(unix)]
+#[test]
+fn local_signer_rejects_symlink_key_files() {
+    use agent_arena_demo::economy::local_signer::LocalDevSigner;
+    use std::os::unix::fs::symlink;
+    let path = directory("symlink-key");
+    std::fs::create_dir_all(&path).unwrap();
+    let target = path.join("target");
+    let keypath = path.join("agent.wallet.bin");
+    std::fs::write(&target, [7_u8; 32]).unwrap();
+    symlink(&target, &keypath).unwrap();
+    let error = LocalDevSigner::load_or_create(&keypath, AgentId::new("a").unwrap())
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("not a symlink"));
+    std::fs::remove_dir_all(path).unwrap();
+}
+#[test]
 fn local_transfer_has_two_real_signatures_and_intent_memo() {
     use agent_arena_demo::economy::{local_signer::LocalDevSigner, local_transaction, signing::*};
     let path = directory("wire");

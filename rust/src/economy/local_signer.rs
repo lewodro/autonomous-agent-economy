@@ -3,7 +3,7 @@ use super::{primitives::*, signing::*};
 use ed25519_dalek::{Signer, SigningKey};
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::Path,
 };
 pub struct LocalDevSigner {
@@ -16,8 +16,46 @@ impl LocalDevSigner {
             .parent()
             .ok_or_else(|| EconomyError::InvalidInput("Key directory required".into()))?;
         fs::create_dir_all(parent).map_err(|e| EconomyError::AdapterFailure(e.to_string()))?;
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
+        let bytes = match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(EconomyError::InvalidInput(
+                        "Development key must be a regular file, not a symlink".into(),
+                    ));
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o077 != 0 {
+                        return Err(EconomyError::InvalidInput(
+                            "Development key must have private file permissions".into(),
+                        ));
+                    }
+                }
+                let file = OpenOptions::new()
+                    .read(true)
+                    .open(path)
+                    .map_err(|e| EconomyError::AdapterFailure(e.to_string()))?;
+                if !file
+                    .metadata()
+                    .map_err(|e| EconomyError::AdapterFailure(e.to_string()))?
+                    .is_file()
+                {
+                    return Err(EconomyError::InvalidInput(
+                        "Development key must be a regular file".into(),
+                    ));
+                }
+                let mut bytes = Vec::with_capacity(33);
+                file.take(33)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| EconomyError::AdapterFailure(e.to_string()))?;
+                if bytes.len() != 32 {
+                    return Err(EconomyError::InvalidInput(
+                        "Development key requires exactly 32 bytes".into(),
+                    ));
+                }
+                bytes
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let key = crate::wallet::key().map_err(EconomyError::AdapterFailure)?;
                 let bytes = key.to_bytes();
@@ -42,21 +80,6 @@ impl LocalDevSigner {
             }
             Err(e) => return Err(EconomyError::AdapterFailure(e.to_string())),
         };
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if fs::metadata(path)
-                .map_err(|e| EconomyError::AdapterFailure(e.to_string()))?
-                .permissions()
-                .mode()
-                & 0o077
-                != 0
-            {
-                return Err(EconomyError::InvalidInput(
-                    "Development key must have private file permissions".into(),
-                ));
-            }
-        }
         let seed: [u8; 32] = bytes
             .try_into()
             .map_err(|_| EconomyError::InvalidInput("Development key requires 32 bytes".into()))?;
