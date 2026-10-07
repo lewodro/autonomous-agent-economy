@@ -91,3 +91,13 @@ test('persisted mock balances must reconcile exactly with unique receipts',async
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
  const reopened=new OwnershipStore(dir);await assert.rejects(reopened.init(),/balance does not match its receipts/);
 });
+
+test('public agent directory uses bounded cursor pages and sanitized owner references',async t=>{
+ const {store}=await fixture(t),owner=await store.createAnonymous();
+ const agents=[];for(const name of ['First','Second','Third'])agents.push(await store.createAgent(owner.id,{...valid,name},avatars));
+ const first=store.listPublicAgents({limit:2});assert.equal(first.agents.length,2);assert.equal(first.next_cursor,agents[1].id);
+ const second=store.listPublicAgents({after:first.next_cursor,limit:2});assert.deepEqual(second.agents.map(agent=>agent.id),[agents[2].id]);assert.equal(second.next_cursor,null);
+ assert.equal(second.agents[0].owner_id,undefined);assert.equal(second.agents[0].treasury,undefined);
+ assert.throws(()=>store.listPublicAgents({limit:101}),{code:'INVALID_PAGE_SIZE'});
+ assert.throws(()=>store.listPublicAgents({after:'invalid'}),{code:'INVALID_AGENT_CURSOR'});
+});

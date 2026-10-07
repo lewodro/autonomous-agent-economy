@@ -91,12 +91,27 @@ export class OwnershipStore{
   owner.identity_type='solana';owner.wallet_public_key=publicKey;return cleanOwner(owner);
  });}
  agentsForOwner(ownerId){this.requireReady();return structuredClone(this.state.agents.filter(agent=>agent.owner_id===ownerId));}
- listPublicAgents(){this.requireReady();return this.state.agents.map(agent=>{
-  const owner=this.state.owners.find(value=>value.id===agent.owner_id),wallet=owner?.wallet_public_key||null;
-  return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
- });}
+ listPublicAgents({after=null,limit=50}={}){
+  this.requireReady();
+  if(!Number.isInteger(limit)||limit<1||limit>100)throw Object.assign(new Error('Agent directory page size must be from 1 to 100'),{status:400,code:'INVALID_PAGE_SIZE'});
+  let start=0;
+  if(after!==null){
+   if(typeof after!=='string'||!/^u-[a-f0-9-]{36}$/.test(after))throw Object.assign(new Error('Invalid agent directory cursor'),{status:400,code:'INVALID_AGENT_CURSOR'});
+   const index=this.state.agents.findIndex(agent=>agent.id===after);if(index<0)throw Object.assign(new Error('Agent directory cursor was not found'),{status:400,code:'INVALID_AGENT_CURSOR'});start=index+1;
+  }
+  const owners=new Map(this.state.owners.map(owner=>[owner.id,owner]));
+  const page=this.state.agents.slice(start,start+limit+1),hasMore=page.length>limit,agents=page.slice(0,limit).map(agent=>{
+   const wallet=owners.get(agent.owner_id)?.wallet_public_key||null;
+   return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
+  });
+  return {agents,next_cursor:hasMore?agents.at(-1).id:null};
+ }
  agentForOwner(ownerId,id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id&&value.owner_id===ownerId);return agent?structuredClone(agent):null;}
- publicAgent(id){this.requireReady();const agent=this.state.agents.find(value=>value.id===id);if(!agent)return null;return this.listPublicAgents().find(value=>value.id===id)||null;}
+ publicAgent(id){
+  this.requireReady();const agent=this.state.agents.find(value=>value.id===id);if(!agent)return null;
+  const wallet=this.state.owners.find(value=>value.id===agent.owner_id)?.wallet_public_key||null;
+  return {id:agent.id,name:agent.name,avatar:agent.avatar,strategy:agent.strategy,personality:agent.personality,provider:agent.provider,model:agent.model,ownership_status:'user',owner_wallet:wallet?`${wallet.slice(0,4)}…${wallet.slice(-4)}`:null,current_activity:'idle',matches:0,wins:0,research:[]};
+ }
  async createAgent(ownerId,input,approvedAvatars,{importing=false}={}){
   const config=validateAgentInput(input,approvedAvatars,{importing});
   return this.mutate(state=>{

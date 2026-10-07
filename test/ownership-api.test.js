@@ -36,6 +36,9 @@ test('owner API supports guest and wallet identity, private agent management, an
   const rejectedImport=await call('/api/me/agents/import',{method:'POST',cookie:guest.cookie,body:JSON.stringify({format:'aae-agent-v1',name:'Unsafe',avatar:'visitor_ember',strategy:'cooperative',private_key:'do-not-accept'})});
   assert.equal(rejectedImport.response.status,400);
   const publicResult=await call(`/api/agents/${id}`);assert.equal(publicResult.value.agent.owner_id,undefined);assert.equal(publicResult.value.agent.treasury,undefined);
+  const publicPage=await call('/api/agents?limit=1');assert.equal(publicPage.value.agents.length,1);assert.equal(publicPage.value.next_cursor,id);
+  const nextPublicPage=await call(`/api/agents?limit=1&after=${encodeURIComponent(publicPage.value.next_cursor)}`);assert.equal(nextPublicPage.value.agents.length,1);assert.equal(nextPublicPage.value.next_cursor,null);
+  assert.equal((await call('/api/agents?limit=101')).response.status,400);
   const funded=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,body:JSON.stringify({amount:123})});assert.equal(funded.value.treasury.available_base_units,'123');
   const isolated=await call('/api/auth/anonymous',{method:'POST',body:'{}'});
   assert.equal((await call(`/api/me/agents/${id}/export`,{cookie:isolated.cookie})).response.status,404);

@@ -67,7 +67,8 @@ not merged automatically. The server issues an HttpOnly owner cookie.
 | `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID |
 | `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected |
 | `GET /api/me/agents/:agentId/export` | Download non-secret agent config, only for its owner |
-| `GET /api/agents` / `GET /api/agents/:agentId` | Public sanitized agent profiles; no owner ID, treasury, credentials, or private key |
+| `GET /api/agents?limit=50&after=:agentId` | Public sanitized directory page (1–100 items); returns `agents` and `next_cursor` |
+| `GET /api/agents/:agentId` | Public sanitized agent profile; no owner ID, treasury, credentials, or private key |
 
 Agent profile storage lives at `$MATCHES_DIR/identity/state.json` and survives
 restart on the persistent application volume. It is a single-process JSON

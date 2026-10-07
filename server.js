@@ -165,7 +165,11 @@ const server = http.createServer(async (req, res) => {
       if(action==='spending-policy'&&req.method==='POST')return json(res,200,{spending_policy:await ownershipStore.setSpendingPolicy(ownerId,id,await body(req,2048))});
       return json(res,405,{error:'Method not allowed'});
     }
-    if(route==='/api/agents'&&req.method==='GET')return json(res,200,{agents:ownershipStore.listPublicAgents()});
+    if(route==='/api/agents'&&req.method==='GET'){
+      const rawLimit=url.searchParams.get('limit'),limit=rawLimit===null?50:Number(rawLimit);
+      if(rawLimit!==null&&!/^(?:[1-9][0-9]?)$|^100$/.test(rawLimit))return json(res,400,{error:'Page size must be an integer from 1 to 100',code:'INVALID_PAGE_SIZE'});
+      const page=ownershipStore.listPublicAgents({after:url.searchParams.get('after'),limit});return json(res,200,page);
+    }
     const publicAgent=route.match(/^\/api\/agents\/(u-[a-f0-9-]{36})$/);
     if(publicAgent&&req.method==='GET'){
       const agent=ownershipStore.publicAgent(publicAgent[1]);return agent?json(res,200,{agent}):json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
