@@ -72,6 +72,9 @@ test('public games are visible after restart while only the host can advance the
     assert.equal((await request(running.base, '/api/arena/rooms')).body.rooms.find(room=>room.id==='rps-1').spectators,1);
     assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/leave',{spectator_id:viewer.body.spectator_id,spectator_token:viewer.body.spectator_token})).body.spectators,0);
     assert.equal((await request(running.base, '/api/arena/rooms/rps-1')).body.room.runId,roomBefore.body.room.runId,'spectator operations do not create another simulation');
+    for(let index=0;index<28;index++)assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{})).status,201);
+    const spectatorBurst=await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{});
+    assert.equal(spectatorBurst.status,429);assert.equal(spectatorBurst.body.code,'RATE_LIMITED');
     const table = await request(running.base, '/api/world/table'); assert.equal(table.body.status, 'empty');
     const aliceSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
     const bobSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });

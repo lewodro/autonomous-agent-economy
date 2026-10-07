@@ -58,6 +58,7 @@ const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentFundingRequests=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentPolicyChanges=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const presenceJoins=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
+const spectatorJoins=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
 const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds});
@@ -255,7 +256,9 @@ const server = http.createServer(async (req, res) => {
     const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
     if(roomSpectatorRoute){
       if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
-      const [,roomId,action]=roomSpectatorRoute;arenaRooms.getRoom(roomId);const data=await body(req,2048);
+      const [,roomId,action]=roomSpectatorRoute;arenaRooms.getRoom(roomId);
+      if(action==='join'&&!spectatorJoins.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Room spectator joins are temporarily limited. Try again shortly.',code:'RATE_LIMITED'});
+      const data=await body(req,2048);
       const result=action==='join'?roomSpectators.join(roomId,data):action==='heartbeat'?roomSpectators.heartbeat(roomId,data):roomSpectators.leave(roomId,data);
       return json(res,action==='join'?201:200,result);
     }
