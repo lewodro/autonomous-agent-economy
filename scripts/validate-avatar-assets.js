@@ -23,7 +23,7 @@ export function inspectPng(bytes){
   assert.ok(width>0&&height>0,'PNG dimensions are invalid');
   assert.equal(bitDepth,8,'Expected 8-bit PNG');assert.equal(colorType,6,'Expected RGBA PNG with alpha channel');
   const stride=width*4,raw=inflateSync(Buffer.concat(data));assert.equal(raw.length,(stride+1)*height,'PNG data size is invalid');
-  let previous=Buffer.alloc(stride),transparentPixels=0;const rgba=Buffer.alloc(stride*height);
+  let previous=Buffer.alloc(stride),transparentPixels=0,visiblePixels=0;const rgba=Buffer.alloc(stride*height);
   for(let y=0;y<height;y++){
     const start=y*(stride+1),filter=raw[start],source=raw.subarray(start+1,start+1+stride),row=Buffer.alloc(stride);
     for(let i=0;i<stride;i++){
@@ -36,10 +36,19 @@ export function inspectPng(bytes){
       else throw new Error(`Unsupported PNG filter ${filter}`);
     }
     rgba.set(row,y*stride);
-    for(let i=3;i<stride;i+=4)if(row[i]<255)transparentPixels++;
+    for(let i=3;i<stride;i+=4){if(row[i]===0)transparentPixels++;else visiblePixels++;}
     previous=row;
   }
-  return {width,height,colorType,transparentPixels,rgba};
+  return {width,height,colorType,transparentPixels,visiblePixels,rgba};
+}
+
+export function hasUsableTransparency(image){
+  const total=image.width*image.height;
+  return total>0&&image.visiblePixels>0&&image.transparentPixels/total>=0.01;
+}
+
+function assertUsableTransparency(image,label){
+  assert.ok(hasUsableTransparency(image),`${label} must contain visible sprite pixels and at least 1% fully transparent background`);
 }
 
 export function approvedAssets(avatars){
@@ -65,10 +74,10 @@ export async function validateAssets(){
     assert.equal(asset.frameWidth,32);assert.equal(asset.frameHeight,32);assert.equal(asset.columns,3);assert.equal(asset.rows,4);
     const sheet=inspectPng(await readFile(localAsset(asset.sheet)));
     assert.deepEqual([sheet.width,sheet.height],[96,128],`${asset.id} sheet must use a 3×4 grid of 32px frames`);
-    assert.ok(sheet.transparentPixels>0,`${asset.id} sheet must have transparent pixels`);
+    assertUsableTransparency(sheet,`${asset.id} sheet`);
     const preview=inspectPng(await readFile(localAsset(asset.preview)));
     assert.deepEqual([preview.width,preview.height],[256,256],`${asset.id} preview must be 256×256`);
-    assert.ok(preview.transparentPixels>0,`${asset.id} preview must have transparent pixels`);
+    assertUsableTransparency(preview,`${asset.id} preview`);
   }
   const source=await readFile(path.join(root,'web/src/world/sprites.ts'),'utf8');
   const block=source.match(/export const AVATARS\s*=\s*\[([^\]]+)\]/)?.[1];assert.ok(block,'picker allowlist is missing');
@@ -80,6 +89,7 @@ export async function validateAssets(){
     const clean=inspectPng(await readFile(path.join(root,'assets/agents',name)));
     assert.deepEqual([clean.width,clean.height],[source.width,source.height],`${name} cleaned dimensions differ from source`);
     assert.ok(clean.transparentPixels>0,`${name} cleaned agent sprite must retain transparent pixels`);
+    assert.ok(clean.visiblePixels>0,`${name} cleaned agent sprite must retain visible pixels`);
     assert.ok(clean.transparentPixels<clean.width*clean.height,`${name} cleanup removed the whole sprite`);
   }
   return {avatars:selectable.length,agentSprites:agents.filter(file=>file.endsWith('.png')).length};
