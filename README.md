@@ -29,6 +29,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Feature | Status | What actually exists |
 |---|---|---|
 | Seeded 2–20-agent matches | **WORKING** | Rust rules, integer credits, ordered events, explicit winners/draws |
+| First-visit experiments | **WORKING** | Random seed and isolated server session per browser; resumes on that browser |
 | Live spectator UI | **WORKING** | Board, queue, inspection, favorites; read-only live watch links |
 | Restart recovery | **WORKING** | Verified active checkpoints and retained inference reservations |
 | Replaceable animation | **WORKING** | Driver interface, canvas effects, pause/speed/reduced motion |
