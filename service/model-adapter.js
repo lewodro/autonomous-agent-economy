@@ -26,7 +26,7 @@ export class InferenceBudget {
   }
 }
 export const fallback=(profile,reason)=>({agent_id:profile.id,action:profile.inference?.fallback||'guard',target:null,reason});
-function publicActionSummary(action,target){
+export function publicActionSummary(action,target){
   if(action==='work')return 'Worked to earn credits.';
   if(action==='guard')return 'Guarded to protect against a challenge.';
   if(action==='challenge')return `Challenged ${target}.`;
