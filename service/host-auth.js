@@ -18,7 +18,8 @@ export function hostCookie(session, env = process.env, now = Date.now()) {
   const expiry = Math.floor(now / 1000) + lifetimeSeconds;
   const payload = `${session}.${expiry}`;
   const secure = env.NODE_ENV === 'production' ? '; Secure' : '';
-  return `${cookieName}=${payload}.${signature(payload, env)}; Path=/api/matches/${session}/; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`;
+  // The same signed host capability controls both free and funded match routes.
+  return `${cookieName}=${payload}.${signature(payload, env)}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`;
 }
 
 export function hasHostCookie(req, session, env = process.env, now = Date.now()) {

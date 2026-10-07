@@ -8,6 +8,7 @@ const id = 'cafefeed-0000-4000-8000-111111111111';
 test('host cookie is bound to one match, secret, and expiry', () => {
   const now = 1_791_000_000_000;
   const cookie = hostCookie(id, env, now);
+  assert.match(cookie, /; Path=\/api\//,'the host capability must reach free and funded match endpoints');
   assert.match(cookie, /HttpOnly; SameSite=Strict/);
   assert.match(cookie, /; Secure$/);
   const request = { headers: { cookie: cookie.split(';')[0] } };
