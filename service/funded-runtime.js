@@ -17,12 +17,14 @@ export class FundedRuntime {
  async command(session,action,extra={}){return this.core.request({command:'funded-host',session,action,...extra});}
  async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
  async create(config,data){
-  await this.ensureCapacity?.();
-  if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
-  const terminal=new Set(['settled','refunded','failed']);
-  const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
-  if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
-  const session=randomUUID();this.sessions.set(session,true);let createdResult=null;
+  const releaseAdmission=await this.ensureCapacity?.();
+  try{
+   if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
+   const terminal=new Set(['settled','refunded','failed']);
+   const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
+   if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
+  }catch(error){releaseAdmission?.();throw error;}
+  const session=randomUUID();this.sessions.set(session,true);releaseAdmission?.();let createdResult=null;
   try{
    const mode=data.mode??'mock';
    const result=createdResult=await this.core.request({command:'funded-host',action:'create',session,config:{simulation:config,economy:{enabled:true,mode,entry_amount_sol:data.entry_amount_sol??'0.02',starting_balance_sol:'1',maximum_entry_sol:'0.05',minimum_reserve_sol:mode==='devnet'?'0':'0.005'},fees:data.fees||{winner_share_bps:10000,house_fee_bps:0},funding_timeout_seconds:data.funding_timeout_seconds??600}});

@@ -62,6 +62,7 @@ const presenceJoins=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
 const spectatorJoins=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
+let capacityQueue=Promise.resolve(),pendingSessionAdmissions=0;
 const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds});
 const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
@@ -75,9 +76,10 @@ function enforcePublicModelAdmission(config){
 async function createSession(command, data) {
   const config=command==='start'?data.config:data.replay?.config;
   enforcePublicModelAdmission(config);
-  await ensureSessionCapacity();
+  const releaseAdmission=await ensureSessionCapacity();
   const session = randomUUID();
   sessions.set(session, true);
+  releaseAdmission();
   try {
     const { replay } = await core.request({ command, session, ...data });
     await runtime.checkpoint(session,replay);
@@ -99,16 +101,25 @@ async function persist(replay) {
   await replayArchive.save(replay);
 }
 async function ensureSessionCapacity(){
-  for(const [session,value] of sessions){
-    if(sessions.size<100)break;
-    if(value?.kind!=='free'||!value.replay?.final_state?.ended||liveEvents.hasViewers(session))continue;
-    await persist(value.replay);
-    await runtime.store?.archive(session,value.replay.match_id);
-    await core.request({command:'drop',session});
-    await runtime.remove(session);
-    sessions.delete(session);
-  }
-  if(sessions.size>=100)throw Object.assign(new Error('Session capacity reached: all retained sessions are active or currently watched'),{status:429,code:'SESSION_CAPACITY'});
+  let unlock;
+  const previous=capacityQueue;
+  capacityQueue=new Promise(resolve=>{unlock=resolve;});
+  await previous;
+  try{
+    for(const [session,value] of sessions){
+      if(sessions.size+pendingSessionAdmissions<100)break;
+      if(value?.kind!=='free'||!value.replay?.final_state?.ended||liveEvents.hasViewers(session))continue;
+      await persist(value.replay);
+      await runtime.store?.archive(session,value.replay.match_id);
+      await core.request({command:'drop',session});
+      await runtime.remove(session);
+      sessions.delete(session);
+    }
+    if(sessions.size+pendingSessionAdmissions>=100)throw Object.assign(new Error('Session capacity reached: all retained sessions are active or currently watched'),{status:429,code:'SESSION_CAPACITY'});
+    pendingSessionAdmissions++;
+  }finally{unlock();}
+  let released=false;
+  return ()=>{if(!released){pendingSessionAdmissions--;released=true;}};
 }
 const server = http.createServer(async (req, res) => {
   try {
