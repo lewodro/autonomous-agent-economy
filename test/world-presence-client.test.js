@@ -168,6 +168,25 @@ test('a closed client does not retry an identity conflict after unmount',async()
   assert.equal(streams.length,0);
 });
 
+test('presence stays connected when browser storage throws',async()=>{
+  const storage={getItem(){throw new Error('storage disabled');},setItem(){throw new Error('storage disabled');},removeItem(){throw new Error('storage disabled');}};
+  const states=[],streams=[];
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'memory-only',
+    fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/join')?{world_id:'main',players:[player('local',100)],session_token:'memory-capability'}:{left:true}}),
+    eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onConnection:state=>states.push(state)});
+  await client.connect();assert.equal(streams.length,1);assert.equal(client.player_id,'player_memory-only');
+  await client.leave();assert.equal(streams[0].closed,true);assert.deepEqual(states,['closed']);
+});
+
+test('malformed stored identity is discarded before requesting presence',async()=>{
+  const storage=new Storage(),requests=[];storage.setItem('aae-world-presence-v1:main:player','../../other');storage.setItem('aae-world-presence-v1:main:token','stale');
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'recovered',
+    fetcher:async(url,init)=>{requests.push(JSON.parse(init.body));return{ok:true,status:201,json:async()=>({world_id:'main',players:[],session_token:'fresh'})};},
+    eventSource:()=>new EventStream()});
+  await client.connect();assert.equal(requests[0].player_id,'player_recovered');assert.equal(requests[0].session_token,undefined);
+  await client.leave();
+});
+
 test('presence client coalesces in-flight movement and heartbeat requests',async()=>{
   let now=1_000,releaseMove,releaseHeartbeat;
   const fetcher=async(url,init)=>{

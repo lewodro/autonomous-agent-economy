@@ -61,7 +61,9 @@ export class WorldPresenceClient {
     this.moveIntervalMs=options.moveIntervalMs||66;
     this.heartbeatIntervalMs=options.heartbeatIntervalMs||1_000;
     this.newId=options.newId||(()=>globalThis.crypto?.randomUUID?.()||`${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`);
-    this.playerId=this.storage?.getItem(`${sessionPrefix}${this.worldId}:player`)||this.createPlayerId();
+    const storedId=this.readStorage(`${sessionPrefix}${this.worldId}:player`);
+    this.playerId=storedId&&/^[A-Za-z0-9_-]{1,64}$/.test(storedId)?storedId:this.createPlayerId();
+    if(storedId&&!/^[A-Za-z0-9_-]{1,64}$/.test(storedId))this.removeStorage(`${sessionPrefix}${this.worldId}:token`);
   }
 
   async connect():Promise<PresenceSnapshot>{
@@ -78,7 +80,7 @@ export class WorldPresenceClient {
   }
 
   private async connectAndSubscribe():Promise<PresenceSnapshot>{
-    this.token=this.storage?.getItem(`${sessionPrefix}${this.worldId}:token`)||null;
+    this.token=this.readStorage(`${sessionPrefix}${this.worldId}:token`);
     const join=()=>this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{
       player_id:this.playerId,session_token:this.token||undefined,avatar:this.options.avatar,
       position:this.options.position,direction:this.options.direction||'down',activity:this.options.activity||'Exploring',
@@ -91,8 +93,8 @@ export class WorldPresenceClient {
       // a capability for the already-active server session. Retry once under
       // a new identity; never evict or take over the existing player's slot.
       this.playerId=this.createPlayerId();this.token=null;
-      this.storage?.setItem(`${sessionPrefix}${this.worldId}:player`,this.playerId);
-      this.storage?.removeItem(`${sessionPrefix}${this.worldId}:token`);
+      this.writeStorage(`${sessionPrefix}${this.worldId}:player`,this.playerId);
+      this.removeStorage(`${sessionPrefix}${this.worldId}:token`);
       joined=await join();
     }
     const snapshot=joined as PresenceSnapshot&{player?:PresencePlayer;session_token?:string};
@@ -100,8 +102,8 @@ export class WorldPresenceClient {
       throw new Error('World presence returned an invalid join response');
     }
     this.token=snapshot.session_token;
-    this.storage?.setItem(`${sessionPrefix}${this.worldId}:player`,this.playerId);
-    this.storage?.setItem(`${sessionPrefix}${this.worldId}:token`,this.token);
+    this.writeStorage(`${sessionPrefix}${this.worldId}:player`,this.playerId);
+    this.writeStorage(`${sessionPrefix}${this.worldId}:token`,this.token);
     this.lastMoveAt=this.now();this.lastHeartbeatAt=this.now();
     this.replace(snapshot);
     if(this.closed)return {world_id:this.worldId,players:[...this.players.values()]};
@@ -150,7 +152,7 @@ export class WorldPresenceClient {
     try{
       if(this.token)await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/leave`,{player_id:this.playerId,session_token:this.token});
     }finally{
-      this.token=null;this.storage?.removeItem(`${sessionPrefix}${this.worldId}:token`);this.onConnection('closed');
+      this.token=null;this.removeStorage(`${sessionPrefix}${this.worldId}:token`);this.onConnection('closed');
     }
   }
 
@@ -167,6 +169,9 @@ export class WorldPresenceClient {
   }
 
   private createPlayerId():string{return `player_${this.newId()}`;}
+  private readStorage(key:string):string|null{try{return this.storage?.getItem(key)||null;}catch{return null;}}
+  private writeStorage(key:string,value:string):void{try{this.storage?.setItem(key,value);}catch{/* Presence remains usable without browser storage. */}}
+  private removeStorage(key:string):void{try{this.storage?.removeItem(key);}catch{/* Expired capabilities are also rejected by the server. */}}
 
   private receive(type:string,raw:string):void{
     if(this.closed)return;
