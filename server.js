@@ -20,6 +20,7 @@ import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
+import { RoomSpectators } from './service/room-spectators.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins } = deployment;
@@ -36,6 +37,7 @@ const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
 const worldPresence=new WorldPresenceService();
+const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
@@ -117,9 +119,16 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res,405,{error:'Method not allowed'});
     }
+    const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
+    if(roomSpectatorRoute){
+      if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+      const [,roomId,action]=roomSpectatorRoute;arenaRooms.getRoom(roomId);const data=await body(req,2048);
+      const result=action==='join'?roomSpectators.join(roomId,data):action==='heartbeat'?roomSpectators.heartbeat(roomId,data):roomSpectators.leave(roomId,data);
+      return json(res,action==='join'?201:200,result);
+    }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
-      if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:worldPresence.snapshot('main').players.filter(player=>player.activity===`Watching ${room.id}`).length}))});
+      if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:roomSpectators.count(room.id)}))});
       if(route==='/api/arena/agents')return json(res,200,{agents:arenaRooms.profiles()});
       if(route==='/api/arena/statistics')return json(res,200,arenaRooms.statistics());
       if(route==='/api/arena/history')return json(res,200,{matches:arenaRooms.history()});
@@ -264,7 +273,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),arenaRooms.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

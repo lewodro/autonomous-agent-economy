@@ -23,12 +23,15 @@ World IDs and player IDs are validated. Positions are bounded to `0..1040 × 0..
 | --- | --- |
 | `GET /api/arena/rooms` | Current shared room status, phase, pairing, and spectator count |
 | `GET /api/arena/rooms/:roomId` | Read-only current room snapshot |
+| `POST /api/arena/rooms/:roomId/spectators/join` | Create or resume a room-scoped spectator lease; returns an opaque `spectator_token` |
+| `POST /api/arena/rooms/:roomId/spectators/heartbeat` | Renew `{ spectator_id, spectator_token }`; send no faster than once per second |
+| `POST /api/arena/rooms/:roomId/spectators/leave` | End `{ spectator_id, spectator_token }` lease |
 | `GET /api/arena/agents` | Profiles and statistics derived from verified retained runs |
 | `GET /api/arena/statistics` | Aggregates computed from the same verified retained ledgers |
 | `GET /api/arena/history` | Recent completed matches |
 | `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
-Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
+Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
 
 ## Free plaza table
 
