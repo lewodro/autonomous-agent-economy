@@ -424,7 +424,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await ownershipStore.init();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await ownershipStore.init();await replayArchive.reconcile();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;

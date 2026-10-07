@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readdir,rm} from 'node:fs/promises';
+import {mkdtemp,readdir,rm,writeFile,utimes} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {ReplayArchive} from '../service/replay-archive.js';
@@ -52,6 +52,23 @@ test('concurrent archive saves serialize capacity enforcement',async()=>{
     const records=Array.from({length:8},(_,index)=>({match_id:`seat-${index.toString(16).padStart(64,'0')}`,final_state:{ended:true,winner:`agent-${index}`},events:[{seq:index+1,type:'MatchEnded'}]}));
     await Promise.all(records.map(record=>archive.save(record)));
     assert.equal((await readdir(directory)).filter(name=>name.endsWith('.json')).length,2);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('startup reconciliation restores replay retention after a crash before pruning',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'replay-archive-recovery-'));
+  try{
+    const archive=new ReplayArchive(directory,{maxRecords:2});
+    const records=['a','b','c'].map((letter,index)=>({match_id:`seat-${letter.repeat(64)}`,final_state:{ended:true,winner:`agent-${index}`},events:[{seq:index+1,type:'MatchEnded'}]}));
+    for(let index=0;index<records.length;index++){
+      const file=archive.file(records[index].match_id);
+      await writeFile(file,JSON.stringify(records[index]));
+      const time=new Date(1_700_000_000_000+index*1000);await utimes(file,time,time);
+    }
+    await new ReplayArchive(directory,{maxRecords:2}).reconcile();
+    assert.equal((await readdir(directory)).filter(name=>name.endsWith('.json')).length,2);
+    assert.equal(await archive.load(records[0].match_id),null);
+    assert.deepEqual(await archive.load(records[2].match_id),records[2]);
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 

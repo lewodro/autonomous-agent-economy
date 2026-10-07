@@ -17,6 +17,9 @@ export class ReplayArchive {
   async save(replay){
     const operation=this.pending.then(()=>this.saveOne(replay));this.pending=operation.catch(()=>{});return operation;
   }
+  async reconcile(){
+    const operation=this.pending.then(()=>this.pruneRecords());this.pending=operation.catch(()=>{});return operation;
+  }
   async saveOne(replay){
     const target=this.file(replay?.match_id),temp=`${target}.${randomUUID()}.tmp`;
     const bytes=JSON.stringify(replay);
@@ -30,23 +33,28 @@ export class ReplayArchive {
         try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
         await rename(temp,target);
         await this.syncFolder(this.directory);
-        const records=[];let totalBytes=0;
-        for(const entry of await readdir(this.directory,{withFileTypes:true})){
-          if(!entry.isFile()||!matchIdPattern.test(entry.name.slice(0,-5))||!entry.name.endsWith('.json'))continue;
-          const filePath=path.join(this.directory,entry.name),metadata=await stat(filePath);
-          records.push({path:filePath,name:entry.name,size:metadata.size,modified:metadata.mtimeMs});totalBytes+=metadata.size;
-        }
-        records.sort((a,b)=>a.modified-b.modified||a.name.localeCompare(b.name));
-        let removed=false;
-        while(records.length>this.maxRecords||totalBytes>this.maxBytes){
-          const index=records.findIndex(record=>record.path!==target);
-          if(index<0)throw new Error('Replay archive capacity could not retain the newest record');
-          const [oldest]=records.splice(index,1);await unlink(oldest.path);totalBytes-=oldest.size;removed=true;
-        }
-        if(removed)await this.syncFolder(this.directory);
+        await this.pruneRecords(target);
       }finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
     });
     return target;
+  }
+  async pruneRecords(protectedPath=null){
+    let entries;
+    try{entries=await readdir(this.directory,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return;throw error;}
+    const records=[];let totalBytes=0;
+    for(const entry of entries){
+      if(!entry.isFile()||!entry.name.endsWith('.json')||!matchIdPattern.test(entry.name.slice(0,-5)))continue;
+      const filePath=path.join(this.directory,entry.name),metadata=await stat(filePath);
+      records.push({path:filePath,name:entry.name,size:metadata.size,modified:metadata.mtimeMs});totalBytes+=metadata.size;
+    }
+    records.sort((a,b)=>a.modified-b.modified||a.name.localeCompare(b.name));
+    let removed=false;
+    while(records.length>this.maxRecords||totalBytes>this.maxBytes){
+      const index=records.findIndex(record=>record.path!==protectedPath);
+      if(index<0)throw new Error('Replay archive capacity could not retain the newest record');
+      const [oldest]=records.splice(index,1);await unlink(oldest.path);totalBytes-=oldest.size;removed=true;
+    }
+    if(removed)await this.syncFolder(this.directory);
   }
   async load(matchId){
     let replay;try{replay=JSON.parse(await readFile(this.file(matchId),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
