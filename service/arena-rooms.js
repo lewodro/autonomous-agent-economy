@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, randomInt } from 'node:crypto';
 import { configureRun } from '../src/config.js';
@@ -6,22 +6,26 @@ import { createState } from '../src/economy.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
 import { withStorageFailure } from './http-error.js';
+import { emptyArenaSummary, mergeArenaSummaries, summarizeArenaRun, validateArenaSummary } from './arena-statistics.js';
+import { readBoundedJson } from './safe-json.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const MAX_STEP_RETRIES = 3;
 const RECENT_FINISH_MS = 15_000;
+const MAX_ARENA_SNAPSHOT_BYTES=32_000_000;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, syncFolder=syncDirectory }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.syncFolder=syncFolder;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
     for(const [id,game] of SLOTS) {
       let saved;
-      try { saved=JSON.parse(await readFile(path.join(this.directory,id+'.json'),'utf8')); }
+      try { saved=await readBoundedJson(path.join(this.directory,id+'.json'),{maxBytes:MAX_ARENA_SNAPSHOT_BYTES,label:`Arena checkpoint ${id}`}); }
       catch(error){if(error.code!=='ENOENT')throw error;}
       if(saved) {
         if(saved.version!==1||saved.id!==id||saved.game!==game||!Array.isArray(saved.previous)||saved.previous.length>3)throw new Error(`Invalid arena checkpoint: ${id}`);
@@ -30,10 +34,11 @@ export class ArenaRoomPool {
           run.state=await validateState(run.state);
           if(run.state.matches.some(m=>(m.type||'rps')!==game))throw new Error(`Arena game mismatch: ${id}`);
         }
-      } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};
+        saved.cumulative=saved.cumulative===undefined?emptyArenaSummary():validateArenaSummary(saved.cumulative);
+      } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[],cumulative:emptyArenaSummary()};
       const state=structuredClone(saved.state),latest=state.matches.filter(match=>match.status==='settled').at(-1);
       const lastCompletedAt=latest?Date.parse(completionTime({run:{state},match:latest})):0;
-      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0});
+      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0,epochCheckpointPending:null});
       if(latest&&Number.isFinite(lastCompletedAt)&&Date.now()-lastCompletedAt<RECENT_FINISH_MS){
         for(const agentId of latest.players)this.recentFinishes.set(agentId,{roomId:id,at:lastCompletedAt});
       }
@@ -62,11 +67,13 @@ export class ArenaRoomPool {
   profiles() {
     // Start with retained epochs oldest-first so timestamp ties remain chronological.
     const chronologicalRuns=this.runs().reverse();
+    const totals=this.cumulativeStatistics();
     return createState().agents.map(base=>{
       const entries=chronologicalRuns.flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
         .sort((a,b)=>completionTime(a).localeCompare(completionTime(b)));
-      const wins=entries.filter(({match})=>match.result!=='draw'&&match.players[match.result==='a'?0:1]===base.id).length;
-      const draws=entries.filter(({match})=>match.result==='draw').length;
+      const aggregate=totals.agents[base.id]||{matches:0,wins:0,draws:0};
+      const wins=aggregate.wins;
+      const draws=aggregate.draws;
       const latest=entries.at(-1);
       const active=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
       const recent=this.recentFinishes.get(base.id);
@@ -74,29 +81,27 @@ export class ArenaRoomPool {
       if(recent&&!recentRoom)this.recentFinishes.delete(base.id);
       const linked=active||this.listRooms().find(r=>r.status==='finished'&&r.participants.some(a=>a.id===base.id))||
         (recentRoom?{id:recentRoom,status:'finished'}:undefined);
-      return {id:base.id,name:base.name,sprite:base.sprite,strategy:base.strategy,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
+      return {id:base.id,name:base.name,sprite:base.sprite,strategy:base.strategy,wins,draws,losses:aggregate.matches-wins-draws,matches:aggregate.matches,scope:'cumulative verified arena runs',
         recentWinner:!!latest&&latest.match.result!=='draw'&&latest.match.players[latest.match.result==='a'?0:1]===base.id,
         roomId:linked?.id||null,arenaStatus:active?'fighting':linked?.status==='finished'?'finished':'queued',
         memory:entries.slice(-6).map(({run,match})=>({...run.state.agents.find(a=>a.id===base.id).memory.find(m=>m.matchId===match.id),runId:run.runId,game:run.game})),
         latestMatch:latest?{runId:latest.run.runId,matchId:latest.match.id,game:latest.run.game}:null};
     });
   }
+  cumulativeStatistics(){
+    let total=emptyArenaSummary();
+    for(const room of this.rooms.values())total=mergeArenaSummaries(total,room.saved.cumulative||emptyArenaSummary());
+    for(const run of this.runs())total=mergeArenaSummaries(total,summarizeArenaRun(run));
+    return total;
+  }
   statistics() {
-    const runs=this.runs(),matches=runs.flatMap(run=>run.state.matches.filter(match=>match.status==='settled').map(match=>({run,match})));
-    const summarize=game=>{
-      const entries=matches.filter(({run})=>run.game===game);
-      return {matches:entries.length,draws:entries.filter(({match})=>match.result==='draw').length,
-        decisions:entries.reduce((sum,{match})=>sum+(game==='tictactoe'?match.moves.length:Object.keys(match.reveals||{}).length),0)};
-    };
+    const totals=this.cumulativeStatistics();
     const agents=this.profiles().filter(agent=>agent.matches>0).map(agent=>({...agent,win_rate:Math.round(agent.wins/agent.matches*1000)/10}))
       .sort((a,b)=>b.wins-a.wins||b.matches-a.matches||a.name.localeCompare(b.name));
-    const completedAt=matches.map(({run,match})=>completionTime({run,match})).filter(Boolean).sort().at(-1)||null;
-    return {scope:'verified retained arena runs',updated_at:completedAt,totals:{matches:matches.length,
-      decisions:summarize('rps').decisions+summarize('tictactoe').decisions,
-      draws:matches.filter(({match})=>match.result==='draw').length},games:{rps:summarize('rps'),tictactoe:summarize('tictactoe')},agents};
+    return {scope:'verified cumulative arena runs (retained baseline plus future rollups)',updated_at:totals.updated_at,totals:{matches:totals.matches,decisions:totals.decisions,draws:totals.draws},games:totals.games,agents};
   }
   history() {
-    return this.runs().reverse().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
+    return this.runs().reverse().flatMap(run=>run.state.matches.filter(match=>match.status==='settled').map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
       players:match.players.map(id=>({id,name:run.state.agents.find(a=>a.id===id).name})),
       moves:match.type==='tictactoe'?match.moves.map((move,i)=>({turn:i+1,agent:move.agentId,action:'place',cell:[Math.floor(move.cell/3),move.cell%3]}))
         :match.players.map(id=>({round:1,agent:id,action:match.reveals[id].move})),
@@ -108,25 +113,37 @@ export class ArenaRoomPool {
     if(!run)throw Object.assign(new Error('This retained run is no longer available'),{status:404});
     return structuredClone({version:1,mode:'simulation',runId,roomId:run.roomId,game:run.game,state:run.state});
   }
-  async checkpoint(room) {
-    const saved={...room.saved,state:structuredClone(room.state)};
-    const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';
-    await withStorageFailure('arena checkpoint',async()=>{await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);});room.saved=saved;
+  async checkpoint(room, epoch=room.saved) {
+    const saved=epoch===room.saved?{...epoch,state:structuredClone(room.state)}:structuredClone(epoch);
+    const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';let renamed=false;
+    try{
+      await withStorageFailure('arena checkpoint',async()=>{
+        const handle=await open(temp,'wx',0o600);
+        try{await handle.writeFile(JSON.stringify(saved));await handle.sync();}finally{await handle.close();}
+        await rename(temp,target);renamed=true;room.saved=saved;await this.syncFolder(this.directory);
+      });
+    }finally{if(!renamed)await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
   }
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
     if(room.running)throw new Error('Room is already running');
-    if(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2){
-      room.saved={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
-      room.state=structuredClone(room.saved.state);
+    let nextEpoch=room.epochCheckpointPending;
+    if(!nextEpoch&&(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2)){
+      const dropped=room.saved.previous.length>=3?room.saved.previous.at(-1):null;
+      const cumulative=dropped?mergeArenaSummaries(room.saved.cumulative||emptyArenaSummary(),summarizeArenaRun({...dropped,roomId:id,game:room.saved.game})):room.saved.cumulative||emptyArenaSummary();
+      nextEpoch={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3),cumulative};
     }
     room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
-    const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
-      // The terminal result is not public until the final checkpoint succeeds.
-      room.phase=phase;room.current=match;room.status='live';
-      if(this.stageMs)await this.delay(this.stageMs);
-    },onSave:()=>this.checkpoint(room)});
-    try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
+    try {
+      // A new run ID is visible through the room snapshot, so persist the epoch
+      // rollover before starting work that could be interrupted or fail.
+      if(nextEpoch){room.epochCheckpointPending=nextEpoch;await this.checkpoint(room,nextEpoch);room.state=structuredClone(room.saved.state);room.epochCheckpointPending=null;}
+      const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
+        // The terminal result is not public until the final checkpoint succeeds.
+        room.phase=phase;room.current=match;room.status='live';
+        if(this.stageMs)await this.delay(this.stageMs);
+      },onSave:()=>this.checkpoint(room)});
+      await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
       for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}

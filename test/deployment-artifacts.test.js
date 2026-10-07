@@ -9,6 +9,7 @@ test('production image includes every runtime-owned browser and service director
     'COPY src ./src',
     'COPY legacy ./legacy',
     'COPY post ./post',
+    'COPY profile ./profile',
     'COPY world ./world',
     'COPY labs ./labs',
     'COPY assets ./assets',

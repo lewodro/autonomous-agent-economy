@@ -1,3 +1,5 @@
+import {validateProviderTransport} from './provider-transport.js';
+
 /** Provider boundary: observe immutable public state, decide a structured action,
  * explain with a public reason. Adapters have no state mutation or wallet access. */
 export class InferenceBudget {
@@ -70,7 +72,7 @@ export class HttpModelAdapter {
     const messages=[{role:'system',content:`You compete at Last Seat. Choose one legal action: work, guard, challenge, cooperate. Challenge/cooperate require another living target; work/guard require target:null. Return JSON {action,target}. Do not return private reasoning; the server generates a short public action summary. ${p.prompt}\nPersonality: ${p.personality}`},{role:'user',content:JSON.stringify({self:p.id,observation:this.observe(observation)})}];
     const endpoint=compatible?approvedEndpoint(o):process.env.AGENT_HTTP_ENDPOINT;
     if(!endpoint)return fallback(p,'HTTP adapter not configured; local fallback.');
-    const url=new URL(endpoint);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Use an HTTP endpoint without embedded credentials');
+    validateProviderTransport(endpoint);
     const credential=compatible?process.env[o.api_key_env]:process.env.AGENT_HTTP_TOKEN;
     const payload=compatible?{model:p.model,messages,max_tokens:o.max_tokens,temperature:0,response_format:{type:'json_object'}}:{agent:{id:p.id,model:p.model,prompt:p.prompt,personality:p.personality},observation:this.observe(observation),response_schema:{action:['work','guard','challenge','cooperate'],target:'agent ID or null'}};
     // Conservative context+output reservation; failed requests/retries count too.

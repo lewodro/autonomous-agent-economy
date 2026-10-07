@@ -13,7 +13,7 @@
 | Stale persisted state | Stop all writers and preserve journals/keys. Run economy:reconcile against the original storage; do not edit status to confirmed or delete pending operations. |
 | Attestation verification failed | Check replay/version, match ID, authority key continuity and settlement fields. Preserve failed snapshot; do not bypass verification or generate a replacement authority for an old match. |
 | No frontend events | GET /api/health, check browser console and SSE /api/matches/:session/events. Reload for a snapshot after a gap. Viewer limits are 4/session and 16 total. |
-| Public local API blocked | Use localhost/127.0.0.1 with matching Origin and port, application/json POSTs. There is no public deployment mode. |
+| Hosted API rejects request host/origin | Set `PUBLIC_ORIGIN` to the exact HTTPS site origin and add the Railway origin when using both domains. The `Host` header must match a configured origin; browser requests must be same-origin. |
 | Provider fails/falls back | Confirm server-approved MODEL_BASE_URL and MODEL_API_KEY_ENV match profile; key is exported separately. Check request/token budgets; do not dump credentials. |
 | CI differs from local | Use `npm ci`, `npm run lint`, `npm test`, Cargo locked tests, docs/examples checks. Network wallet/validator tests are separate from offline CI. |
 | Storage conflict | Only one writer may open a journal. Stop the other owned app/CLI before retry; do not remove writer.lock to bypass OS locking. |

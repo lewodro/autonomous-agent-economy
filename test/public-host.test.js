@@ -15,7 +15,7 @@ async function start(directory, extraEnv = {}) {
     env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0',
       PUBLIC_ORIGIN: 'https://seat.example', RAILWAY_PUBLIC_DOMAIN: '', MATCHES_DIR: directory,
       HOST_SESSION_SECRET: 'local-integration-secret-value-long-enough', ECONOMY_LAB: '0',
-      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ...extraEnv },
+      MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ENABLE_PUBLIC_MODEL_INFERENCE:'false', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -55,23 +55,30 @@ test('public games are visible after restart while only the host can advance the
     assert.equal(health.status, 200);
     assert.equal(health.body.storage, 'ok');
     assert.equal(health.body.presence.status, 'ok');
-    const alice = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 }, avatar: 'visitor_ember', activity: 'Watching rps-1' });
-    const bob = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
+    assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 900, y: 100 } })).status,403,'public clients cannot choose their first player ID');
+    const alice = await request(running.base, '/api/worlds/main/presence/join', { position: { x: 100, y: 100 }, avatar: 'visitor_ember', activity: 'Watching rps-1' });
+    const bob = await request(running.base, '/api/worlds/main/presence/join', { position: { x: 120, y: 100 } });
+    const aliceId=alice.body.player.player_id,bobId=bob.body.player.player_id;
     assert.equal(alice.status, 201); assert.equal(bob.body.players.length, 2);
     assert.equal((await request(running.base, '/api/health')).body.presence.active_players, 2);
-    assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 900, y: 100 } })).status, 403);
-    const reconnect = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', session_token: alice.body.session_token, position: { x: 900, y: 100 } });
+    assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: aliceId, position: { x: 900, y: 100 } })).status, 403);
+    const reconnect = await request(running.base, '/api/worlds/main/presence/join', { player_id: aliceId, session_token: alice.body.session_token, position: { x: 900, y: 100 } });
     assert.deepEqual(reconnect.body.player.position, { x: 100, y: 100 }, 'a valid reconnect must preserve the server position');
     assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: '../bob', position: { x: 100, y: 100 } })).status, 400);
     const roomBefore = await request(running.base, '/api/arena/rooms/rps-1');
     assert.equal((await request(running.base, '/api/arena/rooms')).body.rooms.find(room=>room.id==='rps-1').spectators,0,'activity labels cannot inflate room spectators');
-    const viewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{spectator_id:'spectator_a'});
+    const spoofedViewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{spectator_id:'spectator_a'});
+    assert.equal(spoofedViewer.status,404,'clients cannot squat caller-selected spectator identities');
+    const viewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{});
     assert.equal(viewer.status,201);assert.equal(viewer.body.spectators,1);
     const resumed=await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{spectator_id:viewer.body.spectator_id,spectator_token:viewer.body.spectator_token});
     assert.equal(resumed.body.spectators,1,'reconnect reuses the room-scoped viewer');
     assert.equal((await request(running.base, '/api/arena/rooms')).body.rooms.find(room=>room.id==='rps-1').spectators,1);
     assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/leave',{spectator_id:viewer.body.spectator_id,spectator_token:viewer.body.spectator_token})).body.spectators,0);
     assert.equal((await request(running.base, '/api/arena/rooms/rps-1')).body.room.runId,roomBefore.body.room.runId,'spectator operations do not create another simulation');
+    for(let index=0;index<27;index++)assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{})).status,201);
+    const spectatorBurst=await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{});
+    assert.equal(spectatorBurst.status,429);assert.equal(spectatorBurst.body.code,'RATE_LIMITED');
     const table = await request(running.base, '/api/world/table'); assert.equal(table.body.status, 'empty');
     const aliceSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
     const bobSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
@@ -89,6 +96,9 @@ test('public games are visible after restart while only the host can advance the
     assert.deepEqual(capabilities.body.funded_modes, []);
     assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'rps', 'tictactoe']);
     const config = (await request(running.base, '/api/config?agents=2')).body;
+    const modelConfig=structuredClone(config);modelConfig.agents[0].provider='openai-compatible';modelConfig.agents[0].model='server-test-model';
+    const modelMatch=await request(running.base,'/api/matches',{config:modelConfig});assert.equal(modelMatch.status,403);assert.equal(modelMatch.body.code,'PUBLIC_MODEL_INFERENCE_DISABLED');
+    const importedModel=await request(running.base,'/api/replays/import',{replay:{config:modelConfig}});assert.equal(importedModel.status,403);assert.equal(importedModel.body.code,'PUBLIC_MODEL_INFERENCE_DISABLED','replay imports cannot bypass the server model gate');
     const created = await request(running.base, '/api/matches', { config });
     assert.equal(created.status, 201);
     assert.match(created.cookie, /HttpOnly; SameSite=Strict/);
@@ -127,8 +137,30 @@ test('public Devnet mode is explicit and cannot be downgraded to a mock funded m
     assert.equal(health.payments, 'devnet_test_sol');
     const response = await fetch(`${running.base}/api/funded-matches`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'mock', config: {} }) });
     assert.equal(response.status, 400);
+    const config = await fetch(`${running.base}/api/config?agents=2`, { headers }).then(result => result.json());
+    config.agents[0].provider = 'openai-compatible';
+    config.agents[0].model = 'configured-server-model';
+    const modelMatch = await fetch(`${running.base}/api/funded-matches`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'devnet', config }) });
+    assert.equal(modelMatch.status, 403);
+    assert.equal((await modelMatch.json()).code, 'PUBLIC_MODEL_INFERENCE_DISABLED', 'funded Devnet matches cannot bypass the public model gate');
   } finally {
     if (running) await stop(running.child);
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('public model inference requires explicit opt-in and limits backed match creation',{
+ skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
+ timeout:30_000,
+},async()=>{
+ const directory=await mkdtemp(`${os.tmpdir()}/last-seat-public-models-`);let running;
+ try{
+  running=await start(directory,{ENABLE_PUBLIC_MODEL_INFERENCE:'true',ENTRY_FEE_ENABLED:'true',ECONOMY_MODE:'DEVNET',PUBLIC_DEVNET_ACK:'I_UNDERSTAND_TEST_SOL_ONLY',SOLANA_DEVNET_RPC_URL:'https://devnet.example/rpc'});
+  const headers={Host:'seat.example',Origin:'https://seat.example','Content-Type':'application/json'};
+  const capabilities=await fetch(`${running.base}/api/capabilities`,{headers}).then(response=>response.json());assert.equal(capabilities.public_model_inference_enabled,true);
+  const config=await fetch(`${running.base}/api/config?agents=2`,{headers}).then(response=>response.json());config.agents[0].provider='openai-compatible';config.agents[0].model='configured-server-model';
+  for(let index=0;index<2;index++){const response=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(response.status,201);}
+  const limited=await fetch(`${running.base}/api/matches`,{method:'POST',headers,body:JSON.stringify({config})});assert.equal(limited.status,429);assert.equal((await limited.json()).code,'PUBLIC_MODEL_MATCH_RATE_LIMITED');
+  const fundedLimited=await fetch(`${running.base}/api/funded-matches`,{method:'POST',headers,body:JSON.stringify({mode:'devnet',config})});assert.equal(fundedLimited.status,429);assert.equal((await fundedLimited.json()).code,'PUBLIC_MODEL_MATCH_RATE_LIMITED','funded matches share the same server model budget');
+ }finally{if(running)await stop(running.child);await rm(directory,{recursive:true,force:true});}
 });

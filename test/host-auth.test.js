@@ -13,6 +13,7 @@ test('host cookie is bound to one match, secret, and expiry', () => {
   assert.match(cookie, /; Secure$/);
   const request = { headers: { cookie: cookie.split(';')[0] } };
   assert.equal(hasHostCookie(request, id, env, now), true);
+  assert.equal(hasHostCookie(request, id, env, now + 30 * 24 * 60 * 60 * 1000), false,'host cookie is invalid at its exact expiry second');
   assert.equal(hasHostCookie(request, '00000000-0000-4000-8000-000000000000', env, now), false);
   assert.equal(hasHostCookie(request, id, { ...env, HOST_SESSION_SECRET: 'another-secret-that-is-long-enough' }, now), false);
   assert.equal(hasHostCookie(request, id, env, now + 31 * 24 * 60 * 60 * 1000), false);

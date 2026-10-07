@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 const State=Object.freeze({Funding:'funding',Funded:'funded',Running:'running',SettlementPending:'settlement_pending',RefundPending:'refund_pending'});
 /** Admission is Rust-owned. This host schedules turns and publishes verified public projections. */
 export class FundedRuntime {
- constructor(core,runtime,events,sessions){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
+ constructor(core,runtime,events,sessions,{ensureCapacity=null}={}){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.ensureCapacity=ensureCapacity;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
  remember(result){const session=result.session||result.economy?.session;if(session&&result.economy)this.matches.set(session,{...result,nextAttempt:0});return result;}
  publish(result){
   this.remember(result);const session=result.session||result.economy?.session;
@@ -17,16 +17,31 @@ export class FundedRuntime {
  async command(session,action,extra={}){return this.core.request({command:'funded-host',session,action,...extra});}
  async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
  async create(config,data){
-  if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
-  const terminal=new Set(['settled','refunded','failed']);
-  const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
-  if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
-  const session=randomUUID();this.sessions.set(session,true);
+  const releaseAdmission=await this.ensureCapacity?.();
+  try{
+   if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
+   const terminal=new Set(['settled','refunded','failed']);
+   const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
+   if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
+  }catch(error){releaseAdmission?.();throw error;}
+  const session=randomUUID();this.sessions.set(session,true);releaseAdmission?.();let createdResult=null;
   try{
    const mode=data.mode??'mock';
-   const result=await this.core.request({command:'funded-host',action:'create',session,config:{simulation:config,economy:{enabled:true,mode,entry_amount_sol:data.entry_amount_sol??'0.02',starting_balance_sol:'1',maximum_entry_sol:'0.05',minimum_reserve_sol:mode==='devnet'?'0':'0.005'},fees:data.fees||{winner_share_bps:10000,house_fee_bps:0},funding_timeout_seconds:data.funding_timeout_seconds??600}});
+   const result=createdResult=await this.core.request({command:'funded-host',action:'create',session,config:{simulation:config,economy:{enabled:true,mode,entry_amount_sol:data.entry_amount_sol??'0.02',starting_balance_sol:'1',maximum_entry_sol:'0.05',minimum_reserve_sol:mode==='devnet'?'0':'0.005'},fees:data.fees||{winner_share_bps:10000,house_fee_bps:0},funding_timeout_seconds:data.funding_timeout_seconds??600}});
    await this.runtime.checkpoint(session,result.replay);return this.publish(result);
-  }catch(error){this.sessions.delete(session);throw error;}
+  }catch(error){
+   try{
+    const discarded=await this.core.request({command:'funded-host',action:'discard-unfunded',session});
+    if(discarded.removed===true||discarded.removed===false){await this.runtime.remove(session);this.sessions.delete(session);}
+    else throw Object.assign(new Error('Cleanup did not confirm host removal'),{code:'cleanup_unconfirmed'});
+   }catch(cleanupError){
+    let recoverable=createdResult;
+    if(!recoverable){try{recoverable=await this.core.request({command:'funded-host',action:'get',session});}catch{}}
+    if(recoverable)this.remember({...recoverable,session});
+    economyLog('funded_match_create_cleanup_failed',{session,code:cleanupError.code||'cleanup_failed'});
+   }
+   throw error;
+  }
  }
  async act(session,action,data={}){
   if(!this.matches.has(session))throw Object.assign(Error('Funded session not found'),{status:404});
@@ -45,6 +60,12 @@ export class FundedRuntime {
    else if(action==='fund-all'){const current=await this.command(session,'get');for(const id of current.economy.economy.required_agents)result=await fund(id);}
    else result=await this.command(session,action);
    await this.runtime.checkpoint(session,result.replay);return this.publish(result);
+  }catch(error){
+   // FundedHost persists financial transitions independently of the auxiliary
+   // replay checkpoint. If that checkpoint fails, refresh scheduler/spectator
+   // state from Rust so a committed cancel/settlement is not left stale here.
+   try{this.publish(await this.command(session,'get'));}catch{}
+   throw error;
   }finally{this.busy.delete(session);}
  }
  start(){if(this.timer||process.env.FUNDED_AUTO_RUN==='0')return;this.timer=setInterval(()=>{if(!this.activeTick)this.activeTick=this.tick().then(()=>{this.activeTick=null;},()=>{this.activeTick=null;});},250);this.timer.unref();}
@@ -67,11 +88,12 @@ export class FundedRuntime {
  }
  health(){
   const rows=[...this.matches.values()];
-  const health={matches:rows.length,pending_intents:0,pending_receipts:0,pending_settlements:0,pending_refunds:0,modes:[...new Set(rows.map(r=>r.economy.economy.payment_mode))],mainnet_enabled:false,rpc_status:rows.length?'ready':'not_observed',storage_status:rows.length?'opened':'not_observed'};
+  const health={matches:rows.length,pending_intents:0,pending_receipts:0,pending_settlements:0,pending_refunds:0,modes:[...new Set(rows.map(r=>r.economy.economy.payment_mode))],mainnet_enabled:false,rpc_status:'not_observed',storage_status:rows.length?'opened':'not_observed'};
   health.automatic_retry_limit=8;health.automatic_retries_exhausted=rows.filter(r=>(r.failures||0)>=8).length;
   for(const row of rows){const observed=row.economy.health;
    for(const key of ['pending_intents','pending_receipts','pending_settlements','pending_refunds'])health[key]+=observed?.[key]??0;
    if(observed?.rpc_ready===false)health.rpc_status='unavailable';
+   else if(observed?.rpc_ready===true&&health.rpc_status!=='unavailable')health.rpc_status='ready';
    if(observed?.storage_ready===false)health.storage_status='unavailable';
   }
   return health;

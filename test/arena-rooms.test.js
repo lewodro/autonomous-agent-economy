@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ArenaRoomPool } from '../service/arena-rooms.js';
@@ -36,6 +36,53 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.deepEqual(restored.history(),history);assert.deepEqual(restored.profiles(),profiles);
   assert.throws(()=>pool.getRoom('missing'),/not found/);
   pool.close();restored.close();
+});
+test('room epoch rollover is checkpointed before the next match begins',async t=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'arena-epoch-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
+  for(let i=0;i<64;i++)await pool.step('rps-1');
+  const room=pool.rooms.get('rps-1'),oldRunId=room.saved.runId,checkpoint=pool.checkpoint.bind(pool),observed=[];
+  pool.checkpoint=async()=>{throw Object.assign(new Error('simulated checkpoint failure'),{code:'EIO'});};
+  await assert.rejects(pool.step('rps-1'),{code:'EIO'});
+  assert.equal(room.saved.runId,oldRunId,'failed persistence must not publish the staged run ID');
+  assert.equal(room.state.matches.length,64,'failed persistence must retain the prior in-memory run');
+  assert.equal(pool.listRooms().find(value=>value.id==='rps-1').runId,oldRunId);
+  pool.checkpoint=async(value,epoch)=>{observed.push({runId:epoch?.runId||value.saved.runId,matches:epoch?.state.matches.length??value.state.matches.length,previous:epoch?.previous.length??value.saved.previous.length});return checkpoint(value,epoch);};
+  await pool.step('rps-1');
+  assert.equal(observed[0].runId,room.saved.runId);
+  assert.equal(observed[0].matches,0,'the rollover checkpoint precedes simulation work');
+  assert.equal(observed[0].previous,1);
+  assert.notEqual(room.saved.runId,oldRunId);
+  const disk=JSON.parse(await readFile(path.join(dir,'rps-1.json'),'utf8'));
+  assert.equal(disk.runId,room.saved.runId);
+  assert.equal(disk.previous[0].runId,oldRunId);
+  assert.equal(disk.state.matches.length,1);
+  for(let i=1;i<64;i++)await pool.step('rps-1');
+  const stableRunId=room.saved.runId;let failAfterRename=true;
+  pool.checkpoint=async(value,epoch)=>{
+    await checkpoint(value,epoch);
+    if(epoch&&failAfterRename){failAfterRename=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}
+  };
+  await assert.rejects(pool.step('rps-1'),{code:'EIO'});
+  const committedRunId=room.saved.runId;assert.notEqual(committedRunId,stableRunId);
+  assert.equal(room.state.matches.length,0,'the in-memory state follows the renamed checkpoint');
+  const retriedEpochs=[];
+  pool.checkpoint=async(value,epoch)=>{if(epoch)retriedEpochs.push({runId:epoch.runId,matches:epoch.state.matches.length});return checkpoint(value,epoch);};
+  await pool.step('rps-1');
+  assert.deepEqual(retriedEpochs[0],{runId:committedRunId,matches:0},'retry must reconfirm the same epoch before simulating');
+  assert.equal(room.saved.state.matches.length,1);
+  await pool.close();
+});
+test('arena checkpoint flushes file and directory and preserves state after sync failure',async t=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'arena-checkpoint-sync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  let failSync=false;const pool=new ArenaRoomPool(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});await pool.restore();
+  const room=pool.rooms.get('rps-1'),nextRng=room.state.rng===4294967295?1:room.state.rng+1;room.state.rng=nextRng;failSync=true;
+  await assert.rejects(pool.checkpoint(room),{status:503,code:'EIO'});
+  assert.equal(room.saved.state.rng,nextRng);
+  const disk=JSON.parse(await readFile(path.join(dir,'rps-1.json'),'utf8'));assert.equal(disk.state.rng,nextRng);
+  assert.deepEqual(await readdir(dir),['rps-1.json']);
+  const reopened=new ArenaRoomPool(dir);await reopened.restore();assert.equal(reopened.rooms.get('rps-1').state.rng,nextRng);
+  await pool.close();await reopened.close();
 });
 test('recently finished agents remain visible in the plaza when their room starts another fight',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-finish-flow-')),{stageMs:0});await pool.restore();
@@ -74,6 +121,20 @@ test('settling rooms stay live until the final result checkpoint completes',asyn
   assert.equal(pool.rooms.get('rps-1').status,'finished');
   assert.equal(pool.history().length,1);
   pool.close();
+});
+test('history excludes in-flight RPS records until reveals and settlement are checkpointed',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-live-history-')),{stageMs:1});await pool.restore();
+  let reached,release;const atLiveStage=new Promise(resolve=>{reached=resolve;});let held=false;
+  pool.delay=()=>new Promise(resolve=>{
+    const room=pool.rooms.get('rps-1'),active=room.state.matches.at(-1);
+    if(!held&&active&&active.status!=='settled'){held=true;release=resolve;reached();}else resolve();
+  });
+  const running=pool.step('rps-1');await atLiveStage;
+  try{
+    assert.notEqual(pool.rooms.get('rps-1').state.matches.at(-1).status,'settled');
+    assert.deepEqual(pool.history(),[],'public match history must remain usable and completed-only during a live round');
+  }finally{release();await running;pool.close();}
+  assert.equal(pool.history().length,1);
 });
 test('room scheduler retries one transient checkpoint failure without duplicating the match',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-retry-')),{stageMs:0,restMs:60_000,retryMs:1});await pool.restore();

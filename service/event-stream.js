@@ -3,6 +3,11 @@ export class MatchEventStream {
  constructor(){this.viewers=new Map();this.count=0;}
  connect(session,replay,res,economy=null){
   if(res.destroyed||res.writableEnded)return;
+  if(replay.final_state?.ended){
+   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+   res.end(`event: snapshot\ndata: ${JSON.stringify({replay,...(economy?{economy}:{})})}\n\n`);
+   return;
+  }
   const group=this.viewers.get(session)||new Set();
   if(this.count>=16||group.size>=4)throw Object.assign(new Error('Live viewer limit reached'),{status:429});
   this.viewers.set(session,group);group.add(res);this.count++;
@@ -15,6 +20,7 @@ export class MatchEventStream {
    res.write(`event: snapshot\ndata: ${JSON.stringify({replay,...(economy?{economy}:{})})}\n\n`);
   }catch{res.destroy();cleanup();}
  }
+ hasViewers(session){return (this.viewers.get(session)?.size||0)>0;}
  publish(session,result){
   const group=this.viewers.get(session);if(!group)return;
   const replay=result.replay;

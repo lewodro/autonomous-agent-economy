@@ -25,7 +25,7 @@ export class LiveObserver {
   source.onopen=()=>{if(!this.closed&&source===this.source)this.status(true);};source.onerror=()=>{if(!this.closed&&source===this.source)this.status(false);};
   return source;
  }
- private acceptSnapshot(run:Replay){this.run=run;this.changed(run);this.status(true);}
+ private acceptSnapshot(run:Replay){this.run=run;this.changed(run);this.status(true);if(run.final_state.ended){this.closed=true;this.source.close();}}
  private reconnect(){this.status(false);this.source.close();if(this.timer)clearTimeout(this.timer);this.timer=setTimeout(()=>{if(!this.closed)this.source=this.open();},500);}
  close(){this.closed=true;if(this.timer)clearTimeout(this.timer);this.source.close();}
 }

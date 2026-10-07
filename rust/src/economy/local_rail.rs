@@ -10,6 +10,7 @@ use super::{
     repository::*,
     signing::SigningBackend,
 };
+use crate::hashing::sha256_hex;
 use crate::wallet::{rpc_at, Network, DEVNET_GENESIS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -20,8 +21,12 @@ pub struct LocalPaymentRail {
     pub(super) directory: PathBuf,
     #[serde(default = "local_mode")]
     mode: PaymentMode,
-    #[serde(default = "local_rpc_url")]
+    // Provider URLs can contain credentials. Keep the endpoint in process
+    // configuration and bind durable records to it with a non-reversible hash.
+    #[serde(default = "local_rpc_url", skip_serializing)]
     rpc_url: String,
+    #[serde(default)]
+    rpc_url_fingerprint: String,
     genesis: String,
     keys: PathBuf,
     accounts: BTreeMap<AccountId, String>,
@@ -33,6 +38,19 @@ fn local_mode() -> PaymentMode {
 }
 fn local_rpc_url() -> String {
     Network::Local.endpoint().into()
+}
+fn configured_rpc_url(mode: PaymentMode) -> Result<String> {
+    match mode {
+        PaymentMode::Local => Ok(local_rpc_url()),
+        PaymentMode::Devnet => {
+            Ok(std::env::var("SOLANA_DEVNET_RPC_URL")
+                .unwrap_or_else(|_| crate::wallet::DEVNET.into()))
+        }
+        _ => Err(EconomyError::MainnetNotImplemented),
+    }
+}
+fn rpc_url_fingerprint(url: &str) -> String {
+    sha256_hex(url.as_bytes())
 }
 pub fn rpc(method: &str, params: Value) -> Result<Value> {
     #[cfg(debug_assertions)]
@@ -201,6 +219,7 @@ impl LocalPaymentRail {
         let rail = Self {
             directory,
             mode,
+            rpc_url_fingerprint: rpc_url_fingerprint(&rpc_url),
             rpc_url,
             genesis,
             keys,
@@ -212,12 +231,21 @@ impl LocalPaymentRail {
         Ok(rail)
     }
     pub fn reload(&mut self) -> Result<()> {
-        let loaded = JsonRepository::open(&self.directory)?
+        let mut loaded = JsonRepository::open(&self.directory)?
             .read::<Self>("rail")?
             .ok_or_else(|| EconomyError::AdapterFailure("Missing local rail journal".into()))?;
+        let endpoint = configured_rpc_url(loaded.mode)?;
+        let fingerprint = rpc_url_fingerprint(&endpoint);
+        if (loaded.rpc_url_fingerprint.is_empty() && loaded.rpc_url != endpoint)
+            || (!loaded.rpc_url_fingerprint.is_empty() && loaded.rpc_url_fingerprint != fingerprint)
+            || (!self.rpc_url_fingerprint.is_empty() && self.rpc_url_fingerprint != fingerprint)
+        {
+            return Err(EconomyError::Conflict);
+        }
+        loaded.rpc_url = endpoint;
+        loaded.rpc_url_fingerprint = fingerprint;
         if loaded.directory != self.directory
             || loaded.mode != self.mode
-            || loaded.rpc_url != self.rpc_url
             || loaded.genesis != self.genesis
             || loaded.accounts != self.accounts
             || loaded.keys != self.keys
@@ -340,6 +368,7 @@ impl LocalPaymentRail {
         }))
     }
 }
+
 impl PaymentRail for LocalPaymentRail {
     fn get_balance(&self, a: &AccountId) -> Result<Amount> {
         self.validate_cluster()?;
@@ -600,5 +629,35 @@ impl LocalPaymentRail {
             self.save()?;
         }
         Ok(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durable_rail_binds_rpc_configuration_without_serializing_provider_credentials() {
+        let secret_url = "https://rpc.example.invalid/api/secret-provider-token";
+        let rail = LocalPaymentRail {
+            directory: PathBuf::from("/tmp/economy"),
+            mode: PaymentMode::Devnet,
+            rpc_url: secret_url.into(),
+            rpc_url_fingerprint: rpc_url_fingerprint(secret_url),
+            genesis: DEVNET_GENESIS.into(),
+            keys: PathBuf::from("/tmp/keys"),
+            accounts: BTreeMap::new(),
+            reserve: Amount::ZERO,
+            records: BTreeMap::new(),
+        };
+
+        let serialized = serde_json::to_string(&rail).unwrap();
+        assert!(!serialized.contains(secret_url));
+        assert!(!serialized.contains("secret-provider-token"));
+        assert!(serialized.contains(&rail.rpc_url_fingerprint));
+
+        let restored: LocalPaymentRail = serde_json::from_str(&serialized).unwrap();
+        assert_ne!(restored.rpc_url, secret_url);
+        assert_eq!(restored.rpc_url_fingerprint, rail.rpc_url_fingerprint);
     }
 }

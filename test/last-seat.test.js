@@ -64,6 +64,8 @@ test('HTTP replay sharing verifies the exact prefix and refuses tampering or cro
     assert.deepEqual((await fetch(base+'/api/replays/'+match_id).then(r=>r.json())).replay,step.replay);
     const bad=structuredClone(step.replay);bad.final_state.agents[0].credits++;
     assert.equal((await post('/api/replays/share',{replay:bad})).status,400);
+    for(let index=0;index<8;index++)assert.equal((await post('/api/replays/share',{replay:bad})).status,400);
+    const limitedShare=await post('/api/replays/share',{replay:bad});assert.equal(limitedShare.status,429);assert.equal((await limitedShare.json()).code,'RATE_LIMITED');
     assert.equal((await post('/api/matches',{config},{Origin:'https://unrelated.example'})).status,403);
     const spoofedHost=await new Promise((resolve,reject)=>{
       const req=http.request(base+'/api/matches',{method:'POST',headers:{'Content-Type':'application/json',Host:'attacker.example',Origin:'http://attacker.example'}},res=>{res.resume();resolve(res.statusCode);});
@@ -71,6 +73,10 @@ test('HTTP replay sharing verifies the exact prefix and refuses tampering or cro
     });
     assert.equal(spoofedHost,421);
     assert.equal((await fetch(base+'/rust/Cargo.toml')).status,404);
-    const wallet=await post('/api/wallet-demo',{}).then(r=>r.json());assert.equal(wallet.mode,'mock');assert.ok(wallet.events.some(e=>e.type==='WalletTransferConfirmed'));
+    const oversizedWallet=await post('/api/wallet-demo',{padding:'x'.repeat(2048)});assert.equal(oversizedWallet.status,413);
+    const walletResponse=await post('/api/wallet-demo',{});assert.equal(walletResponse.status,200);
+    const wallet=await walletResponse.json();assert.equal(wallet.mode,'mock');assert.ok(wallet.events.some(e=>e.type==='WalletTransferConfirmed'));
+    for(let index=0;index<8;index++)assert.equal((await post('/api/wallet-demo',{})).status,200);
+    const limitedWallet=await post('/api/wallet-demo',{});assert.equal(limitedWallet.status,429);assert.equal((await limitedWallet.json()).code,'RATE_LIMITED');
   }finally{if(child.exitCode===null){child.kill('SIGTERM');await once(child,'exit');}}
 });

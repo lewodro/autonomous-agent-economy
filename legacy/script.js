@@ -26,7 +26,7 @@ function saveSpectatorLease(value){
 }
 async function spectatorRequest(action,lease,keepalive=false){
   const response=await fetch(`/api/arena/rooms/${sharedRoom}/spectators/${action}`,{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spectator_id:lease.id,spectator_token:lease.token}),
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lease?{spectator_id:lease.id,spectator_token:lease.token}:{}),
     keepalive,signal:AbortSignal.timeout(keepalive?2_000:5_000),
   });
   const result=await response.json().catch(()=>({}));
@@ -34,8 +34,7 @@ async function spectatorRequest(action,lease,keepalive=false){
   return result;
 }
 async function joinRoomAsSpectator(){
-  const lease=spectatorLease||{id:`viewer_${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`,token:''};
-  const result=await spectatorRequest('join',lease);
+  const result=await spectatorRequest('join',spectatorLease);
   const connected={id:result.spectator_id,token:result.spectator_token};
   if(roomPageStopped){await spectatorRequest('leave',connected,true).catch(()=>{});return;}
   saveSpectatorLease(connected);

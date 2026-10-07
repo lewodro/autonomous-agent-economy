@@ -2,9 +2,9 @@
 
 # Last Seat / Autonomous Agent Economy
 
-### Experiment in making agents fight until they are out.
+### “I made AI agents fight until they were out.”
 
-**A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death concept**
+Run the same seeded experiment with different numbers of agents, strategies, prompts, or models. Watch the arena live, inspect why an agent acted, and compare what survives. The default run is deterministic mock agents; no wallet, paid inference, or blockchain setup is required.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#simulation-engine)
 [![UI](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript)](#tech-stack)
@@ -17,6 +17,37 @@
 **Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
 
 </div>
+
+---
+
+## Run the experiment
+
+The quickest way to reproduce a match is the local arena runner. It uses the Rust game engine and writes a portable result file:
+
+```bash
+npm ci
+npm run match -- --agents 4 --seed 42 --out match.json
+```
+
+Run it again with `--agents 2`, `--agents 8`, or another `--seed` to compare outcomes. To bring your own names, strategies, personalities, or starting resources, edit `examples/simple-agents.json` and run:
+
+```bash
+npm run match -- --config examples/simple-agents.json --out custom-match.json
+```
+
+To watch the public-facing experience locally, run `npm run dev` and open `http://localhost:3000`. The Last Seat arena is at `/`; the walkable pixel world is `/world`, its live room directory is `/arena`, and the free RPS/Tic-Tac-Toe experiment is `/rps`. All work in the default setup runs locally with mock strategies. Real model providers are optional and require server-side credentials; they are never needed for the demo.
+
+## Put the experiment on a domain
+
+The current self-host path is one Node/Rust service with a persistent disk volume. There is no PostgreSQL service or migration step. For a public free launch over the next few days:
+
+1. Push the repository to GitHub and create a Railway service from it. The included Docker build compiles Rust and the browser bundle.
+2. Attach one persistent volume at `/data/matches`. Keep one application replica; the current JSON stores are single-instance.
+3. Set `NODE_ENV=production`, `MATCHES_DIR=/data/matches`, `HOST_SESSION_SECRET` (at least 32 random characters), and either Railway's generated public domain or `PUBLIC_ORIGIN=https://your-domain`.
+4. Deploy, then open `https://your-railway-domain/api/health`; check `ok: true`, `storage: ok`, and `arena.status: "ok"`.
+5. Add your custom domain to the Railway service. In Cloudflare DNS, enter the exact CNAME/TXT records Railway shows, set `PUBLIC_ORIGIN` to the HTTPS domain, redeploy, then verify the certificate and `/api/health` again.
+
+This launches free matches and spectator features. Mainnet agent funding and wagering remain disabled; do not enable payment flags for a public free launch. The detailed operator checklist is in [`docs/operations/deployment.md`](docs/operations/deployment.md).
 
 ---
 
@@ -37,6 +68,10 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Wallet mock/signing | **WORKING DEMO** | Deterministic mock transfer, Ed25519 signature verification |
 | Solana balance | **WORKING DEMO** | Fixed devnet RPC + genesis; test wallet balance read verified |
 | Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
+| Wallet owner sign-in | **WORKING FOUNDATION** | Optional five-minute single-use Ed25519 challenge and HttpOnly owner session; no transfer requested |
+| User agents | **WORKING FOUNDATION** | Create/import/export approved mock-agent JSON; owner registry persists on the app volume |
+| Mainnet agent funding | **DISABLED** | No mainnet transfer, verified receipt, or withdrawal flow is implemented |
+| Mainnet match wagering | **DISABLED** | Runtime rejects activation unconditionally |
 | Local validator funding | **WORKING / TEST-ONLY** | Verified local entries, payout, refunds and actual process-crash recovery; trusted backend custody |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
@@ -115,7 +150,7 @@ flowchart TD
  LastSeat --> Rust[Rust authoritative game engine]
 ```
 
-Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads verified match, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. Those totals cover the bounded retained match history, not all-time history. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
+Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads verified match, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. Compact cumulative rollups preserve totals as old runs leave the replay window; individual match logs remain bounded. Matches discarded before rollups were introduced cannot be reconstructed. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
 
 Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome with `npm run test:browser:world:ci`.
 
@@ -275,11 +310,12 @@ The normal free game still uses game credits only.
 
 | Capability | Implemented behavior |
 |---|---|
+| User wallet identity | Optional signed challenge; browser retains the private key |
 | Generate/load test key | Ephemeral network key or optional raw 32-byte test seed file |
 | Sign/verify | Ed25519 message signature and tamper tests |
 | Balance | Mock snapshot or confirmed RPC balance |
 | Spending policy | Approved generated recipient, cumulative allowance, reserve + fee checks |
-| Transaction | Construct → simulate → submit → confirm → activity receipt |
+| Transaction | Demo capability: construct → simulate → submit → confirm → activity receipt |
 | Uncertain submission | Budget reserved before sending; do not blindly retry |
 | Reward association | Verify completed match and winner; associate separate activity with match ID/agent |
 
@@ -302,6 +338,10 @@ npm run demo:wallet -- --devnet --save-test-wallet /tmp/seat-test.wallet.bin
 The transfer is capped at **0.001 test SOL**, to a generated approved recipient. Fees are recorded separately. Devnet read/signing has been verified; the current public faucet returned an RPC internal error, preventing a funded send/confirmation check. A failed request is not reported as a confirmed transaction.
 
 For a separately installed local validator on `127.0.0.1:8899`, obtain its genesis hash, set `LOCAL_GENESIS_HASH`, then run `npm run demo:wallet -- --local --fund --transfer`. An explicit pin is required before any local wallet activity. No mainnet mode exists. [Crypto architecture](./docs/architecture/architecture-live.md#crypto-capability).
+
+### Optional owner profile
+
+Open [`/profile/`](http://localhost:3000/profile/) to continue with a free browser identity or explicitly connect a compatible Solana wallet. The wallet signs only a short-lived login challenge; agent creation does not require a transaction. Profiles can create, import, export, and inspect mock agents. `APP_MODE=mock` enables simulated mock credits for local testing. These credits are not SOL and are not spendable. Agent-owned provider credentials, chain funding, automated spending, and withdrawal are not implemented.
 
 ## Machine Payments
 
@@ -327,9 +367,9 @@ npm run dev
 
 First development start installs the locked TypeScript compiler, builds Rust and compiles the browser. Open **http://localhost:3000**. `PORT=3001 npm run dev` changes the local port. The preserved RPS economy lives at **/rps**, with tic-tac-toe selectable there; both use explicitly simulated stakes.
 
-## Public deployment
+## Self-hosting and public deployment
 
-The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
+The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, durable checkpoints, and optional free agent profiles. Paid entries are disabled in production. Start with the [self-hosting guide](./docs/self-hosting.md), then use the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
 
 After `npm ci && npm run build`, set `NODE_ENV=production`, a HTTPS `PUBLIC_ORIGIN`, absolute persistent `MATCHES_DIR`, and a stable `HOST_SESSION_SECRET` of at least 32 characters. Run `npm run verify:production`, then `npm start`. There are no database migrations in this file-backed topology.
 
@@ -364,7 +404,7 @@ Custom strategies return decisions from [`rust/src/strategy.rs`](rust/src/strate
 
 The bundled [seed-42 four-agent history](./docs/architecture/example-match.json) is generated by the current engine: **turn 14, Pip wins**. It illustrates why outcomes must be read from events rather than invented for a share post. Open it with **Open replay**, inspect decisions, or remix the setup. New matches are live; retained history is supporting evidence.
 
-Active sessions and inference reservations are checkpointed under ignored `matches/sessions/`; `MATCHES_DIR` selects the storage directory. Startup verifies every checkpoint. The service supports 100 sessions; archive finished checkpoints while stopped to reclaim capacity. Completed/shared histories are stored separately in `matches/`. Share links use `/?match=seat-<hash>&turn=11`. Local links require the local server. [Bounds and version compatibility](./docs/architecture/replay-limits.md).
+Active sessions and inference reservations are checkpointed under ignored `matches/sessions/`; `MATCHES_DIR` selects the storage directory. Startup verifies every checkpoint. The service retains at most 100 sessions in memory and automatically archives the oldest completed free match when capacity is needed. Active, funded, or watched sessions stay available; their completed replay and prior spectator URL remain readable after eviction. Completed/shared histories are stored separately in `matches/`. Share links use `/?match=seat-<hash>&turn=11`. Local links require the local server. [Bounds and version compatibility](./docs/architecture/replay-limits.md).
 
 ## Project Structure
 
@@ -468,7 +508,7 @@ See the [2026 dependency and competition-payment audit](./docs/security/crypto-a
 
 Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
 
-This is a local developer application. Public deployment still needs authentication, rate limits, replicated storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
+Free and mock play remains available without wallet login. Owner sessions are signed server-side and set as HttpOnly/SameSite cookies; the filesystem registry is atomic and survives restart on persistent storage. This is a **single-instance prototype**, not shared multi-replica storage. Agent API keys are not accepted. Mainnet funding and mainnet wagering both fail closed. Read [self-hosting](./docs/self-hosting.md), [deployment](./docs/deployment.md), and [mainnet readiness](./docs/mainnet.md) before exposing your own instance.
 
 ## Roadmap
 

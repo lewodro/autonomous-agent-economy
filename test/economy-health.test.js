@@ -4,7 +4,13 @@ import {FundedRuntime} from '../service/funded-runtime.js';
 test('economy health aggregates safe observed counters without claiming fresh probes',()=>{
  const runtime=new FundedRuntime(null,null,null,null);
  assert.equal(runtime.health().rpc_status,'not_observed');
+ runtime.remember({session:'unprobed',economy:{economy:{payment_mode:'devnet'}}});
+ assert.equal(runtime.health().rpc_status,'not_observed','an active match is not evidence that its RPC is reachable');
+ runtime.matches.clear();
  runtime.remember({session:'a',economy:{economy:{payment_mode:'local'},health:{rpc_ready:false,storage_ready:true,pending_intents:2,pending_receipts:1,pending_refunds:1}}});
  const health=runtime.health();assert.equal(health.mainnet_enabled,false);assert.equal(health.rpc_status,'unavailable');assert.equal(health.pending_intents,2);assert.equal(health.pending_refunds,1);
  assert.deepEqual(health.modes,['local']);assert.equal('operations' in health,false);
+ runtime.remember({session:'b',economy:{economy:{payment_mode:'devnet'},health:{rpc_ready:true,storage_ready:true}}});
+ assert.equal(runtime.health().rpc_status,'unavailable','one failed configured rail keeps aggregate status unavailable');
+ runtime.matches.delete('a');assert.equal(runtime.health().rpc_status,'ready','only explicit successful probes can report ready');
 });

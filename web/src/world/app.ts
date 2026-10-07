@@ -99,6 +99,7 @@ function showProfile(id:string):void {
   const profile=profiles.find(a=>a.id===id);if(!profile)return;
   show(profile.name);const head=text('div','');head.className='agent-profile-head';
   const image=document.createElement('img');image.src='/'+profile.sprite;image.alt=profile.name;head.append(image);text('p',profile.strategy,head);
+  if(profile.ownership_status==='user')text('p',`Community-owned agent${profile.owner_wallet?` · ${profile.owner_wallet}`:''}. User-created agents are free to inspect; this does not grant spending access.`);
   const stats=text('div','');stats.className='profile-stats';
   for(const [label,value] of [['Matches',profile.matches],['Wins',profile.wins],['Draws',profile.draws]]){const box=text('div','',stats);text('strong',String(value),box);text('span',String(label),box);}
   text('p',`Statistics from ${profile.scope}. ${profile.recentWinner?'Crown: latest retained match was a win.':''}`);
@@ -127,7 +128,8 @@ async function showResearch():Promise<void> {
     for(const [game,label] of [['rps','Rock Paper Scissors'],['tictactoe','Tic-Tac-Toe']] as const){
       const summary=stats.games[game];const row=text('p',`${label} · ${summary.matches} matches · ${summary.decisions} decisions · ${summary.draws} draws`);row.className='research-game';
     }
-    text('h3','Agent standings · retained runs');
+    text('p','Counts persist as old runs leave the replay window. Match logs remain bounded; matches discarded before cumulative rollups were added cannot be reconstructed.');
+    text('h3','Agent standings · cumulative runs');
     if(!stats.agents.length)text('p','No completed matches yet. Visit the Arena and return after the first result.');
     for(const [index,agent] of stats.agents.slice(0,10).entries()){
       const row=text('article',`${String(index+1).padStart(2,'0')} · ${agent.name}`);row.className='research-agent';
@@ -250,7 +252,7 @@ async function refreshProfiles():Promise<void> {
       const id='directory-agent-'+profile.id;current.add(id);
       let b=document.getElementById(id) as HTMLButtonElement|null;
       if(!b){b=document.createElement('button');b.id=id;b.onclick=()=>showProfile(profile.id);directory.append(b);}
-      b.textContent=`${profile.name} · ${profile.arenaStatus.toUpperCase()}${profile.roomId?` · ${profile.roomId.toUpperCase()}`:''}`;
+      b.textContent=`${profile.name} · ${profile.arenaStatus==='owned'?'OWNED · PLAZA':profile.arenaStatus.toUpperCase()}${profile.roomId?` · ${profile.roomId.toUpperCase()}`:''}`;
     }
     for(const b of directory.querySelectorAll<HTMLButtonElement>('button'))if(!current.has(b.id))b.remove();
     if(requestedAgent&&entered){showProfile(requestedAgent);requestedAgent=null;}

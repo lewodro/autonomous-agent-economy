@@ -4,8 +4,25 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicPredictions: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicPredictions: false, publicModelInferenceEnabled:false, appMode:'free', solanaNetwork:'none', trustProxy:false, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
+});
+
+test('runtime modes are explicit and mainnet ownership and wagering fail closed',()=>{
+  assert.equal(validateDeploymentConfig({APP_MODE:'mock'}).appMode,'mock');
+  assert.equal(validateDeploymentConfig({APP_MODE:'local-validator',SOLANA_NETWORK:'localnet'}).solanaNetwork,'localnet');
+  assert.equal(validateDeploymentConfig({APP_MODE:'devnet',SOLANA_NETWORK:'devnet'}).appMode,'devnet');
+  assert.throws(()=>validateDeploymentConfig({APP_MODE:'devnet',SOLANA_NETWORK:'none'}),/do not match/);
+  assert.throws(()=>validateDeploymentConfig({ENABLE_MAINNET_MATCH_WAGERING:'true'}),{code:'MAINNET_MATCH_WAGERING_DISABLED'});
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta',ENABLE_MAINNET_AGENT_FUNDING:'true'}),{code:'MAINNET_AGENT_FUNDING_NOT_IMPLEMENTED'});
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'mainnet-beta',ENABLE_MAINNET_AGENT_FUNDING:'false'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({SOLANA_NETWORK:'devnet',ENABLE_MAINNET_AGENT_FUNDING:'true'}),/requires SOLANA_NETWORK/);
+  assert.throws(()=>validateDeploymentConfig({APP_MODE:'mainnet-ownership'}),{code:'MAINNET_AGENT_FUNDING_NOT_IMPLEMENTED'});
+  assert.equal(validateDeploymentConfig({TRUST_PROXY:'true'}).trustProxy,true);
+  assert.throws(()=>validateDeploymentConfig({TRUST_PROXY:'1'}),/TRUST_PROXY must be true or false/);
+  assert.equal(validateDeploymentConfig({ENABLE_PUBLIC_MODEL_INFERENCE:'true'}).publicModelInferenceEnabled,true);
+  assert.throws(()=>validateDeploymentConfig({ENABLE_PUBLIC_MODEL_INFERENCE:'yes'}),/ENABLE_PUBLIC_MODEL_INFERENCE must be true or false/);
 });
 
 test('Railway production accepts its assigned HTTPS host and mounted persistent directory', () => {
@@ -36,6 +53,15 @@ test('production refuses missing origin, ephemeral storage, and enabled economy 
   assert.throws(() => validateDeploymentConfig({ ...base, MACHINE_PAYMENTS_DEMO: '1' }), /disabled in public production/);
   assert.throws(() => validateDeploymentConfig({ ...base, ENTRY_FEE_ENABLED: 'true' }), /DEVNET/);
   assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_MODE: 'LOCAL' }), /SIMULATED or DEVNET/);
+});
+
+test('production model inference rejects plaintext remote providers but permits TLS and loopback',()=>{
+ const base={NODE_ENV:'production',PUBLIC_ORIGIN:'https://axile.example',MATCHES_DIR:'/data/matches',HOST_SESSION_SECRET:'a'.repeat(32),ENABLE_PUBLIC_MODEL_INFERENCE:'true'};
+ assert.throws(()=>validateDeploymentConfig({...base,MODEL_BASE_URL:'http://provider.example/v1'}),/must use HTTPS/);
+ assert.throws(()=>validateDeploymentConfig({...base,AGENT_HTTP_ENDPOINT:'http://provider.example/decide'}),/must use HTTPS/);
+ assert.equal(validateDeploymentConfig({...base,MODEL_BASE_URL:'https://provider.example/v1',AGENT_HTTP_ENDPOINT:'https://agent.example/decide'}).publicModelInferenceEnabled,true);
+ assert.equal(validateDeploymentConfig({...base,MODEL_BASE_URL:'http://127.0.0.2:11434/v1'}).publicModelInferenceEnabled,true);
+ assert.equal(validateDeploymentConfig({...base,AGENT_HTTP_ENDPOINT:'http://[::1]:8080/decide'}).publicModelInferenceEnabled,true);
 });
 
 test('production devnet needs an explicit test-SOL acknowledgement and dedicated HTTPS RPC', () => {

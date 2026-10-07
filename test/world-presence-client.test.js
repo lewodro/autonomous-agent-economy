@@ -12,32 +12,34 @@ class EventStream {
   emit(type,value){for(const listener of this.listeners.get(type)||[])listener({data:JSON.stringify(value)});}
 }
 const player=(player_id,x)=>({player_id,avatar:'visitor_ember',position:{x,y:100},direction:'right',animation_state:'walk',activity:'Exploring',updated_at:'now'});
+const joinResponse=(id='server-issued',token='capability-secret',others=[])=>({world_id:'main',players:[...others,player(id,100)],player:player(id,100),session_token:token});
 function setup({now=()=>1_000,storage=new Storage(),onPlayers=()=>{},fetcher}={}){
   const streams=[];const requests=[];
   const request=fetcher||(async(url,init)=>{
     const body=JSON.parse(init.body);requests.push({url,body});
-    if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],player:player('player_local',100),session_token:'capability-secret'})};
+    if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>joinResponse('server-issued')};
     return{ok:true,status:200,json:async()=>({ok:true})};
   });
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},storage,onPlayers,now,newId:()=> 'stable-id'});
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},storage,onPlayers,now});
   return{client,streams,requests,storage};
 }
 
 test('presence client joins with a browser capability, applies typed SSE and replaces snapshots on reconnect',async()=>{
   const snapshots=[];const{client,streams,requests,storage}=setup({onPlayers:snapshot=>snapshots.push(snapshot)});
   const initial=await client.connect();
-  assert.equal(initial.world_id,'main');assert.equal(client.player_id,'player_stable-id');
+  assert.equal(initial.world_id,'main');assert.equal(client.player_id,'server-issued','the server assigns the new presence identity');
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),'capability-secret');
   assert.equal(JSON.stringify(snapshots).includes('capability-secret'),false);
   streams[0].emit('PlayerJoined',{world_id:'main',player:player('other',200)});
   streams[0].emit('PlayerMoved',{world_id:'main',player:player('other',220)});
-  assert.deepEqual(client.snapshot().players.map(value=>[value.player_id,value.position.x]),[['player_local',100],['other',220]]);
+  assert.deepEqual(client.snapshot().players.map(value=>[value.player_id,value.position.x]),[['server-issued',100],['other',220]]);
   streams[0].emit('PlayerJoined',{world_id:'different-world',player:player('stray',500)});
   assert.equal(client.snapshot().players.some(value=>value.player_id==='stray'),false,'events from another world cannot contaminate this snapshot');
   streams[0].emit('PlayerLeft',{world_id:'main',player_id:'other'});
   assert.equal(client.snapshot().players.length,1);
-  streams[0].emit('WorldJoined',{world_id:'main',players:[player('player_local',120),player('reconnected',300)]});
-  assert.deepEqual(client.snapshot().players.map(value=>value.player_id),['player_local','reconnected']);
+  streams[0].emit('WorldJoined',{world_id:'main',players:[player('server-issued',120),player('reconnected',300)]});
+  assert.deepEqual(client.snapshot().players.map(value=>value.player_id),['server-issued','reconnected']);
+  assert.equal(requests[0].body.player_id,undefined,'first-time joins do not submit a client-selected identity');
   assert.equal(requests[0].body.session_token,undefined);
   await client.leave();assert.equal(streams[0].closed,true);
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),null);
@@ -45,15 +47,16 @@ test('presence client joins with a browser capability, applies typed SSE and rep
 
 test('presence avatar changes update the live server session without changing identity',async()=>{
   const storage=new Storage(),requests=[],streams=[];
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'avatar-test',
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,
     fetcher:async(url,init)=>{
       const body=JSON.parse(init.body);requests.push(body);
-      return{ok:true,status:201,json:async()=>({world_id:'main',players:[{...player(body.player_id,100),avatar:body.avatar}],player:{...player(body.player_id,100),avatar:body.avatar},session_token:'same-capability'})};
+      const id=body.player_id||'server-avatar';const issued={...player(id,100),avatar:body.avatar};
+      return{ok:true,status:201,json:async()=>({world_id:'main',players:[issued],player:issued,session_token:'same-capability'})};
     },
     eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;}});
   await client.connect();await client.updateAvatar('visitor_atlas');
   assert.deepEqual(requests.map(request=>[request.player_id,request.avatar]),[
-    ['player_avatar-test','visitor_ember'],['player_avatar-test','visitor_atlas'],
+    [undefined,'visitor_ember'],['server-avatar','visitor_atlas'],
   ]);
   assert.equal(streams.length,2);assert.equal(streams[0].closed,true);
   assert.equal(client.snapshot().players[0].avatar,'visitor_atlas');
@@ -66,7 +69,7 @@ test('overlapping connect calls share one join capability and one event stream',
     requests.push({url,body:JSON.parse(init.body)});
     if(url.endsWith('/leave'))return{ok:true,status:200,json:async()=>({left:true})};
     if(!url.endsWith('/join'))throw new Error('Unexpected duplicate command');
-    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'single-capability'})});});
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>joinResponse('server-overlap','single-capability')});});
   };
   const{client,streams,requests}=setup({fetcher});
   const first=client.connect(),second=client.connect();
@@ -91,7 +94,7 @@ test('closing while join is pending does not create a late spectator stream',asy
   let finishJoin;
   const fetcher=(url,init)=>{
     if(!url.endsWith('/join'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
-    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'late-capability'})});});
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>joinResponse('server-late','late-capability')});});
   };
   const{client,streams}=setup({fetcher});
   const connecting=client.connect();client.close();finishJoin();
@@ -103,9 +106,7 @@ test('reconnecting after close waits for an in-flight join before opening a fres
   const completions=[];
   const fetcher=(url)=>{
     if(!url.endsWith('/join'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
-    return new Promise(resolve=>completions.push(()=>resolve({ok:true,status:201,json:async()=>({
-      world_id:'main',players:[player('player_local',100)],session_token:'reconnect-capability',
-    })})));
+    return new Promise(resolve=>completions.push(()=>resolve({ok:true,status:201,json:async()=>joinResponse('server-reconnect','reconnect-capability')})));
   };
   const{client,streams}=setup({fetcher});
   const first=client.connect();client.close();const reconnected=client.connect();
@@ -123,7 +124,7 @@ test('leaving while join is pending waits for the capability and releases the se
   const fetcher=(url,init)=>{
     requests.push(url);
     if(url.endsWith('/leave'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
-    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'pending-capability'})});});
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>joinResponse('server-pending','pending-capability')});});
   };
   const{client,streams}=setup({fetcher});
   const connecting=client.connect(),leaving=client.leave();finishJoin();
@@ -140,7 +141,7 @@ test('presence client throttles moves and heartbeats and sends only capability-s
   assert.equal(await client.heartbeat('Watching rps-1'),false);
   now+=1_000;assert.equal(await client.heartbeat('Watching rps-1'),true);
   assert.deepEqual(requests.slice(1).map(({url,body})=>[url.split('/').at(-1),body.player_id,body.session_token]),[
-    ['move','player_stable-id','capability-secret'],['heartbeat','player_stable-id','capability-secret'],
+    ['move','server-issued','capability-secret'],['heartbeat','server-issued','capability-secret'],
   ]);
   await client.leave();
 });
@@ -152,22 +153,22 @@ test('presence client rejects an invalid join response and reports structured AP
   await assert.rejects(()=>denied.connect(),/Player session is not authorized/);
 });
 
-test('a duplicate tab retries a conflicting stored identity without taking over the active session',async()=>{
-  const storage=new Storage(),requests=[],ids=['fresh-tab'];
+test('a stale stored identity retries with a fresh server-assigned identity',async()=>{
+  const storage=new Storage(),requests=[];
   storage.setItem('aae-world-presence-v1:main:player','player-copied-tab');
   storage.setItem('aae-world-presence-v1:main:token','copied-capability');
   const fetcher=async(url,init)=>{
     const body=JSON.parse(init.body);requests.push(body);
-    if(requests.length===1)return{ok:false,status:403,json:async()=>({code:'PRESENCE_NOT_AUTHORIZED',error:'Player identity is already active'})};
-    return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('player-fresh-tab',100)],session_token:'fresh-capability'})};
+    if(requests.length===1)return{ok:false,status:403,json:async()=>({code:'PRESENCE_SESSION_EXPIRED',error:'Player session has expired'})};
+    return{ok:true,status:201,json:async()=>joinResponse('server-fresh-tab','fresh-capability')};
   };
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>new EventStream(),storage,newId:()=>ids.shift()||'unexpected'});
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>new EventStream(),storage});
   await client.connect();
-  assert.deepEqual(requests.map(body=>body.player_id),['player-copied-tab','player_fresh-tab']);
+  assert.deepEqual(requests.map(body=>body.player_id),['player-copied-tab',undefined]);
   assert.equal(requests[0].session_token,'copied-capability');
   assert.equal(requests[1].session_token,undefined);
-  assert.equal(client.player_id,'player_fresh-tab');
-  assert.equal(storage.getItem('aae-world-presence-v1:main:player'),'player_fresh-tab');
+  assert.equal(client.player_id,'server-fresh-tab');
+  assert.equal(storage.getItem('aae-world-presence-v1:main:player'),'server-fresh-tab');
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),'fresh-capability');
   await client.leave();
 });
@@ -178,7 +179,7 @@ test('a closed client does not retry an identity conflict after unmount',async()
     requests.push(url);
     return new Promise(resolve=>{rejectJoin=()=>resolve({ok:false,status:403,json:async()=>({code:'PRESENCE_NOT_AUTHORIZED',error:'Player identity is already active'})});});
   };
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>{streams.push(new EventStream());return streams.at(-1);},storage:new Storage(),newId:()=> 'collision'});
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>{streams.push(new EventStream());return streams.at(-1);},storage:new Storage()});
   const connecting=client.connect();client.close();rejectJoin();
   await assert.rejects(()=>connecting,/Player identity is already active/);
   assert.equal(requests.length,1,'closed clients do not issue a second join request');
@@ -188,19 +189,19 @@ test('a closed client does not retry an identity conflict after unmount',async()
 test('presence stays connected when browser storage throws',async()=>{
   const storage={getItem(){throw new Error('storage disabled');},setItem(){throw new Error('storage disabled');},removeItem(){throw new Error('storage disabled');}};
   const states=[],streams=[];
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'memory-only',
-    fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/join')?{world_id:'main',players:[player('local',100)],session_token:'memory-capability'}:{left:true}}),
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,
+    fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/join')?joinResponse('server-memory','memory-capability'):{left:true}}),
     eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onConnection:state=>states.push(state)});
-  await client.connect();assert.equal(streams.length,1);assert.equal(client.player_id,'player_memory-only');
+  await client.connect();assert.equal(streams.length,1);assert.equal(client.player_id,'server-memory');
   await client.leave();assert.equal(streams[0].closed,true);assert.deepEqual(states,['closed']);
 });
 
 test('malformed stored identity is discarded before requesting presence',async()=>{
   const storage=new Storage(),requests=[];storage.setItem('aae-world-presence-v1:main:player','../../other');storage.setItem('aae-world-presence-v1:main:token','stale');
-  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'recovered',
-    fetcher:async(url,init)=>{requests.push(JSON.parse(init.body));return{ok:true,status:201,json:async()=>({world_id:'main',players:[],session_token:'fresh'})};},
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,
+    fetcher:async(url,init)=>{requests.push(JSON.parse(init.body));return{ok:true,status:201,json:async()=>joinResponse('server-recovered','fresh')};},
     eventSource:()=>new EventStream()});
-  await client.connect();assert.equal(requests[0].player_id,'player_recovered');assert.equal(requests[0].session_token,undefined);
+  await client.connect();assert.equal(requests[0].player_id,undefined);assert.equal(requests[0].session_token,undefined);
   await client.leave();
 });
 
@@ -208,7 +209,7 @@ test('presence client coalesces in-flight movement and heartbeat requests',async
   let now=1_000,releaseMove,releaseHeartbeat;
   const fetcher=async(url,init)=>{
     const body=JSON.parse(init.body);
-    if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'capability'})};
+    if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>joinResponse('server-coalesced','capability')};
     if(url.endsWith('/move'))return new Promise(resolve=>{releaseMove=()=>resolve({ok:true,status:200,json:async()=>({ok:true})});});
     if(url.endsWith('/heartbeat'))return new Promise(resolve=>{releaseHeartbeat=()=>resolve({ok:true,status:200,json:async()=>({ok:true})});});
     if(url.endsWith('/leave'))return{ok:true,status:200,json:async()=>({ok:true})};

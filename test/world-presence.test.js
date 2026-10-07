@@ -17,6 +17,15 @@ test('server presence bounds match the walkable avatar-center bounds in the worl
   assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1101,y:812}}),{code:'INVALID_POSITION'});
 });
 
+test('public presence joins mint identities server-side and only capabilities can resume them',()=>{
+ const service=new WorldPresenceService();
+ assert.throws(()=>service.joinFromClient('main',{player_id:'reserved-name',position:{x:100,y:100}}),{code:'PRESENCE_SESSION_REQUIRED',status:403});
+ const joined=service.joinFromClient('main',{position:{x:100,y:100}}),id=joined.player.player_id;
+ assert.match(id,/^player_[a-f0-9-]{36}$/);
+ assert.throws(()=>service.joinFromClient('main',{player_id:'caller-chosen',session_token:joined.session_token}),{code:'PRESENCE_SESSION_EXPIRED',status:403});
+ assert.equal(service.joinFromClient('main',{player_id:id,session_token:joined.session_token}).player.player_id,id);
+});
+
 test('presence joins, validates bounded movement, and removes stale players', () => {
   let now = 1_000;
   const service = new WorldPresenceService({ now: () => now, staleMs: 100, minUpdateMs: 50 });

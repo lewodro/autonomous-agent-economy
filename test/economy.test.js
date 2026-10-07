@@ -32,6 +32,13 @@ test('settlement conserves capital, records memory, and cannot pay twice', async
   assert.equal(JSON.stringify(state), snapshot);
   assertAccounting(state);
 });
+test('RPS proof rejects incomplete or nonterminal match records', async () => {
+  const state = createState(2), match = await played(state);
+  assert.equal(await verifyProof({ ...match, result: undefined }), false);
+  assert.equal(await verifyProof({ ...match, status: 'revealing' }), false);
+  assert.equal(await verifyProof({ ...match, result: 'draw' }), false);
+  assert.equal(await verifyProof(match), true);
+});
 test('draw returns both stakes', async () => {
   const state = createState(2);
   await played(state, ['paper', 'paper']);

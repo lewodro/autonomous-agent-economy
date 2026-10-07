@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { listChromeTargets } from './chrome-debug.js';
+import { encodeBase58 } from '../service/wallet-auth.js';
 const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
 const targets=await listChromeTargets(debug);
 const target=targets.find(t=>t.type==='page')||await(await fetch(debug+'/json/new?'+encodeURIComponent(base),{method:'PUT'})).json();
 const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolve=>socket.addEventListener('open',resolve,{once:true}));
 let nextId=0;const pending=new Map(),errors=[];
-socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timer);pending.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}}if(message.method==='Runtime.exceptionThrown')errors.push(message.params.exceptionDetails.text);});
+socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timer);pending.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}}if(message.method==='Runtime.exceptionThrown'){const details=message.params.exceptionDetails;errors.push(`${details.text}: ${details.exception?.description||''}`);}});
 const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Browser command timed out: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
+const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,profileMessage:document.getElementById('message')?.textContent,agents:document.getElementById('agents')?.textContent,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
 try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
@@ -35,14 +37,16 @@ try{
  await evaluate("document.querySelector('[data-avatar=visitor_atlas]').click()");
  await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)})?.avatar==='visitor_atlas')`);
  await evaluate("document.getElementById('character-close').click()");
- const guest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',avatar:'visitor_atlas',position:{x:680,y:420}})}).then(async r=>({status:r.status,...await r.json()}))");
+ const spoofedGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',avatar:'visitor_atlas',position:{x:680,y:420}})}).then(async r=>({status:r.status,...await r.json()}))");assert.equal(spoofedGuest.status,403,'first-time visitors cannot choose their server identity');
+ const guest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_atlas',position:{x:680,y:420}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(guest.status,201,'the second visitor should join the same world');
+ const guestId=guest.player.player_id;
  await wait("document.getElementById('connection').textContent.includes('2 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('1 other visitor online')");
  await screenshot('multiplayer-plaza');
  await delay(80);
- const guestMove=await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)},position:{x:690,y:420},direction:'right',animation_state:'walk'})}).then(r=>r.status)`);
+ const guestMove=await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:${JSON.stringify(guestId)},session_token:${JSON.stringify(guest.session_token)},position:{x:690,y:420},direction:'right',animation_state:'walk'})}).then(r=>r.status)`);
  assert.equal(guestMove,200,'a joined visitor should publish a validated move');
- const guestLeave=await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)}})}).then(r=>r.status)`);
+ const guestLeave=await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:${JSON.stringify(guestId)},session_token:${JSON.stringify(guest.session_token)}})}).then(r=>r.status)`);
  assert.equal(guestLeave,200,'the second visitor should be able to leave');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
  await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("6 visiting agents in the plaza")');
@@ -53,7 +57,7 @@ try{
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
  await wait('document.getElementById("interaction-dialog").open');
- assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
+ assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("cumulative verified arena runs")'));
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
  // Exercise arena routes directly. Browser-generated keyboard holds are
  // unreliable in headless Chrome and the ambient NPC path is frame-timed.
@@ -61,6 +65,18 @@ try{
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
+ await wait('document.querySelectorAll(".arena-agent").length>=20&&[...document.querySelectorAll(".arena-agent img")].every(image=>image.complete&&image.naturalWidth>0)');
+ assert.ok(await evaluate('document.querySelectorAll(".arena-agent[data-status=queued]").length>0'),'waiting agents must remain visible in the staging roster');
+ await wait('document.querySelector(".room-card[data-status=live]")&&document.querySelectorAll(".arena-agent[data-status=fighting]").length>=2');
+ assert.ok(await evaluate('(()=>{const sprite=document.querySelector(".arena-agent[data-status=fighting] .arena-agent-sprite");return !!sprite&&getComputedStyle(sprite).animationName.startsWith("arena-lean")})()'),'active agent sprites must lean toward their live pairing');
+ assert.ok(await evaluate('(()=>{const card=document.querySelector(".room-card[data-status=live]"),sprite=card?.querySelector(".room-player img");return !!sprite&&getComputedStyle(sprite).animationName==="arena-lean-right"})()'),'live matchup portraits must animate toward each other');
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ assert.ok(await evaluate('getComputedStyle(document.querySelector(".arena-agent[data-status=fighting] .arena-agent-sprite")).animationName==="none"'),'arena motion must respect the reduced-motion preference');
+ await send('Emulation.setEmulatedMedia',{features:[]});await screenshot('arena-live');
+ await evaluate('document.getElementById("agents").scrollIntoView({block:"start"})');await delay(1200);await screenshot('arena-roster');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=390'),'Arena lobby roster must fit a phone viewport');await screenshot('arena-mobile-roster');
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
@@ -89,7 +105,7 @@ try{
  await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest verified results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
- assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified retained arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified cumulative arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative cumulative completed-match count (${actualMatches})`);
  await evaluate('document.getElementById("interaction-close").click()');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
@@ -112,5 +128,30 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
- console.log('PASS world: character, NPC profile, live render loop, arena routes, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
+ await send('Page.navigate',{url:base+'/profile/'});await wait('location.pathname==="/profile/"&&document.getElementById("guest")');
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'owner profile must fit a phone viewport');
+ const testWallet=generateKeyPairSync('ed25519'),walletAddress=encodeBase58(testWallet.publicKey.export({format:'der',type:'spki'}).subarray(-32)),privateKey=Buffer.from(testWallet.privateKey.export({format:'der',type:'pkcs8'})).toString('base64');
+ await evaluate(`window.solana={publicKey:{toString:()=>${JSON.stringify(walletAddress)}},connect:async()=>({publicKey:{toString:()=>${JSON.stringify(walletAddress)}}}),signMessage:async(message)=>{const der=Uint8Array.from(atob(${JSON.stringify(privateKey)}),value=>value.charCodeAt(0));const key=await crypto.subtle.importKey('pkcs8',der,{name:'Ed25519'},false,['sign']);return {signature:new Uint8Array(await crypto.subtle.sign({name:'Ed25519'},key,message))}}}`);
+ await evaluate('document.getElementById("connect").click()');await wait("document.getElementById('identity').textContent.includes('Verified wallet')");
+ const walletOwner=await evaluate("fetch('/api/me').then(response=>response.json()).then(value=>value.owner)");assert.equal(walletOwner.wallet_public_key,walletAddress,'wallet sign-in must prove and persist the selected public key');
+ await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Wallet Browser Agent';form.requestSubmit()})()");await wait("document.getElementById('agents').textContent.includes('Wallet Browser Agent')");
+ const walletAgentOwner=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.find(agent=>agent.name==='Wallet Browser Agent')?.owner_id)");assert.equal(walletAgentOwner,undefined,'agent roster must not expose its internal owner ID');
+ const walletOwnedAgents=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.map(agent=>agent.name))");assert.ok(walletOwnedAgents.includes('Wallet Browser Agent'),'wallet-authenticated user should own the created agent');
+ await evaluate('document.getElementById("guest").click()');await wait("document.getElementById('identity').textContent.includes('Verified wallet')&&!document.getElementById('create-panel').classList.contains('hidden')");
+ assert.ok(await evaluate("document.getElementById('agents').textContent.includes('Wallet Browser Agent')"),'continuing through the free-entry button must keep the signed-in owner and agents');
+ await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Browser Agent';form.requestSubmit()})()");
+ await wait("document.getElementById('agents').textContent.includes('Browser Agent')");
+ assert.ok(await evaluate("document.getElementById('agents').textContent.includes('read_only')"),'new agents must default to read-only treasury policy');
+ assert.equal(await evaluate("document.getElementById('agents').textContent.includes('private_key')"),false);
+ const mockFundClicks=await evaluate("(()=>{const button=[...document.querySelectorAll('#agents .agent .actions button')].find(value=>value.textContent.includes('Add 100 mock credits'));if(!button)return false;button.click();button.click();return true})()");
+ assert.equal(mockFundClicks,true,'mock mode should expose the labeled profile funding action');
+ await wait("document.getElementById('agents').textContent.includes('MOCK_CREDIT 100')&&document.getElementById('agents').textContent.includes('Receipts: 1')");
+ const ownedAgentId=await evaluate("fetch('/api/me/agents').then(r=>r.json()).then(value=>value.agents.find(agent=>agent.name==='Browser Agent').id)");
+ await send('Page.navigate',{url:`${base}/world?agent=${encodeURIComponent(ownedAgentId)}`});
+ await wait("document.getElementById('interaction-dialog')?.open&&document.getElementById('interaction-title').textContent==='Browser Agent'");
+ assert.ok(await evaluate("document.getElementById('interaction-content').textContent.includes('Community-owned agent')"),'owned agent inspection should identify public ownership');
+ assert.equal(await evaluate(`document.getElementById(${JSON.stringify(`directory-agent-${ownedAgentId}`)})?.textContent.includes('OWNED · PLAZA')`),true);
+ await wait("document.querySelector('#interaction-content .agent-profile-head img')?.complete&&document.querySelector('#interaction-content .agent-profile-head img')?.naturalWidth>0");
+ assert.deepEqual(errors,[]);
+ console.log('PASS world/profile: character, live rooms, research stats, mobile presence, wallet-signature identity, wallet-owned agent, free owner identity, owned world profile, agent creation, idempotent mock funding and read-only treasury');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}

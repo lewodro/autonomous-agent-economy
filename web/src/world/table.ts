@@ -2,11 +2,12 @@ import { request } from './gateway.js';
 interface TableView {
   status:'empty'|'waiting'|'ready'|'playing'|'finished';revision:number;mode:'free';yourSeat:string|null;expired?:boolean;
   players:{id:string;name:string;kind:'human'|'npc'}[];
-  match:null|{id:string;players:string[];board:('a'|'b'|null)[];moves:{agentId:string;cell:number}[];result:'a'|'b'|'draw'|null};
+  match:null|{id:string;players:string[];board:('a'|'b'|null)[];moves:{agentId:string;cell:number;move_id?:string}[];result:'a'|'b'|'draw'|null};
 }
 /** All board changes go to the server; this component only renders and submits a cell. */
 export function mountTable(parent:HTMLElement,isActive:()=>boolean,pollIntervalMs=1200):void {
   let state:TableView|null=null,busy=false,timer:ReturnType<typeof setTimeout>|undefined;
+  let pendingMove:{matchId:string;revision:number;cell:number;moveId:string}|null=null;
   const status=document.createElement('p'),actions=document.createElement('div'),board=document.createElement('div'),error=document.createElement('p');
   const explanation=document.createElement('p');explanation.textContent='One shared free table. Wait for another visitor, or practice against the existing Founder policy. World avatars are local; only seating and board moves are shared.';
   board.id='table-board';board.setAttribute('aria-label','Free Tic-Tac-Toe board');error.setAttribute('role','alert');error.className='error-text';parent.append(explanation,status,actions,board,error);
@@ -32,11 +33,18 @@ export function mountTable(parent:HTMLElement,isActive:()=>boolean,pollIntervalM
       };actions.append(download);
     }
     const myTurn=state.status==='playing'&&state.match.players[state.match.moves.length%2]===state.yourSeat;
-    state.match.board.forEach((cell,index)=>{const b=document.createElement('button');b.textContent=cell==='a'?'X':cell==='b'?'O':'·';b.setAttribute('aria-label',`Row ${Math.floor(index/3)+1}, column ${index%3+1}: ${cell==='a'?'X':cell==='b'?'O':'empty'}`);b.disabled=busy||!!cell||!myTurn;b.onclick=()=>void act('move',{cell:index,revision:state!.revision});board.append(b);});
+      state.match.board.forEach((cell,index)=>{const b=document.createElement('button');b.textContent=cell==='a'?'X':cell==='b'?'O':'·';b.setAttribute('aria-label',`Row ${Math.floor(index/3)+1}, column ${index%3+1}: ${cell==='a'?'X':cell==='b'?'O':'empty'}`);b.disabled=busy||!!cell||!myTurn;b.onclick=()=>{
+        const current=state!;
+        const previous=pendingMove;
+        const sameRequest=previous!==null&&previous.matchId===current.match!.id&&previous.revision===current.revision&&previous.cell===index;
+        const moveId=sameRequest?previous.moveId:crypto.randomUUID();
+        pendingMove={matchId:current.match!.id,revision:current.revision,cell:index,moveId};
+        void act('move',{cell:index,revision:current.revision,move_id:moveId});
+      };board.append(b);});
   }
   async function act(action:string,data:Record<string,unknown>):Promise<void>{
     if(busy||!isActive())return;busy=true;error.textContent='';render();
-    try{state=await request<TableView>('/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+    try{state=await request<TableView>('/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(pendingMove?.moveId===data.move_id)pendingMove=null;}
     catch{error.textContent='That action could not complete. The table may have changed; refresh and try again.';}
     finally{busy=false;render();}
   }
@@ -46,7 +54,7 @@ export function mountTable(parent:HTMLElement,isActive:()=>boolean,pollIntervalM
       const fresh=await request<TableView>('/api/world/table');
       if(!busy){
         const changed=!state||fresh.revision>=state.revision&&(fresh.revision!==state.revision||fresh.yourSeat!==state.yourSeat||fresh.status!==state.status);
-        if(changed){state=fresh;render();}
+        if(changed){state=fresh;if(pendingMove&&fresh.match?.id===pendingMove.matchId&&fresh.revision>pendingMove.revision)pendingMove=null;render();}
         error.textContent='';
       }
     }catch{error.textContent='Connection interrupted. Reconnecting to the table…';}

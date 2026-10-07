@@ -7,6 +7,7 @@ import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
+import { approvedAvatarSpritesFromManifest, toWorldAgentProfiles } from '../service/world-agent-profiles.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
 test('world input normalizes diagonal speed and rejects nonfinite movement', () => {
   assert.equal(Math.hypot(...Object.values(normalizeInput(1,1)).slice(0,2)),1);
@@ -79,6 +80,28 @@ test('plaza keeps six visitors, excludes fighters and reserves space for finishe
  assert.deepEqual(selected.slice(0,2).map(profile=>profile.id),['agent-0','agent-1']);
  assert.ok(selected.every(profile=>profile.arenaStatus!=='fighting'));
  assert.ok(selected.some(profile=>profile.id==='agent-10'),'existing plaza visitors should keep their place');
+});
+test('plaza reserves one readable actor slot for a user-owned agent',()=>{
+ const profiles=[...Array.from({length:20},(_,index)=>({id:`system-${index}`,arenaStatus:'queued'})),{id:'user-agent',arenaStatus:'owned',ownership_status:'user'}];
+ const selected=selectPlazaAgents(profiles);assert.equal(selected.length,MAX_PLAZA_AGENTS);assert.ok(selected.some(profile=>profile.id==='user-agent'));
+});
+test('owned agent world profiles use approved transparent avatar paths and public fields only',()=>{
+ const avatarSprites=new Map([['visitor_ember','assets/avatars/clean/ember.png'],['visitor_atlas','assets/avatars/clean/atlas.png']]);
+ const [profile]=toWorldAgentProfiles([{id:'u-1',name:'Builder',avatar:'visitor_ember',strategy:'conservative',owner_wallet:'Abcd…Wxyz'}],avatarSprites);
+ assert.equal(profile.sprite,'assets/avatars/clean/ember.png');assert.equal(profile.arenaStatus,'owned');assert.equal(profile.ownership_status,'user');assert.equal(profile.owner_wallet,'Abcd…Wxyz');
+ assert.equal('treasury' in profile,false);assert.equal('personality' in profile,false);
+ assert.deepEqual(toWorldAgentProfiles([{id:'u-2',name:'Debug',avatar:'debug_placeholder',strategy:'aggressive'}],avatarSprites),[]);
+ assert.throws(()=>toWorldAgentProfiles([],undefined),/approved avatar sprite map/);
+});
+test('world agent sprites follow the approved avatar manifest without admitting unsafe paths',()=>{
+ const sprites=approvedAvatarSpritesFromManifest({avatars:[
+  {id:'visitor_new',sheet:'/assets/avatars/clean/new.png',approved:true},
+  {id:'debug',sheet:'/assets/avatars/clean/debug.png',approved:false},
+  {id:'unsafe',sheet:'https://assets.example/unsafe.png',approved:true},
+  {id:'../escape',sheet:'/assets/avatars/clean/escape.png',approved:true},
+ ]});
+ assert.deepEqual([...sprites],[['visitor_new','assets/avatars/clean/new.png']]);
+ assert.equal(toWorldAgentProfiles([{id:'u-3',name:'New',avatar:'visitor_new',strategy:'opportunist'}],sprites)[0].sprite,'assets/avatars/clean/new.png');
 });
 test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
  const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));

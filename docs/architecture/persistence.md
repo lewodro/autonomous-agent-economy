@@ -7,8 +7,11 @@ keys are never saved. Match IDs change with history; session IDs remain stable.
 
 The service restores and verifies all checkpoints before accepting requests.
 Corrupt state fails startup rather than silently resetting a match or spending
-budget. The directory supports at most 100 active sessions; archive or remove
-finished session files while the server is stopped to reclaim capacity.
+budget. It retains at most 100 sessions in memory. When capacity is needed, the
+oldest completed free match with no connected live viewers is moved out of the
+mutable checkpoint set; its verified replay and session-to-replay alias remain
+available. Running, funded, and actively watched matches are never evicted. If
+all retained sessions are active or watched, new matches receive HTTP 429.
 
 Writes are serialized per session, use a private temporary file, flush its data,
 then atomically rename. Each model reservation is checkpointed **before** its HTTP

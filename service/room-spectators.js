@@ -36,10 +36,19 @@ export class RoomSpectators {
     if (spectator_id !== undefined && (typeof spectator_id !== 'string' || !ID.test(spectator_id))) {
       throw failure('INVALID_SPECTATOR', 'Spectator identity is invalid');
     }
+    if (spectator_id === undefined && spectator_token !== undefined) {
+      throw failure('INVALID_SPECTATOR', 'A spectator token requires its server-assigned identity');
+    }
     this.prune();
     const viewerId = spectator_id || `viewer_${randomUUID()}`;
     let viewers = this.rooms.get(roomId);
     const existing = viewers?.get(viewerId);
+    if (spectator_id !== undefined && !existing) {
+      throw failure('SPECTATOR_NOT_FOUND', 'Spectator session has expired', 404);
+    }
+    if (spectator_id !== undefined && spectator_token === undefined) {
+      throw failure('SPECTATOR_NOT_AUTHORIZED', 'Reconnecting requires the spectator token', 403);
+    }
     if (existing && !sameToken(existing.token, spectator_token)) {
       throw failure('SPECTATOR_NOT_AUTHORIZED', 'Spectator identity is already active', 403);
     }

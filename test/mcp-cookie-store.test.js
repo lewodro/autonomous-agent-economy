@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { HostCookieStore, sessionCookie } from '../mcp/host-cookie-store.js';
@@ -32,6 +33,68 @@ test('host cookie storage survives reload with owner-only local permissions', as
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('host cookie persistence flushes the directory and recovers after a sync error',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-sync-')),file=path.join(directory,'sessions.json');let failSync=true;
+  try{
+    const store=new HostCookieStore(file,{syncFolder:async()=>{if(failSync){failSync=false;throw new Error('simulated directory sync failure');}}});await store.load();
+    await assert.rejects(store.set(session,cookie),/simulated directory sync failure/);
+    assert.equal(store.get(session),cookie.split(';',1)[0]);
+    assert.deepEqual(await readdir(directory),['sessions.json']);
+    const recovered=await new HostCookieStore(file).load();assert.equal(recovered.get(session),cookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('concurrent arena creation persists every host cookie across reload',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-concurrent-')),file=path.join(directory,'sessions.json');
+  const otherSession='9d5c778d-64ee-40e1-a392-13cb3992f2da';
+  const otherCookie=`last_seat_host=${otherSession}.${expires}.${'b'.repeat(43)}; Path=/api/matches/${otherSession}/; HttpOnly; SameSite=Strict`;
+  let activeSyncs=0,maxActiveSyncs=0;
+  try{
+    const store=await new HostCookieStore(file,{syncFolder:async()=>{activeSyncs++;maxActiveSyncs=Math.max(maxActiveSyncs,activeSyncs);await new Promise(resolve=>setTimeout(resolve,10));activeSyncs--;}}).load();
+    await Promise.all([store.set(session,cookie),store.set(otherSession,otherCookie)]);
+    assert.equal(maxActiveSyncs,1,'session store writes must not overlap their durable commits');
+    const recovered=await new HostCookieStore(file).load();
+    assert.equal(recovered.get(session),cookie.split(';',1)[0]);
+    assert.equal(recovered.get(otherSession),otherCookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('separate MCP processes merge concurrent host-cookie writes',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-process-race-')),file=path.join(directory,'sessions.json');
+  const moduleUrl=new URL('../mcp/host-cookie-store.js',import.meta.url).href;
+  const script=`import {HostCookieStore} from ${JSON.stringify(moduleUrl)};const store=await new HostCookieStore(process.env.MCP_STORE_PATH).load();const expires=Math.floor(Date.now()/1000)+86400;for(let index=1;index<=5;index++){const session=process.env.MCP_STORE_PREFIX+'-0000-4000-8000-'+String(index).padStart(12,'0');const cookie='last_seat_host='+session+'.'+expires+'.'+process.env.MCP_STORE_PREFIX[7].repeat(43);await store.set(session,cookie)}`;
+  try{
+    const children=['0000000a','0000000b','0000000c'].map(prefix=>spawn(process.execPath,['--input-type=module','-e',script],{
+      cwd:process.cwd(),env:{...process.env,MCP_STORE_PATH:file,MCP_STORE_PREFIX:prefix},stdio:['ignore','ignore','pipe']
+    }));
+    const results=await Promise.all(children.map(child=>new Promise(resolve=>{
+      let stderr='';child.stderr.setEncoding('utf8').on('data',value=>stderr+=value);
+      child.once('error',error=>resolve({code:-1,stderr:error.message}));
+      child.once('exit',(code,signal)=>resolve({code,signal,stderr}));
+    })));
+    assert.deepEqual(results.map(value=>value.code),[0,0,0],JSON.stringify(results));
+    const restored=await new HostCookieStore(file).load();
+    assert.equal(restored.sessions.size,15,'no process may overwrite another process\'s durable sessions');
+    for(const prefix of ['0000000a','0000000b','0000000c'])for(let index=1;index<=5;index++){
+      const session=prefix+'-0000-4000-8000-'+String(index).padStart(12,'0');
+      assert.equal(typeof restored.get(session),'string');
+    }
+    assert.deepEqual((await readdir(directory)).sort(),['sessions.json']);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('host cookie loading rejects oversized and broadly readable stores before accepting secrets',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-bound-')),file=path.join(directory,'sessions.json');
+  try{
+    await writeFile(file,JSON.stringify({[session]:cookie.split(';',1)[0]}));
+    await chmod(file,0o644);
+    await assert.rejects(new HostCookieStore(file).load(),/private file permissions/);
+    await chmod(file,0o600);
+    await writeFile(file,' '.repeat(64*1024+1));
+    await assert.rejects(new HostCookieStore(file).load(),/64 KiB size limit/);
+  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
 test('unknown arena sessions fail clearly instead of fabricating host authority', async () => {
