@@ -122,7 +122,7 @@ const server = http.createServer(async (req, res) => {
       const currentOwner=authenticatedOwner(req);
       if(currentOwner)return json(res,200,{owner:{id:currentOwner.id,created_at:currentOwner.created_at,identity_type:currentOwner.identity_type,wallet_public_key:currentOwner.wallet_public_key||null}},{'Set-Cookie':ownerCookie(currentOwner.id,process.env,Date.now(),currentOwner.session_version)});
       if(!identityCreates.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
-      const owner=await ownershipStore.createAnonymous();
+      const owner=await ownershipStore.createAnonymous(req.headers['idempotency-key']);
       console.log(JSON.stringify({event:'owner_created',identity_type:'anonymous'}));
       return json(res,201,{owner},{'Set-Cookie':ownerCookie(owner.id,process.env,Date.now(),0)});
     }

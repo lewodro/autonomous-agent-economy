@@ -17,7 +17,7 @@ const valid={name:'Builder',avatar:'visitor_ember',strategy:'conservative',perso
 const requestKey=()=>randomUUID();
 
 test('anonymous owner can create a free agent and state survives restart',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous();
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey());
  assert.equal(owner.identity_type,'anonymous');assert.equal(owner.wallet_public_key,null);
  const agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.match(agent.id,/^u-/);assert.equal(agent.treasury.network,'none');
@@ -27,7 +27,7 @@ test('anonymous owner can create a free agent and state survives restart',async 
 });
 
 test('agent creation retries reuse the durable result and reject key reuse with changed config',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),key=requestKey();
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey()),key=requestKey();
  const first=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:key});
  const retry=await store.createAgent(owner.id,{...valid,name:' Builder '},avatars,{idempotencyKey:key});
  assert.equal(retry.id,first.id);assert.equal(store.agentsForOwner(owner.id).length,1);
@@ -38,14 +38,14 @@ test('agent creation retries reuse the durable result and reject key reuse with 
 });
 
 test('simultaneous retries for one agent creation serialize to one durable agent',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous(),key=requestKey();
+ const {store}=await fixture(t),owner=await store.createAnonymous(requestKey()),key=requestKey();
  const results=await Promise.all(Array.from({length:8},()=>store.createAgent(owner.id,valid,avatars,{idempotencyKey:key})));
  assert.equal(new Set(results.map(agent=>agent.id)).size,1);
  assert.equal(store.agentsForOwner(owner.id).length,1);
 });
 
 test('legacy owner snapshots without operation records remain readable and upgrade on write',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous();
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey());
  const {writeFile}=await import('node:fs/promises'),snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  delete snapshot.operations;delete snapshot.owners[0].session_version;await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
  const reopened=new OwnershipStore(dir);await reopened.init();
@@ -56,7 +56,7 @@ test('legacy owner snapshots without operation records remain readable and upgra
 });
 
 test('wallet linking and logout revoke prior owner session versions',async t=>{
- const {store}=await fixture(t),guest=await store.createAnonymous();
+ const {store}=await fixture(t),guest=await store.createAnonymous(requestKey());
  assert.equal(await store.revokeSessions(guest.id,0),true);
  assert.equal(store.owner(guest.id).session_version,1);
  assert.equal(await store.revokeSessions(guest.id,0),false,'a stale logout cannot revoke a newer session');
@@ -74,17 +74,17 @@ test('wallet owners validate canonical public keys and are reused idempotently',
 });
 
 test('linking a verified wallet upgrades a guest without orphaning agents and forbids implicit account merge',async t=>{
- const {store}=await fixture(t),guest=await store.createAnonymous(),agent=await store.createAgent(guest.id,valid,avatars,{idempotencyKey:requestKey()}),pair=generateKeyPairSync('ed25519');
+ const {store}=await fixture(t),guest=await store.createAnonymous(requestKey()),agent=await store.createAgent(guest.id,valid,avatars,{idempotencyKey:requestKey()}),pair=generateKeyPairSync('ed25519');
  const key=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
  const linked=await store.linkWalletOwner(guest.id,key);
  assert.equal(linked.id,guest.id);assert.equal(linked.identity_type,'solana');assert.equal(store.agentSummaryForOwner(linked.id,agent.id).id,agent.id);
- const other=await store.createAnonymous();
+ const other=await store.createAnonymous(requestKey());
  await assert.rejects(store.linkWalletOwner(other.id,key),{code:'WALLET_ALREADY_OWNED'});
  assert.equal(store.owner(other.id).identity_type,'anonymous');
 });
 
 test('agent import accepts only the public schema and export excludes ownership and treasury data',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous();
+ const {store}=await fixture(t),owner=await store.createAnonymous(requestKey());
  const agent=await store.createAgent(owner.id,{format:'aae-agent-v1',...valid},avatars,{importing:true,idempotencyKey:requestKey()});
  const exported=store.exportAgent(owner.id,agent.id);
  assert.deepEqual(Object.keys(exported).sort(),['avatar','capabilities','format','model','name','personality','provider','strategy'].sort());
@@ -96,7 +96,7 @@ test('agent import accepts only the public schema and export excludes ownership 
 });
 
 test('mock funding persists an auditable simulated receipt and rejects duplicate configuration fields',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const key=requestKey(),first=await store.mockFund(owner.id,agent.id,250,{idempotencyKey:key});
  const retry=await store.mockFund(owner.id,agent.id,250,{idempotencyKey:key});
  assert.equal(retry.receipt.id,first.receipt.id);assert.equal(retry.treasury.available_base_units,'250');
@@ -112,7 +112,7 @@ test('mock funding persists an auditable simulated receipt and rejects duplicate
 });
 
 test('simultaneous mock funding retries create one credit receipt',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),key=requestKey();
+ const {store}=await fixture(t),owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),key=requestKey();
  const results=await Promise.all(Array.from({length:8},()=>store.mockFund(owner.id,agent.id,100,{idempotencyKey:key})));
  assert.equal(new Set(results.map(result=>result.receipt.id)).size,1);
  assert.equal(store.agentSummaryForOwner(owner.id,agent.id).treasury.available_base_units,'100');
@@ -121,7 +121,7 @@ test('simultaneous mock funding retries create one credit receipt',async t=>{
 test('agent creation and mock funding idempotency remain durable beyond 24 hours',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-idempotency-age-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  let now=1_800_000_000_000;const store=new OwnershipStore(dir,{now:()=>now});await store.init();
- const owner=await store.createAnonymous(),createKey=requestKey(),fundKey=requestKey();
+ const owner=await store.createAnonymous(requestKey()),createKey=requestKey(),fundKey=requestKey();
  const agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:createKey});
  const first=await store.mockFund(owner.id,agent.id,42,{idempotencyKey:fundKey});
  now+=25*60*60_000;
@@ -135,7 +135,7 @@ test('agent creation and mock funding idempotency remain durable beyond 24 hours
 });
 
 test('spending defaults to read-only and autonomous budgets remain unavailable',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const {store}=await fixture(t),owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  assert.equal(agent.treasury.spending_policy.mode,'read_only');
  const manual=await store.setSpendingPolicy(owner.id,agent.id,{mode:'manual'});assert.equal(manual.mode,'manual');
  await assert.rejects(store.setSpendingPolicy(owner.id,agent.id,{mode:'budgeted',max_per_day:'100'}),{code:'AGENT_SPENDING_NOT_IMPLEMENTED'});
@@ -143,7 +143,7 @@ test('spending defaults to read-only and autonomous budgets remain unavailable',
 });
 
 test('corrupt or internally inconsistent ownership snapshots fail closed',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  snapshot.agents[0].treasury.available_base_units='-1';
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
@@ -151,7 +151,7 @@ test('corrupt or internally inconsistent ownership snapshots fail closed',async 
 });
 
 test('operation snapshots cannot associate a retry key with another owner agent',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),other=await store.createAnonymous();
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey()),other=await store.createAnonymous(requestKey());
  await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));snapshot.operations[0].owner_id=other.id;
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
@@ -159,7 +159,7 @@ test('operation snapshots cannot associate a retry key with another owner agent'
 });
 
 test('persisted mock balances must reconcile exactly with unique receipts',async t=>{
- const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(requestKey()),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
  await store.mockFund(owner.id,agent.id,25,{idempotencyKey:requestKey()});
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  snapshot.agents[0].treasury.receipts[0].amount='24';
@@ -168,7 +168,7 @@ test('persisted mock balances must reconcile exactly with unique receipts',async
 });
 
 test('public agent directory uses bounded cursor pages and sanitized owner references',async t=>{
- const {store}=await fixture(t),owner=await store.createAnonymous();
+ const {store}=await fixture(t),owner=await store.createAnonymous(requestKey());
  const agents=[];for(const name of ['First','Second','Third'])agents.push(await store.createAgent(owner.id,{...valid,name},avatars,{idempotencyKey:requestKey()}));
  const first=store.listPublicAgents({limit:2});assert.equal(first.agents.length,2);assert.equal(first.next_cursor,agents[1].id);
  const second=store.listPublicAgents({after:first.next_cursor,limit:2});assert.deepEqual(second.agents.map(agent=>agent.id),[agents[2].id]);assert.equal(second.next_cursor,null);
@@ -183,18 +183,19 @@ test('directory-sync failure after atomic rename keeps memory aligned with the c
  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-fsync-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  let failSync=false;
  const store=new OwnershipStore(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});
- await store.init();failSync=true;
- await assert.rejects(store.createAnonymous(),{code:'EIO'});
+ await store.init();const key=requestKey();failSync=true;
+ await assert.rejects(store.createAnonymous(key),{code:'EIO'});
  const first=store.state.owners[0].id;
- const second=await store.createAnonymous();
+ const retry=await store.createAnonymous(key);
+ assert.equal(retry.id,first,'retry returns the owner committed before directory sync failed');
  const restored=new OwnershipStore(dir);await restored.init();
- assert.ok(restored.owner(first));assert.ok(restored.owner(second.id));assert.equal(restored.state.owners.length,2);
+ assert.ok(restored.owner(first));assert.equal(restored.state.owners.length,1);
 });
 
 test('ownership registry caps durable growth without losing the last valid snapshot',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-capacity-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const store=new OwnershipStore(dir,{maxBytes:512,now:()=>1_800_000_000_000});await store.init();
- const owner=await store.createAnonymous(),before=await readFile(path.join(dir,'state.json'));
+ const owner=await store.createAnonymous(requestKey()),before=await readFile(path.join(dir,'state.json'));
  await assert.rejects(store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),{status:503,code:'OWNERSHIP_STORE_CAPACITY'});
  assert.equal(store.agentsForOwner(owner.id).length,0);assert.deepEqual(await readFile(path.join(dir,'state.json')),before);
  const restored=new OwnershipStore(dir,{maxBytes:512});await restored.init();assert.ok(restored.owner(owner.id));

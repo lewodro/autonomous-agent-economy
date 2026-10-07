@@ -31,7 +31,10 @@ test('owner API supports guest and wallet identity, private agent management, an
   const {value:health}=await call('/api/health');assert.equal(health.identity_storage,'ok');assert.equal(health.mainnet_match_wagering_enabled,false);
   const staleSession=await call('/api/me',{cookie:ownerCookie(randomUUID(),{NODE_ENV:'test',HOST_SESSION_SECRET:'test-owner-session-secret-for-api'}).split(';')[0]});
   assert.equal(staleSession.response.status,401);assert.equal(staleSession.value.code,'OWNER_SESSION_REQUIRED');assert.match(staleSession.response.headers.get('set-cookie')||'',/^aae_owner=;/);
-  const guest=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
+  const missingGuestKey=await call('/api/auth/anonymous',{method:'POST',body:'{}'});assert.equal(missingGuestKey.response.status,400);assert.equal(missingGuestKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
+  const guestKey=randomUUID(),guestHeaders={'Idempotency-Key':guestKey};
+  const guest=await call('/api/auth/anonymous',{method:'POST',headers:guestHeaders,body:'{}'});assert.equal(guest.response.status,201);assert.ok(guest.cookie);const guestOwnerId=guest.value.owner.id;
+  const guestRetry=await call('/api/auth/anonymous',{method:'POST',headers:guestHeaders,body:'{}'});assert.equal(guestRetry.response.status,201);assert.equal(guestRetry.value.owner.id,guestOwnerId,'retrying an owner creation request must reuse its durable identity');
   const guestResume=await call('/api/auth/anonymous',{method:'POST',cookie:guest.cookie,body:'{}'});assert.equal(guestResume.response.status,200);assert.equal(guestResume.value.owner.id,guestOwnerId);guest.cookie=guestResume.cookie;
   const me=await call('/api/me',{cookie:guest.cookie});assert.equal(me.response.status,200);assert.equal(Object.hasOwn(me.value.owner,'session_version'),false,'internal revocation state is not part of the public owner contract');
   const createKey=randomUUID(),createBody=JSON.stringify({name:'Owner Agent',avatar:'visitor_ember',strategy:'conservative'});
@@ -56,7 +59,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   const funded=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(funded.value.treasury.available_base_units,'123');
   const fundingRetry=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(fundingRetry.value.receipt.id,funded.value.receipt.id);assert.equal(fundingRetry.value.treasury.available_base_units,'123');
   const missingFundingKey=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,body:fundingBody});assert.equal(missingFundingKey.response.status,400);assert.equal(missingFundingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
-  const isolated=await call('/api/auth/anonymous',{method:'POST',body:'{}'});
+  const isolated=await call('/api/auth/anonymous',{method:'POST',headers:{'Idempotency-Key':randomUUID()},body:'{}'});
   assert.equal((await call(`/api/me/agents/${id}/export`,{cookie:isolated.cookie})).response.status,404);
 
   const pair=generateKeyPairSync('ed25519'),publicKey=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
@@ -92,9 +95,9 @@ test('owner API supports guest and wallet identity, private agent management, an
   }
   const limitedPolicy=await call(`/api/me/agents/${id}/spending-policy`,{method:'POST',cookie:guest.cookie,body:'{"mode":"read_only"}'});
   assert.equal(limitedPolicy.response.status,429);assert.equal(limitedPolicy.value.code,'RATE_LIMITED');
-  for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,201);
-  assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,429);
-  assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'198.51.100.30'}})).response.status,201,'one visitor rate limit must not block other addresses');
+  for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',headers:{'Idempotency-Key':randomUUID(),'X-Forwarded-For':'192.0.2.20'},body:'{}'})).response.status,201);
+  assert.equal((await call('/api/auth/anonymous',{method:'POST',headers:{'Idempotency-Key':randomUUID(),'X-Forwarded-For':'192.0.2.20'},body:'{}'})).response.status,429);
+  assert.equal((await call('/api/auth/anonymous',{method:'POST',headers:{'Idempotency-Key':randomUUID(),'X-Forwarded-For':'198.51.100.30'},body:'{}'})).response.status,201,'one visitor rate limit must not block other addresses');
  }finally{await stop();}
 });
 
@@ -110,7 +113,7 @@ test('production-shaped free deployment serves the profile and sets secure owner
  const base=`http://127.0.0.1:${port}`,headers={Host:'ci.example'};
  const page=await fetch(base+'/profile/',{headers});assert.equal(page.status,200);
  const health=await fetch(base+'/api/health',{headers}).then(response=>response.json());assert.equal(health.mainnet_agent_funding_enabled,false);assert.equal(health.mainnet_match_wagering_enabled,false);
- const response=await fetch(base+'/api/auth/anonymous',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});
+ const response=await fetch(base+'/api/auth/anonymous',{method:'POST',headers:{...headers,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:'{}'});
  assert.equal(response.status,201);assert.match(response.headers.get('set-cookie')||'',/; HttpOnly; SameSite=Strict;.*Secure/);
  const cookie=response.headers.get('set-cookie').split(';')[0];
  const me=await fetch(base+'/api/me',{headers:{...headers,Cookie:cookie}});assert.equal(me.status,200);

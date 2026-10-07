@@ -14,6 +14,15 @@ async function idempotentAgentRequest(route,config,slot){
  return result;
 }
 function button(label,handler){const value=document.createElement('button');value.type='button';value.textContent=label;value.addEventListener('click',handler);return value;}
+async function continueFree(){
+ const storageKey='aae-free-identity-create-v1';let key;
+ try{key=sessionStorage.getItem(storageKey)||undefined;}catch{}
+ key||=crypto.randomUUID();
+ try{sessionStorage.setItem(storageKey,key);}catch{}
+ const {owner}=await request('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'Idempotency-Key':key}});
+ try{if(sessionStorage.getItem(storageKey)===key)sessionStorage.removeItem(storageKey);}catch{}
+ return owner;
+}
 function showAgent(agent,root){
  const card=document.createElement('article');card.className='agent';
  const title=document.createElement('h3');title.textContent=agent.name;card.append(title);
@@ -42,7 +51,7 @@ async function refresh(){
   else message(error.message);
  }
 }
-byId('guest').addEventListener('click',async()=>{try{const {owner}=await request('/api/auth/anonymous',{method:'POST',body:'{}'});await refresh();message(owner.identity_type==='solana'?'Wallet profile restored. No transfer was requested.':'Free identity ready. No wallet or payment is needed.');}catch(error){message(error.message);}});
+byId('guest').addEventListener('click',async()=>{try{const owner=await continueFree();await refresh();message(owner.identity_type==='solana'?'Wallet profile restored. No transfer was requested.':'Free identity ready. No wallet or payment is needed.');}catch(error){message(error.message);}});
 byId('connect').addEventListener('click',async()=>{
  try{
   const wallet=window.solana;if(!wallet?.connect||!wallet?.signMessage)throw new Error('No compatible Solana wallet was found. Continue free is always available.');
