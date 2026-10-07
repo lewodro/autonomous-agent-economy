@@ -26,11 +26,19 @@ test('unserializable requests cannot consume the next worker response', async ()
 
 test('worker pipe failures reject every pending request and future requests', async () => {
   const { core, worker } = fixture();
-  const first = assert.rejects(core.request({ command: 'get' }), /pipe closed/);
-  const second = assert.rejects(core.request({ command: 'observe' }), /pipe closed/);
+  const unavailable = error => error.status === 503 && error.code === 'engine_unavailable' && /pipe closed/.test(error.message);
+  const first = assert.rejects(core.request({ command: 'get' }), unavailable);
+  const second = assert.rejects(core.request({ command: 'observe' }), unavailable);
   worker.stdin.emit('error', new Error('pipe closed'));
   await Promise.all([first, second]);
-  await assert.rejects(core.request({ command: 'get' }), /unavailable/);
+  await assert.rejects(core.request({ command: 'get' }), { status: 503, code: 'engine_unavailable' });
+  core.stop();
+});
+test('worker process launch failures are service errors rather than missing routes', async () => {
+  const { core, worker } = fixture();
+  const pending = assert.rejects(core.request({ command: 'get' }), { status: 503, code: 'engine_unavailable' });
+  worker.emit('error', Object.assign(new Error('worker executable missing'), { code: 'ENOENT' }));
+  await pending;
   core.stop();
 });
 test('malformed worker envelopes cannot masquerade as successful responses',async()=>{
