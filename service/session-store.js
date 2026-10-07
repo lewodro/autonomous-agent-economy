@@ -1,10 +1,12 @@
-import {mkdir,open,rename,readFile,readdir,unlink,stat} from 'node:fs/promises';
+import {mkdir,open,rename,readdir,unlink,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {withStorageFailure} from './http-error.js';
+import {readBoundedJson} from './safe-json.js';
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_FINISHED_SESSIONS=1000;
+const MAX_SESSION_RECORD_BYTES=32_100_000,MAX_ARCHIVE_RECORD_BYTES=512;
 /** Storage contains Rust-verifiable history plus orchestration metadata, never keys. */
 export class SessionStore {
   constructor(directory,{syncFolder=syncDirectory,maxFinishedSessions=MAX_FINISHED_SESSIONS}={}){
@@ -46,7 +48,7 @@ export class SessionStore {
     const records=[];
     for(const name of files){
       const session=name.slice(0,-5),target=this.file(session);
-      const record=JSON.parse(await readFile(target,'utf8'));
+      const record=await readBoundedJson(target,{maxBytes:MAX_SESSION_RECORD_BYTES,label:'Match session checkpoint'});
       if(record.format!==1||record.session!==session||!record.replay||!record.budget)throw new Error(`Invalid checkpoint: ${name}`);
       records.push(record);
     }
@@ -88,7 +90,7 @@ export class SessionStore {
     });
   }
   async archivedMatch(session){
-    let record;try{record=JSON.parse(await readFile(this.archiveFile(session),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
+    let record;try{record=await readBoundedJson(this.archiveFile(session),{maxBytes:MAX_ARCHIVE_RECORD_BYTES,label:'Finished-session archive'});}catch(error){if(error.code==='ENOENT')return null;throw error;}
     if(record.format!==1||record.session!==session||!/^seat-[a-f0-9]{64}$/.test(record.match_id))throw new Error('Invalid finished-session archive');
     return record.match_id;
   }

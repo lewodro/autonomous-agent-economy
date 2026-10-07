@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, randomInt } from 'node:crypto';
 import { configureRun } from '../src/config.js';
@@ -7,10 +7,12 @@ import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
 import { withStorageFailure } from './http-error.js';
 import { emptyArenaSummary, mergeArenaSummaries, summarizeArenaRun, validateArenaSummary } from './arena-statistics.js';
+import { readBoundedJson } from './safe-json.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const MAX_STEP_RETRIES = 3;
 const RECENT_FINISH_MS = 15_000;
+const MAX_ARENA_SNAPSHOT_BYTES=32_000_000;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
@@ -23,7 +25,7 @@ export class ArenaRoomPool {
     await mkdir(this.directory,{recursive:true});
     for(const [id,game] of SLOTS) {
       let saved;
-      try { saved=JSON.parse(await readFile(path.join(this.directory,id+'.json'),'utf8')); }
+      try { saved=await readBoundedJson(path.join(this.directory,id+'.json'),{maxBytes:MAX_ARENA_SNAPSHOT_BYTES,label:`Arena checkpoint ${id}`}); }
       catch(error){if(error.code!=='ENOENT')throw error;}
       if(saved) {
         if(saved.version!==1||saved.id!==id||saved.game!==game||!Array.isArray(saved.previous)||saved.previous.length>3)throw new Error(`Invalid arena checkpoint: ${id}`);

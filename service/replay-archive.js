@@ -1,7 +1,8 @@
-import {mkdir,open,rename,unlink,readFile,readdir,stat} from 'node:fs/promises';
+import {mkdir,open,rename,unlink,readdir,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {withStorageFailure} from './http-error.js';
+import {readBoundedJson} from './safe-json.js';
 
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 const matchIdPattern=/^seat-[a-f0-9]{64}$/;
@@ -57,7 +58,7 @@ export class ReplayArchive {
     if(removed)await this.syncFolder(this.directory);
   }
   async load(matchId){
-    let replay;try{replay=JSON.parse(await readFile(this.file(matchId),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
+    let replay;try{replay=await readBoundedJson(this.file(matchId),{maxBytes:this.maxReplayBytes,label:'Replay archive record'});}catch(error){if(error.code==='ENOENT')return null;throw error;}
     if(replay?.match_id!==matchId||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive');
     return replay;
   }

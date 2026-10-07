@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { createState } from '../src/economy.js';
 import { playCell, verifyTicTacToeProof } from '../src/tictactoe.js';
 import { chooseTicTacToeCell } from '../src/strategies.js';
 import { withStorageFailure } from './http-error.js';
+import { readBoundedJson } from './safe-json.js';
+const MAX_TABLE_SNAPSHOT_BYTES=64*1024;
 const empty = revision => ({version:1,id:'plaza-table',status:'empty',revision,players:[],match:null,updatedAt:Date.now()});
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 export const visitorHash = token => createHash('sha256').update(token).digest('hex');
@@ -17,7 +19,7 @@ export class TableSession {
   constructor(directory,{syncFolder=syncDirectory}={}){this.directory=directory;this.syncFolder=syncFolder;this.state=empty(0);this.tail=Promise.resolve();}
   async restore(){
     await mkdir(this.directory,{recursive:true});let saved;
-    try{saved=JSON.parse(await readFile(path.join(this.directory,'table.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    try{saved=await readBoundedJson(path.join(this.directory,'table.json'),{maxBytes:MAX_TABLE_SNAPSHOT_BYTES,label:'World table checkpoint'});}catch(error){if(error.code!=='ENOENT')throw error;}
     if(!saved)return;
     if(saved.version!==1||saved.id!=='plaza-table'||!['empty','waiting','ready','playing','finished'].includes(saved.status)
       ||!Array.isArray(saved.players)||saved.players.length>2||!Number.isSafeInteger(saved.revision)||saved.revision<0||!Number.isFinite(saved.updatedAt))throw new Error('Invalid table checkpoint');
