@@ -13,12 +13,14 @@ export async function commitment(matchId, agentId, move, salt) {
   return Array.from(new Uint8Array(hash), x => x.toString(16).padStart(2, '0')).join('');
 }
 export async function verifyProof(match) {
-  if (!match?.players || match.players.length !== 2 || match.players[0] === match.players[1] || !match.reveals || !match.commitments) return false;
+  if (!match?.players || match.players.length !== 2 || match.players[0] === match.players[1]
+    || match.status !== 'settled' || !['a', 'b', 'draw'].includes(match.result)
+    || !match.reveals || !match.commitments) return false;
   try {
     const valid = await Promise.all(match.players.map(async id => {
       const reveal = match.reveals[id];
       return reveal && await commitment(match.id, id, reveal.move, reveal.nonce) === match.commitments[id];
     }));
-    return valid.every(Boolean) && (!match.result || match.result === resolve(...match.players.map(id => match.reveals[id].move)));
+    return valid.every(Boolean) && match.result === resolve(...match.players.map(id => match.reveals[id].move));
   } catch { return false; }
 }
