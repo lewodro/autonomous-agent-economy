@@ -19,6 +19,7 @@ standalone Node test files that import web/dist require npm run build first.
 | Environment preflight | `npm run doctor -- --mode mock` |
 | Local RPC preflight | `npm run doctor -- --mode local` |
 | Canonical config | `npm run config:check -- simulation examples/matches/free-match.json` |
+| Reset local data | Stop the app, then `npm run data:reset -- --confirm` (backs up the entire configured data directory; development only) |
 | All canonical samples | `npm run examples:check` |
 | Relative docs links | `npm run docs:check` |
 | Mock economy | `npm run demo:economy -- examples/economy/mock-0.02.json` |
