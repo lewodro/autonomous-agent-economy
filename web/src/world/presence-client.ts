@@ -45,6 +45,7 @@ export class WorldPresenceClient {
   private moveInFlight=false;
   private heartbeatInFlight=false;
   private listeners:Array<[string,(event:MessageEvent<string>)=>void]>=[];
+  private connecting?:Promise<PresenceSnapshot>;
 
   constructor(private options:PresenceOptions){
     this.worldId=options.worldId||'main';
@@ -61,7 +62,14 @@ export class WorldPresenceClient {
   }
 
   async connect():Promise<PresenceSnapshot>{
+    if(this.connecting)return this.connecting;
     this.closed=false;this.source?.close();this.source=undefined;
+    const connection=this.connectAndSubscribe();
+    this.connecting=connection;
+    try{return await connection;}finally{if(this.connecting===connection)this.connecting=undefined;}
+  }
+
+  private async connectAndSubscribe():Promise<PresenceSnapshot>{
     this.token=this.storage?.getItem(`${sessionPrefix}${this.worldId}:token`)||null;
     const joined=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{
       player_id:this.playerId,session_token:this.token||undefined,avatar:this.options.avatar,
@@ -76,6 +84,7 @@ export class WorldPresenceClient {
     this.storage?.setItem(`${sessionPrefix}${this.worldId}:token`,this.token);
     this.lastMoveAt=this.now();this.lastHeartbeatAt=this.now();
     this.replace(snapshot);
+    if(this.closed)return {world_id:this.worldId,players:[...this.players.values()]};
     const url=`/api/worlds/${encodeURIComponent(this.worldId)}/presence/events`;
     this.source=this.createEventSource(url);
     for(const type of eventNames){
@@ -113,6 +122,8 @@ export class WorldPresenceClient {
   }
 
   async leave():Promise<void>{
+    if(this.closed)return;
+    if(this.connecting)await this.connecting.catch(()=>undefined);
     if(this.closed)return;
     this.closed=true;this.source?.close();this.source=undefined;this.listeners=[];
     try{

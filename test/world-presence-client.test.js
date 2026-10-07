@@ -41,6 +41,49 @@ test('presence client joins with a browser capability, applies typed SSE and rep
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),null);
 });
 
+test('overlapping connect calls share one join capability and one event stream',async()=>{
+  let finishJoin;
+  const fetcher=async(url,init)=>{
+    requests.push({url,body:JSON.parse(init.body)});
+    if(url.endsWith('/leave'))return{ok:true,status:200,json:async()=>({left:true})};
+    if(!url.endsWith('/join'))throw new Error('Unexpected duplicate command');
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'single-capability'})});});
+  };
+  const{client,streams,requests}=setup({fetcher});
+  const first=client.connect(),second=client.connect();
+  assert.equal(requests.length,1,'concurrent callers must not race two anonymous joins');
+  finishJoin();
+  const [a,b]=await Promise.all([first,second]);
+  assert.deepEqual(a,b);assert.equal(streams.length,1);
+  await client.leave();
+});
+
+test('closing while join is pending does not create a late spectator stream',async()=>{
+  let finishJoin;
+  const fetcher=(url,init)=>{
+    if(!url.endsWith('/join'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'late-capability'})});});
+  };
+  const{client,streams}=setup({fetcher});
+  const connecting=client.connect();client.close();finishJoin();
+  await connecting;
+  assert.equal(streams.length,0,'unmounted clients must not open an SSE stream after their join resolves');
+});
+
+test('leaving while join is pending waits for the capability and releases the server session',async()=>{
+  let finishJoin;const requests=[];
+  const fetcher=(url,init)=>{
+    requests.push(url);
+    if(url.endsWith('/leave'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});
+    return new Promise(resolve=>{finishJoin=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('player_local',100)],session_token:'pending-capability'})});});
+  };
+  const{client,streams}=setup({fetcher});
+  const connecting=client.connect(),leaving=client.leave();finishJoin();
+  await Promise.all([connecting,leaving]);
+  assert.ok(requests.some(url=>url.endsWith('/leave')),'leave must use the capability returned by the pending join');
+  assert.equal(streams[0].closed,true);
+});
+
 test('presence client throttles moves and heartbeats and sends only capability-scoped commands',async()=>{
   let now=1_000;const{client,requests}=setup({now:()=>now});await client.connect();
   assert.equal(await client.move({x:101,y:100},'right','walk'),false,'join timestamp must not allow an immediate rejected update');
