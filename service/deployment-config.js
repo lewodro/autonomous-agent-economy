@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {validateProviderTransport} from './provider-transport.js';
 
 export function validateDeploymentConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
@@ -26,6 +27,10 @@ export function validateDeploymentConfig(env = process.env) {
   if (mainnetFunding !== undefined && !['true','false'].includes(mainnetFunding)) throw new Error('ENABLE_MAINNET_AGENT_FUNDING must be true or false.');
   const publicModelInference=env.ENABLE_PUBLIC_MODEL_INFERENCE;
   if(publicModelInference!==undefined&&!['true','false'].includes(publicModelInference))throw new Error('ENABLE_PUBLIC_MODEL_INFERENCE must be true or false.');
+  if(production&&publicModelInference==='true'){
+    validateProviderTransport(env.MODEL_BASE_URL||'https://api.openai.com/v1',{production:true});
+    if(env.AGENT_HTTP_ENDPOINT)validateProviderTransport(env.AGENT_HTTP_ENDPOINT,{production:true});
+  }
   const solanaNetwork = env.SOLANA_NETWORK || (env.ECONOMY_MODE === 'DEVNET' || env.APP_MODE === 'devnet' ? 'devnet' : env.ECONOMY_MODE === 'LOCAL' || env.APP_MODE === 'local-validator' ? 'localnet' : 'none');
   if (!['none','localnet','devnet','mainnet-beta'].includes(solanaNetwork)) throw new Error('SOLANA_NETWORK must be none, localnet, devnet, or mainnet-beta.');
   if (solanaNetwork === 'mainnet-beta' || mainnetFunding === 'true') {

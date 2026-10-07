@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HttpModelAdapter, InferenceBudget } from '../service/model-adapter.js';
+import { validateProviderTransport } from '../service/provider-transport.js';
+
+test('provider transport blocks remote plaintext in production and retains local development endpoints',()=>{
+  assert.throws(()=>validateProviderTransport('http://provider.example/v1',{production:true}),/must use HTTPS/);
+  assert.equal(validateProviderTransport('https://provider.example/v1',{production:true}).protocol,'https:');
+  assert.equal(validateProviderTransport('http://localhost:11434/v1',{production:true}).hostname,'localhost');
+  assert.equal(validateProviderTransport('http://192.168.1.8:11434/v1',{production:false}).protocol,'http:');
+  assert.throws(()=>validateProviderTransport('https://user:pass@provider.example/v1',{production:true}),/without embedded credentials/);
+});
 
 test('untrusted profiles cannot choose a credential destination or server secret', async () => {
   const originalFetch = globalThis.fetch;

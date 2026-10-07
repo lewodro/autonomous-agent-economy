@@ -55,6 +55,15 @@ test('production refuses missing origin, ephemeral storage, and enabled economy 
   assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_MODE: 'LOCAL' }), /SIMULATED or DEVNET/);
 });
 
+test('production model inference rejects plaintext remote providers but permits TLS and loopback',()=>{
+ const base={NODE_ENV:'production',PUBLIC_ORIGIN:'https://axile.example',MATCHES_DIR:'/data/matches',HOST_SESSION_SECRET:'a'.repeat(32),ENABLE_PUBLIC_MODEL_INFERENCE:'true'};
+ assert.throws(()=>validateDeploymentConfig({...base,MODEL_BASE_URL:'http://provider.example/v1'}),/must use HTTPS/);
+ assert.throws(()=>validateDeploymentConfig({...base,AGENT_HTTP_ENDPOINT:'http://provider.example/decide'}),/must use HTTPS/);
+ assert.equal(validateDeploymentConfig({...base,MODEL_BASE_URL:'https://provider.example/v1',AGENT_HTTP_ENDPOINT:'https://agent.example/decide'}).publicModelInferenceEnabled,true);
+ assert.equal(validateDeploymentConfig({...base,MODEL_BASE_URL:'http://127.0.0.2:11434/v1'}).publicModelInferenceEnabled,true);
+ assert.equal(validateDeploymentConfig({...base,AGENT_HTTP_ENDPOINT:'http://[::1]:8080/decide'}).publicModelInferenceEnabled,true);
+});
+
 test('production devnet needs an explicit test-SOL acknowledgement and dedicated HTTPS RPC', () => {
   const base = { NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches',
     HOST_SESSION_SECRET: 'a'.repeat(32), ENTRY_FEE_ENABLED: 'true', ECONOMY_MODE: 'DEVNET' };

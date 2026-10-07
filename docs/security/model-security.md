@@ -10,6 +10,11 @@ those server settings. Imported configurations cannot select another destination
 or another credential. Request redirects are disabled. The legacy HTTP adapter
 uses only the server's `AGENT_HTTP_ENDPOINT` and `AGENT_HTTP_TOKEN`.
 
+When public model inference is enabled in production, off-box provider endpoints
+must use HTTPS so server-side bearer credentials are not sent in plaintext.
+HTTP is accepted only for loopback model services on the same host. Development
+may use HTTP on a private network; secure that network separately.
+
 Keep local/private model endpoints explicit in server configuration. Public agent
 prompts, configs and replays must never contain credentials. Failed permission
 checks fall back to a local action without consuming inference budget or making
