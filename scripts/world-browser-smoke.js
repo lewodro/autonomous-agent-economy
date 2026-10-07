@@ -55,7 +55,7 @@ try{
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
  await wait('document.getElementById("interaction-dialog").open');
- assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
+ assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("cumulative verified arena runs")'));
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
  // Exercise arena routes directly. Browser-generated keyboard holds are
  // unreliable in headless Chrome and the ambient NPC path is frame-timed.
@@ -91,7 +91,7 @@ try{
  await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest verified results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
- assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified retained arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified cumulative arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative cumulative completed-match count (${actualMatches})`);
  await evaluate('document.getElementById("interaction-close").click()');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.

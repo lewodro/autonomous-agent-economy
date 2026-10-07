@@ -19,7 +19,7 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});assert.deepEqual(health.presence,{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:0,event_streams:0,limits:{players_per_world:40,event_streams_per_world:100}});
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
   const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);
-  const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'verified retained arena runs');assert.equal(statistics.totals.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0}});
+  const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'verified cumulative arena runs (retained baseline plus future rollups)');assert.equal(statistics.totals.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0}});
   for(let index=0;index<12;index++){
     const joined=await fetch(base+'/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:`presence-test-${index}`,position:{x:160,y:180}})});
     assert.equal(joined.status,201);

@@ -128,7 +128,8 @@ async function showResearch():Promise<void> {
     for(const [game,label] of [['rps','Rock Paper Scissors'],['tictactoe','Tic-Tac-Toe']] as const){
       const summary=stats.games[game];const row=text('p',`${label} · ${summary.matches} matches · ${summary.decisions} decisions · ${summary.draws} draws`);row.className='research-game';
     }
-    text('h3','Agent standings · retained runs');
+    text('p','Counts persist as old runs leave the replay window. Match logs remain bounded; matches discarded before cumulative rollups were added cannot be reconstructed.');
+    text('h3','Agent standings · cumulative runs');
     if(!stats.agents.length)text('p','No completed matches yet. Visit the Arena and return after the first result.');
     for(const [index,agent] of stats.agents.slice(0,10).entries()){
       const row=text('article',`${String(index+1).padStart(2,'0')} · ${agent.name}`);row.className='research-agent';
