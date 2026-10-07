@@ -249,7 +249,7 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
       if(action==='join'&&!presenceJoins.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'World join requests are temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,4096);
-      const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
+      const result=action==='join'?worldPresence.joinFromClient(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
       return json(res,action==='join'?201:200,result);
     }
     if(req.method==='GET'&&route==='/api/funded-matches'){

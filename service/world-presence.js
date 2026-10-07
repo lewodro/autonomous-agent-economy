@@ -87,6 +87,26 @@ export class WorldPresenceService {
     this.emit(worldId, existing ? 'PlayerUpdated' : 'PlayerJoined', { player: this.publicPlayer(player) });
     return { ...this.snapshot(worldId), player: this.publicPlayer(player), session_token: player.token };
   }
+  joinFromClient(worldId, input = {}) {
+    // First-time identities must be minted here, never chosen by an untrusted
+    // browser. A caller-supplied ID is only a reconnect handle and therefore
+    // needs both an existing session and its capability token.
+    if (input.player_id !== undefined) {
+      if (typeof input.player_id !== 'string' || !IDENTIFIER.test(input.player_id)) {
+        throw fail('INVALID_PLAYER', 'Player identity is invalid');
+      }
+      if (typeof input.session_token !== 'string' || !input.session_token) {
+        throw fail('PRESENCE_SESSION_REQUIRED', 'A session capability is required to reconnect', 403);
+      }
+      this.prune(worldId);
+      if (!this.world(worldId).has(input.player_id)) {
+        throw fail('PRESENCE_SESSION_EXPIRED', 'Player session has expired', 403);
+      }
+    } else if (input.session_token !== undefined) {
+      throw fail('INVALID_PLAYER_SESSION', 'A session token requires its server-issued player identity');
+    }
+    return this.join(worldId, input);
+  }
   requirePlayer(worldId, playerId, token) {
     if (!IDENTIFIER.test(playerId || '')) throw fail('INVALID_PLAYER', 'Player identity is invalid');
     const player = this.world(worldId).get(playerId);

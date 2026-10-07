@@ -8,7 +8,7 @@ Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement i
 
 | Operation | Endpoint | Request / result |
 | --- | --- | --- |
-| Join | `POST /api/worlds/:world/presence/join` | `{ player_id?, session_token?, avatar?, position, direction?, activity? }`; returns snapshot, server ID, and `session_token` |
+| Join | `POST /api/worlds/:world/presence/join` | First join: `{ avatar?, position, direction?, activity? }`; server assigns `player_id` and returns it with the snapshot and `session_token`. Reconnect: send both the returned `player_id` and `session_token`. A caller-selected first identity is rejected. |
 | Snapshot | `GET /api/worlds/:world/presence` | Current public players, without tokens |
 | Subscribe | `GET /api/worlds/:world/presence/events` | SSE events: `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, `PlayerLeft` |
 | Move | `POST /api/worlds/:world/presence/move` | `{ player_id, session_token, position, direction, animation_state }` |
