@@ -6,14 +6,14 @@ import {withStorageFailure} from './http-error.js';
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 const matchIdPattern=/^seat-[a-f0-9]{64}$/;
 
-/** Atomically stores completed, engine-owned public replay records. */
+/** Atomically stores verified, engine-owned replay records and shareable prefixes. */
 export class ReplayArchive {
   constructor(directory,{syncFolder=syncDirectory}={}){this.directory=directory;this.syncFolder=syncFolder;}
   file(matchId){if(!matchIdPattern.test(matchId))throw new Error('Invalid replay match identifier');return path.join(this.directory,`${matchId}.json`);}
   async save(replay){
     const target=this.file(replay?.match_id),temp=`${target}.${randomUUID()}.tmp`;
     const bytes=JSON.stringify(replay);
-    if(!bytes||!replay?.final_state?.ended)throw new Error('Only completed replay records can be archived');
+    if(!bytes||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive record');
     await withStorageFailure('replay archive',async()=>{
       await mkdir(this.directory,{recursive:true});
       try{
@@ -27,7 +27,7 @@ export class ReplayArchive {
   }
   async load(matchId){
     let replay;try{replay=JSON.parse(await readFile(this.file(matchId),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
-    if(replay?.match_id!==matchId||replay?.final_state?.ended!==true)throw new Error('Invalid completed replay archive');
+    if(replay?.match_id!==matchId||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive');
     return replay;
   }
 }
