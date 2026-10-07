@@ -22,6 +22,7 @@ COPY service ./service
 COPY src ./src
 COPY legacy ./legacy
 COPY post ./post
+COPY profile ./profile
 COPY world ./world
 COPY labs ./labs
 COPY assets ./assets

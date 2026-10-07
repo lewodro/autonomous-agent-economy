@@ -13,7 +13,7 @@ flowchart LR
   Node -. Optional server-side request .-> Provider[Approved model provider]
 ```
 
-The app uses **one service** and a persistent volume, not PostgreSQL. The volume holds match checkpoints, archived histories and, in local development only, economy journals. Rendering state stays in the browser. Railway's single replica must stay attached to the same volume. A multi-replica deployment needs a transactional shared store and cross-instance event transport first.
+The app uses **one service** and a persistent volume, not PostgreSQL. The volume holds match checkpoints, archived histories, arena records, and owner/agent profiles at `identity/state.json`. Rendering state stays in the browser. Railway's single replica must stay attached to the same volume. A multi-replica deployment needs a transactional shared store and cross-instance event transport first.
 
 ## Deploy
 
@@ -40,7 +40,7 @@ There are **no database migrations** in this topology. `npm ci` and `npm run bui
 |---|---|---|
 | `NODE_ENV` | Required: `production` | Enables public-host safety checks and host-only mutations |
 | `MATCHES_DIR` | Required absolute persistent path | Match and archive JSON storage; mount a volume there |
-| `HOST_SESSION_SECRET` | Required, 32+ characters | Signs host-only session cookies; never expose in browser |
+| `HOST_SESSION_SECRET` | Required, 32+ characters | Signs host and owner session cookies; never expose in browser |
 | `PUBLIC_ORIGIN` | Required unless Railway domain exists | Canonical HTTPS origin, no path or trailing slash |
 | `RAILWAY_PUBLIC_DOMAIN` | Railway-provided alternative | Temporary approved HTTPS host |
 | `PORT` | Hosting-provided | HTTP listener port; defaults to 3000 |
@@ -48,7 +48,7 @@ There are **no database migrations** in this topology. `npm ci` and `npm run bui
 | `ECONOMY_LAB`, `MACHINE_PAYMENTS_DEMO` | Must remain off | Local development demonstrations only |
 | `ENTRY_FEE_ENABLED` | Off for free launch | Set only with the complete experimental Devnet variable set |
 
-Mock strategies need no provider key. If an optional model provider fails, the bounded fallback policy applies. Never put API keys in agent JSON, frontend files, logs or public Railway variables.
+Mock strategies need no provider key. Optional `/profile/` wallet sign-in stores only the verified public key; user agents are persisted on the mounted volume. Mainnet agent funding is not implemented, mock credits are local-only, and mainnet match wagering remains disabled. If an optional model provider fails, the bounded fallback policy applies. Never put API keys in agent JSON, frontend files, logs or public Railway variables.
 
 ## Verify and recover
 

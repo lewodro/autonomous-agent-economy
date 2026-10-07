@@ -37,6 +37,10 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Wallet mock/signing | **WORKING DEMO** | Deterministic mock transfer, Ed25519 signature verification |
 | Solana balance | **WORKING DEMO** | Fixed devnet RPC + genesis; test wallet balance read verified |
 | Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
+| Wallet owner sign-in | **WORKING FOUNDATION** | Optional five-minute single-use Ed25519 challenge and HttpOnly owner session; no transfer requested |
+| User agents | **WORKING FOUNDATION** | Create/import/export approved mock-agent JSON; owner registry persists on the app volume |
+| Mainnet agent funding | **DISABLED** | No mainnet transfer, verified receipt, or withdrawal flow is implemented |
+| Mainnet match wagering | **DISABLED** | Runtime rejects activation unconditionally |
 | Local validator funding | **WORKING / TEST-ONLY** | Verified local entries, payout, refunds and actual process-crash recovery; trusted backend custody |
 | Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
 | Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
@@ -275,11 +279,12 @@ The normal free game still uses game credits only.
 
 | Capability | Implemented behavior |
 |---|---|
+| User wallet identity | Optional signed challenge; browser retains the private key |
 | Generate/load test key | Ephemeral network key or optional raw 32-byte test seed file |
 | Sign/verify | Ed25519 message signature and tamper tests |
 | Balance | Mock snapshot or confirmed RPC balance |
 | Spending policy | Approved generated recipient, cumulative allowance, reserve + fee checks |
-| Transaction | Construct → simulate → submit → confirm → activity receipt |
+| Transaction | Demo capability: construct → simulate → submit → confirm → activity receipt |
 | Uncertain submission | Budget reserved before sending; do not blindly retry |
 | Reward association | Verify completed match and winner; associate separate activity with match ID/agent |
 
@@ -302,6 +307,10 @@ npm run demo:wallet -- --devnet --save-test-wallet /tmp/seat-test.wallet.bin
 The transfer is capped at **0.001 test SOL**, to a generated approved recipient. Fees are recorded separately. Devnet read/signing has been verified; the current public faucet returned an RPC internal error, preventing a funded send/confirmation check. A failed request is not reported as a confirmed transaction.
 
 For a separately installed local validator on `127.0.0.1:8899`, obtain its genesis hash, set `LOCAL_GENESIS_HASH`, then run `npm run demo:wallet -- --local --fund --transfer`. An explicit pin is required before any local wallet activity. No mainnet mode exists. [Crypto architecture](./docs/architecture/architecture-live.md#crypto-capability).
+
+### Optional owner profile
+
+Open [`/profile/`](http://localhost:3000/profile/) to continue with a free browser identity or explicitly connect a compatible Solana wallet. The wallet signs only a short-lived login challenge; agent creation does not require a transaction. Profiles can create, import, export, and inspect mock agents. `APP_MODE=mock` enables simulated mock credits for local testing. These credits are not SOL and are not spendable. Agent-owned provider credentials, chain funding, automated spending, and withdrawal are not implemented.
 
 ## Machine Payments
 
@@ -327,9 +336,9 @@ npm run dev
 
 First development start installs the locked TypeScript compiler, builds Rust and compiles the browser. Open **http://localhost:3000**. `PORT=3001 npm run dev` changes the local port. The preserved RPS economy lives at **/rps**, with tic-tac-toe selectable there; both use explicitly simulated stakes.
 
-## Public deployment
+## Self-hosting and public deployment
 
-The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
+The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, durable checkpoints, and optional free agent profiles. Paid entries are disabled in production. Start with the [self-hosting guide](./docs/self-hosting.md), then use the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
 
 After `npm ci && npm run build`, set `NODE_ENV=production`, a HTTPS `PUBLIC_ORIGIN`, absolute persistent `MATCHES_DIR`, and a stable `HOST_SESSION_SECRET` of at least 32 characters. Run `npm run verify:production`, then `npm start`. There are no database migrations in this file-backed topology.
 
@@ -468,7 +477,7 @@ See the [2026 dependency and competition-payment audit](./docs/security/crypto-a
 
 Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
 
-This is a local developer application. Public deployment still needs authentication, rate limits, replicated storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
+Free and mock play remains available without wallet login. Owner sessions are signed server-side and set as HttpOnly/SameSite cookies; the filesystem registry is atomic and survives restart on persistent storage. This is a **single-instance prototype**, not shared multi-replica storage. Agent API keys are not accepted. Mainnet funding and mainnet wagering both fail closed. Read [self-hosting](./docs/self-hosting.md), [deployment](./docs/deployment.md), and [mainnet readiness](./docs/mainnet.md) before exposing your own instance.
 
 ## Roadmap
 
