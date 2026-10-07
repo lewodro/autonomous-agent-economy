@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { WorldPresenceService } from '../service/world-presence.js';
 
 test('presence joins, validates bounded movement, and removes stale players', () => {
@@ -38,4 +39,31 @@ test('heartbeat and reconnect timestamps do not distort the movement speed budge
   now+=60;service.join('main',{player_id:'visitor',session_token:joined.session_token,position:{x:900,y:100}});
   now+=60;
   assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:900,y:100}}),{code:'INVALID_POSITION'});
+});
+
+test('heartbeats are rate limited and only broadcast changed activity',()=>{
+  let now=1_000;const service=new WorldPresenceService({now:()=>now,minHeartbeatMs:1_000});
+  const joined=service.join('main',{player_id:'visitor'}),events=[];
+  service.listeners.set('main',new Set([{destroyed:false,writableLength:0,write:value=>events.push(value)}]));
+  service.heartbeat('main',{player_id:'visitor',session_token:joined.session_token});
+  assert.equal(events.length,0);
+  assert.throws(()=>service.heartbeat('main',{player_id:'visitor',session_token:joined.session_token}),{code:'PRESENCE_RATE_LIMITED'});
+  now+=1_000;service.heartbeat('main',{player_id:'visitor',session_token:joined.session_token,activity:'Watching rps-1'});
+  assert.equal(events.length,1);
+  assert.equal(service.snapshot('main').players[0].lastHeartbeatAt,undefined);
+});
+
+test('presence SSE viewers are capped and released on disconnect',()=>{
+  class Response extends EventEmitter {
+    constructor(){super();this.destroyed=false;this.writableLength=0;}
+    writeHead(){return this;}
+    write(){return true;}
+    destroy(){this.destroyed=true;this.emit('close');}
+  }
+  const service=new WorldPresenceService({maxViewers:1}),first=new Response(),second=new Response();
+  assert.equal(service.connect('main',first),true);
+  assert.equal(service.connect('main',second),false);
+  first.emit('close');
+  assert.equal(service.connect('main',second),true);
+  second.emit('close');
 });

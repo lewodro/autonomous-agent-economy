@@ -18,8 +18,9 @@ function equalSecret(left, right) {
  * It intentionally stores no movement history and owns no game state.
  */
 export class WorldPresenceService {
-  constructor({ bounds = { width: 1040, height: 864 }, maxPlayers = 40, staleMs = 45_000, minUpdateMs = 66, now = () => Date.now() } = {}) {
-    this.bounds = bounds; this.maxPlayers = maxPlayers; this.staleMs = staleMs; this.minUpdateMs = minUpdateMs; this.now = now;
+  constructor({ bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
+    this.bounds = bounds; this.maxPlayers = maxPlayers; this.maxViewers = maxViewers; this.staleMs = staleMs;
+    this.minUpdateMs = minUpdateMs; this.minHeartbeatMs = minHeartbeatMs; this.now = now;
     this.worlds = new Map(); this.listeners = new Map();
   }
   world(worldId) {
@@ -28,7 +29,7 @@ export class WorldPresenceService {
     if (!world) { world = new Map(); this.worlds.set(worldId, world); }
     return world;
   }
-  snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, lastMoveAt, ...player }) => player) }; }
+  snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...player }) => player) }; }
   sanitizePosition(position) {
     const x = Number(position?.x), y = Number(position?.y);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > this.bounds.width || y > this.bounds.height) {
@@ -41,7 +42,7 @@ export class WorldPresenceService {
     if (typeof avatar !== 'string' || !IDENTIFIER.test(avatar)) throw fail('INVALID_AVATAR', 'Avatar is invalid');
     return avatar;
   }
-  publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, ...value } = player; return value; }
+  publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...value } = player; return value; }
   emit(worldId, type, payload) {
     const event = { type, world_id: worldId, ...payload };
     for (const res of this.listeners.get(worldId) || []) {
@@ -65,7 +66,9 @@ export class WorldPresenceService {
       player_id: id, avatar: input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar), position,
       direction: DIRECTIONS.has(input.direction) ? input.direction : existing?.direction||'down',
       animation_state: 'idle', activity: typeof input.activity === 'string' ? input.activity.slice(0, 80) : existing?.activity||'Exploring',
-      updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now,lastMoveAt:existing?.lastMoveAt??existing?.lastUpdateAt??now
+      updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now,
+      lastMoveAt: existing?.lastMoveAt ?? existing?.lastUpdateAt ?? now,
+      lastHeartbeatAt: existing?.lastHeartbeatAt ?? now - this.minHeartbeatMs
     };
     world.set(id, player);
     this.emit(worldId, existing ? 'PlayerUpdated' : 'PlayerJoined', { player: this.publicPlayer(player) });
@@ -92,12 +95,15 @@ export class WorldPresenceService {
   }
   heartbeat(worldId, { player_id, session_token, activity }) {
     const player = this.requirePlayer(worldId, player_id, session_token), now = this.now();
+    if (now - player.lastHeartbeatAt < this.minHeartbeatMs) throw fail('PRESENCE_RATE_LIMITED', 'Heartbeat updates are limited', 429);
     if (activity !== undefined) {
       if (typeof activity !== 'string' || activity.length > 80) throw fail('INVALID_ACTIVITY', 'Activity is invalid');
-      player.activity = activity;
     }
+    const activityChanged = activity !== undefined && activity !== player.activity;
+    if (activityChanged) player.activity = activity;
+    player.lastHeartbeatAt = now;
     player.lastUpdateAt = now; player.updated_at = new Date(now).toISOString();
-    this.emit(worldId, 'PlayerUpdated', { player: this.publicPlayer(player) });
+    if (activityChanged) this.emit(worldId, 'PlayerUpdated', { player: this.publicPlayer(player) });
     return { player: this.publicPlayer(player) };
   }
   leave(worldId, { player_id, session_token }) {
@@ -109,12 +115,15 @@ export class WorldPresenceService {
     for (const player of world.values()) if (player.lastUpdateAt <= cutoff) { world.delete(player.player_id); this.emit(worldId, 'PlayerLeft', { player_id: player.player_id, reason: 'stale' }); }
   }
   connect(worldId, res) {
-    this.prune(worldId); const group = this.listeners.get(worldId) || new Set(); this.listeners.set(worldId, group); group.add(res);
+    this.prune(worldId); const group = this.listeners.get(worldId) || new Set();
+    if (group.size >= this.maxViewers) return false;
+    this.listeners.set(worldId, group); group.add(res);
     let closed = false; const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); group.delete(res); if (!group.size) this.listeners.delete(worldId); };
     const heartbeat = setInterval(() => { this.prune(worldId); if (res.destroyed || res.writableLength > 1_000_000) return res.destroy(); try { res.write(': keepalive\n\n'); } catch { res.destroy(); } }, 15_000); heartbeat.unref();
     res.on('close', cleanup); res.on('error', cleanup);
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);
+    return true;
   }
   close() { for (const listeners of this.listeners.values()) for (const res of listeners) res.destroy(); this.listeners.clear(); this.worlds.clear(); }
 }

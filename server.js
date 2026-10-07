@@ -93,7 +93,10 @@ const server = http.createServer(async (req, res) => {
     if(presenceRoute) {
       const [,worldId,action]=presenceRoute;
       if(req.method==='GET'&&!action)return json(res,200,worldPresence.snapshot(worldId));
-      if(req.method==='GET'&&action==='events'){worldPresence.connect(worldId,res);return;}
+      if(req.method==='GET'&&action==='events'){
+        if(!worldPresence.connect(worldId,res))return json(res,429,{error:'Too many world spectators. Try again shortly.'});
+        return;
+      }
       if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
       const data=await body(req,4096);
       const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
