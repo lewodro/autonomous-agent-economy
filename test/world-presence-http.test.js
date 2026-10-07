@@ -63,7 +63,9 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
     const aliceEvents = await watch();
     const aliceInitial = await nextEvent(aliceEvents);
     assert.equal(aliceInitial.type, 'WorldJoined');
+    assert.equal(aliceInitial.data.world_id, 'main');
     assert.equal(aliceInitial.data.players.length, 0);
+    assert.equal('snapshot' in aliceInitial.data, false, 'WorldJoined carries the snapshot fields directly');
     const alice = await request('/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 } });
     assert.equal(alice.status, 201);
     assert.equal((await nextEvent(aliceEvents)).data.player.player_id, 'alice');
@@ -76,6 +78,7 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
     assert.equal(bob.status, 201);
     const aliceSawBob = await nextEvent(aliceEvents);
     assert.equal(aliceSawBob.type, 'PlayerJoined');
+    assert.equal(aliceSawBob.data.world_id, 'main');
     assert.equal(aliceSawBob.data.player.player_id, 'bob');
     assert.equal(JSON.stringify(aliceSawBob).includes('session_token'), false);
 

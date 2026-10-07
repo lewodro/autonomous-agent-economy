@@ -5,9 +5,9 @@ export interface PresencePlayer {
 }
 export interface PresenceSnapshot {world_id:string;players:PresencePlayer[]}
 export type PresenceEvent =
-  | {type:'WorldJoined';snapshot:PresenceSnapshot}
-  | {type:'PlayerJoined'|'PlayerMoved'|'PlayerUpdated';player:PresencePlayer}
-  | {type:'PlayerLeft';player_id:string;reason?:string};
+  | ({type:'WorldJoined'}&PresenceSnapshot)
+  | {type:'PlayerJoined'|'PlayerMoved'|'PlayerUpdated';world_id:string;player:PresencePlayer}
+  | {type:'PlayerLeft';world_id:string;player_id:string;reason?:string};
 interface ResponseLike {ok:boolean;status:number;json():Promise<unknown>}
 interface EventSourceLike {
   addEventListener(type:string,listener:(event:MessageEvent<string>)=>void):void;
