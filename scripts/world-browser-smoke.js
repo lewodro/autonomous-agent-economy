@@ -54,6 +54,17 @@ try{
   await evaluate('document.querySelector(".return-link").click()');await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
  }
  await evaluate("document.querySelector('a[href=\"/world\"]').click()");await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
+ await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Open arena statistics').click()");
+ await wait('!document.getElementById("interact").disabled');
+ await evaluate("window.__researchStats=null;const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/api/arena/statistics'))window.__researchStats=await response.clone().json();return response}");
+ await evaluate('document.getElementById("interact").click()');
+ await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest verified results")');
+ const actualMatches=await evaluate('window.__researchStats.totals.matches');
+ const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified retained arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ await evaluate('document.getElementById("interaction-close").click()');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
  await delay(3100);const before=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
