@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -57,6 +58,30 @@ test('concurrent arena creation persists every host cookie across reload',async(
     const recovered=await new HostCookieStore(file).load();
     assert.equal(recovered.get(session),cookie.split(';',1)[0]);
     assert.equal(recovered.get(otherSession),otherCookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('separate MCP processes merge concurrent host-cookie writes',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-process-race-')),file=path.join(directory,'sessions.json');
+  const moduleUrl=new URL('../mcp/host-cookie-store.js',import.meta.url).href;
+  const script=`import {HostCookieStore} from ${JSON.stringify(moduleUrl)};const store=await new HostCookieStore(process.env.MCP_STORE_PATH).load();const expires=Math.floor(Date.now()/1000)+86400;for(let index=1;index<=5;index++){const session=process.env.MCP_STORE_PREFIX+'-0000-4000-8000-'+String(index).padStart(12,'0');const cookie='last_seat_host='+session+'.'+expires+'.'+process.env.MCP_STORE_PREFIX[7].repeat(43);await store.set(session,cookie)}`;
+  try{
+    const children=['0000000a','0000000b','0000000c'].map(prefix=>spawn(process.execPath,['--input-type=module','-e',script],{
+      cwd:process.cwd(),env:{...process.env,MCP_STORE_PATH:file,MCP_STORE_PREFIX:prefix},stdio:['ignore','ignore','pipe']
+    }));
+    const results=await Promise.all(children.map(child=>new Promise(resolve=>{
+      let stderr='';child.stderr.setEncoding('utf8').on('data',value=>stderr+=value);
+      child.once('error',error=>resolve({code:-1,stderr:error.message}));
+      child.once('exit',(code,signal)=>resolve({code,signal,stderr}));
+    })));
+    assert.deepEqual(results.map(value=>value.code),[0,0,0],JSON.stringify(results));
+    const restored=await new HostCookieStore(file).load();
+    assert.equal(restored.sessions.size,15,'no process may overwrite another process\'s durable sessions');
+    for(const prefix of ['0000000a','0000000b','0000000c'])for(let index=1;index<=5;index++){
+      const session=prefix+'-0000-4000-8000-'+String(index).padStart(12,'0');
+      assert.equal(typeof restored.get(session),'string');
+    }
+    assert.deepEqual((await readdir(directory)).sort(),['sessions.json']);
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 

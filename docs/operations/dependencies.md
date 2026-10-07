@@ -6,12 +6,15 @@ in CI and reproducible local runs. Direct npm dependencies are:
 | Package | Purpose | Declared range | Locked version | License |
 |---|---|---:|---:|---|
 | `@modelcontextprotocol/server` | Local MCP stdio server and protocol handling | `^2.3.1` | `2.3.1` | Apache-2.0 |
+| `proper-lockfile` | Cross-process lock for merging persisted MCP host sessions | `4.1.2` exact | `4.1.2` | MIT |
 | `zod` | MCP tool input schemas and runtime validation | `^4.6.5` | `4.6.5` | MIT |
 | `typescript` | Browser bundle type checking | `7.0.2` exact | `7.0.2` | Apache-2.0 |
 
 The MCP SDK requires Node 20 or newer; the project targets Node 22+. MCP uses the
 official SDK rather than a handwritten protocol loop. Tool orchestration stays in
 the MCP host, while the bridge validates tool inputs and calls the local HTTP API.
+The small host-cookie store uses an inter-process file lock and reloads the latest
+snapshot inside that lock before merging a newly created arena session.
 No renderer or animation packages are needed for the site; the current canvas/CSS
 driver is dependency-free. The lockfile is the source of exact npm transitive versions.
 Cargo intentionally uses semver ranges for serde/serde_json, sha2 0.11,
