@@ -13,7 +13,7 @@ const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,avatarCount:document.querySelectorAll('#avatar-presets img').length,avatarImages:[...document.querySelectorAll('#avatar-presets img')].map(i=>({src:i.src,complete:i.complete,width:i.naturalWidth})),catalog:document.querySelector('#avatar-presets')?.innerHTML,script:document.querySelector('script[type=module]')?.src,resources:performance.getEntriesByType('resource').filter(r=>r.name.includes('world/app.js')).map(r=>r.name),errors:${JSON.stringify(errors)}})`);details.servedScript=await evaluate("fetch('/web/dist/world/app.js').then(r=>r.text()).then(t=>({catalog:t.includes('/assets/avatars/index.json'),length:t.length,head:t.slice(0,120)}))");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
-const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));};
+const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
 try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
@@ -40,8 +40,7 @@ try{
  // Exercise arena routes directly. Browser-generated keyboard holds are
  // unreliable in headless Chrome and the ambient NPC path is frame-timed.
  await send('Page.navigate',{url:base+'/arena'});
- await screenshot('desktop');
- await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('lobby');
+ await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
