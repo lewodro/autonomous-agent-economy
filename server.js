@@ -363,7 +363,8 @@ const server = http.createServer(async (req, res) => {
     }
     const archived = route.match(/^\/api\/replays\/(seat-[a-f0-9]{64})$/);
     if (req.method === 'GET' && archived) {
-      const replay = JSON.parse(await readFile(path.join(directory, `${archived[1]}.json`), 'utf8'));
+      const replay = await replayArchive.load(archived[1]);
+      if(!replay)return json(res,404,{error:'Replay not found',code:'REPLAY_NOT_FOUND'});
       const { replay: checked } = await core.request({ command: 'verify', replay });
       return json(res, 200, { replay: checked });
     }
@@ -372,7 +373,8 @@ const server = http.createServer(async (req, res) => {
     if(match&&!sessions.has(match[1])){
       const archivedMatch=await runtime.store?.archivedMatch(match[1]);
       if(archivedMatch){
-        const archived=JSON.parse(await readFile(path.join(directory,`${archivedMatch}.json`),'utf8'));
+        const archived=await replayArchive.load(archivedMatch);
+        if(!archived)return json(res,404,{error:'Replay not found',code:'REPLAY_NOT_FOUND'});
         const {replay}=await core.request({command:'verify',replay:archived});
         if(req.method==='GET'&&!match[2])return json(res,200,{replay});
         if(req.method==='GET'&&match[2]==='events'){liveEvents.connect(match[1],replay,res);return;}
