@@ -4,7 +4,10 @@ The world is a browser presence layer. The Rust Last Seat engine remains respons
 
 ```mermaid
 flowchart TD
- Visitor[Browser spectator] --> World[Canvas world: position, collision, interactions]
+ Visitor[Browser visitor] --> Presence[HTTP commands + SSE]
+ Presence --> World[Canvas world: position, collision, interactions]
+ Presence --> Service[Ephemeral world presence service]
+ Service --> Presence
  NPC[NPC presence controller] --> World
  World --> Gateway[Arena gateway]
  Gateway --> Rooms[Four bounded persistent room slots]
@@ -32,7 +35,7 @@ flowchart TD
 
 The room and table files are written atomically under `MATCHES_DIR/arena` and `MATCHES_DIR/world`. Startup verifies saved room ledgers before exposing them. If a verification fails, startup fails closed rather than publishing corrupt results. The room scheduler retries a failed step up to three times with backoff; structured failure logs include the room, attempt, error class, and safe error code without raw messages. A persistently failing room remains marked failed and requires operator investigation/restart. Run multiple server instances only with a storage and coordination design that supports their shared writes; the current JSON room pool is a single-process design.
 
-The local browser character, NPC positions, and actor movement are not multiplayer presence. The plaza table supports up to two anonymous browser capabilities; the first seat can wait for another visitor or play the existing Founder policy. Table sessions expire after inactivity. Match rooms continuously run the existing local adaptive policies and show simulated SOL accounting; they do not accept wallet entry.
+The local browser character moves immediately and synchronizes through the ephemeral presence service; other visitors render as interpolated remote actors. NPC positions remain local presentation and do not represent connected players. The plaza table supports up to two anonymous browser capabilities; the first seat can wait for another visitor or play the existing Founder policy. Table sessions expire after inactivity. Match rooms continuously run the existing local adaptive policies and show simulated SOL accounting; they do not accept wallet entry. Presence is single-process and needs shared ephemeral storage before horizontal scaling.
 
 ## Public routes
 

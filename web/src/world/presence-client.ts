@@ -122,6 +122,11 @@ export class WorldPresenceClient {
   get player_id():string{return this.playerId;}
   snapshot():PresenceSnapshot{return {world_id:this.worldId,players:[...this.players.values()]};}
 
+  async updateAvatar(avatar:string):Promise<PresenceSnapshot>{
+    this.options.avatar=avatar;
+    return this.connect();
+  }
+
   async move(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{
     if(this.closed||!this.token||this.moveInFlight||this.now()-this.lastMoveAt<this.moveIntervalMs)return false;
     this.moveInFlight=true;this.lastMoveAt=this.now();

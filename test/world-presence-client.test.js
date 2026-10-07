@@ -43,6 +43,23 @@ test('presence client joins with a browser capability, applies typed SSE and rep
   assert.equal(storage.getItem('aae-world-presence-v1:main:token'),null);
 });
 
+test('presence avatar changes update the live server session without changing identity',async()=>{
+  const storage=new Storage(),requests=[],streams=[];
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},storage,newId:()=> 'avatar-test',
+    fetcher:async(url,init)=>{
+      const body=JSON.parse(init.body);requests.push(body);
+      return{ok:true,status:201,json:async()=>({world_id:'main',players:[{...player(body.player_id,100),avatar:body.avatar}],player:{...player(body.player_id,100),avatar:body.avatar},session_token:'same-capability'})};
+    },
+    eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;}});
+  await client.connect();await client.updateAvatar('visitor_atlas');
+  assert.deepEqual(requests.map(request=>[request.player_id,request.avatar]),[
+    ['player_avatar-test','visitor_ember'],['player_avatar-test','visitor_atlas'],
+  ]);
+  assert.equal(streams.length,2);assert.equal(streams[0].closed,true);
+  assert.equal(client.snapshot().players[0].avatar,'visitor_atlas');
+  await client.leave();
+});
+
 test('overlapping connect calls share one join capability and one event stream',async()=>{
   let finishJoin;
   const fetcher=async(url,init)=>{
