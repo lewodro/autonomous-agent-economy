@@ -54,7 +54,7 @@ Integration tests restart the service and compare the same session/history, subs
 
 If another dedicated Chrome already uses :9322, start your own profile on :9337
 and run `CHROME_DEBUG_URL=http://127.0.0.1:9337 GAME_URL=http://localhost:3017 npm run test:browser`.
-The world journey covers character selection, keyboard movement, NPC profile/research, arena entry, shared RPS/Tic-Tac-Toe rooms, return navigation, touch joystick movement/release, and a 390px layout:
+The world journey covers character selection, keyboard movement, NPC profile/research, Survival combat and inspection, shared RPS/Tic-Tac-Toe rooms, return navigation, touch joystick movement/release, and a 390px layout:
 
 ```sh
 CHROME_DEBUG_URL=http://127.0.0.1:9322 GAME_URL=http://localhost:3000 npm run test:browser:world
