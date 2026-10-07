@@ -94,6 +94,21 @@ test('finished session aliases survive checkpoint eviction without consuming act
  await assert.rejects(store.archive(session,'../unsafe'),/match identifier/);
 });
 
+test('finished session lookup metadata remains bounded and is pruned on restart',async t=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-finished-retention-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const store=new SessionStore(directory,{maxFinishedSessions:2});
+ const sessions=[1,2,3].map(index=>`00000000-0000-4000-8000-${String(index).padStart(12,'0')}`);
+ await Promise.all(sessions.map((session,index)=>store.archive(session,`seat-${String(index+1).repeat(64)}`)));
+ const finished=path.join(directory,'finished');
+ assert.equal((await readdir(finished)).filter(name=>name.endsWith('.json')).length,2);
+ const visible=await Promise.all(sessions.map(session=>store.archivedMatch(session)));
+ assert.equal(visible.filter(Boolean).length,2);
+
+ const reopened=new SessionStore(directory,{maxFinishedSessions:1});
+ await reopened.load();
+ assert.equal((await readdir(finished)).filter(name=>name.endsWith('.json')).length,1);
+});
+
 test('a failed reservation checkpoint prevents any paid provider request',async()=>{
  const before=globalThis.fetch;let calls=0;
  const budget=new InferenceBudget();budget.persist=async()=>{throw new Error('Checkpoint unavailable');};
