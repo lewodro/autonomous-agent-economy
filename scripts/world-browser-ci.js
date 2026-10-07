@@ -68,7 +68,7 @@ async function waitForDevTools(profile,chrome){
 
 try{
   console.log(`Using headless Chrome at ${chromePath}`);
-  const server=launch(process.execPath,[path.join(root,'server.js')],{cwd:root,env:{...process.env,PORT:'0',MATCHES_DIR:path.join(directory,'matches'),WORLD_LAB:'1'}});
+  const server=launch(process.execPath,[path.join(root,'server.js')],{cwd:root,env:{...process.env,APP_MODE:'mock',PORT:'0',MATCHES_DIR:path.join(directory,'matches'),WORLD_LAB:'1'}});
   const base=await serverUrl(server);
   const profile=path.join(directory,'chrome');
   const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--disable-background-networking','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${profile}`,'about:blank']);

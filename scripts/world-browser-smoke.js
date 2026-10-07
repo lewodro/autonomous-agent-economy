@@ -119,6 +119,9 @@ try{
  await wait("document.getElementById('agents').textContent.includes('Browser Agent')");
  assert.ok(await evaluate("document.getElementById('agents').textContent.includes('read_only')"),'new agents must default to read-only treasury policy');
  assert.equal(await evaluate("document.getElementById('agents').textContent.includes('private_key')"),false);
+ const mockFundClicks=await evaluate("(()=>{const button=[...document.querySelectorAll('#agents .agent .actions button')].find(value=>value.textContent.includes('Add 100 mock credits'));if(!button)return false;button.click();button.click();return true})()");
+ assert.equal(mockFundClicks,true,'mock mode should expose the labeled profile funding action');
+ await wait("document.getElementById('agents').textContent.includes('MOCK_CREDIT 100')&&document.getElementById('agents').textContent.includes('Receipts: 1')");
  assert.deepEqual(errors,[]);
- console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, agent creation and read-only treasury');
+ console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, agent creation, idempotent mock funding and read-only treasury');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}
