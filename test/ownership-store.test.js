@@ -7,13 +7,13 @@ import {generateKeyPairSync} from 'node:crypto';
 import {OwnershipStore} from '../service/ownership-store.js';
 import {encodeBase58} from '../service/wallet-auth.js';
 
-const avatars=new Set(['ember','atlas']);
+const avatars=new Set(['visitor_ember','visitor_atlas']);
 async function fixture(t){
  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-store-'));
  t.after(()=>rm(dir,{recursive:true,force:true}));
  const store=new OwnershipStore(dir,{now:()=>1_800_000_000_000});await store.init();return {store,dir};
 }
-const valid={name:'Builder',avatar:'ember',strategy:'conservative',personality:'Patient, measured play.',capabilities:['games']};
+const valid={name:'Builder',avatar:'visitor_ember',strategy:'conservative',personality:'Patient, measured play.',capabilities:['games']};
 
 test('anonymous owner can create a free agent and state survives restart',async t=>{
  const {store,dir}=await fixture(t),owner=await store.createAnonymous();
@@ -41,7 +41,7 @@ test('agent import accepts only the public schema and export excludes ownership 
  assert.equal(JSON.stringify(exported).includes(owner.id),false);
  await assert.rejects(store.createAgent(owner.id,{...valid,owner_id:'forged'},avatars),{code:'UNSUPPORTED_AGENT_FIELD'});
  await assert.rejects(store.createAgent(owner.id,{...valid,api_key:'secret'},avatars,{importing:true}),{code:'UNSUPPORTED_AGENT_FIELD'});
- await assert.rejects(store.createAgent(owner.id,{...valid,avatar:'debug-placeholder'},avatars),{code:'INVALID_AGENT_AVATAR'});
+ await assert.rejects(store.createAgent(owner.id,{...valid,avatar:'debug_placeholder'},avatars),{code:'INVALID_AGENT_AVATAR'});
  await assert.rejects(store.createAgent(owner.id,{...valid,provider:'custom-http'},avatars),{code:'UNSUPPORTED_AGENT_PROVIDER'});
 });
 

@@ -21,9 +21,13 @@ import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
+import { OwnershipStore } from './service/ownership-store.js';
+import { WalletChallengeService } from './service/wallet-auth.js';
+import { ownerCookie, ownerCookieClear, ownerIdFromRequest } from './service/owner-auth.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
+const approvedAvatarSet = new Set(approvedAvatarIds);
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
@@ -37,6 +41,12 @@ const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000})
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+const walletChallenges=new WalletChallengeService();
+const ownershipStore=new OwnershipStore(path.join(directory,'identity'));
+const identityCreates=new SlidingWindowLimiter({limit:20,windowMs:60_000});
+const walletChallengeRequests=new SlidingWindowLimiter({limit:20,windowMs:60_000});
+const walletVerifyRequests=new SlidingWindowLimiter({limit:12,windowMs:60_000});
+const agentCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 let shuttingDown=false;
 const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds});
 const roomSpectators=new RoomSpectators();
@@ -90,6 +100,72 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost'), route = url.pathname;
     if (req.method === 'POST') {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
+    }
+    if(req.method==='POST'&&route==='/api/auth/anonymous'){
+      if(!identityCreates.allow())return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
+      const owner=await ownershipStore.createAnonymous();
+      console.log(JSON.stringify({event:'owner_created',identity_type:'anonymous'}));
+      return json(res,201,{owner},{'Set-Cookie':ownerCookie(owner.id)});
+    }
+    if(req.method==='POST'&&route==='/api/auth/wallet/challenge'){
+      if(!walletChallengeRequests.allow())return json(res,429,{error:'Wallet sign-in is temporarily limited',code:'RATE_LIMITED'});
+      const data=await body(req,2048),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
+      const challenge=walletChallenges.issue(data.public_key,origin);
+      return json(res,200,challenge);
+    }
+    if(req.method==='POST'&&route==='/api/auth/wallet/verify'){
+      if(!walletVerifyRequests.allow())return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
+      const data=await body(req,4096),verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature);
+      const owner=await ownershipStore.createWalletOwner(verified.publicKey);
+      console.log(JSON.stringify({event:'wallet_login_verified'}));
+      return json(res,200,{owner},{'Set-Cookie':ownerCookie(owner.id)});
+    }
+    if(req.method==='POST'&&route==='/api/auth/logout')return json(res,200,{ok:true},{'Set-Cookie':ownerCookieClear()});
+    if(route==='/api/me'){
+      if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
+      const ownerId=ownerIdFromRequest(req);return ownerId?json(res,200,{owner:ownershipStore.owner(ownerId)}):json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+    }
+    if(route==='/api/me/agents'){
+      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+      if(req.method==='GET')return json(res,200,{agents:ownershipStore.agentsForOwner(ownerId).map(agent=>({...agent,owner_id:undefined}))});
+      if(req.method==='POST'){
+        if(!agentCreates.allow())return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+        const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet);
+        console.log(JSON.stringify({event:'agent_created',ownership_status:'user',provider:'mock'}));
+        return json(res,201,{agent:{...agent,owner_id:undefined}});
+      }
+      return json(res,405,{error:'Method not allowed'});
+    }
+    if(route==='/api/me/agents/import'&&req.method==='POST'){
+      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
+      if(!agentCreates.allow())return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+      const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{importing:true});
+      console.log(JSON.stringify({event:'agent_imported',ownership_status:'user',provider:'mock'}));
+      return json(res,201,{agent:{...agent,owner_id:undefined}});
+    }
+    const agentExport=route.match(/^\/api\/me\/agents\/(u-[a-f0-9-]{36})\/export$/);
+    if(agentExport&&req.method==='GET'){
+      const ownerId=ownerIdFromRequest(req),agent=ownerId?ownershipStore.exportAgent(ownerId,agentExport[1]):null;
+      return agent?json(res,200,{agent}):json(res,ownerId?404:401,{error:ownerId?'Agent not found':'Owner session required',code:ownerId?'AGENT_NOT_FOUND':'OWNER_SESSION_REQUIRED'});
+    }
+    const agentAction=route.match(/^\/api\/me\/agents\/(u-[a-f0-9-]{36})\/(mock-fund|spending-policy|treasury|transactions)$/);
+    if(agentAction){
+      const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Owner session required',code:'OWNER_SESSION_REQUIRED'});
+      const [,id,action]=agentAction,agent=ownershipStore.agentForOwner(ownerId,id);if(!agent)return json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
+      if(action==='treasury'&&req.method==='GET')return json(res,200,{treasury:agent.treasury});
+      if(action==='transactions'&&req.method==='GET')return json(res,200,{transactions:agent.treasury.receipts});
+      if(action==='mock-fund'&&req.method==='POST'){
+        if(appMode!=='mock')return json(res,409,{error:'Simulated credits are available only in mock mode',code:'MOCK_MODE_REQUIRED'});
+        const data=await body(req,1024),result=await ownershipStore.mockFund(ownerId,id,data.amount);
+        console.log(JSON.stringify({event:'agent_mock_funded',network:'mock'}));return json(res,200,result);
+      }
+      if(action==='spending-policy'&&req.method==='POST')return json(res,200,{spending_policy:await ownershipStore.setSpendingPolicy(ownerId,id,await body(req,2048))});
+      return json(res,405,{error:'Method not allowed'});
+    }
+    if(route==='/api/agents'&&req.method==='GET')return json(res,200,{agents:ownershipStore.listPublicAgents()});
+    const publicAgent=route.match(/^\/api\/agents\/(u-[a-f0-9-]{36})$/);
+    if(publicAgent&&req.method==='GET'){
+      const agent=ownershipStore.publicAgent(publicAgent[1]);return agent?json(res,200,{agent}):json(res,404,{error:'Agent not found',code:'AGENT_NOT_FOUND'});
     }
     if(route==='/api/labs/economy'||route==='/labs/economy'){
       if(process.env.ECONOMY_LAB!=='1')return json(res,404,{error:'Economy lab disabled'});
@@ -196,7 +272,7 @@ const server = http.createServer(async (req, res) => {
       return json(res,200,{ok:true,engine:'Rust',storage:'ok',runtime_mode:appMode,solana_network:solanaNetwork,mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
-      public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,ownership:{wallet_auth_available:false,mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},
+      public_site:production,runtime_mode:appMode,solana_network:solanaNetwork,ownership:{wallet_auth_available:true,agent_creation_available:true,mock_agent_funding:appMode==='mock',mainnet_agent_funding_enabled:mainnetAgentFundingEnabled,mainnet_match_wagering_enabled:mainnetMatchWageringEnabled},
       game_modes:['last-seat','rps','tictactoe'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
@@ -271,9 +347,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/'].includes(pathname) ? '/world/arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/'].includes(pathname) ? '/world/arena.html' : ['/profile','/profile/'].includes(pathname) ? '/profile/index.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css)|world\/(index\.html|arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css)|profile\/(index.html|profile.js)|world\/(index\.html|arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     let detail;try{detail=JSON.parse(error.message);}catch{}
@@ -284,7 +360,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await ownershipStore.init();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
