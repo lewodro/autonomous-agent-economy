@@ -48,6 +48,7 @@ const identityCreates=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletChallengeRequests=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
 const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
+const agentFundingRequests=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
 function clientRateKey(req){
   if(trustProxy){const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();if(isIP(forwarded))return forwarded;}
@@ -165,6 +166,7 @@ const server = http.createServer(async (req, res) => {
       if(action==='transactions'&&req.method==='GET')return json(res,200,{transactions:agent.treasury.receipts});
       if(action==='mock-fund'&&req.method==='POST'){
         if(appMode!=='mock')return json(res,409,{error:'Simulated credits are available only in mock mode',code:'MOCK_MODE_REQUIRED'});
+        if(!agentFundingRequests.allow(ownerId))return json(res,429,{error:'Agent funding requests are temporarily limited',code:'RATE_LIMITED'});
         const data=await body(req,1024),result=await ownershipStore.mockFund(ownerId,id,data.amount,{idempotencyKey:req.headers['idempotency-key']});
         console.log(JSON.stringify({event:'agent_mock_funded',network:'mock'}));return json(res,200,result);
       }
