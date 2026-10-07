@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { WorldPresenceService } from '../service/world-presence.js';
+import { WorldPresenceService, WORLD_PLAYABLE_BOUNDS } from '../service/world-presence.js';
+import { MAP } from '../web/dist/world/map.js';
+
+test('server presence bounds match the walkable avatar-center bounds in the world map',()=>{
+  assert.deepEqual(WORLD_PLAYABLE_BOUNDS,{
+    minX:40+12,minY:64+12,maxX:MAP.width-40-12,maxY:MAP.height-40-12,
+  });
+  const service=new WorldPresenceService();
+  for(const [index,position] of [
+    {x:52,y:76},{x:1100,y:76},{x:52,y:812},{x:1100,y:812},
+  ].entries()){
+    assert.deepEqual(service.join('main',{player_id:`edge${index}`,position}).player.position,position);
+  }
+  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1101,y:812}}),{code:'INVALID_POSITION'});
+});
 
 test('presence joins, validates bounded movement, and removes stale players', () => {
   let now = 1_000;
@@ -23,9 +37,9 @@ test('presence joins, validates bounded movement, and removes stale players', ()
 
 test('presence limits update frequency and does not expose session tokens', () => {
   const service = new WorldPresenceService({ now: () => 1_000, minUpdateMs: 100 });
-  const joined = service.join('main', { player_id: 'visitor', position: { x: 10, y: 10 } });
+  const joined = service.join('main', { player_id: 'visitor', position: { x: 100, y: 100 } });
   assert.equal('token' in joined.player, false);
-  assert.throws(() => service.move('main', { player_id: 'visitor', session_token: joined.session_token, position: { x: 11, y: 10 } }), { code: 'PRESENCE_RATE_LIMITED' });
+  assert.throws(() => service.move('main', { player_id: 'visitor', session_token: joined.session_token, position: { x: 101, y: 100 } }), { code: 'PRESENCE_RATE_LIMITED' });
   assert.throws(() => service.join('bad/world', {}), { code: 'WORLD_NOT_FOUND' });
   assert.throws(() => service.join('unconfigured-world-1', {}), { code: 'WORLD_NOT_FOUND' });
   assert.throws(() => service.join('main', { player_id: 'unapproved', avatar: 'broken_preview' }), { code: 'INVALID_AVATAR' });

@@ -3,6 +3,9 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 const IDENTIFIER = /^[a-zA-Z0-9_-]{1,64}$/;
 const DIRECTIONS = new Set(['up', 'down', 'left', 'right']);
 const ANIMATIONS = new Set(['idle', 'walk']);
+// Keep presence inside the avatar-center walkable rectangle from web/src/world/map.ts
+// (map border 40/64 px, avatar collision radius 12 px).
+export const WORLD_PLAYABLE_BOUNDS = Object.freeze({ minX: 52, minY: 76, maxX: 1100, maxY: 812 });
 
 function fail(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
@@ -19,7 +22,7 @@ function equalSecret(left, right) {
  * It intentionally stores no movement history and owns no game state.
  */
 export class WorldPresenceService {
-  constructor({ worldIds = ['main'], allowedAvatars = ['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'], bounds = { width: 1040, height: 864 }, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
+  constructor({ worldIds = ['main'], allowedAvatars = ['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'], bounds = WORLD_PLAYABLE_BOUNDS, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
     if (!Array.isArray(worldIds) || !worldIds.length || worldIds.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(worldIds).size !== worldIds.length) {
       throw new Error('World presence requires unique, valid configured world IDs');
     }
@@ -42,7 +45,7 @@ export class WorldPresenceService {
   sanitizePosition(position) {
     const x = position?.x, y = position?.y;
     if (typeof x !== 'number' || typeof y !== 'number') throw fail('INVALID_POSITION', 'Position coordinates must be numbers');
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > this.bounds.width || y > this.bounds.height) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < this.bounds.minX || y < this.bounds.minY || x > this.bounds.maxX || y > this.bounds.maxY) {
       throw fail('INVALID_POSITION', 'Position is outside the world bounds');
     }
     return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
