@@ -51,7 +51,7 @@ export async function buildAgentSprites(){
     const image=inspectPng(await readFile(path.join(sourceDirectory,name)));
     if(image.width!==16||image.height!==16)throw new Error(`${name}: expected a 16×16 source sprite`);
     const {rgba,removedPixels}=removeConnectedNavyBackground(image);
-    if(removedPixels===0)throw new Error(`${name}: no connected navy background found; inspect source before publishing`);
+    if(removedPixels===0&&image.transparentPixels===0)throw new Error(`${name}: no connected navy background or existing transparency found; inspect source before publishing`);
     await writeFile(path.join(outputDirectory,name),encodePng(image.width,image.height,rgba));
     results.push({name,removedPixels});
   }

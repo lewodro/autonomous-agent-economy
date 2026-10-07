@@ -12,7 +12,7 @@ The world loads only registered sprite URLs from `web/src/world/sprites.ts`. Act
 | `assets/agents/` | Generated transparent agent PNGs used by the game and world renderer. |
 | `assets/spritesheets/` | Future exported animation sheets and frame metadata. |
 
-Agent portraits currently arrive with a dark opaque matte. Run `npm run assets:build` to make a transparent derivative in `assets/agents/`; this removes only the connected dark-navy border region and never overwrites originals. Run `npm run assets:check` to validate dimensions, alpha, metadata, picker registration and generated outputs. New sprite sheets should be transparent RGBA PNGs with consistent frame dimensions and explicit row/column animation metadata. The visitor manifest currently expects a 3×4 grid of 32×32 frames and a 256×256 preview.
+The 16×16 agent portraits are supplied as transparent PNGs in `assets/sprites-agent/`. Run `npm run assets:build` to create the renderer-ready derivatives in `assets/agents/`; existing transparent pixels are preserved, and only connected opaque navy edge pixels are removed. Run `npm run assets:check` to validate dimensions, alpha, metadata, picker registration and generated outputs. Run `npm run assets:world:check` to validate all 20 transparent 16×16 agent sprites plus the four visitor sheets and previews. New sprite sheets should be transparent RGBA PNGs with consistent frame dimensions and explicit row/column animation metadata. The visitor manifest currently expects a 3×4 grid of 32×32 frames and a 256×256 preview.
 
 ## Animated sheet format
 

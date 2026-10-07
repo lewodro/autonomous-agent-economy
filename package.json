@@ -37,6 +37,7 @@
     "examples:check": "node scripts/validate-examples.js",
     "assets:build": "node scripts/build-agent-sprites.js",
     "assets:check": "node scripts/validate-avatar-assets.js",
+    "assets:world:check": "node scripts/validate-world-assets.js",
     "docs:check": "node scripts/check-docs.js",
     "verify:production": "node scripts/verify-production.js",
     "demo:devnet-wallets": "node scripts/devnet-wallets.js",

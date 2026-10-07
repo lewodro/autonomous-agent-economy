@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
-import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
+import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
@@ -61,6 +61,9 @@ test('avatar settings allow registered presets only and survive a JSON roundtrip
   assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'visitor_ember');
   assert.equal(new Set(SPRITES.map(s=>s.id)).size,24);
   assert.deepEqual(SPRITES.filter(s=>s.id.startsWith('visitor_')).map(s=>s.id),['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
+  assert.deepEqual(AVATARS,['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
+  assert.ok(AVATARS.every(id=>SPRITES.find(sprite=>sprite.id===id)?.selectable===true));
+  assert.ok(!AVATARS.some(id=>['founder','trader','explorer','mentor'].includes(id)));
   const animated=SPRITES.find(s=>s.id==='visitor_ember');assert.deepEqual(animated.animations.walk_up,[9,10,11]);
 });
 test('NPC controller moves presence without changing strategy or economic fields',()=>{
