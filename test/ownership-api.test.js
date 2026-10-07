@@ -74,4 +74,18 @@ test('production-shaped free deployment serves the profile and sets secure owner
  assert.equal(response.status,201);assert.match(response.headers.get('set-cookie')||'',/; HttpOnly; SameSite=Strict;.*Secure/);
  const cookie=response.headers.get('set-cookie').split(';')[0];
  const me=await fetch(base+'/api/me',{headers:{...headers,Cookie:cookie}});assert.equal(me.status,200);
+ const pair=generateKeyPairSync('ed25519'),publicKey=encodeBase58(pair.publicKey.export({format:'der',type:'spki'}).subarray(-32));
+ const walletHeaders={...headers,Origin:'https://ci.example','Content-Type':'application/json'};
+ const challengeResponse=await fetch(base+'/api/auth/wallet/challenge',{method:'POST',headers:walletHeaders,body:JSON.stringify({public_key:publicKey})});
+ assert.equal(challengeResponse.status,200);const challenge=await challengeResponse.json();assert.match(challenge.message,/Origin: https:\/\/ci\.example/);
+ const signature=sign(null,Buffer.from(challenge.message),pair.privateKey).toString('base64url');
+ const verifiedResponse=await fetch(base+'/api/auth/wallet/verify',{method:'POST',headers:walletHeaders,body:JSON.stringify({challenge_id:challenge.challenge_id,public_key:publicKey,signature})});
+ assert.equal(verifiedResponse.status,200);const verified=await verifiedResponse.json();assert.equal(verified.owner.identity_type,'solana');
+ const walletCookie=verifiedResponse.headers.get('set-cookie')||'';assert.match(walletCookie,/; HttpOnly; SameSite=Strict;.*Secure/);
+ const ownerCookie=walletCookie.split(';')[0];
+ const created=await fetch(base+'/api/me/agents',{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({name:'Production Agent',avatar:'visitor_nova',strategy:'opportunist'})});
+ assert.equal(created.status,201);const createdValue=await created.json();
+ const rejectedFund=await fetch(`${base}/api/me/agents/${createdValue.agent.id}/mock-fund`,{method:'POST',headers:{...headers,Cookie:ownerCookie,'Content-Type':'application/json'},body:JSON.stringify({amount:100})});
+ assert.equal(rejectedFund.status,409);assert.equal((await rejectedFund.json()).code,'MOCK_MODE_REQUIRED');
+ const crossOrigin=await fetch(base+'/api/auth/wallet/challenge',{method:'POST',headers:{...headers,Origin:'https://attacker.example','Content-Type':'application/json'},body:JSON.stringify({public_key:publicKey})});assert.equal(crossOrigin.status,403);
 });
