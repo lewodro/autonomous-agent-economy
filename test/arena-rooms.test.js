@@ -42,7 +42,12 @@ test('room epoch rollover is checkpointed before the next match begins',async t=
   const pool=new ArenaRoomPool(dir,{stageMs:0});await pool.restore();
   for(let i=0;i<64;i++)await pool.step('rps-1');
   const room=pool.rooms.get('rps-1'),oldRunId=room.saved.runId,checkpoint=pool.checkpoint.bind(pool),observed=[];
-  pool.checkpoint=async value=>{observed.push({runId:value.saved.runId,matches:value.state.matches.length,previous:value.saved.previous.length});return checkpoint(value);};
+  pool.checkpoint=async()=>{throw Object.assign(new Error('simulated checkpoint failure'),{code:'EIO'});};
+  await assert.rejects(pool.step('rps-1'),{code:'EIO'});
+  assert.equal(room.saved.runId,oldRunId,'failed persistence must not publish the staged run ID');
+  assert.equal(room.state.matches.length,64,'failed persistence must retain the prior in-memory run');
+  assert.equal(pool.listRooms().find(value=>value.id==='rps-1').runId,oldRunId);
+  pool.checkpoint=async(value,epoch)=>{observed.push({runId:epoch?.runId||value.saved.runId,matches:epoch?.state.matches.length??value.state.matches.length,previous:epoch?.previous.length??value.saved.previous.length});return checkpoint(value,epoch);};
   await pool.step('rps-1');
   assert.equal(observed[0].runId,room.saved.runId);
   assert.equal(observed[0].matches,0,'the rollover checkpoint precedes simulation work');

@@ -109,8 +109,8 @@ export class ArenaRoomPool {
     if(!run)throw Object.assign(new Error('This retained run is no longer available'),{status:404});
     return structuredClone({version:1,mode:'simulation',runId,roomId:run.roomId,game:run.game,state:run.state});
   }
-  async checkpoint(room) {
-    const saved={...room.saved,state:structuredClone(room.state)};
+  async checkpoint(room, epoch=room.saved) {
+    const saved=epoch===room.saved?{...epoch,state:structuredClone(room.state)}:structuredClone(epoch);
     const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';let renamed=false;
     try{
       await withStorageFailure('arena checkpoint',async()=>{
@@ -123,21 +123,20 @@ export class ArenaRoomPool {
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
     if(room.running)throw new Error('Room is already running');
-    let rotated=false;
+    let nextEpoch=null;
     if(room.state.matches.length>=64||room.state.agents.filter(a=>eligibility(room.state,a).eligible).length<2){
-      room.saved={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
-      room.state=structuredClone(room.saved.state);rotated=true;
+      nextEpoch={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
     }
     room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
-    const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
-      // The terminal result is not public until the final checkpoint succeeds.
-      room.phase=phase;room.current=match;room.status='live';
-      if(this.stageMs)await this.delay(this.stageMs);
-    },onSave:()=>this.checkpoint(room)});
     try {
       // A new run ID is visible through the room snapshot, so persist the epoch
       // rollover before starting work that could be interrupted or fail.
-      if(rotated)await this.checkpoint(room);
+      if(nextEpoch){await this.checkpoint(room,nextEpoch);room.state=structuredClone(room.saved.state);}
+      const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
+        // The terminal result is not public until the final checkpoint succeeds.
+        room.phase=phase;room.current=match;room.status='live';
+        if(this.stageMs)await this.delay(this.stageMs);
+      },onSave:()=>this.checkpoint(room)});
       await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
       for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
