@@ -103,7 +103,7 @@ async function avatarCatalog():Promise<AvatarAsset[]> {
   if(catalog.version!==1||!Array.isArray(catalog.avatars))throw new Error('Avatar catalog invalid');
   const eligible=catalog.avatars.filter(asset=>asset.approved===true&&asset.placeholder!==true&&asset.debug!==true
     &&!/(placeholder|debug|invalid)/i.test(asset.id)&&AVATARS.includes(asset.id)
-    &&SPRITES.some(sprite=>sprite.id===asset.id&&sprite.sheet===asset.sheet&&sprite.preview===asset.preview
+    &&SPRITES.some(sprite=>sprite.id===asset.id&&sprite.selectable===true&&sprite.sheet===asset.sheet&&sprite.preview===asset.preview
       &&sprite.frameWidth===asset.frameWidth&&sprite.frameHeight===asset.frameHeight));
   const checked:AvatarAsset[]=[];
   for(const asset of eligible){
