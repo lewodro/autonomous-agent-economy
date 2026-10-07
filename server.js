@@ -136,7 +136,7 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
       const owner=authenticatedOwner(req);
       if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'},{'Set-Cookie':ownerCookieClear()});
-      return json(res,200,{owner});
+      return json(res,200,{owner:{id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null}});
     }
     if(route==='/api/me/agents'){
       const owner=authenticatedOwner(req);if(!owner)return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
