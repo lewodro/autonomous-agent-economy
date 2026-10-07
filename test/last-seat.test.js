@@ -64,6 +64,8 @@ test('HTTP replay sharing verifies the exact prefix and refuses tampering or cro
     assert.deepEqual((await fetch(base+'/api/replays/'+match_id).then(r=>r.json())).replay,step.replay);
     const bad=structuredClone(step.replay);bad.final_state.agents[0].credits++;
     assert.equal((await post('/api/replays/share',{replay:bad})).status,400);
+    for(let index=0;index<8;index++)assert.equal((await post('/api/replays/share',{replay:bad})).status,400);
+    const limitedShare=await post('/api/replays/share',{replay:bad});assert.equal(limitedShare.status,429);assert.equal((await limitedShare.json()).code,'RATE_LIMITED');
     assert.equal((await post('/api/matches',{config},{Origin:'https://unrelated.example'})).status,403);
     const spoofedHost=await new Promise((resolve,reject)=>{
       const req=http.request(base+'/api/matches',{method:'POST',headers:{'Content-Type':'application/json',Host:'attacker.example',Origin:'http://attacker.example'}},res=>{res.resume();resolve(res.statusCode);});

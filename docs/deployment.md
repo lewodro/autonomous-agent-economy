@@ -33,4 +33,6 @@ Keep one application replica attached to the persistent directory. The current
 JSON owner registry is atomic and restart durable, but is not a shared,
 multi-instance database. The browser uses same-origin HTTP and SSE routes; the
 site is served over HTTPS by the host. `PORT` is provided by Railway. There is
-no database migration step.
+no database migration step. Verified replay archives are capped at 1,000
+records and 256 MiB; older records are pruned as new ones are saved. Public
+replay sharing is limited to 10 requests per client IP per minute.

@@ -31,3 +31,36 @@ test('replay archive sync failure keeps the renamed result recoverable and remov
     assert.deepEqual(await new ReplayArchive(directory).load(matchId),replay);
   }finally{await rm(directory,{recursive:true,force:true});}
 });
+
+test('replay archive retains only the newest bounded set of records',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'replay-archive-retention-'));
+  try{
+    const archive=new ReplayArchive(directory,{maxRecords:2});
+    const records=['a','b','c'].map((letter,index)=>({match_id:`seat-${letter.repeat(64)}`,final_state:{ended:true,winner:`agent-${index}`},events:[{seq:index+1,type:'MatchEnded'}]}));
+    for(const record of records)await archive.save(record);
+    const names=(await readdir(directory)).filter(name=>name.endsWith('.json')).sort();
+    assert.deepEqual(names,[`${records[1].match_id}.json`,`${records[2].match_id}.json`].sort());
+    assert.equal(await archive.load(records[0].match_id),null);
+    assert.deepEqual(await archive.load(records[2].match_id),records[2]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('concurrent archive saves serialize capacity enforcement',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'replay-archive-concurrent-'));
+  try{
+    const archive=new ReplayArchive(directory,{maxRecords:2});
+    const records=Array.from({length:8},(_,index)=>({match_id:`seat-${index.toString(16).padStart(64,'0')}`,final_state:{ended:true,winner:`agent-${index}`},events:[{seq:index+1,type:'MatchEnded'}]}));
+    await Promise.all(records.map(record=>archive.save(record)));
+    assert.equal((await readdir(directory)).filter(name=>name.endsWith('.json')).length,2);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('replay archive rejects records larger than its configured and engine limits',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'replay-archive-size-'));
+  try{
+    const archive=new ReplayArchive(directory,{maxReplayBytes:128});
+    const oversized={...replay,events:[{seq:1,type:'MatchEnded',padding:'x'.repeat(256)}]};
+    await assert.rejects(archive.save(oversized),{status:413,code:'REPLAY_TOO_LARGE'});
+    assert.deepEqual(await readdir(directory),[]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});

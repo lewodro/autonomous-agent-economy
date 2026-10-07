@@ -41,6 +41,7 @@ const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions,{ensureCapacity:ensureSessionCapacity});
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
+const publicReplayShares=new KeyedSlidingWindowLimiter({limit:10,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
@@ -273,6 +274,7 @@ const server = http.createServer(async (req, res) => {
       return json(res,405,{error:'Method not allowed'});
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
+      if(!publicReplayShares.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Replay sharing is temporarily limited. Try again shortly.',code:'RATE_LIMITED'});
       const data = await body(req, 32_000_000);
       const { replay } = await core.request({ command: 'verify', replay: data.replay });
       await persist(replay);
