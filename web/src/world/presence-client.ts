@@ -36,6 +36,7 @@ export class WorldPresenceClient {
   private moveIntervalMs:number;
   private heartbeatIntervalMs:number;
   private playerId:string;
+  private newId:()=>string;
   private token:string|null=null;
   private source?:EventSourceLike;
   private streamGeneration=0;
@@ -59,7 +60,8 @@ export class WorldPresenceClient {
     this.now=options.now||(()=>Date.now());
     this.moveIntervalMs=options.moveIntervalMs||66;
     this.heartbeatIntervalMs=options.heartbeatIntervalMs||1_000;
-    this.playerId=this.storage?.getItem(`${sessionPrefix}${this.worldId}:player`)||`player_${(options.newId||(()=>globalThis.crypto?.randomUUID?.()||`${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`))()}`;
+    this.newId=options.newId||(()=>globalThis.crypto?.randomUUID?.()||`${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`);
+    this.playerId=this.storage?.getItem(`${sessionPrefix}${this.worldId}:player`)||this.createPlayerId();
   }
 
   async connect():Promise<PresenceSnapshot>{
@@ -77,10 +79,22 @@ export class WorldPresenceClient {
 
   private async connectAndSubscribe():Promise<PresenceSnapshot>{
     this.token=this.storage?.getItem(`${sessionPrefix}${this.worldId}:token`)||null;
-    const joined=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{
+    const join=()=>this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{
       player_id:this.playerId,session_token:this.token||undefined,avatar:this.options.avatar,
       position:this.options.position,direction:this.options.direction||'down',activity:this.options.activity||'Exploring',
     });
+    let joined:unknown;
+    try{joined=await join();}
+    catch(error){
+      if(this.closed||!(error instanceof Error)||!('code' in error)||error.code!=='PRESENCE_NOT_AUTHORIZED')throw error;
+      // Duplicated tabs can inherit the same sessionStorage player ID but not
+      // a capability for the already-active server session. Retry once under
+      // a new identity; never evict or take over the existing player's slot.
+      this.playerId=this.createPlayerId();this.token=null;
+      this.storage?.setItem(`${sessionPrefix}${this.worldId}:player`,this.playerId);
+      this.storage?.removeItem(`${sessionPrefix}${this.worldId}:token`);
+      joined=await join();
+    }
     const snapshot=joined as PresenceSnapshot&{player?:PresencePlayer;session_token?:string};
     if(!snapshot||snapshot.world_id!==this.worldId||!Array.isArray(snapshot.players)||typeof snapshot.session_token!=='string'||!snapshot.session_token){
       throw new Error('World presence returned an invalid join response');
@@ -148,9 +162,11 @@ export class WorldPresenceClient {
   private async request(path:string,body:Record<string,unknown>):Promise<unknown>{
     const response=await this.fetcher(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(5_000)});
     const result=await response.json() as {error?:string;code?:string};
-    if(!response.ok)throw new Error(result?.error||`World presence request failed (${response.status})`);
+    if(!response.ok)throw Object.assign(new Error(result?.error||`World presence request failed (${response.status})`),{status:response.status,code:result?.code});
     return result;
   }
+
+  private createPlayerId():string{return `player_${this.newId()}`;}
 
   private receive(type:string,raw:string):void{
     if(this.closed)return;

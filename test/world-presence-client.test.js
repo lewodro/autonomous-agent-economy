@@ -135,6 +135,39 @@ test('presence client rejects an invalid join response and reports structured AP
   await assert.rejects(()=>denied.connect(),/Player session is not authorized/);
 });
 
+test('a duplicate tab retries a conflicting stored identity without taking over the active session',async()=>{
+  const storage=new Storage(),requests=[],ids=['fresh-tab'];
+  storage.setItem('aae-world-presence-v1:main:player','player-copied-tab');
+  storage.setItem('aae-world-presence-v1:main:token','copied-capability');
+  const fetcher=async(url,init)=>{
+    const body=JSON.parse(init.body);requests.push(body);
+    if(requests.length===1)return{ok:false,status:403,json:async()=>({code:'PRESENCE_NOT_AUTHORIZED',error:'Player identity is already active'})};
+    return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('player-fresh-tab',100)],session_token:'fresh-capability'})};
+  };
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>new EventStream(),storage,newId:()=>ids.shift()||'unexpected'});
+  await client.connect();
+  assert.deepEqual(requests.map(body=>body.player_id),['player-copied-tab','player_fresh-tab']);
+  assert.equal(requests[0].session_token,'copied-capability');
+  assert.equal(requests[1].session_token,undefined);
+  assert.equal(client.player_id,'player_fresh-tab');
+  assert.equal(storage.getItem('aae-world-presence-v1:main:player'),'player_fresh-tab');
+  assert.equal(storage.getItem('aae-world-presence-v1:main:token'),'fresh-capability');
+  await client.leave();
+});
+
+test('a closed client does not retry an identity conflict after unmount',async()=>{
+  let rejectJoin;const requests=[],streams=[];
+  const fetcher=(url,init)=>{
+    requests.push(url);
+    return new Promise(resolve=>{rejectJoin=()=>resolve({ok:false,status:403,json:async()=>({code:'PRESENCE_NOT_AUTHORIZED',error:'Player identity is already active'})});});
+  };
+  const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher,eventSource:()=>{streams.push(new EventStream());return streams.at(-1);},storage:new Storage(),newId:()=> 'collision'});
+  const connecting=client.connect();client.close();rejectJoin();
+  await assert.rejects(()=>connecting,/Player identity is already active/);
+  assert.equal(requests.length,1,'closed clients do not issue a second join request');
+  assert.equal(streams.length,0);
+});
+
 test('presence client coalesces in-flight movement and heartbeat requests',async()=>{
   let now=1_000,releaseMove,releaseHeartbeat;
   const fetcher=async(url,init)=>{
