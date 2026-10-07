@@ -129,6 +129,35 @@ impl FundedHost {
         sessions.sort();
         Ok(sessions)
     }
+    /// Remove a host created by a failed admission setup, but only before it can hold funds.
+    pub fn discard_unfunded(root: &Path, session: &str) -> Result<bool> {
+        let id = OperationId::new(session)?;
+        let directory = root.join("sessions").join(id.as_str());
+        if !directory.exists() {
+            return Ok(false);
+        }
+        let host = Self::load(root, session)?;
+        let view = host.snapshot.economy.view();
+        if !matches!(view.state, EconomyState::Unfunded | EconomyState::Funding)
+            || !host.snapshot.economy.rail.records().is_empty()
+            || !view.funded_agents.is_empty()
+            || view.pot_amount != Amount::ZERO
+            || host.snapshot.simulation.final_state.turn != 0
+            || host.snapshot.simulation.final_state.ended
+            || host.snapshot.attestation.is_some()
+            || host.snapshot.settlement.is_some()
+            || host.snapshot.cancellation.is_some()
+        {
+            return Err(EconomyError::Conflict);
+        }
+        drop(host);
+        std::fs::remove_dir_all(&directory)
+            .map_err(|error| EconomyError::StorageFailure(error.to_string()))?;
+        std::fs::File::open(directory.parent().ok_or(EconomyError::Conflict)?)
+            .and_then(|folder| folder.sync_all())
+            .map_err(|error| EconomyError::StorageFailure(error.to_string()))?;
+        Ok(true)
+    }
     pub(super) fn save(&mut self) -> Result<()> {
         self.observe_payment_events()?;
         self.repository.write("host", &self.snapshot)
@@ -451,6 +480,32 @@ impl FundedHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_setup_can_discard_only_an_untouched_funding_host() {
+        let root = std::env::temp_dir().join(format!(
+            "discard-funded-{}",
+            crate::wallet::address(&crate::wallet::key().unwrap())
+        ));
+        let config: FundedMatchConfig = serde_json::from_value(json!({
+            "simulation":crate::config::default_config(2,42),
+            "economy":{"enabled":true,"mode":"mock","entry_amount_sol":"0.02","starting_balance_sol":"1","maximum_entry_sol":"0.05","minimum_reserve_sol":"0.005"}
+        })).unwrap();
+        let host = FundedHost::create(&root, "discard-me", config.clone()).unwrap();
+        drop(host);
+        assert!(FundedHost::discard_unfunded(&root, "discard-me").unwrap());
+        assert!(!FundedHost::discard_unfunded(&root, "discard-me").unwrap());
+        assert!(FundedHost::list(&root).unwrap().is_empty());
+
+        let mut host = FundedHost::create(&root, "keep-me", config).unwrap();
+        host.fund("agent-1").unwrap();
+        drop(host);
+        assert_eq!(
+            FundedHost::discard_unfunded(&root, "keep-me"),
+            Err(EconomyError::Conflict)
+        );
+        assert_eq!(FundedHost::list(&root).unwrap(), vec!["keep-me"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn late_verified_funding_cannot_bypass_deadline_or_refund_during_reconciliation() {
         let root = std::env::temp_dir().join(format!(

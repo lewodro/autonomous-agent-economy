@@ -55,6 +55,10 @@ export class SessionStore {
   }
   async remove(session){
     await this.pending.get(session)?.catch(()=>{});
-    await unlink(this.file(session)).catch(error=>{if(error.code!=='ENOENT')throw error;});
+    let removed=false;
+    await withStorageFailure('match session removal',async()=>{
+      try{await unlink(this.file(session));removed=true;}catch(error){if(error.code!=='ENOENT')throw error;}
+      if(removed)await this.syncFolder(this.directory);
+    });
   }
 }

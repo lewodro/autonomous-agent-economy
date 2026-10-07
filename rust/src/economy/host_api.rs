@@ -33,6 +33,9 @@ pub fn request(v: &Value) -> Result<Value> {
     let session = v["session"]
         .as_str()
         .ok_or_else(|| EconomyError::InvalidInput("session required".into()))?;
+    if action == "discard-unfunded" {
+        return Ok(json!({"removed":FundedHost::discard_unfunded(&root, session)?}));
+    }
     if action == "create" {
         let config = serde_json::from_value(v["config"].clone())
             .map_err(|e| EconomyError::InvalidInput(e.to_string()))?;

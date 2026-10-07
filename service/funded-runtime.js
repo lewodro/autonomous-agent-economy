@@ -22,12 +22,24 @@ export class FundedRuntime {
   const terminal=new Set(['settled','refunded','failed']);
   const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;
   if(active>=20)throw Object.assign(Error('Active funded match limit reached'),{status:429});
-  const session=randomUUID();this.sessions.set(session,true);
+  const session=randomUUID();this.sessions.set(session,true);let createdResult=null;
   try{
    const mode=data.mode??'mock';
-   const result=await this.core.request({command:'funded-host',action:'create',session,config:{simulation:config,economy:{enabled:true,mode,entry_amount_sol:data.entry_amount_sol??'0.02',starting_balance_sol:'1',maximum_entry_sol:'0.05',minimum_reserve_sol:mode==='devnet'?'0':'0.005'},fees:data.fees||{winner_share_bps:10000,house_fee_bps:0},funding_timeout_seconds:data.funding_timeout_seconds??600}});
+   const result=createdResult=await this.core.request({command:'funded-host',action:'create',session,config:{simulation:config,economy:{enabled:true,mode,entry_amount_sol:data.entry_amount_sol??'0.02',starting_balance_sol:'1',maximum_entry_sol:'0.05',minimum_reserve_sol:mode==='devnet'?'0':'0.005'},fees:data.fees||{winner_share_bps:10000,house_fee_bps:0},funding_timeout_seconds:data.funding_timeout_seconds??600}});
    await this.runtime.checkpoint(session,result.replay);return this.publish(result);
-  }catch(error){this.sessions.delete(session);throw error;}
+  }catch(error){
+   try{
+    const discarded=await this.core.request({command:'funded-host',action:'discard-unfunded',session});
+    if(discarded.removed===true||discarded.removed===false){await this.runtime.remove(session);this.sessions.delete(session);}
+    else throw Object.assign(new Error('Cleanup did not confirm host removal'),{code:'cleanup_unconfirmed'});
+   }catch(cleanupError){
+    let recoverable=createdResult;
+    if(!recoverable){try{recoverable=await this.core.request({command:'funded-host',action:'get',session});}catch{}}
+    if(recoverable)this.remember({...recoverable,session});
+    economyLog('funded_match_create_cleanup_failed',{session,code:cleanupError.code||'cleanup_failed'});
+   }
+   throw error;
+  }
  }
  async act(session,action,data={}){
   if(!this.matches.has(session))throw Object.assign(Error('Funded session not found'),{status:404});
