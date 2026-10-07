@@ -80,11 +80,12 @@ export class FundedRuntime {
  }
  health(){
   const rows=[...this.matches.values()];
-  const health={matches:rows.length,pending_intents:0,pending_receipts:0,pending_settlements:0,pending_refunds:0,modes:[...new Set(rows.map(r=>r.economy.economy.payment_mode))],mainnet_enabled:false,rpc_status:rows.length?'ready':'not_observed',storage_status:rows.length?'opened':'not_observed'};
+  const health={matches:rows.length,pending_intents:0,pending_receipts:0,pending_settlements:0,pending_refunds:0,modes:[...new Set(rows.map(r=>r.economy.economy.payment_mode))],mainnet_enabled:false,rpc_status:'not_observed',storage_status:rows.length?'opened':'not_observed'};
   health.automatic_retry_limit=8;health.automatic_retries_exhausted=rows.filter(r=>(r.failures||0)>=8).length;
   for(const row of rows){const observed=row.economy.health;
    for(const key of ['pending_intents','pending_receipts','pending_settlements','pending_refunds'])health[key]+=observed?.[key]??0;
    if(observed?.rpc_ready===false)health.rpc_status='unavailable';
+   else if(observed?.rpc_ready===true&&health.rpc_status!=='unavailable')health.rpc_status='ready';
    if(observed?.storage_ready===false)health.storage_status='unavailable';
   }
   return health;
