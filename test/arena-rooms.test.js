@@ -122,6 +122,20 @@ test('settling rooms stay live until the final result checkpoint completes',asyn
   assert.equal(pool.history().length,1);
   pool.close();
 });
+test('history excludes in-flight RPS records until reveals and settlement are checkpointed',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-live-history-')),{stageMs:1});await pool.restore();
+  let reached,release;const atLiveStage=new Promise(resolve=>{reached=resolve;});let held=false;
+  pool.delay=()=>new Promise(resolve=>{
+    const room=pool.rooms.get('rps-1'),active=room.state.matches.at(-1);
+    if(!held&&active&&active.status!=='settled'){held=true;release=resolve;reached();}else resolve();
+  });
+  const running=pool.step('rps-1');await atLiveStage;
+  try{
+    assert.notEqual(pool.rooms.get('rps-1').state.matches.at(-1).status,'settled');
+    assert.deepEqual(pool.history(),[],'public match history must remain usable and completed-only during a live round');
+  }finally{release();await running;pool.close();}
+  assert.equal(pool.history().length,1);
+});
 test('room scheduler retries one transient checkpoint failure without duplicating the match',async()=>{
   const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-retry-')),{stageMs:0,restMs:60_000,retryMs:1});await pool.restore();
   const checkpoint=pool.checkpoint.bind(pool);let injected=false;

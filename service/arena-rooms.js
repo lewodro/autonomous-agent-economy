@@ -97,7 +97,7 @@ export class ArenaRoomPool {
       draws:matches.filter(({match})=>match.result==='draw').length},games:{rps:summarize('rps'),tictactoe:summarize('tictactoe')},agents};
   }
   history() {
-    return this.runs().reverse().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
+    return this.runs().reverse().flatMap(run=>run.state.matches.filter(match=>match.status==='settled').map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
       players:match.players.map(id=>({id,name:run.state.agents.find(a=>a.id===id).name})),
       moves:match.type==='tictactoe'?match.moves.map((move,i)=>({turn:i+1,agent:move.agentId,action:'place',cell:[Math.floor(move.cell/3),move.cell%3]}))
         :match.players.map(id=>({round:1,agent:id,action:match.reveals[id].move})),
