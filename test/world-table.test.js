@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {TableSession,visitorHash} from '../service/world-table.js';
@@ -38,6 +38,15 @@ test('an expired waiting seat releases the table and cannot act in the next sess
   const next=await t.act(o,'join',{mode:'human'});assert.equal(next.status,'waiting');assert.equal(next.yourSeat,'human-x');
   await assert.rejects(()=>t.act(x,'move',{cell:0,revision:t.state.revision}),/Sit at the table/);
  }finally{Date.now=originalNow;}
+});
+test('table checkpoints flush file and directory and keep memory aligned after directory sync failure',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'world-table-sync-'));t.after(()=>rm(dir,{recursive:true,force:true}));let failSync=false;
+ const table=new TableSession(dir,{syncFolder:async()=>{if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});await table.restore();failSync=true;
+ await assert.rejects(table.act(x,'join',{mode:'human'}),{status:503,code:'EIO'});
+ assert.equal(table.snapshot(x).status,'waiting');
+ const saved=JSON.parse(await readFile(path.join(dir,'table.json'),'utf8'));assert.equal(saved.status,'waiting');
+ const reopened=new TableSession(dir);await reopened.restore();assert.deepEqual(reopened.snapshot(x),table.snapshot(x));
+ assert.deepEqual(await readdir(dir),['table.json']);
 });
 test('table polling clears a transient connection warning after recovery without a state change',async()=>{
  class Element {

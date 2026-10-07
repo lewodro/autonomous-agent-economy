@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { createState } from '../src/economy.js';
 import { playCell, verifyTicTacToeProof } from '../src/tictactoe.js';
 import { chooseTicTacToeCell } from '../src/strategies.js';
 import { withStorageFailure } from './http-error.js';
 const empty = revision => ({version:1,id:'plaza-table',status:'empty',revision,players:[],match:null,updatedAt:Date.now()});
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 export const visitorHash = token => createHash('sha256').update(token).digest('hex');
 export function visitorIdentity(req) {
   const token=req.headers.cookie?.match(/(?:^|;\s*)world_visitor=([a-f0-9-]{36})(?:;|$)/)?.[1]||randomUUID();
@@ -13,7 +14,7 @@ export function visitorIdentity(req) {
 }
 /** Seating/capabilities are separate from the existing deterministic board rules. Free only. */
 export class TableSession {
-  constructor(directory){this.directory=directory;this.state=empty(0);this.tail=Promise.resolve();}
+  constructor(directory,{syncFolder=syncDirectory}={}){this.directory=directory;this.syncFolder=syncFolder;this.state=empty(0);this.tail=Promise.resolve();}
   async restore(){
     await mkdir(this.directory,{recursive:true});let saved;
     try{saved=JSON.parse(await readFile(path.join(this.directory,'table.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -80,8 +81,14 @@ export class TableSession {
         }else throw new Error('Unsupported table action');
       }
       next.revision++;next.updatedAt=Date.now();
-      const file=path.join(this.directory,'table.json'),temporary=file+'.'+randomUUID()+'.tmp';
-      await withStorageFailure('world table state',async()=>{await writeFile(temporary,JSON.stringify(next),{mode:0o600});await rename(temporary,file);});this.state=next;
+      const file=path.join(this.directory,'table.json'),temporary=file+'.'+randomUUID()+'.tmp';let renamed=false;
+      try{
+        await withStorageFailure('world table state',async()=>{
+          const handle=await open(temporary,'wx',0o600);
+          try{await handle.writeFile(JSON.stringify(next));await handle.sync();}finally{await handle.close();}
+          await rename(temporary,file);renamed=true;this.state=next;await this.syncFolder(this.directory);
+        });
+      }finally{if(!renamed)await unlink(temporary).catch(error=>{if(error.code!=='ENOENT')throw error;});}
       return this.snapshot(credential);
     });this.tail=task.catch(()=>{});return task;
   }
