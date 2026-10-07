@@ -28,6 +28,12 @@ test('service reserves session capacity atomically for starts and replay imports
       const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       return { status: response.status, data: await response.json() };
     };
+    for(const value of [null,[],"text",7]){
+      const invalidBody=await post('/api/matches',value);
+      assert.equal(invalidBody.status,400);
+      assert.equal(invalidBody.data.code,'INVALID_BODY');
+      assert.equal(invalidBody.data.error,'Request body must be a JSON object');
+    }
     const config = await fetch(base + '/api/config?agents=2').then(r => r.json());
     const invalid = await post('/api/matches', { config: { ...config, max_turns: 0 } });
     assert.equal(invalid.status, 400);

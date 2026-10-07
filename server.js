@@ -58,7 +58,9 @@ async function body(req, limit = 1_000_000) {
   const tooLarge = () => { req.resume(); return Object.assign(new Error('Request exceeds the supported size'), { status: 413 }); };
   if (Number(req.headers['content-length']) > limit) throw tooLarge();
   for await (const chunk of req.iterator({ destroyOnReturn: false })) { length += chunk.length; if (length > limit) throw tooLarge(); chunks.push(chunk); }
-  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+  const value=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):{};
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Object.assign(new Error('Request body must be a JSON object'),{status:400,code:'INVALID_BODY'});
+  return value;
 }
 async function persist(replay) {
   await withStorageFailure('replay archive',async()=>{
