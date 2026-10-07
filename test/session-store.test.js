@@ -31,6 +31,34 @@ test('restart restores verified state and inference reservations before continui
  assert.equal((await store.load())[0].replay.match_id,second.replay.match_id);
 });
 
+test('a pre-rename checkpoint failure rolls the Rust engine back to the last durable turn',async t=>{
+ const core=new Core();t.after(()=>core.stop());
+ const session=randomUUID();let saves=0;
+ const store={save:async()=>{if(++saves===2)throw Object.assign(new Error('disk full'),{status:503});}};
+ const runtime=new MatchRuntime(store),{replay}=await core.request({command:'start',session,config:await core.request({command:'defaults',count:2})});
+ await assert.rejects(runtime.step(core,session,{expected_turn:0}),{status:503});
+ const restored=await core.request({command:'get',session});
+ assert.equal(restored.replay.final_state.turn,replay.final_state.turn);
+ assert.deepEqual(restored.replay,replay);
+ const retry=await runtime.step(core,session,{expected_turn:0});
+ assert.equal(retry.replay.final_state.turn,1,'the unchanged turn can safely be retried');
+});
+
+test('a post-rename directory-sync failure retains and exposes the committed transition',async t=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-step-sync-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const session=randomUUID();let syncs=0;
+ const store=new SessionStore(directory,{syncFolder:async()=>{if(++syncs===2)throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}});
+ const core=new Core();t.after(()=>core.stop());
+ const runtime=new MatchRuntime(store);
+ await core.request({command:'start',session,config:await core.request({command:'defaults',count:2})});
+ let failure;
+ try{await runtime.step(core,session,{expected_turn:0});}catch(error){failure=error;}
+ assert.equal(failure?.durable_write_completed,true);
+ assert.equal(failure?.committed_result?.replay.final_state.turn,1);
+ assert.equal((await core.request({command:'get',session})).replay.final_state.turn,1);
+ assert.equal((await store.load())[0].replay.final_state.turn,1);
+});
+
 test('queued checkpoints retain submission order and reject corrupt metadata',async t=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-store-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const store=new SessionStore(directory),session=randomUUID(),budget=new InferenceBudget().snapshot();

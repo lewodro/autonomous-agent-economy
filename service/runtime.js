@@ -31,7 +31,20 @@ export class MatchRuntime {
         if(adapted){const defaults=await core.request({command:'decide',session});decisions=adapted.map((d,i)=>d||defaults.decisions[i]);}
       }
       const result=await core.request({command:'step',session,decisions,expected_turn:expected});
-      await this.checkpoint(session,result.replay);
+      try{await this.checkpoint(session,result.replay);}
+      catch(error){
+        if(error?.durable_write_completed){
+          // The snapshot rename succeeded but the directory sync failed. Keep
+          // the engine aligned with the readable checkpoint and let the HTTP
+          // layer publish this committed transition before returning the error.
+          error.committed_result=result;
+        }else{
+          // The previous replay remains authoritative when the write failed
+          // before rename. Do not let memory advance beyond durable state.
+          await core.request({command:'import',session,replay:current.replay});
+        }
+        throw error;
+      }
       return result;
     }finally{delete this.budget(session).persist;this.busy.delete(session);}
   }

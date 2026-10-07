@@ -380,7 +380,19 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && match[2] === 'step') {
         if(production&&!hasHostCookie(req,session))return json(res,403,{error:'Only the match host can advance this game'});
         const data = await body(req);
-        const result = await runtime.step(core,session,data);
+        let result;
+        try{result=await runtime.step(core,session,data);}
+        catch(error){
+          // A post-rename directory-sync failure means the engine transition
+          // is readable and committed, even though the request reports that
+          // durability could not be confirmed. Keep live viewers in sync.
+          const committed=error?.committed_result;
+          if(committed){
+            if(sessions.get(session)?.kind==='free')sessions.set(session,{kind:'free',replay:committed.replay});
+            liveEvents.publish(session,committed);
+          }
+          throw error;
+        }
         if(sessions.get(session)?.kind==='free')sessions.set(session,{kind:'free',replay:result.replay});
         liveEvents.publish(session,result);
         if(result.replay.final_state.ended)await persist(result.replay);

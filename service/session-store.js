@@ -12,15 +12,25 @@ export class SessionStore {
   save(session,replay,budget){
     const target=this.file(session),bytes=JSON.stringify({format:1,session,replay,budget});
     const prior=this.pending.get(session)||Promise.resolve();
-    const writing=prior.catch(()=>{}).then(()=>withStorageFailure('match session',async()=>{
-      await mkdir(this.directory,{recursive:true});
-      const temp=`${target}.${randomUUID()}.tmp`;
+    const writing=prior.catch(()=>{}).then(async()=>{
+      let renamed=false;
       try {
-        const file=await open(temp,'wx',0o600);
-        try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
-        await rename(temp,target);await this.syncFolder(this.directory);
-      } finally {await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
-    }));
+        await withStorageFailure('match session',async()=>{
+          await mkdir(this.directory,{recursive:true});
+          const temp=`${target}.${randomUUID()}.tmp`;
+          try {
+            const file=await open(temp,'wx',0o600);
+            try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
+            await rename(temp,target);renamed=true;await this.syncFolder(this.directory);
+          } finally {await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
+        });
+      } catch(error) {
+        // A directory-sync error happens after rename: the new snapshot is
+        // readable, although crash durability could not be confirmed.
+        if(renamed)error.durable_write_completed=true;
+        throw error;
+      }
+    });
     this.pending.set(session,writing);
     void writing.finally(()=>{if(this.pending.get(session)===writing)this.pending.delete(session);}).catch(()=>{});
     return writing;
