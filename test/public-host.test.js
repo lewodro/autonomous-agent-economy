@@ -59,6 +59,9 @@ test('public games are visible after restart while only the host can advance the
     const bob = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
     assert.equal(alice.status, 201); assert.equal(bob.body.players.length, 2);
     assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 900, y: 100 } })).status, 403);
+    const reconnect = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', session_token: alice.body.session_token, position: { x: 900, y: 100 } });
+    assert.deepEqual(reconnect.body.player.position, { x: 100, y: 100 }, 'a valid reconnect must preserve the server position');
+    assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: '../bob', position: { x: 100, y: 100 } })).status, 400);
     const table = await request(running.base, '/api/world/table'); assert.equal(table.body.status, 'empty');
     const aliceSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
     const bobSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });

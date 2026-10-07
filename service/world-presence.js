@@ -28,7 +28,7 @@ export class WorldPresenceService {
     if (!world) { world = new Map(); this.worlds.set(worldId, world); }
     return world;
   }
-  snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, ...player }) => player) }; }
+  snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, lastMoveAt, ...player }) => player) }; }
   sanitizePosition(position) {
     const x = Number(position?.x), y = Number(position?.y);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > this.bounds.width || y > this.bounds.height) {
@@ -41,7 +41,7 @@ export class WorldPresenceService {
     if (typeof avatar !== 'string' || !IDENTIFIER.test(avatar)) throw fail('INVALID_AVATAR', 'Avatar is invalid');
     return avatar;
   }
-  publicPlayer(player) { const { token, lastUpdateAt, ...value } = player; return value; }
+  publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, ...value } = player; return value; }
   emit(worldId, type, payload) {
     const event = { type, world_id: worldId, ...payload };
     for (const res of this.listeners.get(worldId) || []) {
@@ -51,19 +51,21 @@ export class WorldPresenceService {
   }
   join(worldId, input = {}) {
     const world = this.world(worldId); this.prune(worldId);
-    const id = input.player_id && IDENTIFIER.test(input.player_id) ? input.player_id : `player_${randomUUID()}`;
+    if(input.player_id!==undefined&&(typeof input.player_id!=='string'||!IDENTIFIER.test(input.player_id)))throw fail('INVALID_PLAYER','Player identity is invalid');
+    const id = input.player_id || `player_${randomUUID()}`;
     const existing = world.get(id);
     if (existing && !equalSecret(existing.token, input.session_token)) {
       throw fail('PRESENCE_NOT_AUTHORIZED', 'Player identity is already active', 403);
     }
     if (!existing && world.size >= this.maxPlayers) throw fail('WORLD_FULL', 'This world is full', 429);
-    const position = this.sanitizePosition(input.position || { x: 160, y: 180 });
+    // A reconnect may refresh public metadata, but only movement commands can change position.
+    const position = existing ? existing.position : this.sanitizePosition(input.position || { x: 160, y: 180 });
     const now = this.now();
     const player = {
-      player_id: id, avatar: this.sanitizeAvatar(input.avatar), position,
-      direction: DIRECTIONS.has(input.direction) ? input.direction : 'down',
-      animation_state: 'idle', activity: typeof input.activity === 'string' ? input.activity.slice(0, 80) : 'Exploring',
-      updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now
+      player_id: id, avatar: input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar), position,
+      direction: DIRECTIONS.has(input.direction) ? input.direction : existing?.direction||'down',
+      animation_state: 'idle', activity: typeof input.activity === 'string' ? input.activity.slice(0, 80) : existing?.activity||'Exploring',
+      updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now,lastMoveAt:existing?.lastMoveAt??existing?.lastUpdateAt??now
     };
     world.set(id, player);
     this.emit(worldId, existing ? 'PlayerUpdated' : 'PlayerJoined', { player: this.publicPlayer(player) });
@@ -78,13 +80,13 @@ export class WorldPresenceService {
   }
   move(worldId, { player_id, session_token, position, direction, animation_state }) {
     const player = this.requirePlayer(worldId, player_id, session_token), now = this.now();
-    if (now - player.lastUpdateAt < this.minUpdateMs) throw fail('PRESENCE_RATE_LIMITED', 'Move updates are limited', 429);
+    if (now - player.lastMoveAt < this.minUpdateMs) throw fail('PRESENCE_RATE_LIMITED', 'Move updates are limited', 429);
     const next = this.sanitizePosition(position);
-    const elapsed = Math.max(1, now - player.lastUpdateAt);
+    const elapsed = Math.max(1, now - player.lastMoveAt);
     const distance = Math.hypot(next.x - player.position.x, next.y - player.position.y);
     if (distance > Math.max(24, elapsed * 0.32)) throw fail('INVALID_POSITION', 'Movement exceeded the world speed limit');
     player.position = next; player.direction = DIRECTIONS.has(direction) ? direction : player.direction;
-    player.animation_state = ANIMATIONS.has(animation_state) ? animation_state : 'idle'; player.lastUpdateAt = now; player.updated_at = new Date(now).toISOString();
+    player.animation_state = ANIMATIONS.has(animation_state) ? animation_state : 'idle'; player.lastUpdateAt = now;player.lastMoveAt=now;player.updated_at = new Date(now).toISOString();
     this.emit(worldId, 'PlayerMoved', { player: this.publicPlayer(player) });
     return { player: this.publicPlayer(player) };
   }
