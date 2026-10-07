@@ -49,4 +49,4 @@ The earlier in-memory table-session prototype is intentionally not mounted. Ther
 
 ## Predictions
 
-`DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.
+`DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Startup rejects `PREDICTIONS_ENABLED=true` because the feature is not mounted yet. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.
