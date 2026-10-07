@@ -63,7 +63,7 @@ export class Renderer implements GameRenderer {
       if(a.id===this.selected||a.id===this.hovered){this.rect(p.x-36,p.y+54,72,3,color);}
       if(pose?.flash){this.rect(x-36,y-44,72,72,'#eac5a3');}
       if(a.alive||pose?.animation==='eliminating'){c.globalAlpha=pose?.alpha??1;const image=this.images.get(profile.sprite);if(image?.complete&&image.naturalWidth)c.drawImage(image,Math.round(x-size/2),Math.round(y-size/2-8+idle),size,size);else{this.rect(x-15,y-30,30,32,color);this.rect(x-10,y-23,5,5,'#363135');this.rect(x+5,y-23,5,5,'#363135');}}
-      else {c.globalAlpha=.28;const image=this.images.get(profile.sprite);if(image?.complete)c.drawImage(image,p.x-size/2,p.y-size/2-8,size,size);c.globalAlpha=1;this.text('OUT',p.x,p.y+7,14,'#d5a597');}
+      else {c.globalAlpha=.28;const image=this.images.get(profile.sprite);if(image?.complete&&image.naturalWidth>0&&image.naturalHeight>0)c.drawImage(image,p.x-size/2,p.y-size/2-8,size,size);c.globalAlpha=1;this.text('OUT',p.x,p.y+7,14,'#d5a597');}
       c.globalAlpha=1;
       this.text(`${this.favorite.has(a.id)?'★ ':''}${profile.name.slice(0,n>8?9:16)}`,p.x,p.y-size/2-19,n>8?10:20,a.alive?color:'#9d9690');
       this.rect(p.x-31,p.y+32,62,7,'#302e30');this.rect(p.x-30,p.y+33,60*Math.min(1,this.displayCredits(a.id,a.credits)/profile.starting_credits),5,a.alive?color:'#736562');
