@@ -13,6 +13,8 @@ quick start live in the repository [README](../README.md).
 | [Integrations](integrations/) | Local MCP server setup and orchestration boundary | [MCP arenas](integrations/mcp-arena.md) |
 | [Research](research/) | Dated audits, balance runs, implementation-pass notes | [Balance report](research/balance.md) |
 
+For the first-visit session model and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
+
 Screenshots and visual references remain alongside this index. Balance run data is
 in [`research/balance/`](research/balance/); architecture JSON examples are in
 [`architecture/`](architecture/).

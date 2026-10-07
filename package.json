@@ -33,6 +33,7 @@
     "demo:funded-local": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo --",
     "economy:reconcile": "cargo run --manifest-path rust/Cargo.toml --locked --bin funded-local-demo -- --reconcile",
     "doctor": "node scripts/doctor.js",
+    "data:reset": "node scripts/reset-demo-data.js",
     "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --",
     "examples:check": "node scripts/validate-examples.js",
     "assets:build": "node scripts/build-agent-sprites.js",
