@@ -4,7 +4,7 @@ import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { parseSettings, SPRITES } from '../web/dist/world/sprites.js';
-import { NpcController, npcSpawnPosition } from '../web/dist/world/npc.js';
+import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
@@ -58,8 +58,9 @@ test('camera remains inside the map',()=>{
 test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
   assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(settings))),settings);
-  assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'explorer');
+  assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'visitor_ember');
   assert.equal(new Set(SPRITES.map(s=>s.id)).size,24);
+  assert.deepEqual(SPRITES.filter(s=>s.id.startsWith('visitor_')).map(s=>s.id),['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
   const animated=SPRITES.find(s=>s.id==='visitor_ember');assert.deepEqual(animated.animations.walk_up,[9,10,11]);
 });
 test('NPC controller moves presence without changing strategy or economic fields',()=>{
@@ -68,19 +69,13 @@ test('NPC controller moves presence without changing strategy or economic fields
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
 });
-test('NPC routes maintain personal space while all agents walk to the Arena',()=>{
- const actors=Array.from({length:20},(_,index)=>({...actor(npcSpawnPosition(index)),id:`npc-${index}`,type:'npc'}));
- const controllers=actors.map((_,index)=>new NpcController(index)),reached=new Set();let minSeparation=Infinity;
- for(let frame=0;frame<6000;frame++){
-  for(let index=0;index<actors.length;index++){
-   controllers[index].update(actors[index],.1,actors);
-   if(actors[index].activity==='Waiting outside the Arena')reached.add(index);
-  }
-  for(let i=0;i<actors.length;i++)for(let j=i+1;j<actors.length;j++)
-   minSeparation=Math.min(minSeparation,Math.hypot(actors[i].position.x-actors[j].position.x,actors[i].position.y-actors[j].position.y));
- }
- assert.ok(minSeparation>=24,`NPCs should not occupy the same space; minimum ${minSeparation}`);
- assert.equal(reached.size,20,'all NPCs should still reach the Arena entrance');
+test('plaza keeps six visitors, excludes fighters and reserves space for finishers',()=>{
+ const profiles=Array.from({length:20},(_,index)=>({id:`agent-${index}`,arenaStatus:index<2?'finished':index<6?'fighting':'queued'}));
+ const selected=selectPlazaAgents(profiles,['agent-10','agent-11']);
+ assert.equal(selected.length,MAX_PLAZA_AGENTS);
+ assert.deepEqual(selected.slice(0,2).map(profile=>profile.id),['agent-0','agent-1']);
+ assert.ok(selected.every(profile=>profile.arenaStatus!=='fighting'));
+ assert.ok(selected.some(profile=>profile.id==='agent-10'),'existing plaza visitors should keep their place');
 });
 test('all twenty current agent profiles have safe, separated world spawn positions',()=>{
  const positions=Array.from({length:20},(_,index)=>npcSpawnPosition(index));
@@ -90,17 +85,17 @@ test('all twenty current agent profiles have safe, separated world spawn positio
   for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
  }
 });
-test('NPC Arena activity follows a reachable entrance waypoint',()=>{
- for(let index=0;index<20;index++){
-  const npc={...actor(npcSpawnPosition(index)),type:'npc'},control=new NpcController(index);let arrived=false,resumed=false;
-  for(let frame=0;frame<4000;frame++){
-   const before={...npc.position};control.update(npc,.1);assert.ok(!collides(npc.position));
-   if(npc.activity==='Waiting outside the Arena')arrived=true;
-   if(arrived&&npc.activity==='Walking through the plaza'&&Math.hypot(npc.position.x-before.x,npc.position.y-before.y)>.1){resumed=true;break;}
-  }
-  assert.equal(arrived,true,`agent spawn ${index} should reach the Arena entrance`);
-  assert.equal(resumed,true,`agent spawn ${index} should resume its plaza route`);
+test('finished agent exits from the Arena and returns to a plaza route',()=>{
+ const start=arenaExitPosition(0),npc={...actor(start),type:'npc',activity:'Leaving the Arena'},control=new NpcController(0,true);
+ assert.equal(collides(start),false);let returned=false;
+ for(let frame=0;frame<200;frame++){
+  const before={...npc.position};control.update(npc,.1);
+  assert.equal(collides(npc.position),false);
+  if(npc.activity==='Back in the plaza · match complete')returned=true;
+  if(Math.hypot(npc.position.x-before.x,npc.position.y-before.y)>0)assert.notEqual(npc.activity,'Fighting');
+  if(returned)break;
  }
+ assert.equal(returned,true,'the post-match visitor should visibly reach the plaza');
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
  const visitor=actor({x:10,y:20}),nearby={...actor({x:100,y:20}),type:'npc'},distant={...actor({x:500,y:20}),type:'npc'};

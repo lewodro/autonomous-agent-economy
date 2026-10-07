@@ -4,7 +4,7 @@ import { moveActor, followCamera } from './movement.js';
 import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
-import { NpcController, npcSpawnPosition } from './npc.js';
+import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents } from './npc.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 import { mountTable } from './table.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -44,19 +44,34 @@ function showProfile(id:string):void {
   const actions=text('div','');actions.className='profile-actions';link('View all agents','/arena#agents',actions);
   if(profile.roomId)link('Watch current match',`/arena/${profile.roomId.startsWith('rps')?'rps':'tictactoe'}/${profile.roomId}`,actions);
 }
-async function showArchive():Promise<void> {
-  const version=show('Research archive');text('p','Loading verified match history…');
+async function showResearch():Promise<void> {
+  const version=show('Arena research');text('p','Loading verified arena statistics…');
   try{
-    const matches=await gateway.history();if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();
-    text('p','Completed server matches only. Downloads include the replayable simulation ledger. Older epochs rotate after the retained window.');
-    if(!matches.length)text('p','No completed matches yet. Visit the Arena and come back shortly.');
-    for(const match of matches.slice(0,20)){
-      const row=text('article',`${match.game.toUpperCase()} · ${match.id} · ${match.players.map(a=>a.name).join(' vs ')}`);row.className='archive-row';
-      text('p',match.result==='draw'?'Draw':`Winner: ${match.players[match.result==='a'?0:1]!.name}`,row);
-      link('Watch this room',`/arena/${match.game}/${match.roomId}`,row);link('Download JSON',match.logUrl,row);
-      const details=text('details','',row);text('summary','Structured move history',details);text('pre',JSON.stringify(match.moves,null,2),details);
+    const [stats,matches]=await Promise.all([gateway.statistics(),gateway.history()]);
+    if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();
+    text('p',`Live totals from ${stats.scope}. ${stats.updated_at?`Last completed match: ${new Date(stats.updated_at).toLocaleString()}.`:'No completed matches recorded yet.'}`);
+    const totals=text('div','');totals.className='research-totals';
+    for(const [label,value] of [['Completed matches',stats.totals.matches],['Recorded decisions',stats.totals.decisions],['Draws',stats.totals.draws]] as [string,number][]){
+      const item=text('article','',totals);text('strong',String(value),item);text('span',label,item);
     }
-  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The archive is unavailable. Close this panel and try again.');}}
+    text('h3','Games recorded');
+    for(const [game,label] of [['rps','Rock Paper Scissors'],['tictactoe','Tic-Tac-Toe']] as const){
+      const summary=stats.games[game];const row=text('p',`${label} · ${summary.matches} matches · ${summary.decisions} decisions · ${summary.draws} draws`);row.className='research-game';
+    }
+    text('h3','Agent standings · retained runs');
+    if(!stats.agents.length)text('p','No completed matches yet. Visit the Arena and return after the first result.');
+    for(const [index,agent] of stats.agents.slice(0,10).entries()){
+      const row=text('article',`${String(index+1).padStart(2,'0')} · ${agent.name}`);row.className='research-agent';
+      text('p',`${agent.wins} wins · ${agent.matches} matches · ${agent.win_rate}% win rate · ${agent.strategy}`,row);
+      link('Inspect agent in the world',`/world?agent=${encodeURIComponent(agent.id)}`,row);
+    }
+    text('h3','Latest verified results');
+    for(const match of matches.slice(0,6)){
+      const row=text('article',`${match.game.toUpperCase()} · ${match.players.map(a=>a.name).join(' vs ')}`);row.className='archive-row';
+      text('p',match.result==='draw'?'Draw':`Winner: ${match.players[match.result==='a'?0:1]!.name}`,row);
+      link('Watch room',`/arena/${match.game}/${match.roomId}`,row);link('Download run',match.logUrl,row);
+    }
+  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','Arena statistics are temporarily unavailable. Close this panel and try again.');}}
 }
 function portal():void {
   persist();resetInput();emit({type:'world:entered-arena',actorId:player.id});document.body.classList.add('leaving');
@@ -65,22 +80,58 @@ function portal():void {
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
-  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showArchive();
+  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();
   else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
-function presetButtons():void {
+interface AvatarAsset {id:string;name:string;sheet:string;preview:string;frameWidth:number;frameHeight:number;columns:number;rows:number;approved:boolean;placeholder?:boolean;debug?:boolean}
+let approvedAvatarAssets:AvatarAsset[]|null=null;
+async function transparentImage(url:string,width:number,height:number):Promise<boolean>{
+  const image=new Image();image.src=url;await image.decode();
+  if(image.naturalWidth!==width||image.naturalHeight!==height)return false;
+  const sample=document.createElement('canvas');sample.width=width;sample.height=height;
+  const context=sample.getContext('2d',{willReadFrequently:true});if(!context)return false;
+  context.drawImage(image,0,0);const pixels=context.getImageData(0,0,width,height).data;
+  for(let alpha=3;alpha<pixels.length;alpha+=4)if(pixels[alpha]!<255)return true;
+  return false;
+}
+async function avatarCatalog():Promise<AvatarAsset[]> {
+  if(approvedAvatarAssets)return approvedAvatarAssets;
+  const response=await fetch('/assets/avatars/index.json',{signal:AbortSignal.timeout(5000)});
+  if(!response.ok)throw new Error('Avatar catalog unavailable');
+  const catalog=await response.json() as {version?:number;avatars?:AvatarAsset[]};
+  if(catalog.version!==1||!Array.isArray(catalog.avatars))throw new Error('Avatar catalog invalid');
+  const eligible=catalog.avatars.filter(asset=>asset.approved===true&&asset.placeholder!==true&&asset.debug!==true
+    &&!/(placeholder|debug|invalid)/i.test(asset.id)&&AVATARS.includes(asset.id)
+    &&SPRITES.some(sprite=>sprite.id===asset.id&&sprite.sheet===asset.sheet&&sprite.preview===asset.preview
+      &&sprite.frameWidth===asset.frameWidth&&sprite.frameHeight===asset.frameHeight));
+  const checked:AvatarAsset[]=[];
+  for(const asset of eligible){
+    try{
+      const sheetOk=await transparentImage(asset.sheet,asset.frameWidth*asset.columns,asset.frameHeight*asset.rows);
+      const previewOk=await transparentImage(asset.preview,256,256);
+      if(sheetOk&&previewOk)checked.push(asset);
+    }catch{/* Broken previews stay out of the character picker. */}
+  }
+  approvedAvatarAssets=checked;return checked;
+}
+async function presetButtons():Promise<void> {
   const presets=$('avatar-presets');
-  for(const id of AVATARS){
+  let assets:AvatarAsset[];
+  try{assets=await avatarCatalog();}catch{assets=[];}
+  const valid=new Set(assets.map(asset=>asset.id));
+  for(const button of presets.querySelectorAll<HTMLButtonElement>('button'))if(!valid.has(button.dataset.avatar||''))button.remove();
+  for(const asset of assets){
+    const {id,name,preview}=asset;
     let button=presets.querySelector<HTMLButtonElement>(`[data-avatar="${id}"]`);
     if(!button){
       button=document.createElement('button');button.type='button';button.dataset.avatar=id;
-      const image=document.createElement('img');const sprite=SPRITES.find(s=>s.id===id)!;image.src=sprite.preview||sprite.sheet;image.alt='';button.append(image,document.createTextNode(id.replace('visitor_','').toUpperCase()));
+      const image=document.createElement('img');image.src=preview;image.alt='';button.append(image,document.createTextNode(name.toUpperCase()));
       button.onclick=()=>{player.spriteId=id;presetButtons();persist();};presets.append(button);
     }
     button.setAttribute('aria-pressed',String(player.spriteId===id));
   }
 }
-$('avatar-change').onclick=()=>{resetInput();presetButtons();character.showModal();};
+$('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
@@ -105,24 +156,30 @@ canvas.addEventListener('pointerdown',event=>{
   const actor=npcs.find(a=>Math.hypot(point.x-a.position.x,point.y-a.position.y)<30);
   if(actor&&Math.hypot(player.position.x-actor.position.x,player.position.y-actor.position.y)<=72)void interact({id:actor.agentId!,type:'agent',position:actor.position,radius:72,label:`Inspect ${actor.name}`});
 });
-function addNpc(profile:AgentProfile,index:number):void {
+function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:'Walking through the plaza',recentWinner:profile.recentWinner});
-  controllers.set('npc-'+profile.id,new NpcController(index));
-  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} agents in the plaza. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; research archive south.`);
+  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',recentWinner:profile.recentWinner});
+  controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena));
+  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza. Agents fighting are inside the Arena. Use WASD or arrow keys to move, E to interact. Free table southwest; arena statistics south.`);
 }
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
   try{
-    profiles=await gateway.getAgentProfiles();if(!npcs.length)profiles.forEach(addNpc);
-    for(const npc of npcs)npc.recentWinner=profiles.find(a=>a.id===npc.agentId)?.recentWinner||false;
+    profiles=await gateway.getAgentProfiles();
+    const selected=selectPlazaAgents(profiles,npcs.map(npc=>npc.agentId||'')),selectedIds=new Set(selected.map(profile=>profile.id));
+    for(let index=npcs.length-1;index>=0;index--)if(!selectedIds.has(npcs[index]!.agentId||'')){controllers.delete(npcs[index]!.id);npcs.splice(index,1);}
+    selected.forEach((profile,index)=>{
+      const existing=npcs.find(npc=>npc.agentId===profile.id);
+      if(!existing)addNpc(profile,index,profile.arenaStatus==='finished');
+      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished'&&existing.movementState==='idle')existing.activity='Back in the plaza · match complete';}
+    });
     connection.textContent='ARENA ONLINE · SIMULATION';
     const directory=$('agent-directory'),current=new Set<string>();
     for(const profile of profiles){
       const id='directory-agent-'+profile.id;current.add(id);
       let b=document.getElementById(id) as HTMLButtonElement|null;
       if(!b){b=document.createElement('button');b.id=id;b.onclick=()=>showProfile(profile.id);directory.append(b);}
-      b.textContent=profile.name;
+      b.textContent=`${profile.name} · ${profile.arenaStatus.toUpperCase()}${profile.roomId?` · ${profile.roomId.toUpperCase()}`:''}`;
     }
     for(const b of directory.querySelectorAll<HTMLButtonElement>('button'))if(!current.has(b.id))b.remove();
     if(requestedAgent&&entered){showProfile(requestedAgent);requestedAgent=null;}
@@ -158,5 +215,5 @@ if(location.pathname==='/labs/world'){
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);
 }
-presetButtons();try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-if(!entered)character.showModal();else canvas.focus();void refreshProfiles();raf=requestAnimationFrame(frame);
+try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
+void presetButtons().then(()=>{if(!entered)character.showModal();else canvas.focus();void refreshProfiles();raf=requestAnimationFrame(frame);});

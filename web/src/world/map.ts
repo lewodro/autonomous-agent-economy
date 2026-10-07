@@ -3,7 +3,7 @@ export const MAP = { width: 1152, height: 864, tile: 32, spawn: { x: 560, y: 480
 export interface Building extends Rect { name: string; color: string }
 export const BUILDINGS: Building[] = [
   { x: 112, y: 120, width: 256, height: 176, name: 'AGENT HOUSE', color: '#9e7154' },
-  { x: 704, y: 120, width: 240, height: 176, name: 'RESEARCH LAB', color: '#71938b' },
+  { x: 704, y: 120, width: 240, height: 176, name: 'RESEARCH HOUSE', color: '#71938b' },
   { x: 800, y: 448, width: 256, height: 192, name: 'ARENA', color: '#b18355' },
 ];
 export const TREES: Position[] = [
@@ -19,7 +19,7 @@ export const WALLS: Rect[] = [...BUILDINGS,
 export const LANDMARKS: Interactable[] = [
   { id: 'arena-door', type: 'arena', position: { x: 928, y: 674 }, radius: 72, label: 'Enter Arena' },
   { id: 'plaza-table', type: 'table', position: { x: 224, y: 609 }, radius: 68, label: 'Sit · free Tic-Tac-Toe' },
-  { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open research archive' },
+  { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open arena statistics' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < 40 + radius || position.y < 64 + radius || position.x > MAP.width - 40 - radius || position.y > MAP.height - 40 - radius) return true;

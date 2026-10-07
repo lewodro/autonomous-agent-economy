@@ -19,6 +19,11 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.ok(pool.log(snapshot.room.runId).state.events.length>0,'verified event ledger remains available through the log route');
   assert.ok(await verifyProof(rps));assert.ok(verifyTicTacToeProof(ttt));
   const profiles=pool.profiles();assert.equal(profiles.reduce((sum,a)=>sum+a.matches,0),4);
+  assert.ok(profiles.some(profile=>profile.arenaStatus==='finished'),'completed participants remain associated with their room briefly');
+  const statistics=pool.statistics();assert.equal(statistics.totals.matches,2);
+  assert.equal(statistics.games.rps.matches,1);assert.equal(statistics.games.rps.decisions,2);
+  assert.equal(statistics.games.tictactoe.matches,1);assert.equal(statistics.games.tictactoe.decisions,ttt.moves.length);
+  assert.equal(statistics.agents.reduce((sum,agent)=>sum+agent.matches,0),4);
   const history=pool.history();assert.equal(history.length,2);
   for(const profile of profiles){
     if(!profile.latestMatch){assert.equal(profile.recentWinner,false);continue;}
@@ -31,6 +36,18 @@ test('bounded rooms execute existing RPS/TTT rules and restore verified ledgers'
   assert.deepEqual(restored.history(),history);assert.deepEqual(restored.profiles(),profiles);
   assert.throws(()=>pool.getRoom('missing'),/not found/);
   pool.close();restored.close();
+});
+test('recently finished agents remain visible in the plaza when their room starts another fight',async()=>{
+  const pool=new ArenaRoomPool(await mkdtemp(path.join(os.tmpdir(),'arena-finish-flow-')),{stageMs:0});await pool.restore();
+  await pool.step('rps-1');const room=pool.rooms.get('rps-1'),finished=room.current.players.slice();
+  const nextPair=Array.from({length:20},(_,index)=>`agent-${index+1}`).filter(id=>!finished.includes(id)).slice(0,2);
+  room.current={players:nextPair};room.status='live';room.phase='action';
+  const active=new Set(room.current.players),profiles=pool.profiles();
+  for(const id of finished.filter(agentId=>!active.has(agentId))){
+    const profile=profiles.find(agent=>agent.id===id);assert.equal(profile.arenaStatus,'finished');assert.equal(profile.roomId,'rps-1');
+  }
+  for(const id of active)assert.equal(profiles.find(agent=>agent.id===id).arenaStatus,'fighting');
+  pool.close();
 });
 test('a corrupt persisted result cannot become profile research or a payout',async()=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'arena-corrupt-'));

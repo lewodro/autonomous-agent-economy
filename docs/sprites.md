@@ -1,6 +1,18 @@
 # World sprites and avatar kit
 
-The world loads sprites from a manifest in `web/src/world/sprites.ts`. Actor logic stores a registered `spriteId`; it never infers actor identity or behavior from a filename. The complete agent portraits in `assets/sprites-agent` remain the NPC art source. The avatar selection also uses the four assembled examples in `assets/aae_avatar_kit/examples`.
+The world loads only registered sprite URLs from `web/src/world/sprites.ts`. Actor logic stores a registered `spriteId`; it never infers actor identity or behavior from a filename. Character selection is additionally gated by `assets/avatars/index.json`: only approved entries with valid transparent PNG previews/sheets and a matching code allowlist appear. Placeholder, debug, invalid, missing, non-PNG, and opaque previews are excluded.
+
+## Asset folders
+
+| Folder | Purpose |
+|---|---|
+| `assets/avatars/raw/` | Drop original visitor/avatar art here; preserve the supplied source. |
+| `assets/avatars/clean/` | Approved transparent visitor sheets and previews referenced by `index.json`. |
+| `assets/sprites-agent/` | Original 16×16 agent portraits. Keep source art unchanged. |
+| `assets/agents/` | Generated transparent agent PNGs used by the game and world renderer. |
+| `assets/spritesheets/` | Future exported animation sheets and frame metadata. |
+
+Agent portraits currently arrive with a dark opaque matte. Run `npm run assets:build` to make a transparent derivative in `assets/agents/`; this removes only the connected dark-navy border region and never overwrites originals. Run `npm run assets:check` to validate dimensions, alpha, metadata, picker registration and generated outputs. New sprite sheets should be transparent RGBA PNGs with consistent frame dimensions and explicit row/column animation metadata. The visitor manifest currently expects a 3×4 grid of 32×32 frames and a 256×256 preview.
 
 ## Animated sheet format
 
@@ -24,4 +36,4 @@ The source avatar layers are 96×128 transparent sheets aligned to the same grid
 3. Add a preset ID to `AVATARS` only if it is appropriate for visitor selection. Keep NPC `agentId` separate from `spriteId`.
 4. Check that an absent/invalid local avatar setting falls back to a registered preset. Run `npm test` and `npm run test:browser:world`.
 
-The current portrait sprites are single-frame 16×16 images. They are intentionally mapped to idle and walking states until directional art is provided; the visitor kit includes the first animated directional sheets.
+The current portraits are single-frame 16×16 images. They are intentionally mapped to idle and walking states until directional art is provided; the four approved visitor avatars have directional 32×32 sheets. The picker uses those four visitor assets only; agent portraits remain world/NPC art, not character-select options.

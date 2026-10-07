@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "avatars": [
+    { "id": "visitor_ember", "name": "Ember", "sheet": "/assets/avatars/clean/ember.png", "preview": "/assets/avatars/clean/ember_preview.png", "frameWidth": 32, "frameHeight": 32, "columns": 3, "rows": 4, "approved": true },
+    { "id": "visitor_atlas", "name": "Atlas", "sheet": "/assets/avatars/clean/atlas.png", "preview": "/assets/avatars/clean/atlas_preview.png", "frameWidth": 32, "frameHeight": 32, "columns": 3, "rows": 4, "approved": true },
+    { "id": "visitor_nova", "name": "Nova", "sheet": "/assets/avatars/clean/nova.png", "preview": "/assets/avatars/clean/nova_preview.png", "frameWidth": 32, "frameHeight": 32, "columns": 3, "rows": 4, "approved": true },
+    { "id": "visitor_echo", "name": "Echo", "sheet": "/assets/avatars/clean/echo.png", "preview": "/assets/avatars/clean/echo_preview.png", "frameWidth": 32, "frameHeight": 32, "columns": 3, "rows": 4, "approved": true }
+  ]
+}

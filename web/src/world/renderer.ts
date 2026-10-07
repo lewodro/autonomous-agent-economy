@@ -53,7 +53,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(let n=1;n<3;n++){rect(204+n*12,542,2,24,'#493f38');rect(200,538+n*10,44,2,'#493f38');}
     rect(208,590,30,10,'#946f52');rect(208,511,30,10,'#946f52');
     rect(480,720,160,32,'#776951');rect(492,701,136,43,'#243f3e');rect(501,711,118,18,'#83a98b');
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('RESEARCH ARCHIVE',560,770);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('ARENA STATISTICS',560,770);
     c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,445);
     // Decorative trees live outside circulation routes.
     for(const {x,y} of TREES){

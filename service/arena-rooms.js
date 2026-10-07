@@ -9,12 +9,13 @@ import { withStorageFailure } from './http-error.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const MAX_STEP_RETRIES = 3;
+const RECENT_FINISH_MS = 15_000;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
   constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -30,11 +31,19 @@ export class ArenaRoomPool {
           if(run.state.matches.some(m=>(m.type||'rps')!==game))throw new Error(`Arena game mismatch: ${id}`);
         }
       } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};
-      this.rooms.set(id,{saved,state:structuredClone(saved.state),phase:'waiting',status:'waiting',current:null});
+      const state=structuredClone(saved.state),latest=state.matches.filter(match=>match.status==='settled').at(-1);
+      const lastCompletedAt=latest?Date.parse(completionTime({run:{state},match:latest})):0;
+      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0});
+      if(latest&&Number.isFinite(lastCompletedAt)&&Date.now()-lastCompletedAt<RECENT_FINISH_MS){
+        for(const agentId of latest.players)this.recentFinishes.set(agentId,{roomId:id,at:lastCompletedAt});
+      }
     }
   }
   listRooms() {
-    return [...this.rooms.entries()].map(([id,r])=>({id,game:r.saved.game,status:r.status,phase:r.phase,mode:'simulation',runId:r.saved.runId,
+    const now=Date.now();
+    return [...this.rooms.entries()].map(([id,r])=>({id,game:r.saved.game,
+      status:r.finishedAt&&now-r.finishedAt<RECENT_FINISH_MS&&['finished','resetting','waiting'].includes(r.status)?'finished':r.status,
+      phase:r.phase,mode:'simulation',runId:r.saved.runId,
       matchId:r.current?.id||null,participants:(r.current?.players||[]).map(pid=>{
         const a=r.state.agents.find(a=>a.id===pid);return {id:pid,name:a.name,sprite:a.sprite};
       }),url:`/arena/${r.saved.game}/${id}`}));
@@ -59,13 +68,32 @@ export class ArenaRoomPool {
       const wins=entries.filter(({match})=>match.result!=='draw'&&match.players[match.result==='a'?0:1]===base.id).length;
       const draws=entries.filter(({match})=>match.result==='draw').length;
       const latest=entries.at(-1);
-      const live=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
+      const active=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
+      const recent=this.recentFinishes.get(base.id);
+      const recentRoom=recent&&Date.now()-recent.at<RECENT_FINISH_MS&&!active?recent.roomId:null;
+      if(recent&&!recentRoom)this.recentFinishes.delete(base.id);
+      const linked=active||this.listRooms().find(r=>r.status==='finished'&&r.participants.some(a=>a.id===base.id))||
+        (recentRoom?{id:recentRoom,status:'finished'}:undefined);
       return {id:base.id,name:base.name,sprite:base.sprite,strategy:base.strategy,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
         recentWinner:!!latest&&latest.match.result!=='draw'&&latest.match.players[latest.match.result==='a'?0:1]===base.id,
-        roomId:live?.id||null,
+        roomId:linked?.id||null,arenaStatus:active?'fighting':linked?.status==='finished'?'finished':'queued',
         memory:entries.slice(-6).map(({run,match})=>({...run.state.agents.find(a=>a.id===base.id).memory.find(m=>m.matchId===match.id),runId:run.runId,game:run.game})),
         latestMatch:latest?{runId:latest.run.runId,matchId:latest.match.id,game:latest.run.game}:null};
     });
+  }
+  statistics() {
+    const runs=this.runs(),matches=runs.flatMap(run=>run.state.matches.filter(match=>match.status==='settled').map(match=>({run,match})));
+    const summarize=game=>{
+      const entries=matches.filter(({run})=>run.game===game);
+      return {matches:entries.length,draws:entries.filter(({match})=>match.result==='draw').length,
+        decisions:entries.reduce((sum,{match})=>sum+(game==='tictactoe'?match.moves.length:Object.keys(match.reveals||{}).length),0)};
+    };
+    const agents=this.profiles().filter(agent=>agent.matches>0).map(agent=>({...agent,win_rate:Math.round(agent.wins/agent.matches*1000)/10}))
+      .sort((a,b)=>b.wins-a.wins||b.matches-a.matches||a.name.localeCompare(b.name));
+    const completedAt=matches.map(({run,match})=>completionTime({run,match})).filter(Boolean).sort().at(-1)||null;
+    return {scope:'verified retained arena runs',updated_at:completedAt,totals:{matches:matches.length,
+      decisions:summarize('rps').decisions+summarize('tictactoe').decisions,
+      draws:matches.filter(({match})=>match.result==='draw').length},games:{rps:summarize('rps'),tictactoe:summarize('tictactoe')},agents};
   }
   history() {
     return this.runs().reverse().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
@@ -92,12 +120,13 @@ export class ArenaRoomPool {
       room.saved={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
       room.state=structuredClone(room.saved.state);
     }
-    room.status='starting';room.running=true;
+    room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
     const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
       room.phase=phase;room.current=match;room.status=phase==='settle'?'finished':'live';
       if(this.stageMs)await this.delay(this.stageMs);
     },onSave:()=>this.checkpoint(room)});
-    try {await orchestrator.step(null,room.saved.game);room.status='finished';}
+    try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
+      for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}
   }

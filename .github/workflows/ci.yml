@@ -24,6 +24,8 @@ jobs:
       - run: npm run check
       - run: npm run docs:check
       - run: npm run examples:check
+      - run: npm run assets:build
+      - run: npm run assets:check
       - run: npm run verify:production
         env:
           NODE_ENV: production
