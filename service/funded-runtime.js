@@ -58,6 +58,12 @@ export class FundedRuntime {
    else if(action==='fund-all'){const current=await this.command(session,'get');for(const id of current.economy.economy.required_agents)result=await fund(id);}
    else result=await this.command(session,action);
    await this.runtime.checkpoint(session,result.replay);return this.publish(result);
+  }catch(error){
+   // FundedHost persists financial transitions independently of the auxiliary
+   // replay checkpoint. If that checkpoint fails, refresh scheduler/spectator
+   // state from Rust so a committed cancel/settlement is not left stale here.
+   try{this.publish(await this.command(session,'get'));}catch{}
+   throw error;
   }finally{this.busy.delete(session);}
  }
  start(){if(this.timer||process.env.FUNDED_AUTO_RUN==='0')return;this.timer=setInterval(()=>{if(!this.activeTick)this.activeTick=this.tick().then(()=>{this.activeTick=null;},()=>{this.activeTick=null;});},250);this.timer.unref();}

@@ -44,3 +44,24 @@ test('a worker error after durable host creation still attempts guarded cleanup'
  assert.deepEqual(removed,[calls[0].session]);
  assert.equal(sessions.size,0);
 });
+
+test('a committed cancellation refreshes scheduler and spectators after checkpoint failure',async()=>{
+ const sessions=new Map(),published=[];
+ const state=(economyState)=>({session:'funded-session',replay:{match_id:'match-a',final_state:{turn:0,ended:false}},economy:{economy:{state:economyState,payment_mode:'mock'},events:[]}});
+ let authoritative=state('funding');
+ const core={request:async request=>{
+  if(request.action==='cancel')return authoritative=state('refunded');
+  if(request.action==='get')return structuredClone(authoritative);
+  throw Error(`unexpected ${request.action}`);
+ }};
+ const runtime={busy:new Set(),checkpoint:async()=>{throw Object.assign(Error('disk full'),{code:'ENOSPC'});}};
+ const host=new FundedRuntime(core,runtime,{publishEconomy:(session,economy)=>published.push({session,economy})},sessions);
+ host.remember(state('funding'));
+
+ await assert.rejects(host.act('funded-session','cancel'),{code:'ENOSPC'});
+
+ assert.equal(host.matches.get('funded-session').economy.economy.state,'refunded');
+ assert.equal(published.at(-1).session,'funded-session');
+ assert.equal(published.at(-1).economy.economy.state,'refunded');
+ assert.equal(host.busy.has('funded-session'),false);
+});
