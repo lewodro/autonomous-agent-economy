@@ -11,6 +11,22 @@ test('provider transport blocks remote plaintext in production and retains local
   assert.throws(()=>validateProviderTransport('https://user:pass@provider.example/v1',{production:true}),/without embedded credentials/);
 });
 
+test('production model adapter refuses a remote HTTP endpoint before sending credentials',async()=>{
+  const keys=['NODE_ENV','MODEL_BASE_URL','MODEL_API_KEY_ENV','OPENAI_API_KEY'];
+  const saved=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  const originalFetch=globalThis.fetch;let requests=0;
+  process.env.NODE_ENV='production';process.env.MODEL_BASE_URL='http://provider.example/v1';process.env.MODEL_API_KEY_ENV='OPENAI_API_KEY';process.env.OPENAI_API_KEY='test-only-secret';
+  globalThis.fetch=async()=>{requests++;throw new Error('must not send credentials over HTTP');};
+  try{
+    const adapter=new HttpModelAdapter({id:'agent',provider:'openai-compatible',model:'test',prompt:'',personality:''},new InferenceBudget());
+    await assert.rejects(adapter.decide({agents:[]}),/must use HTTPS/);
+    assert.equal(requests,0);
+  }finally{
+    globalThis.fetch=originalFetch;
+    for(const key of keys){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
+  }
+});
+
 test('untrusted profiles cannot choose a credential destination or server secret', async () => {
   const originalFetch = globalThis.fetch;
   const saved = Object.fromEntries(['MODEL_BASE_URL', 'MODEL_API_KEY_ENV', 'OPENAI_API_KEY'].map(k => [k, process.env[k]]));
