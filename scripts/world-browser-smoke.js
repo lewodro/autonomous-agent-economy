@@ -112,5 +112,13 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
- console.log('PASS world: character, NPC profile, live render loop, arena routes, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
+ await send('Page.navigate',{url:base+'/profile/'});await wait('location.pathname==="/profile/"&&document.getElementById("guest")');
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'owner profile must fit a phone viewport');
+ await evaluate('document.getElementById("guest").click()');await wait('!document.getElementById("create-panel").classList.contains("hidden")');
+ await evaluate("const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Browser Agent';form.requestSubmit()");
+ await wait("document.getElementById('agents').textContent.includes('Browser Agent')");
+ assert.ok(await evaluate("document.getElementById('agents').textContent.includes('read_only')"),'new agents must default to read-only treasury policy');
+ assert.equal(await evaluate("document.getElementById('agents').textContent.includes('private_key')"),false);
+ assert.deepEqual(errors,[]);
+ console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, agent creation and read-only treasury');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}

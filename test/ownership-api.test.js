@@ -5,6 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {generateKeyPairSync,sign} from 'node:crypto';
+import {createServer as createNetServer} from 'node:net';
 import {encodeBase58} from '../service/wallet-auth.js';
 
 test('owner API supports guest and wallet identity, private agent management, and restart persistence',async t=>{
@@ -48,4 +49,22 @@ test('owner API supports guest and wallet identity, private agent management, an
   await stop();base=undefined;await start();
   const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
  }finally{await stop();}
+});
+
+test('production-shaped free deployment serves the profile and sets secure owner sessions',async t=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'aae-owner-production-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const reservation=createNetServer();await new Promise((resolve,reject)=>{reservation.once('error',reject);reservation.listen(0,'127.0.0.1',resolve);});
+ const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+ const child=spawn(process.execPath,['server.js'],{cwd:path.resolve('.'),env:{...process.env,NODE_ENV:'production',APP_MODE:'free',SOLANA_NETWORK:'none',HOST:'127.0.0.1',PORT:String(port),PUBLIC_ORIGIN:'https://ci.example',MATCHES_DIR:directory,HOST_SESSION_SECRET:'production-shape-secret-0123456789abcdef'},stdio:['ignore','pipe','pipe']});
+ let output='',stderr='';child.stdout.on('data',chunk=>output+=chunk.toString());child.stderr.on('data',chunk=>stderr+=chunk.toString());
+ t.after(async()=>{if(child.exitCode===null){child.kill('SIGTERM');await new Promise(resolve=>{const timeout=setTimeout(resolve,5000);child.once('exit',()=>{clearTimeout(timeout);resolve();});});}});
+ const until=Date.now()+10_000;while(!output.includes('server_started')&&Date.now()<until){if(child.exitCode!==null)throw Error(`production-shaped server exited: ${stderr}`);await new Promise(resolve=>setTimeout(resolve,25));}
+ assert.ok(output.includes('server_started'),`production-shaped service failed startup: ${stderr}`);
+ const base=`http://127.0.0.1:${port}`,headers={Host:'ci.example'};
+ const page=await fetch(base+'/profile/',{headers});assert.equal(page.status,200);
+ const health=await fetch(base+'/api/health',{headers}).then(response=>response.json());assert.equal(health.mainnet_agent_funding_enabled,false);assert.equal(health.mainnet_match_wagering_enabled,false);
+ const response=await fetch(base+'/api/auth/anonymous',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});
+ assert.equal(response.status,201);assert.match(response.headers.get('set-cookie')||'',/; HttpOnly; SameSite=Strict;.*Secure/);
+ const cookie=response.headers.get('set-cookie').split(';')[0];
+ const me=await fetch(base+'/api/me',{headers:{...headers,Cookie:cookie}});assert.equal(me.status,200);
 });
