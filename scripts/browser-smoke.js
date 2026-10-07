@@ -6,12 +6,14 @@ const targets = await fetch((process.env.CHROME_DEBUG_URL||'http://127.0.0.1:932
 const target = targets.find(t => t.type === 'page');
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
-let id = 0; const pending = new Map(); const errors = [];
-ws.addEventListener('message', event => { const msg = JSON.parse(event.data); if (msg.id) { const p = pending.get(msg.id); pending.delete(msg.id); msg.error ? p.reject(msg.error) : p.resolve(msg.result); } if (msg.method === 'Runtime.exceptionThrown') errors.push(msg.params.exceptionDetails.text); });
+let id = 0; const pending = new Map(); const errors = [], failedRequests = [], requestUrls = new Map();
+ws.addEventListener('message', event => { const msg = JSON.parse(event.data); if (msg.id) { const p = pending.get(msg.id); pending.delete(msg.id); msg.error ? p.reject(msg.error) : p.resolve(msg.result); } if (msg.method === 'Runtime.exceptionThrown') { const detail=msg.params.exceptionDetails; errors.push({text:detail.text,url:detail.url,line:detail.lineNumber,column:detail.columnNumber,exception:detail.exception?.description}); } if(msg.method==='Network.requestWillBeSent')requestUrls.set(msg.params.requestId,msg.params.request.url);if(msg.method==='Network.loadingFailed')failedRequests.push({url:requestUrls.get(msg.params.requestId),error:msg.params.errorText});if(msg.method==='Network.responseReceived'&&msg.params.response.status>=400)failedRequests.push({url:msg.params.response.url,status:msg.params.response.status}); });
 const send = (method, params = {}) => new Promise((resolve, reject) => { const n = ++id; pending.set(n, { resolve, reject }); ws.send(JSON.stringify({ id: n, method, params })); });
 const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
 const wait = async expression => { for (let i = 0; i < 200; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('Timed out: ' + expression); };
-await send('Runtime.enable'); await send('Page.enable');
+await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Discard prior diagnostics from a reused DevTools tab before measuring this run.
+await send('Page.navigate',{url:'about:blank'});await wait("location.href==='about:blank'");errors.length=0;failedRequests.length=0;requestUrls.clear();
 const expected=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../docs/architecture/example-match.json',import.meta.url),'utf8'));
 const base=process.env.GAME_URL||'http://localhost:3000';
 await send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
@@ -96,7 +98,8 @@ const frames=await evaluate("new Promise(resolve=>{const samples=[];let last=per
 const sorted=frames.slice().sort((a,b)=>a-b);const performanceReport={scene:'20 agents',samples:frames.length,mean_frame_ms:frames.reduce((a,b)=>a+b,0)/frames.length,p95_frame_ms:sorted[Math.floor(sorted.length*.95)],mode:'live animation',reduced_motion:false};
 await writeFile(path.join(os.tmpdir(),'last-seat-performance.json'),JSON.stringify(performanceReport,null,2));console.log(performanceReport);
 await evaluate("document.getElementById('play').click()");await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});assert.equal(await evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"),true);
-assert.deepEqual(errors,[]);
+assert.deepEqual(failedRequests.filter(request=>request.url?.includes('/assets/')),[],JSON.stringify({assetResponses:failedRequests.filter(request=>request.url?.includes('/assets/'))}));
+assert.deepEqual(errors,[],JSON.stringify({failedRequests}));
 // A second client owns the simulation; this browser is strictly a live viewer.
 const liveConfig=await fetch(base+'/api/config?agents=2').then(r=>r.json());
 const owner=await fetch(base+'/api/matches',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:liveConfig})}).then(r=>r.json());
