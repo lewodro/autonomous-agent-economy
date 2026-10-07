@@ -4,7 +4,7 @@ async function request(route,options={}){
  const response=await fetch(route,{credentials:'same-origin',...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
  const value=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(value.error||'Request failed'),{code:value.code,status:response.status});return value;
 }
-async function idempotentAgentCreate(route,config,slot){
+async function idempotentAgentRequest(route,config,slot){
  const serialized=JSON.stringify(config),storageKey=`aae-agent-create-v1:${slot}`;let key;
  try{const pending=JSON.parse(sessionStorage.getItem(storageKey)||'null');key=pending?.config===serialized?pending.key:null;}catch{}
  key||=crypto.randomUUID();
@@ -35,7 +35,7 @@ async function refresh(){
   if(!agents.length){const empty=document.createElement('p');empty.textContent='No agents yet. Create your first one above.';roster.append(empty);}
   agents.forEach(agent=>showAgent(agent,roster));
   const mockFunding=capabilities.ownership.mock_agent_funding;
-  for(const [index,agent] of agents.entries())if(mockFunding){const card=roster.children[index];const fund=button('Add 100 mock credits',async()=>{try{await request(`/api/me/agents/${agent.id}/mock-fund`,{method:'POST',body:JSON.stringify({amount:100})});await refresh();message('Mock credits recorded. No blockchain transaction occurred.');}catch(error){message(error.message);}});card.querySelector('.actions').append(fund);}
+  for(const [index,agent] of agents.entries())if(mockFunding){const card=roster.children[index];const fund=button('Add 100 mock credits',async event=>{const control=event.currentTarget;control.disabled=true;try{await idempotentAgentRequest(`/api/me/agents/${agent.id}/mock-fund`,{amount:100},`fund:${agent.id}`);await refresh();message('Mock credits recorded. No blockchain transaction occurred.');}catch(error){message(error.message);}finally{control.disabled=false;}});card.querySelector('.actions').append(fund);}
  }catch(error){
   byId('identity').textContent='No signed-in identity.';
   if(error.status===401){byId('create-panel').classList.add('hidden');byId('logout').classList.add('hidden');}
@@ -59,7 +59,7 @@ byId('logout').addEventListener('click',async()=>{try{await request('/api/auth/l
 byId('create-form').addEventListener('submit',async event=>{
  event.preventDefault();const form=new FormData(event.currentTarget),config=Object.fromEntries(form.entries());
  const submit=event.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;
- try{await idempotentAgentCreate('/api/me/agents',config,'create');await refresh();message('Agent created. It is yours, free, and uses the mock strategy provider.');}
+ try{await idempotentAgentRequest('/api/me/agents',config,'create');await refresh();message('Agent created. It is yours, free, and uses the mock strategy provider.');}
  catch(error){message(error.message);}finally{submit.disabled=false;}
 });
 byId('import-agent').addEventListener('change',async event=>{
@@ -67,7 +67,7 @@ byId('import-agent').addEventListener('change',async event=>{
  event.currentTarget.disabled=true;
  try{if(file.size>8192)throw new Error('Agent file must be 8 KB or smaller.');const config=JSON.parse(await file.text());
   if(!config||typeof config!=='object'||Array.isArray(config))throw new Error('Agent file must contain a JSON object.');
-  await idempotentAgentCreate('/api/me/agents/import',config,'import');await refresh();message('Agent imported and assigned to this profile. No claimed owner or secret fields are accepted.');
+  await idempotentAgentRequest('/api/me/agents/import',config,'import');await refresh();message('Agent imported and assigned to this profile. No claimed owner or secret fields are accepted.');
  }catch(error){message(error.message);}finally{event.currentTarget.disabled=false;event.currentTarget.value='';}
 });
 async function loadAvatars(){

@@ -44,7 +44,10 @@ test('owner API supports guest and wallet identity, private agent management, an
   const publicPage=await call('/api/agents?limit=1');assert.equal(publicPage.value.agents.length,1);assert.equal(publicPage.value.next_cursor,id);
   const nextPublicPage=await call(`/api/agents?limit=1&after=${encodeURIComponent(publicPage.value.next_cursor)}`);assert.equal(nextPublicPage.value.agents.length,1);assert.equal(nextPublicPage.value.next_cursor,null);
   assert.equal((await call('/api/agents?limit=101')).response.status,400);
-  const funded=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,body:JSON.stringify({amount:123})});assert.equal(funded.value.treasury.available_base_units,'123');
+  const fundingKey=randomUUID(),fundingBody=JSON.stringify({amount:123});
+  const funded=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(funded.value.treasury.available_base_units,'123');
+  const fundingRetry=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(fundingRetry.value.receipt.id,funded.value.receipt.id);assert.equal(fundingRetry.value.treasury.available_base_units,'123');
+  const missingFundingKey=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,body:fundingBody});assert.equal(missingFundingKey.response.status,400);assert.equal(missingFundingKey.value.code,'IDEMPOTENCY_KEY_REQUIRED');
   const isolated=await call('/api/auth/anonymous',{method:'POST',body:'{}'});
   assert.equal((await call(`/api/me/agents/${id}/export`,{cookie:isolated.cookie})).response.status,404);
 
@@ -58,6 +61,7 @@ test('owner API supports guest and wallet identity, private agent management, an
   await stop();base=undefined;await start();
   const retriedAfterRestart=await call('/api/me/agents',{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':createKey},body:createBody});assert.equal(retriedAfterRestart.response.status,201);assert.equal(retriedAfterRestart.value.agent.id,id);
   const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
+  const fundingRetryAfterRestart=await call(`/api/me/agents/${id}/mock-fund`,{method:'POST',cookie:guest.cookie,headers:{'Idempotency-Key':fundingKey},body:fundingBody});assert.equal(fundingRetryAfterRestart.value.receipt.id,funded.value.receipt.id);assert.equal(fundingRetryAfterRestart.value.treasury.available_base_units,'123');
   for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,201);
   assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,429);
   assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'198.51.100.30'}})).response.status,201,'one visitor rate limit must not block other addresses');

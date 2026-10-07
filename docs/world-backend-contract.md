@@ -67,6 +67,7 @@ not merged automatically. The server issues an HttpOnly owner cookie.
 | `POST /api/me/agents` | Create a mock-strategy agent using an approved avatar ID; requires UUID v4 `Idempotency-Key` header |
 | `POST /api/me/agents/import` | Import only `aae-agent-v1` JSON fields; executable code, owner IDs, and credentials are rejected; requires UUID v4 `Idempotency-Key` header |
 | `GET /api/me/agents/:agentId/export` | Download non-secret agent config, only for its owner |
+| `POST /api/me/agents/:agentId/mock-fund` | Add mock credits only in `APP_MODE=mock`; requires UUID v4 `Idempotency-Key` header |
 | `GET /api/agents?limit=50&after=:agentId` | Public sanitized directory page (1–100 items); returns `agents` and `next_cursor` |
 | `GET /api/agents/:agentId` | Public sanitized agent profile; no owner ID, treasury, credentials, or private key |
 
@@ -79,13 +80,14 @@ agents are not yet automatically inserted into arena/NPC rosters. Mainnet
 agent funding, withdrawal, and mainnet wagering are disabled. See
 [`mainnet.md`](mainnet.md) before integrating these APIs into world UI.
 
-Both agent creation endpoints require an `Idempotency-Key` header containing a
-UUID v4. The server binds that key to the signed-in owner, endpoint kind, and
-normalized configuration. An identical retry within 24 hours returns the
-original agent; using the same key for different configuration returns
-`409 IDEMPOTENCY_KEY_REUSED`. This covers a lost HTTP response without making
-the browser authoritative or creating duplicate agents. Older format-1 owner
-snapshots without operation records are upgraded on the next successful write.
+Agent creation, import, and mock-funding endpoints require an
+`Idempotency-Key` header containing a UUID v4. The server binds that key to the
+signed-in owner, operation kind, and normalized request. An identical retry
+within 24 hours returns the original agent or funding receipt; using the same
+key for different settings returns `409 IDEMPOTENCY_KEY_REUSED`. This covers a
+lost HTTP response without making the browser authoritative or duplicating an
+agent or mock credit. Older format-1 owner snapshots without operation records
+are upgraded on the next successful write.
 
 ## Predictions
 

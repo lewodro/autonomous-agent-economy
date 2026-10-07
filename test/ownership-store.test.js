@@ -86,14 +86,25 @@ test('agent import accepts only the public schema and export excludes ownership 
 
 test('mock funding persists an auditable simulated receipt and rejects duplicate configuration fields',async t=>{
  const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
- const first=await store.mockFund(owner.id,agent.id,250);
+ const key=requestKey(),first=await store.mockFund(owner.id,agent.id,250,{idempotencyKey:key});
+ const retry=await store.mockFund(owner.id,agent.id,250,{idempotencyKey:key});
+ assert.equal(retry.receipt.id,first.receipt.id);assert.equal(retry.treasury.available_base_units,'250');
+ await assert.rejects(store.mockFund(owner.id,agent.id,251,{idempotencyKey:key}),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});
  assert.equal(first.treasury.available_base_units,'250');assert.equal(first.receipt.status,'simulated');
  const reopened=new OwnershipStore(dir);await reopened.init();
  const restored=reopened.agentForOwner(owner.id,agent.id);
  assert.equal(restored.treasury.available_base_units,'250');assert.equal(restored.treasury.receipts.length,1);
- await assert.rejects(store.mockFund('other-owner',agent.id,250),{code:'AGENT_NOT_FOUND'});
+ const afterRestart=await reopened.mockFund(owner.id,agent.id,250,{idempotencyKey:key});assert.equal(afterRestart.receipt.id,first.receipt.id);
+ await assert.rejects(store.mockFund('other-owner',agent.id,250,{idempotencyKey:requestKey()}),{code:'AGENT_NOT_FOUND'});
  const persisted=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  assert.equal(JSON.stringify(persisted).includes('private_key'),false);
+});
+
+test('simultaneous mock funding retries create one credit receipt',async t=>{
+ const {store}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),key=requestKey();
+ const results=await Promise.all(Array.from({length:8},()=>store.mockFund(owner.id,agent.id,100,{idempotencyKey:key})));
+ assert.equal(new Set(results.map(result=>result.receipt.id)).size,1);
+ assert.equal(store.agentForOwner(owner.id,agent.id).treasury.available_base_units,'100');
 });
 
 test('spending defaults to read-only and autonomous budgets remain unavailable',async t=>{
@@ -112,9 +123,17 @@ test('corrupt or internally inconsistent ownership snapshots fail closed',async 
  const reopened=new OwnershipStore(dir);await assert.rejects(reopened.init(),/Invalid agent treasury record/);
 });
 
+test('operation snapshots cannot associate a retry key with another owner agent',async t=>{
+ const {store,dir}=await fixture(t),owner=await store.createAnonymous(),other=await store.createAnonymous();
+ await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
+ const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));snapshot.operations[0].owner_id=other.id;
+ const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));
+ const reopened=new OwnershipStore(dir);await assert.rejects(reopened.init(),/Invalid agent operation idempotency record/);
+});
+
 test('persisted mock balances must reconcile exactly with unique receipts',async t=>{
  const {store,dir}=await fixture(t),owner=await store.createAnonymous(),agent=await store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()});
- await store.mockFund(owner.id,agent.id,25);
+ await store.mockFund(owner.id,agent.id,25,{idempotencyKey:requestKey()});
  const snapshot=JSON.parse(await readFile(path.join(dir,'state.json'),'utf8'));
  snapshot.agents[0].treasury.receipts[0].amount='24';
  const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),JSON.stringify(snapshot));

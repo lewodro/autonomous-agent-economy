@@ -32,7 +32,7 @@ function validateAgentInput(value,approvedAvatars,{importing=false}={}){
 }
 function validateState(state){
  if(state?.format!==1||!Array.isArray(state.owners)||!Array.isArray(state.agents)||!Array.isArray(state.operations)||state.owners.length>10_000||state.agents.length>100_000||state.operations.length>MAX_IDEMPOTENCY_RECORDS)throw new Error('Invalid ownership store format or capacity');
- const owners=new Set(),wallets=new Set(),agents=new Set(),receipts=new Set();
+ const owners=new Set(),wallets=new Set(),agents=new Set(),agentOwners=new Map(),receipts=new Set(),receiptOwners=new Map();
  for(const owner of state.owners){
   if(!/^[a-f0-9-]{36}$/.test(owner.id)||owners.has(owner.id)||!['anonymous','solana'].includes(owner.identity_type)||typeof owner.created_at!=='string')throw new Error('Invalid owner record');
   owners.add(owner.id);
@@ -51,14 +51,15 @@ function validateState(state){
   let receiptTotal=0n;
   for(const receipt of treasury.receipts){
    if(typeof receipt.id!=='string'||receipts.has(receipt.id)||receipt.agent_id!==agent.id||receipt.owner_id!==agent.owner_id||receipt.network!=='mock'||receipt.currency!=='MOCK_CREDIT'||receipt.status!=='simulated'||typeof receipt.amount!=='string'||!/^[1-9][0-9]*$/.test(receipt.amount)||receipt.capability!=='mock_funding'||typeof receipt.created_at!=='string'||Number.isNaN(Date.parse(receipt.created_at)))throw new Error('Invalid agent treasury receipt');
-   receipts.add(receipt.id);receiptTotal+=BigInt(receipt.amount);
+   receipts.add(receipt.id);receiptOwners.set(receipt.id,{agent_id:agent.id,owner_id:agent.owner_id});receiptTotal+=BigInt(receipt.amount);
   }
   if(treasury.network==='mock'&&receiptTotal!==BigInt(treasury.available_base_units))throw new Error('Mock treasury balance does not match its receipts');
-  agents.add(agent.id);
+  agents.add(agent.id);agentOwners.set(agent.id,agent.owner_id);
  }
  const operationKeys=new Set();
  for(const operation of state.operations){
-  if(!/^[a-f0-9]{64}$/.test(operation.key)||operationKeys.has(operation.key)||!owners.has(operation.owner_id)||!['create','import'].includes(operation.kind)||!/^[a-f0-9]{64}$/.test(operation.request_hash)||!agents.has(operation.agent_id)||typeof operation.created_at!=='string'||Number.isNaN(Date.parse(operation.created_at)))throw new Error('Invalid agent creation idempotency record');
+  const receiptOwner=operation.receipt_id===undefined?null:receiptOwners.get(operation.receipt_id);
+  if(!/^[a-f0-9]{64}$/.test(operation.key)||operationKeys.has(operation.key)||!owners.has(operation.owner_id)||!['create','import','mock_fund'].includes(operation.kind)||!/^[a-f0-9]{64}$/.test(operation.request_hash)||!agents.has(operation.agent_id)||agentOwners.get(operation.agent_id)!==operation.owner_id||typeof operation.created_at!=='string'||Number.isNaN(Date.parse(operation.created_at))||(operation.kind==='mock_fund'?(receiptOwner?.agent_id!==operation.agent_id||receiptOwner?.owner_id!==operation.owner_id):operation.receipt_id!==undefined))throw new Error('Invalid agent operation idempotency record');
   operationKeys.add(operation.key);
  }
 }
@@ -138,14 +139,21 @@ export class OwnershipStore{
    state.agents.push(agent);state.operations.push({key:operationKey,owner_id:ownerId,kind,request_hash:requestHash,agent_id:id,created_at:createdAt});return agent;
   });
  }
- async mockFund(ownerId,id,units){
+ async mockFund(ownerId,id,units,{idempotencyKey}={}){
   if(!Number.isSafeInteger(units)||units<1||units>1_000_000)throw Object.assign(new Error('Mock funding must be 1–1,000,000 test credits'),{status:400,code:'INVALID_MOCK_AMOUNT'});
+  if(typeof idempotencyKey!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(idempotencyKey))throw Object.assign(new Error('A UUID v4 Idempotency-Key is required'),{status:400,code:'IDEMPOTENCY_KEY_REQUIRED'});
+  const kind='mock_fund',operationKey=sha256(`${ownerId}\0${kind}\0${idempotencyKey}`),requestHash=sha256(JSON.stringify({kind,agent_id:id,units}));
   return this.mutate(state=>{
+   const now=this.now();state.operations=state.operations.filter(operation=>Date.parse(operation.created_at)>now-IDEMPOTENCY_TTL_MS);
    const agent=state.agents.find(value=>value.id===id&&value.owner_id===ownerId);if(!agent)throw Object.assign(new Error('Agent not found'),{status:404,code:'AGENT_NOT_FOUND'});
+   const previous=state.operations.find(operation=>operation.key===operationKey);
+   if(previous){if(previous.request_hash!==requestHash)throw Object.assign(new Error('Idempotency key was already used for another funding request'),{status:409,code:'IDEMPOTENCY_KEY_REUSED'});const receipt=agent.treasury.receipts.find(value=>value.id===previous.receipt_id);if(!receipt)throw new Error('Mock funding idempotency record is inconsistent');return {treasury:agent.treasury,receipt};}
+   if(state.operations.length>=MAX_IDEMPOTENCY_RECORDS)throw Object.assign(new Error('Funding retry capacity reached; try again later'),{status:503,code:'IDEMPOTENCY_STORE_CAPACITY'});
+   if(agent.treasury.receipts.length>=100_000)throw Object.assign(new Error('Agent receipt capacity reached'),{status:503,code:'AGENT_RECEIPT_CAPACITY'});
    const treasury=agent.treasury,balance=BigInt(treasury.available_base_units)+BigInt(units);if(balance>BigInt(Number.MAX_SAFE_INTEGER))throw Object.assign(new Error('Mock balance limit reached'),{status:409,code:'BALANCE_LIMIT'});
    treasury.network='mock';treasury.currency='MOCK_CREDIT';treasury.available_base_units=balance.toString();
-   const receipt={id:`mock-${randomUUID()}`,agent_id:id,owner_id:ownerId,capability:'mock_funding',amount:String(units),currency:'MOCK_CREDIT',network:'mock',transaction_reference:null,status:'simulated',created_at:new Date(this.now()).toISOString()};
-   treasury.receipts.push(receipt);return {treasury,receipt};
+   const createdAt=new Date(now).toISOString(),receipt={id:`mock-${randomUUID()}`,agent_id:id,owner_id:ownerId,capability:'mock_funding',amount:String(units),currency:'MOCK_CREDIT',network:'mock',transaction_reference:null,status:'simulated',created_at:createdAt};
+   treasury.receipts.push(receipt);state.operations.push({key:operationKey,owner_id:ownerId,kind,request_hash:requestHash,agent_id:id,receipt_id:receipt.id,created_at:createdAt});return {treasury,receipt};
   });
  }
  async setSpendingPolicy(ownerId,id,input){

@@ -164,7 +164,7 @@ const server = http.createServer(async (req, res) => {
       if(action==='transactions'&&req.method==='GET')return json(res,200,{transactions:agent.treasury.receipts});
       if(action==='mock-fund'&&req.method==='POST'){
         if(appMode!=='mock')return json(res,409,{error:'Simulated credits are available only in mock mode',code:'MOCK_MODE_REQUIRED'});
-        const data=await body(req,1024),result=await ownershipStore.mockFund(ownerId,id,data.amount);
+        const data=await body(req,1024),result=await ownershipStore.mockFund(ownerId,id,data.amount,{idempotencyKey:req.headers['idempotency-key']});
         console.log(JSON.stringify({event:'agent_mock_funded',network:'mock'}));return json(res,200,result);
       }
       if(action==='spending-policy'&&req.method==='POST')return json(res,200,{spending_policy:await ownershipStore.setSpendingPolicy(ownerId,id,await body(req,2048))});
