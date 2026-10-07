@@ -48,7 +48,10 @@ async function serverUrl(child){
 }
 async function waitForDevTools(profile,chrome){
   let lastError;
-  for(let attempt=0;attempt<100;attempt++){
+  // Chrome can take longer to create DevToolsActivePort on a cold GitHub
+  // runner, especially while the parallel Rust job is compiling. Allow a
+  // full minute before treating startup as a CI failure.
+  for(let attempt=0;attempt<300;attempt++){
     if(chrome.spawnError)throw new Error(`Chrome could not start: ${chrome.spawnError.message}`);
     if(chrome.exitCode!==null||chrome.signalCode!==null)throw new Error(`Chrome exited before DevTools became ready:\n${chrome.output()}`);
     try{
@@ -68,7 +71,7 @@ try{
   const server=launch(process.execPath,[path.join(root,'server.js')],{cwd:root,env:{...process.env,PORT:'0',MATCHES_DIR:path.join(directory,'matches'),WORLD_LAB:'1'}});
   const base=await serverUrl(server);
   const profile=path.join(directory,'chrome');
-  const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${profile}`,'about:blank']);
+  const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--disable-background-networking','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${profile}`,'about:blank']);
   await waitFor(`${base}/api/health`,'Axile server',[server]);
   const [servedApp,builtApp]=await Promise.all([fetch(`${base}/web/dist/world/app.js`).then(response=>response.text()),readFile(path.join(root,'web/dist/world/app.js'),'utf8')]);
   if(servedApp!==builtApp)throw new Error(`Browser test server is not serving this worktree's built app (response ${servedApp.length} bytes, local bundle ${builtApp.length} bytes). Server output: ${server.output()}`);
