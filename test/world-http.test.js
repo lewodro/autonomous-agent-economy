@@ -50,11 +50,12 @@ test('SIGTERM drains an in-flight table write before stopping the service',{time
   const port=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Server startup failed: '+errors)),6000);child.once('exit',()=>{clearTimeout(timer);reject(new Error(errors));});child.stdout.on('data',b=>{const value=b.toString().match(/localhost:(\d+)/)?.[1];if(value){clearTimeout(timer);resolve(Number(value));}});});
   const socket=net.createConnection({host:'127.0.0.1',port});
   await once(socket,'connect');
+  socket.setTimeout(8_000,()=>socket.destroy(new Error('Timed out waiting for the drained table response')));
   const response=new Promise((resolve,reject)=>{let bytes='';socket.on('data',chunk=>bytes+=chunk);socket.on('end',()=>resolve(bytes));socket.on('error',reject);});
   socket.write(`POST /api/world/table/join HTTP/1.1\r\nHost: localhost:${port}\r\nContent-Type: application/json\r\nContent-Length: 16\r\nConnection: close\r\n\r\n{`);
-  await new Promise(resolve=>setTimeout(resolve,40));
+  await new Promise(resolve=>setTimeout(resolve,150));
   child.kill('SIGTERM');
-  await new Promise(resolve=>setTimeout(resolve,40));
+  await new Promise((resolve,reject)=>{const deadline=Date.now()+5_000;const check=()=>{if(logs.includes('"event":"server_shutdown_started"'))return resolve();if(child.exitCode!==null)return reject(new Error(`Server exited before drain began: ${errors}`));if(Date.now()>deadline)return reject(new Error(`Shutdown did not begin: ${logs}`));setTimeout(check,10);};check();});
   socket.write('"mode":"human"}');
   const result=await response;
   assert.match(result,/HTTP\/1\.1 200/);
