@@ -25,13 +25,13 @@ SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "ma
 
 ## Arena and research
 
-Shared room pages open a room-scoped spectator lease on entry, heartbeat every 15 seconds, and close it when the user follows the room's return link. Refresh preserves the same session-scoped identity and does not create a second viewer. Unexpected tab closure leaves a lease that expires after 45 seconds. The lobby's spectator count is derived from these server leases; it is never estimated by the browser.
+Shared room pages open a room-scoped spectator lease on entry, heartbeat every 15 seconds, and close it when the user follows the room's return link. The server assigns the spectator ID on first join; clients cannot reserve someone else's ID. Refresh resumes with the returned ID and token and does not create a second viewer. Unexpected tab closure leaves a lease that expires after 45 seconds. The lobby's spectator count is derived from these server leases; it is never estimated by the browser.
 
 | Endpoint | Authority |
 | --- | --- |
 | `GET /api/arena/rooms` | Current shared room status, phase, pairing, and spectator count |
 | `GET /api/arena/rooms/:roomId` | Read-only current room snapshot |
-| `POST /api/arena/rooms/:roomId/spectators/join` | Create or resume a room-scoped spectator lease; returns an opaque `spectator_token` |
+| `POST /api/arena/rooms/:roomId/spectators/join` | Create with no identity fields, or resume with server-assigned `spectator_id` and opaque `spectator_token` |
 | `POST /api/arena/rooms/:roomId/spectators/heartbeat` | Renew `{ spectator_id, spectator_token }`; send no faster than once per second |
 | `POST /api/arena/rooms/:roomId/spectators/leave` | End `{ spectator_id, spectator_token }` lease |
 | `GET /api/arena/agents` | Twenty system profiles backed by verified retained runs plus up to 100 most recently created sanitized user-agent profiles |

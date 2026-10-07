@@ -67,14 +67,16 @@ test('public games are visible after restart while only the host can advance the
     assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: '../bob', position: { x: 100, y: 100 } })).status, 400);
     const roomBefore = await request(running.base, '/api/arena/rooms/rps-1');
     assert.equal((await request(running.base, '/api/arena/rooms')).body.rooms.find(room=>room.id==='rps-1').spectators,0,'activity labels cannot inflate room spectators');
-    const viewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{spectator_id:'spectator_a'});
+    const spoofedViewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{spectator_id:'spectator_a'});
+    assert.equal(spoofedViewer.status,404,'clients cannot squat caller-selected spectator identities');
+    const viewer=await request(running.base, '/api/arena/rooms/rps-1/spectators/join',{});
     assert.equal(viewer.status,201);assert.equal(viewer.body.spectators,1);
     const resumed=await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{spectator_id:viewer.body.spectator_id,spectator_token:viewer.body.spectator_token});
     assert.equal(resumed.body.spectators,1,'reconnect reuses the room-scoped viewer');
     assert.equal((await request(running.base, '/api/arena/rooms')).body.rooms.find(room=>room.id==='rps-1').spectators,1);
     assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/leave',{spectator_id:viewer.body.spectator_id,spectator_token:viewer.body.spectator_token})).body.spectators,0);
     assert.equal((await request(running.base, '/api/arena/rooms/rps-1')).body.room.runId,roomBefore.body.room.runId,'spectator operations do not create another simulation');
-    for(let index=0;index<28;index++)assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{})).status,201);
+    for(let index=0;index<27;index++)assert.equal((await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{})).status,201);
     const spectatorBurst=await request(running.base,'/api/arena/rooms/rps-1/spectators/join',{});
     assert.equal(spectatorBurst.status,429);assert.equal(spectatorBurst.body.code,'RATE_LIMITED');
     const table = await request(running.base, '/api/world/table'); assert.equal(table.body.status, 'empty');
