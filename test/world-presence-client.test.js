@@ -60,6 +60,16 @@ test('overlapping connect calls share one join capability and one event stream',
   await client.leave();
 });
 
+test('a replaced stream cannot apply late events to the new connection',async()=>{
+  const{client,streams}=setup();await client.connect();await client.connect();
+  assert.equal(streams.length,2);assert.equal(streams[0].closed,true);
+  streams[0].emit('PlayerJoined',{world_id:'main',player:player('stale-stream-player',200)});
+  assert.equal(client.snapshot().players.some(value=>value.player_id==='stale-stream-player'),false);
+  streams[1].emit('PlayerJoined',{world_id:'main',player:player('current-stream-player',220)});
+  assert.equal(client.snapshot().players.some(value=>value.player_id==='current-stream-player'),true);
+  await client.leave();
+});
+
 test('closing while join is pending does not create a late spectator stream',async()=>{
   let finishJoin;
   const fetcher=(url,init)=>{

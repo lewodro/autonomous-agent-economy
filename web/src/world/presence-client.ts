@@ -38,6 +38,7 @@ export class WorldPresenceClient {
   private playerId:string;
   private token:string|null=null;
   private source?:EventSourceLike;
+  private streamGeneration=0;
   private players=new Map<string,PresencePlayer>();
   private lastMoveAt=0;
   private lastHeartbeatAt=0;
@@ -68,6 +69,7 @@ export class WorldPresenceClient {
       return this.connect();
     }
     this.closed=false;this.source?.close();this.source=undefined;
+    this.listeners=[];this.streamGeneration++;
     const connection=this.connectAndSubscribe();
     this.connecting=connection;
     try{return await connection;}finally{if(this.connecting===connection)this.connecting=undefined;}
@@ -89,14 +91,15 @@ export class WorldPresenceClient {
     this.lastMoveAt=this.now();this.lastHeartbeatAt=this.now();
     this.replace(snapshot);
     if(this.closed)return {world_id:this.worldId,players:[...this.players.values()]};
+    const generation=this.streamGeneration;
     const url=`/api/worlds/${encodeURIComponent(this.worldId)}/presence/events`;
     this.source=this.createEventSource(url);
     for(const type of eventNames){
-      const listener=(event:MessageEvent<string>)=>this.receive(type,event.data);
+      const listener=(event:MessageEvent<string>)=>{if(generation===this.streamGeneration)this.receive(type,event.data);};
       this.listeners.push([type,listener]);this.source.addEventListener(type,listener);
     }
-    this.source.addEventListener('open',()=>{if(!this.closed)this.onConnection('connected');});
-    this.source.addEventListener('error',()=>{if(!this.closed)this.onConnection('reconnecting');});
+    this.source.addEventListener('open',()=>{if(!this.closed&&generation===this.streamGeneration)this.onConnection('connected');});
+    this.source.addEventListener('error',()=>{if(!this.closed&&generation===this.streamGeneration)this.onConnection('reconnecting');});
     return {world_id:this.worldId,players:[...this.players.values()]};
   }
 
@@ -129,7 +132,7 @@ export class WorldPresenceClient {
     if(this.closed)return;
     if(this.connecting)await this.connecting.catch(()=>undefined);
     if(this.closed)return;
-    this.closed=true;this.source?.close();this.source=undefined;this.listeners=[];
+    this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];
     try{
       if(this.token)await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/leave`,{player_id:this.playerId,session_token:this.token});
     }finally{
@@ -138,7 +141,7 @@ export class WorldPresenceClient {
   }
 
   close():void{
-    if(this.closed)return;this.closed=true;this.source?.close();this.source=undefined;this.listeners=[];
+    if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];
     this.onConnection('closed');
   }
 
