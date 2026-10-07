@@ -53,7 +53,9 @@ picker and server-side agent validation.
 
 ## Free plaza table
 
-The durable table API is `GET /api/world/table`, plus `POST /api/world/table/join`, `/leave`, `/start`, and `/move`. The server issues an HttpOnly `world_visitor` cookie; browser code does not submit an identity or winner. Join accepts `{ mode: "human" | "npc" }`; a move accepts `{ cell: 0..8, revision }`. The revision rejects stale concurrent moves. Existing Tic-Tac-Toe rules verify the final board.
+The durable table API is `GET /api/world/table`, plus `POST /api/world/table/join`, `/leave`, `/start`, and `/move`. The server issues an HttpOnly `world_visitor` cookie; browser code does not submit an identity or winner. Join accepts `{ mode: "human" | "npc" }`; a move accepts `{ cell: 0..8, revision, move_id }`, where `move_id` is a UUID v4. A retry with the same move ID and payload returns the committed snapshot; reusing an ID for another move is rejected. The revision rejects competing moves from one board version. Existing Tic-Tac-Toe rules verify the final board.
+
+Waiting seats expire after two minutes without a seated visitor poll. Ready, playing, and finished tables expire after ten minutes without activity from either seated human; `/api/world/table` polling refreshes that ephemeral activity lease. Expiry is checkpointed on the next snapshot or action, so a restart cannot revive an already-observed expired table. On restart, persisted seated players get a ten-minute reconnect window. A refresh keeps the HttpOnly visitor cookie and restores the same seat and authoritative board.
 
 The earlier in-memory table-session prototype is intentionally not mounted. There is one table authority and one set of table routes.
 

@@ -259,7 +259,7 @@ const server = http.createServer(async (req, res) => {
     if(req.method==='GET'&&route==='/api/economy/health')return json(res,200,funded.health());
     if(route==='/api/world/table'||/^\/api\/world\/table\/(join|leave|start|move)$/.test(route)){
       const visitor=visitorIdentity(req);
-      if(req.method==='GET'&&route==='/api/world/table')return json(res,200,worldTable.snapshot(visitor.hash));
+      if(req.method==='GET'&&route==='/api/world/table')return json(res,200,await worldTable.observe(visitor.hash));
       if(req.method==='POST'&&route!=='/api/world/table'){
         if(!tableActions.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Table actions are temporarily limited. Try again shortly.'});
         const snapshot=await worldTable.act(visitor.hash,route.split('/').at(-1),await body(req,2048));

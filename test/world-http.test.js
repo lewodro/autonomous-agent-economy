@@ -4,6 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import net from 'node:net';
+import {randomUUID} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { verifyTicTacToeProof } from '../src/tictactoe.js';
@@ -27,11 +28,15 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   const blockedJoin=await fetch(base+'/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:160,y:180}})});
   assert.equal(blockedJoin.status,429);assert.equal((await blockedJoin.json()).code,'RATE_LIMITED');
   const post=async(action,data={},cookie='')=>{const response=await fetch(base+'/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(data)});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:await response.json()};};
+  const observe=async cookie=>(await fetch(base+'/api/world/table',{headers:{Cookie:cookie}})).json();
   const a=await post('join',{mode:'human'}),b=await post('join',{mode:'human'});assert.equal(a.data.yourSeat,'human-x');assert.equal(b.data.yourSeat,'human-o');
   assert.ok(!JSON.stringify(a.data).includes('credential'));assert.notEqual(a.cookie,b.cookie);
   assert.equal((await post('move',{cell:0,revision:b.data.revision})).status,403);
   let state=(await post('start',{},a.cookie)).data;
-  for(const [cookie,cell] of [[a.cookie,0],[b.cookie,3],[a.cookie,1],[b.cookie,4],[a.cookie,2]]){const result=await post('move',{cell,revision:state.revision},cookie);assert.equal(result.status,200);state=result.data;}
+  for(const [index,[cookie,cell]] of [[a.cookie,0],[b.cookie,3],[a.cookie,1],[b.cookie,4],[a.cookie,2]].entries()){
+    const result=await post('move',{cell,revision:state.revision,move_id:randomUUID()},cookie);assert.equal(result.status,200);state=result.data;
+    if(index===0){const refreshed=await observe(a.cookie);assert.equal(refreshed.yourSeat,'human-x');assert.equal(refreshed.match.id,state.match.id);assert.deepEqual(refreshed.match.board,state.match.board,'refresh restores the current server-authoritative board');}
+  }
   assert.equal(state.status,'finished');assert.ok(verifyTicTacToeProof(state.match));
   const history=await(await fetch(base+'/api/arena/history')).json();assert.ok(Array.isArray(history.matches));
  }finally{if(child.exitCode===null){child.kill('SIGTERM');await once(child,'exit');}}
