@@ -60,7 +60,7 @@ is available; malformed snapshots are rejected in full.
 - `status`: `preparing`, `live`, or `finished`.
 - `agents`: at most 20 with unique IDs; positions must be inside map bounds.
 - `sprite`: repository-relative path to a registered transparent sprite in
-  `assets/sprites-agent/`. The browser does not load provider-supplied URLs.
+  `assets/agents/`. The browser does not load provider-supplied URLs.
 - `hp` and `max_hp`: finite numbers; `max_hp > 0`; active agents have positive
   HP and eliminated agents have zero HP.
 - agent `status`: `alive`, `eliminated`, `queued`, or `spectating`.
