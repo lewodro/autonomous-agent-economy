@@ -1,23 +1,19 @@
 # World integration findings
 
-This document records the backend boundary for the parallel pixel-world implementation. No world renderer, map, controls, sprite, NPC, camera, or avatar-editor file was changed by the backend hardening branch.
+## Boundaries
 
-## Current integration points
+- The Rust engine remains authoritative for Last Seat matches.
+- The existing JavaScript rules and persistent room pool remain authoritative for RPS and Tic-Tac-Toe.
+- `WorldPresenceService` owns only short-lived player presence. It cannot step games, assign winners, or authorize wallet actions.
+- `TableSession` is the sole free plaza table authority. It persists checkpoints and verifies Tic-Tac-Toe boards.
+- `DevnetPredictions` is currently an unmounted domain model. It is not a public betting endpoint.
 
-- The world should use `GET /api/worlds/main/presence/events` after `POST /join`, retain its returned `player_id` and opaque `session_token` in browser session storage, and send movement at most 15 times per second.
-- Remote players are public presence records. They have no wallet authority, match authority, or persistent movement history.
-- Arena doors should query `GET /api/arena/rooms`; room cards should use each returned `url` to open the existing read-only spectator page.
-- The agent profile panel should use `GET /api/arena/agents`; research/history comes from `GET /api/arena/history` and downloadable logs.
-- Human Tic-Tac-Toe tables must call the table endpoints in [world-backend-contract.md](world-backend-contract.md). The frontend must never compute a winning line as authority.
+## World client integration
 
-## Event names
+The world renderer currently uses local browser movement and local NPCs. It does not yet join the presence endpoints. To add multi-user presence, call the API in [world-backend-contract.md](world-backend-contract.md), retain the opaque token in `sessionStorage`, send movement no faster than 15 times/second, and interpolate SSE snapshots. Do not put movement history in durable match storage.
 
-The presence stream carries `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, and `PlayerLeft`. Each event has `world_id`; player payloads carry `player_id`, `avatar`, `position`, `direction`, `animation_state`, `activity`, and `updated_at`.
+Arena routes are already server-backed. Use `GET /api/arena/rooms` to show pairings and statuses, `/api/arena/agents` for agent profiles, `/api/arena/statistics` for the research house, and `/api/arena/history` for retained matches. Table play uses `/api/world/table`; do not introduce a second table route or state owner.
 
-## Deliberate exclusions
+## Known deployment limit
 
-There is no world-owned match loop, wallet access, prediction settlement, model-provider call, or game-rule code. Predictions remain experimental and Devnet-only. The existing RPS/tic-tac-toe arena pool retains its own durable match ledger and history.
-
-## Files likely to conflict
-
-Backend work changed `server.js` only to expose new APIs. The active world files under `web/src/world/` and `world/` are untouched. If a future world change needs a typed browser gateway, add it in a separate commit after resolving with the owner of `web/src/world/gateway.ts`.
+Presence currently lives in one Node process. Run a single app instance or add a shared ephemeral store before horizontal scaling. The match and table ledgers use their existing durable storage and remain separate from presence.

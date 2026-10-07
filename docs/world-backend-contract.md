@@ -1,47 +1,41 @@
 # World backend contract
 
-The pixel world is a presentation client. It may interpolate movement and open panels, but it never decides game outcomes, table legality, payments, or agent authority.
+The browser world is a presentation and presence layer. The server owns player sessions, arena room state, table turns, verified results, and research statistics. Presence is ephemeral; match and table checkpoints are durable.
 
-## Transport
+## Presence API
 
-World presence uses JSON HTTP commands plus a read-only SSE stream. This matches the existing live match transport and needs no additional runtime dependency.
+Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
 
-Movement is capped at one accepted update per 66 ms (about 15 updates/second). Clients should interpolate between `PlayerMoved` positions rather than sending every rendered frame. Presence is ephemeral: it expires after 45 seconds without a heartbeat and is never match or wallet authority.
-
-## Presence
-
-| Operation | Request | Result |
+| Operation | Endpoint | Request / result |
 | --- | --- | --- |
-| `POST /api/worlds/main/presence/join` | `{ player_id?, avatar?, position, direction?, activity? }` | Snapshot, server/player ID, opaque `session_token` |
-| `GET /api/worlds/main/presence` | none | Current public player snapshot |
-| `GET /api/worlds/main/presence/events` | SSE | `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, `PlayerLeft` |
-| `POST /api/worlds/main/presence/move` | `{ player_id, session_token, position, direction, animation_state }` | Accepted public player state |
-| `POST /api/worlds/main/presence/heartbeat` | `{ player_id, session_token, activity? }` | Updated player state |
-| `POST /api/worlds/main/presence/leave` | `{ player_id, session_token }` | `{ left: true }` |
+| Join | `POST /api/worlds/:world/presence/join` | `{ player_id?, avatar?, position, direction?, activity? }`; returns snapshot, server ID, and `session_token` |
+| Snapshot | `GET /api/worlds/:world/presence` | Current public players, without tokens |
+| Subscribe | `GET /api/worlds/:world/presence/events` | SSE events: `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, `PlayerLeft` |
+| Move | `POST /api/worlds/:world/presence/move` | `{ player_id, session_token, position, direction, animation_state }` |
+| Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ player_id, session_token, activity? }` |
+| Leave | `POST /api/worlds/:world/presence/leave` | `{ player_id, session_token }` |
 
-`session_token` is an opaque browser-session capability and must never be rendered, logged, or treated as an account credential. The server validates coordinates, bounds, speed, and update frequency. Current world bounds are `0..1040 × 0..864`.
+World IDs and player IDs are validated. Positions are bounded to `0..1040 × 0..864`; movement speed and request frequency are limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
 
-## Arena directory and spectators
+## Arena and research
 
-`GET /api/arena/rooms` returns bounded RPS and tic-tac-toe agent rooms. Each room includes `id`, `game`, `status`, `phase`, `runId`, `matchId`, agent participants, `spectators`, and `url`. The directory is backend-derived; the world must not invent room states.
-
-`GET /api/arena/rooms/:roomId`, `/api/arena/agents`, `/api/arena/history`, and `/api/arena/logs/:runId` are read-only. Existing match pages remain the spectator source of truth. A world visitor who enters an arena should update only their presence activity to `Watching rps-1` (or another room ID); it must not step a simulation.
-
-## Free human tables
-
-The initial table is `table-ttt-main`. A player must first have a valid presence session.
-
-| Operation | Endpoint |
+| Endpoint | Authority |
 | --- | --- |
-| List tables | `GET /api/tables` |
-| Sit / leave | `POST /api/tables/table-ttt-main/sit` or `/leave` |
-| Ready | `POST /api/tables/table-ttt-main/ready` |
-| Move | `POST /api/tables/table-ttt-main/move` |
+| `GET /api/arena/rooms` | Current shared room status, phase, pairing, and spectator count |
+| `GET /api/arena/rooms/:roomId` | Read-only current room snapshot |
+| `GET /api/arena/agents` | Profiles and statistics derived from verified retained runs |
+| `GET /api/arena/statistics` | Aggregates computed from the same verified retained ledgers |
+| `GET /api/arena/history` | Recent completed matches |
+| `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
-Every table command includes `player_id` and `session_token`. A move also requires `{ cell: 0..8, move_id }`. `move_id` makes retrying the same browser request idempotent. The server owns seats, turn order, legal cells, and final outcome. Typical errors: `TABLE_OCCUPIED`, `NOT_SEATED`, `MATCH_ALREADY_STARTED`, `INVALID_MOVE`, and `MATCH_NOT_PLAYING`.
+Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
 
-## Devnet predictions
+## Free plaza table
 
-Predictions are deliberately not wired into the world yet. They are an experimental, Devnet-only domain model behind `PREDICTIONS_ENABLED=true`, `ENTRY_FEE_ENABLED=true`, and `ECONOMY_MODE=DEVNET`. They require a verified receipt through the existing payment rail and a trusted match-completion attestation before resolution. The browser cannot submit a winner or transaction reference as proof.
+The durable table API is `GET /api/world/table`, plus `POST /api/world/table/join`, `/leave`, `/start`, and `/move`. The server issues an HttpOnly `world_visitor` cookie; browser code does not submit an identity or winner. Join accepts `{ mode: "human" | "npc" }`; a move accepts `{ cell: 0..8, revision }`. The revision rejects stale concurrent moves. Existing Tic-Tac-Toe rules verify the final board.
 
-The world should keep free watching and free play available whether or not a wallet exists. Any future panel must state **DEVNET · TEST SOL · NO REAL VALUE** and fail independently from the room UI.
+The earlier in-memory table-session prototype is intentionally not mounted. There is one table authority and one set of table routes.
+
+## Predictions
+
+`DevnetPredictions` remains a domain-model experiment only. It has no public API and does not submit or settle payments. Any future route must use the existing payment rail and trusted completion attestation, reject mainnet, and preserve free spectator/play paths.
