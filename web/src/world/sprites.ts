@@ -2,17 +2,20 @@ import { safePosition } from './map.js';
 import type { Position } from './model.js';
 export interface SpriteDefinition {
   id: string; sheet: string; frameWidth: number; frameHeight: number;
+  preview?:string;
   animations: Record<string, number[]>;
 }
 const slugs = ['founder','trader','gambler','analyst','defender','strategist','social','degen','conservative','aggressive','explorer','builder','quant','random','tournament','mentor','rival','observer','adaptive','wild-card'];
 /** Existing art is a complete single-frame character. Sheets can replace entries without actor changes. */
-export const SPRITES: SpriteDefinition[] = slugs.map((id,i)=>({ id, sheet:`/assets/sprites-agent/${String(i+1).padStart(2,'0')}-${id}.png`,
+export const SPRITES: SpriteDefinition[] = slugs.map((id,i)=>({ id, sheet:`/assets/agents/${String(i+1).padStart(2,'0')}-${id}.png`,
   frameWidth:16,frameHeight:16,animations:{ idle_down:[0],idle_up:[0],idle_left:[0],idle_right:[0],walk_down:[0],walk_up:[0],walk_left:[0],walk_right:[0] } }));
-export const AVATARS = ['founder','trader','explorer','mentor'];
+for(const name of ['ember','atlas','nova','echo'])SPRITES.push({id:'visitor_'+name,sheet:`/assets/avatars/clean/${name}.png`,preview:`/assets/avatars/clean/${name}_preview.png`,frameWidth:32,frameHeight:32,
+  animations:{idle_down:[0],idle_left:[3],idle_right:[6],idle_up:[9],walk_down:[0,1,2],walk_left:[3,4,5],walk_right:[6,7,8],walk_up:[9,10,11]}});
+export const AVATARS = ['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'];
 export interface PlayerSettings { version:1; avatar:string; position:Position; muted:boolean }
 export function parseSettings(value: unknown): PlayerSettings {
   const input = value && typeof value==='object' ? value as Partial<PlayerSettings> : {};
-  return {version:1,avatar:typeof input.avatar==='string'&&AVATARS.includes(input.avatar)?input.avatar:'explorer',position:safePosition(input.position),muted:input.muted!==false};
+  return {version:1,avatar:typeof input.avatar==='string'&&AVATARS.includes(input.avatar)?input.avatar:'visitor_ember',position:safePosition(input.position),muted:input.muted!==false};
 }
 export function loadSettings(): PlayerSettings {
   try{return parseSettings(JSON.parse(localStorage.getItem('agent-world-settings-v1')||'null'));}catch{return parseSettings(null);}

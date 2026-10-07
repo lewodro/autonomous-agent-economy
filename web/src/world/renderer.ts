@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS } from './map.js';
+import { MAP, BUILDINGS, TREES } from './map.js';
 import { SPRITES } from './sprites.js';
 import type { Position, WorldActor, Interactable } from './model.js';
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number }
@@ -6,6 +6,9 @@ export interface WorldRenderer {
   viewport():{width:number;height:number};
   render(frame:WorldFrame):void;
   destroy():void;
+}
+export function isActorNearVisitor(actor:WorldActor,visitor:WorldActor|undefined,distance=150):boolean {
+  return actor.type==='human'||!!visitor&&Math.hypot(actor.position.x-visitor.position.x,actor.position.y-visitor.position.y)<distance;
 }
 /** Rendering accepts presence snapshots only; it cannot advance or settle a game. */
 export class CanvasWorldRenderer implements WorldRenderer {
@@ -50,11 +53,11 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(let n=1;n<3;n++){rect(204+n*12,542,2,24,'#493f38');rect(200,538+n*10,44,2,'#493f38');}
     rect(208,590,30,10,'#946f52');rect(208,511,30,10,'#946f52');
     rect(480,720,160,32,'#776951');rect(492,701,136,43,'#243f3e');rect(501,711,118,18,'#83a98b');
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('RESEARCH ARCHIVE',560,770);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('ARENA STATISTICS',560,770);
     c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,445);
     // Decorative trees live outside circulation routes.
-    for(const [x,y] of [[60,120],[65,280],[60,710],[340,770],[1060,180],[1056,350],[1030,770]]){
-      rect(x!,y!+24,12,28,'#675542');rect(x!-18,y!,48,34,'#496345');rect(x!-10,y!-12,32,26,'#56734b');
+    for(const {x,y} of TREES){
+      rect(x,y+24,12,28,'#675542');rect(x-18,y,48,34,'#496345');rect(x-10,y-12,32,26,'#56734b');
     }
     rect(32,56,MAP.width-64,8,'#77705b');rect(32,MAP.height-40,MAP.width-64,8,'#77705b');
     rect(32,56,8,MAP.height-88,'#77705b');rect(MAP.width-40,56,8,MAP.height-88,'#77705b');
@@ -69,13 +72,19 @@ export class CanvasWorldRenderer implements WorldRenderer {
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
+    const labels:{x:number;y:number;width:number;height:number}[]=[];
+    const visitor=frame.actors.find(actor=>actor.type==='human');
     for(const actor of [...frame.actors].sort((a,b)=>a.position.y-b.position.y)) {
       if(actor.position.x<frame.camera.x-64||actor.position.x>frame.camera.x+width+64||actor.position.y<frame.camera.y-64||actor.position.y>frame.camera.y+height+64)continue;
-      this.renderActor(actor,frame.time,reduced);
+      const nameWidth=actor.name.length*6.4+10,label={x:actor.position.x-nameWidth/2,y:actor.position.y-57,width:nameWidth,height:14};
+      const nearby=isActorNearVisitor(actor,visitor);
+      const showName=nearby&&!labels.some(other=>label.x<other.x+other.width&&label.x+label.width>other.x&&label.y<other.y+other.height&&label.y+label.height>other.y);
+      if(showName)labels.push(label);
+      this.renderActor(actor,frame.time,reduced,showName);
     }
     if(frame.nearby){c.strokeStyle='#e4bc73';c.lineWidth=2;c.beginPath();c.ellipse(frame.nearby.position.x,frame.nearby.position.y+8,22,9,0,0,Math.PI*2);c.stroke();}
   }
-  private renderActor(actor:WorldActor,time:number,reduced:boolean):void {
+  private renderActor(actor:WorldActor,time:number,reduced:boolean,showName:boolean):void {
     const c=this.ctx,{x,y}=actor.position;const sprite=SPRITES.find(s=>s.id===actor.spriteId);const image=this.images.get(actor.spriteId);
     const animation=sprite?.animations[`${actor.movementState==='walking'?'walk':'idle'}_${actor.facing}`]||[0];
     const frame=animation[Math.floor(time/150)%animation.length]||0;
@@ -86,9 +95,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.drawImage(image,frame%columns*sprite.frameWidth,Math.floor(frame/columns)*sprite.frameHeight,sprite.frameWidth,sprite.frameHeight,Math.round(x-24),Math.round(y-40-bob),48,48);
     }else{c.fillStyle='#d5b882';c.fillRect(x-10,y-28,20,28);}
     if(actor.type==='human'){c.strokeStyle='#c4dfbd';c.lineWidth=2;c.beginPath();c.ellipse(x,y+9,20,8,0,0,Math.PI*2);c.stroke();}
-    c.textAlign='center';c.font='bold 10px monospace';const name=actor.name.toUpperCase();
-    c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
-    c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);
+    if(showName){c.textAlign='center';c.font='bold 10px monospace';const name=actor.name.toUpperCase();
+      c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
+      c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);}
     if(actor.recentWinner){c.fillStyle='#edbe66';c.fillRect(x-6,y-68,12,5);c.fillRect(x-6,y-73,3,5);c.fillRect(x-1,y-75,3,7);c.fillRect(x+4,y-73,3,5);}
   }
   destroy():void {this.images.clear();}

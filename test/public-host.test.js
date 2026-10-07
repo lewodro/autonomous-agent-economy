@@ -54,6 +54,16 @@ test('public games are visible after restart while only the host can advance the
     const health = await request(running.base, '/api/health');
     assert.equal(health.status, 200);
     assert.equal(health.body.storage, 'ok');
+    assert.equal(health.body.presence, 'ok');
+    const alice = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 }, avatar: 'explorer' });
+    const bob = await request(running.base, '/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
+    assert.equal(alice.status, 201); assert.equal(bob.body.players.length, 2);
+    assert.equal((await request(running.base, '/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 900, y: 100 } })).status, 403);
+    const table = await request(running.base, '/api/world/table'); assert.equal(table.body.status, 'empty');
+    const aliceSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
+    const bobSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
+    assert.equal(aliceSeat.body.yourSeat, 'human-x'); assert.equal(bobSeat.body.yourSeat, 'human-o');
+    assert.equal((await request(running.base, '/api/world/table/start', {}, aliceSeat.cookie)).body.status, 'playing');
     for (const route of ['/', '/rps', '/post', '/post/', '/post/styles.css', '/entry.css', '/entry.js']) {
       const page = await fetch(running.base + route, { headers: { Host: 'seat.example', Origin: 'https://seat.example' } });
       assert.equal(page.status, 200, `${route} is served in production`);

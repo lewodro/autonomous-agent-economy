@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { listChromeTargets } from './chrome-debug.js';
+const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
+const targets=await listChromeTargets(debug);
+const target=targets.find(t=>t.type==='page')||await(await fetch(debug+'/json/new?'+encodeURIComponent(base),{method:'PUT'})).json();
+const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolve=>socket.addEventListener('open',resolve,{once:true}));
+let nextId=0;const pending=new Map(),errors=[];
+socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timer);pending.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}}if(message.method==='Runtime.exceptionThrown')errors.push(message.params.exceptionDetails.text);});
+const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Browser command timed out: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
+const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,avatarCount:document.querySelectorAll('#avatar-presets img').length,avatarImages:[...document.querySelectorAll('#avatar-presets img')].map(i=>({src:i.src,complete:i.complete,width:i.naturalWidth})),catalog:document.querySelector('#avatar-presets')?.innerHTML,script:document.querySelector('script[type=module]')?.src,resources:performance.getEntriesByType('resource').filter(r=>r.name.includes('world/app.js')).map(r=>r.name),errors:${JSON.stringify(errors)}})`);details.servedScript=await evaluate("fetch('/web/dist/world/app.js').then(r=>r.text()).then(t=>({catalog:t.includes('/assets/avatars/index.json'),length:t.length,head:t.slice(0,120)}))");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
+const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));};
+try{
+ await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
+ await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1');document.querySelector('a[href=\"/world\"]').click()");
+ await wait('document.getElementById("character-dialog")?.open');
+ await wait('document.querySelectorAll("#avatar-presets img").length===4&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
+ const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
+ await evaluate('document.querySelector("[data-avatar=visitor_ember]").click()');
+ assert.equal(await evaluate('document.activeElement?.dataset.avatar'),focusedPreset,'changing a preset must preserve keyboard focus');
+ assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).avatar'),'visitor_ember','avatar choice must persist immediately');
+ await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
+ await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("6 visiting agents in the plaza")');
+ await wait('document.activeElement?.id==="world-canvas"');
+ await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
+ await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
+ const focusedAgent=await evaluate('(()=>{document.querySelector(".world-footer details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
+ await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
+ await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
+ await wait('document.getElementById("interaction-dialog").open');
+ assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
+ await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
+ // Exercise arena routes directly. Browser-generated keyboard holds are
+ // unreliable in headless Chrome and the ambient NPC path is frame-timed.
+ await send('Page.navigate',{url:base+'/arena'});
+ await screenshot('desktop');
+ await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('lobby');
+ await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
+ assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
+ for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
+  await evaluate(`document.querySelector('a[href="/arena/${game}/${id}"]').click()`);
+  await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
+  await wait('document.getElementById("match-title").textContent.includes("game-")');
+  if(game==='tictactoe'){await wait('document.querySelectorAll("#ttt-board span").length===9');await screenshot('tictactoe');}
+  else{assert.ok(await evaluate('document.getElementById("duel").textContent.includes("VS")'));await screenshot('rps');}
+  assert.equal(await evaluate('getComputedStyle(document.querySelector(".play-controls")).display'),'none','shared room controls must be hidden');
+  assert.equal(await evaluate('[...document.querySelectorAll(".play-controls button")].every(button=>button.disabled)'),true,'read-only spectators cannot trigger local moves');
+  await evaluate('document.querySelector(".return-link").click()');await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
+ }
+ await evaluate("document.querySelector('a[href=\"/world\"]').click()");await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
+ await delay(3100);const before=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
+ const pad=await evaluate('(()=>{const r=document.getElementById("joystick").getBoundingClientRect();return {x:r.x+r.width/2+32,y:r.y+r.height/2}})()');
+ await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:pad.x,y:pad.y}]});await delay(450);await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await delay(3100);
+ assert.ok(await evaluate(`JSON.parse(localStorage.getItem('agent-world-settings-v1')).position.x>${before+15}`),'touch joystick must move the player');
+ const released=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');await delay(3100);
+ assert.ok(Math.abs((await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x'))-released)<1,'released joystick must stop movement');
+ await screenshot('mobile');
+ await send('Emulation.setTouchEmulationEnabled',{enabled:false});
+ await send('Emulation.setDeviceMetricsOverride',{width:360,height:780,deviceScaleFactor:1,mobile:true});
+ await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
+ assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
+ await screenshot('landing-mobile');assert.deepEqual(errors,[]);
+ console.log('PASS world: character, NPC profile, live render loop, arena routes, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
+}finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}

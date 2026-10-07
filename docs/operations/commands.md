@@ -36,6 +36,7 @@ standalone Node test files that import web/dist require npm run build first.
 | Crypto signatures | `npm run demo:crypto` |
 | Solana wire simulation | `npm run demo:solana` |
 | Browser game smoke | `npm run test:browser` (app + dedicated Chrome debug :9322) |
+| Walkable world smoke | `npm run test:browser:world` (app + dedicated Chrome debug :9322) |
 | Browser funded smoke | `npm run test:browser:economy` (app + dedicated Chrome debug :9322) |
 | npm vulnerability audit | `npm audit --audit-level=low` |
 | Rust vulnerability audit | `cargo audit --file rust/Cargo.lock` (install cargo-audit separately) |

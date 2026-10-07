@@ -23,7 +23,7 @@ export function createState(count = 20) {
     treasury: 0, externalCapital: count * SOL, agents: [], matches: [], events: [], nextMatch: 1 };
   state.agents = PROFILES.slice(0, count).map(([slug, name, strategy], index) => ({
     id: `agent-${index + 1}`, name, strategy, address: `simulation:agent-${index + 1}`,
-    sprite: `assets/sprites-agent/${String(index + 1).padStart(2, '0')}-${slug}.png`,
+    sprite: `assets/agents/${String(index + 1).padStart(2, '0')}-${slug}.png`,
     balance: SOL, capital: SOL, pnl: 0, peak: SOL, drawdown: 0, wins: 0, losses: 0, draws: 0,
     staked: 0, opponents: {}, memory: [],
     prior: [1 + index % 3, 1 + (index + 1) % 3, 1 + (index + 2) % 3],

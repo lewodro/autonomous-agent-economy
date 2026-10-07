@@ -5,13 +5,17 @@ import { configureRun } from '../src/config.js';
 import { createState } from '../src/economy.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
+import { withStorageFailure } from './http-error.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
+const MAX_STEP_RETRIES = 3;
+const RECENT_FINISH_MS = 15_000;
 const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
+const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.rooms=new Map();this.closed=false;this.waiters=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -27,42 +31,77 @@ export class ArenaRoomPool {
           if(run.state.matches.some(m=>(m.type||'rps')!==game))throw new Error(`Arena game mismatch: ${id}`);
         }
       } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};
-      this.rooms.set(id,{saved,state:structuredClone(saved.state),phase:'waiting',status:'waiting',current:null});
+      const state=structuredClone(saved.state),latest=state.matches.filter(match=>match.status==='settled').at(-1);
+      const lastCompletedAt=latest?Date.parse(completionTime({run:{state},match:latest})):0;
+      this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0});
+      if(latest&&Number.isFinite(lastCompletedAt)&&Date.now()-lastCompletedAt<RECENT_FINISH_MS){
+        for(const agentId of latest.players)this.recentFinishes.set(agentId,{roomId:id,at:lastCompletedAt});
+      }
     }
   }
   listRooms() {
-    return [...this.rooms.entries()].map(([id,r])=>({id,game:r.saved.game,status:r.status,phase:r.phase,mode:'simulation',runId:r.saved.runId,
+    const now=Date.now();
+    return [...this.rooms.entries()].map(([id,r])=>({id,game:r.saved.game,
+      status:r.finishedAt&&now-r.finishedAt<RECENT_FINISH_MS&&['finished','resetting','waiting'].includes(r.status)?'finished':r.status,
+      phase:r.phase,mode:'simulation',runId:r.saved.runId,
       matchId:r.current?.id||null,participants:(r.current?.players||[]).map(pid=>{
         const a=r.state.agents.find(a=>a.id===pid);return {id:pid,name:a.name,sprite:a.sprite};
       }),url:`/arena/${r.saved.game}/${id}`}));
   }
+  health() {
+    const failedRooms=[...this.rooms.values()].filter(room=>room.status==='failed').map(room=>room.saved.id).sort();
+    return {status:failedRooms.length?'degraded':'ok',roomCount:this.rooms.size,failedRooms};
+  }
   getRoom(id) {
     const room=this.rooms.get(id);if(!room)throw Object.assign(new Error('Room not found'),{status:404});
-    return structuredClone({room:this.listRooms().find(r=>r.id===id),state:room.state,phase:room.phase,current:room.current});
+    const state=structuredClone(room.state);
+    delete state.events; // Full verified ledgers are available through the explicit log route.
+    return {room:this.listRooms().find(r=>r.id===id),state,phase:room.phase,current:structuredClone(room.current)};
   }
   runs() {return [...this.rooms.values()].flatMap(r=>[r.saved,...r.saved.previous].map(run=>({...run,roomId:r.saved.id,game:r.saved.game})));}
   profiles() {
+    // Start with retained epochs oldest-first so timestamp ties remain chronological.
+    const chronologicalRuns=this.runs().reverse();
     return createState().agents.map(base=>{
-      const entries=this.runs().flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
-        .sort((a,b)=>(a.run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===a.match.id)?.time||'').localeCompare(b.run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===b.match.id)?.time||''));
+      const entries=chronologicalRuns.flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
+        .sort((a,b)=>completionTime(a).localeCompare(completionTime(b)));
       const wins=entries.filter(({match})=>match.result!=='draw'&&match.players[match.result==='a'?0:1]===base.id).length;
       const draws=entries.filter(({match})=>match.result==='draw').length;
       const latest=entries.at(-1);
-      const live=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
-      return {...base,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
+      const active=this.listRooms().find(r=>['live','starting'].includes(r.status)&&r.participants.some(a=>a.id===base.id));
+      const recent=this.recentFinishes.get(base.id);
+      const recentRoom=recent&&Date.now()-recent.at<RECENT_FINISH_MS&&!active?recent.roomId:null;
+      if(recent&&!recentRoom)this.recentFinishes.delete(base.id);
+      const linked=active||this.listRooms().find(r=>r.status==='finished'&&r.participants.some(a=>a.id===base.id))||
+        (recentRoom?{id:recentRoom,status:'finished'}:undefined);
+      return {id:base.id,name:base.name,sprite:base.sprite,strategy:base.strategy,wins,draws,losses:entries.length-wins-draws,matches:entries.length,scope:'retained arena runs',
         recentWinner:!!latest&&latest.match.result!=='draw'&&latest.match.players[latest.match.result==='a'?0:1]===base.id,
-        roomId:live?.id||null,
+        roomId:linked?.id||null,arenaStatus:active?'fighting':linked?.status==='finished'?'finished':'queued',
         memory:entries.slice(-6).map(({run,match})=>({...run.state.agents.find(a=>a.id===base.id).memory.find(m=>m.matchId===match.id),runId:run.runId,game:run.game})),
         latestMatch:latest?{runId:latest.run.runId,matchId:latest.match.id,game:latest.run.game}:null};
     });
   }
+  statistics() {
+    const runs=this.runs(),matches=runs.flatMap(run=>run.state.matches.filter(match=>match.status==='settled').map(match=>({run,match})));
+    const summarize=game=>{
+      const entries=matches.filter(({run})=>run.game===game);
+      return {matches:entries.length,draws:entries.filter(({match})=>match.result==='draw').length,
+        decisions:entries.reduce((sum,{match})=>sum+(game==='tictactoe'?match.moves.length:Object.keys(match.reveals||{}).length),0)};
+    };
+    const agents=this.profiles().filter(agent=>agent.matches>0).map(agent=>({...agent,win_rate:Math.round(agent.wins/agent.matches*1000)/10}))
+      .sort((a,b)=>b.wins-a.wins||b.matches-a.matches||a.name.localeCompare(b.name));
+    const completedAt=matches.map(({run,match})=>completionTime({run,match})).filter(Boolean).sort().at(-1)||null;
+    return {scope:'verified retained arena runs',updated_at:completedAt,totals:{matches:matches.length,
+      decisions:summarize('rps').decisions+summarize('tictactoe').decisions,
+      draws:matches.filter(({match})=>match.result==='draw').length},games:{rps:summarize('rps'),tictactoe:summarize('tictactoe')},agents};
+  }
   history() {
-    return this.runs().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
+    return this.runs().reverse().flatMap(run=>run.state.matches.map(match=>({runId:run.runId,roomId:run.roomId,game:run.game,id:match.id,result:match.result,
       players:match.players.map(id=>({id,name:run.state.agents.find(a=>a.id===id).name})),
       moves:match.type==='tictactoe'?match.moves.map((move,i)=>({turn:i+1,agent:move.agentId,action:'place',cell:[Math.floor(move.cell/3),move.cell%3]}))
         :match.players.map(id=>({round:1,agent:id,action:match.reveals[id].move})),
       completedAt:run.state.events.find(e=>e.type==='GAME_FINISHED'&&e.data.matchId===match.id)?.time,
-      logUrl:`/api/arena/logs/${run.runId}`}))).sort((a,b)=>(b.completedAt||'').localeCompare(a.completedAt||'')).slice(0,60);
+      logUrl:`/api/arena/logs/${run.runId}`}))).sort((a,b)=>(a.completedAt||'').localeCompare(b.completedAt||'')).reverse().slice(0,60);
   }
   log(runId) {
     const run=this.runs().find(r=>r.runId===runId);
@@ -72,7 +111,7 @@ export class ArenaRoomPool {
   async checkpoint(room) {
     const saved={...room.saved,state:structuredClone(room.state)};
     const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';
-    await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);room.saved=saved;
+    await withStorageFailure('arena checkpoint',async()=>{await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);});room.saved=saved;
   }
   async step(id) {
     const room=this.rooms.get(id);if(!room)throw new Error('Unknown room');
@@ -81,26 +120,39 @@ export class ArenaRoomPool {
       room.saved={...room.saved,runId:randomUUID(),state:fresh(),previous:[{runId:room.saved.runId,state:room.saved.state},...room.saved.previous].slice(0,3)};
       room.state=structuredClone(room.saved.state);
     }
-    room.status='starting';room.running=true;
+    room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
     const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
       room.phase=phase;room.current=match;room.status=phase==='settle'?'finished':'live';
       if(this.stageMs)await this.delay(this.stageMs);
     },onSave:()=>this.checkpoint(room)});
-    try {await orchestrator.step(null,room.saved.game);room.status='finished';}
+    try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
+      for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}
   }
-  delay(ms) {return new Promise(resolve=>{const done=()=>{clearTimeout(timer);this.waiters.delete(done);resolve();};const timer=setTimeout(done,ms);this.waiters.add(done);});}
+  delay(ms) {if(this.closed)return Promise.resolve();return new Promise(resolve=>{const done=()=>{clearTimeout(timer);this.waiters.delete(done);resolve();};const timer=setTimeout(done,ms);this.waiters.add(done);});}
   start() {
     if(this.started)return;this.started=true;
-    for(const id of this.rooms.keys())this.run(id);
+    for(const id of this.rooms.keys()){
+      const task=this.run(id);this.tasks.add(task);void task.then(()=>this.tasks.delete(task),()=>this.tasks.delete(task));
+    }
   }
   async run(id) {
+    let failures=0;
     while(!this.closed){
-      try{await this.step(id);}catch{console.error(JSON.stringify({event:'arena_room_failed',roomId:id}));break;}
+      try{await this.step(id);failures=0;}
+      catch(error){
+        failures++;
+        const retrying=failures<=MAX_STEP_RETRIES;
+        const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,64}$/.test(error.code)?error.code:undefined;
+        console.error(JSON.stringify({event:'arena_room_failed',roomId:id,attempt:failures,retrying,errorType:error instanceof Error?error.name:'UnknownError',...(code?{code}:{})}));
+        if(!retrying)break;
+        await this.delay(Math.min(5000,this.retryMs*2**(failures-1)));
+        continue;
+      }
       if(!this.closed)await this.delay(this.restMs);
       if(!this.closed){this.rooms.get(id).status='resetting';this.rooms.get(id).phase='waiting';}
     }
   }
-  close(){this.closed=true;for(const done of this.waiters)done();}
+  async close(){this.closed=true;for(const done of this.waiters)done();await Promise.allSettled([...this.tasks]);}
 }

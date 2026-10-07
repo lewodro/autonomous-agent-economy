@@ -1,5 +1,11 @@
 import { normalizeInput, type Position, type Rect, type WorldActor, type WorldInput } from './model.js';
 import { collides, WALLS, MAP } from './map.js';
+/** Actors have a small solid footprint, while remaining close enough to inspect. */
+export function presenceObstacles(actors: WorldActor[], mover: WorldActor): Rect[] {
+  return actors.filter(actor => actor !== mover).map(actor => ({
+    x: actor.position.x - 14, y: actor.position.y - 14, width: 28, height: 28,
+  }));
+}
 /** Small substeps prevent tunnelling; per-axis resolution permits wall sliding. */
 export function moveActor(actor: WorldActor, input: WorldInput, seconds: number, speed = 150, walls: Rect[] = WALLS): void {
   const direction = normalizeInput(input.x, input.y);
