@@ -1,4 +1,5 @@
-import {mkdir,open,readFile,rename,unlink} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {mkdir,open,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {decodeSolanaAddress} from './wallet-auth.js';
@@ -7,8 +8,10 @@ const strategies=new Set(['aggressive','conservative','opportunist','cooperative
 const capabilities=new Set(['compute','tools','games']);
 const inputFields=new Set(['format','name','avatar','strategy','personality','capabilities','provider','model']);
 const IDEMPOTENCY_TTL_MS=24*60*60_000,MAX_IDEMPOTENCY_RECORDS=20_000;
+const MAX_STORE_BYTES=16*1024*1024;
 const sha256=value=>createHash('sha256').update(value).digest('hex');
 const cleanOwner=owner=>({id:owner.id,created_at:owner.created_at,identity_type:owner.identity_type,wallet_public_key:owner.wallet_public_key||null});
+const storeCapacityError=maxBytes=>Object.assign(new Error(`Ownership registry reached its ${maxBytes}-byte durable storage limit.`),{status:503,code:'OWNERSHIP_STORE_CAPACITY'});
 async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 function validateAgentInput(value,approvedAvatars,{importing=false}={}){
  if(!value||typeof value!=='object'||Array.isArray(value))throw Object.assign(new Error('Agent configuration must be an object'),{status:400,code:'INVALID_AGENT_CONFIG'});
@@ -66,17 +69,30 @@ function validateState(state){
 
 /** Single-process durable owner/agent registry. It stores no keys or provider credentials. */
 export class OwnershipStore{
- constructor(directory,{now=Date.now,syncFolder=syncDirectory}={}){this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.syncFolder=syncFolder;this.state={format:1,owners:[],agents:[],operations:[]};this.pending=Promise.resolve();this.ready=false;}
+ constructor(directory,{now=Date.now,syncFolder=syncDirectory,maxBytes=MAX_STORE_BYTES}={}){if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>MAX_STORE_BYTES)throw new Error('Ownership store size limit must be between 1 byte and 16 MiB');this.directory=directory;this.file=path.join(directory,'state.json');this.now=now;this.syncFolder=syncFolder;this.maxBytes=maxBytes;this.state={format:1,owners:[],agents:[],operations:[]};this.pending=Promise.resolve();this.ready=false;}
  async init(){
   await mkdir(this.directory,{recursive:true});
-  try{this.state=JSON.parse(await readFile(this.file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
+  try{
+   const handle=await open(this.file,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
+   try{
+    const metadata=await handle.stat();
+    if(!metadata.isFile())throw new Error('Ownership registry must be a regular file.');
+    if(metadata.size>this.maxBytes)throw storeCapacityError(this.maxBytes);
+    if(process.platform!=='win32'&&metadata.mode&0o077)throw new Error('Ownership registry must have private file permissions.');
+    const buffer=Buffer.alloc(this.maxBytes+1);let length=0;
+    while(length<buffer.length){const result=await handle.read(buffer,length,buffer.length-length,length);if(result.bytesRead===0)break;length+=result.bytesRead;}
+    if(length>this.maxBytes)throw storeCapacityError(this.maxBytes);
+    this.state=JSON.parse(buffer.subarray(0,length).toString('utf8'));
+   }finally{await handle.close();}
+  }catch(error){if(error.code!=='ENOENT')throw error;await this.write(this.state);}
   if(this.state?.format===1&&this.state.operations===undefined)this.state.operations=[];
   validateState(this.state);this.ready=true;
  }
  requireReady(){if(!this.ready)throw new Error('Ownership store is not initialized');}
  write(state){
+  const serialized=JSON.stringify(state);if(Buffer.byteLength(serialized)>this.maxBytes)throw storeCapacityError(this.maxBytes);
   const temp=`${this.file}.${randomUUID()}.tmp`;
-  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(JSON.stringify(state));await handle.sync();}finally{await handle.close();}await rename(temp,this.file);this.state=state;await this.syncFolder(this.directory);}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
+  return (async()=>{try{const handle=await open(temp,'wx',0o600);try{await handle.writeFile(serialized);await handle.sync();}finally{await handle.close();}await rename(temp,this.file);this.state=state;await this.syncFolder(this.directory);}finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}})();
  }
  mutate(fn){
   this.requireReady();

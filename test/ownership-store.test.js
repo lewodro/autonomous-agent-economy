@@ -163,3 +163,18 @@ test('directory-sync failure after atomic rename keeps memory aligned with the c
  const restored=new OwnershipStore(dir);await restored.init();
  assert.ok(restored.owner(first));assert.ok(restored.owner(second.id));assert.equal(restored.state.owners.length,2);
 });
+
+test('ownership registry caps durable growth without losing the last valid snapshot',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-capacity-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const store=new OwnershipStore(dir,{maxBytes:512,now:()=>1_800_000_000_000});await store.init();
+ const owner=await store.createAnonymous(),before=await readFile(path.join(dir,'state.json'));
+ await assert.rejects(store.createAgent(owner.id,valid,avatars,{idempotencyKey:requestKey()}),{status:503,code:'OWNERSHIP_STORE_CAPACITY'});
+ assert.equal(store.agentsForOwner(owner.id).length,0);assert.deepEqual(await readFile(path.join(dir,'state.json')),before);
+ const restored=new OwnershipStore(dir,{maxBytes:512});await restored.init();assert.ok(restored.owner(owner.id));
+});
+
+test('ownership registry refuses an oversized persisted snapshot before parsing it',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'aae-owner-oversized-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const {writeFile}=await import('node:fs/promises');await writeFile(path.join(dir,'state.json'),' '.repeat(513),{mode:0o600});
+ const store=new OwnershipStore(dir,{maxBytes:512});await assert.rejects(store.init(),{status:503,code:'OWNERSHIP_STORE_CAPACITY'});
+});

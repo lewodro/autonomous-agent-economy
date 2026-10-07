@@ -42,7 +42,10 @@ The owner/agent profile registry uses an atomic JSON file at
 `$MATCHES_DIR/identity/state.json`. Set `MATCHES_DIR` to persistent storage when
 restarting the service. This format is intended for a **single application
 instance**; it is not a multi-writer database. Do not run multiple replicas
-against one directory. The application has no database migrations.
+against one directory. The registry is capped at 16 MiB: once full, new owner,
+agent, or mock-funding writes fail with a capacity error while the last valid
+snapshot remains intact. Move ownership data to a shared database before
+growing beyond this prototype store. The application has no database migrations.
 
 Mock is a local development mode and public production rejects it. The profile
 “mock funding” button only creates simulated `MOCK_CREDIT` receipts. It does
