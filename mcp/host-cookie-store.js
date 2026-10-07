@@ -25,6 +25,7 @@ export class HostCookieStore {
     this.file = file;
     this.syncFolder = syncFolder;
     this.sessions = new Map();
+    this.pending = Promise.resolve();
   }
 
   async load() {
@@ -56,10 +57,14 @@ export class HostCookieStore {
   async set(session, setCookie) {
     const cookie = sessionCookie(setCookie, session);
     if (!cookie) throw new Error('The local arena service did not return a valid host-session cookie.');
-    this.sessions.delete(session);
-    this.sessions.set(session, cookie);
-    while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value);
-    await this.persist();
+    const operation=this.pending.then(async()=>{
+      this.sessions.delete(session);
+      this.sessions.set(session, cookie);
+      while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value);
+      await this.persist();
+    });
+    this.pending=operation.catch(()=>{});
+    await operation;
   }
 
   get(session) {

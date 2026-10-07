@@ -45,6 +45,19 @@ test('host cookie persistence flushes the directory and recovers after a sync er
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
+test('concurrent arena creation persists every host cookie across reload',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-concurrent-')),file=path.join(directory,'sessions.json');
+  const otherSession='9d5c778d-64ee-40e1-a392-13cb3992f2da';
+  const otherCookie=`last_seat_host=${otherSession}.${expires}.${'b'.repeat(43)}; Path=/api/matches/${otherSession}/; HttpOnly; SameSite=Strict`;
+  try{
+    const store=await new HostCookieStore(file).load();
+    await Promise.all([store.set(session,cookie),store.set(otherSession,otherCookie)]);
+    const recovered=await new HostCookieStore(file).load();
+    assert.equal(recovered.get(session),cookie.split(';',1)[0]);
+    assert.equal(recovered.get(otherSession),otherCookie.split(';',1)[0]);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
 test('host cookie loading rejects oversized and broadly readable stores before accepting secrets',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-mcp-bound-')),file=path.join(directory,'sessions.json');
   try{
