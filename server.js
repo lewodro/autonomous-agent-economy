@@ -144,7 +144,7 @@ const server = http.createServer(async (req, res) => {
       const data=await body(req);
       if(publicDevnet&&data.mode!=='devnet')return json(res,400,{error:'Public funded matches require Devnet test SOL'});
       const created=await funded.create(await resolveConfig(core,data.config),data);
-      return json(res,201,created,{'Set-Cookie':hostCookie(created.session)});
+      return json(res,201,created,{'Set-Cookie':hostCookie(created.session,process.env,Date.now(),'funded-matches')});
     }
     const economyRoute=route.match(/^\/api\/funded-matches\/([a-f0-9-]{36})(?:\/(fund|fund-all|cancel|settle|reconcile))?$/);
     if(economyRoute){

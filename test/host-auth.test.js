@@ -8,7 +8,7 @@ const id = 'cafefeed-0000-4000-8000-111111111111';
 test('host cookie is bound to one match, secret, and expiry', () => {
   const now = 1_791_000_000_000;
   const cookie = hostCookie(id, env, now);
-  assert.match(cookie, /; Path=\/api\//,'the host capability must reach free and funded match endpoints');
+  assert.ok(cookie.includes(`; Path=/api/matches/${id}/`),'free match access remains scoped to its route');
   assert.match(cookie, /HttpOnly; SameSite=Strict/);
   assert.match(cookie, /; Secure$/);
   const request = { headers: { cookie: cookie.split(';')[0] } };
@@ -18,4 +18,14 @@ test('host cookie is bound to one match, secret, and expiry', () => {
   assert.equal(hasHostCookie(request, id, env, now + 31 * 24 * 60 * 60 * 1000), false);
   const forged = { headers: { cookie: request.headers.cookie.slice(0, -1) + 'X' } };
   assert.equal(hasHostCookie(forged, id, env, now), false);
+});
+
+test('funded match host cookies reach funded routes without replacing other match capabilities',()=>{
+  const now=1_791_000_000_000;
+  const freeId=id,fundedId='cafefeed-0000-4000-8000-222222222222';
+  const free=hostCookie(freeId,env,now),funded=hostCookie(fundedId,env,now,'funded-matches');
+  assert.ok(funded.includes(`; Path=/api/funded-matches/${fundedId}/`));
+  assert.notEqual(free.split(';')[0],funded.split(';')[0],'distinct matches retain distinct capabilities');
+  assert.equal(hasHostCookie({headers:{cookie:funded.split(';')[0]}},fundedId,env,now),true);
+  assert.throws(()=>hostCookie(fundedId,env,now,'untrusted-path'),/Unknown host session route/);
 });

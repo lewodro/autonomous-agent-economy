@@ -14,12 +14,12 @@ function signature(payload, env) {
   return createHmac('sha256', signingSecret(env)).update(`last-seat-host-v1:${payload}`).digest('base64url');
 }
 
-export function hostCookie(session, env = process.env, now = Date.now()) {
+export function hostCookie(session, env = process.env, now = Date.now(), surface = 'matches') {
+  if (!['matches', 'funded-matches'].includes(surface)) throw new Error('Unknown host session route');
   const expiry = Math.floor(now / 1000) + lifetimeSeconds;
   const payload = `${session}.${expiry}`;
   const secure = env.NODE_ENV === 'production' ? '; Secure' : '';
-  // The same signed host capability controls both free and funded match routes.
-  return `${cookieName}=${payload}.${signature(payload, env)}; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`;
+  return `${cookieName}=${payload}.${signature(payload, env)}; Path=/api/${surface}/${session}/; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`;
 }
 
 export function hasHostCookie(req, session, env = process.env, now = Date.now()) {
