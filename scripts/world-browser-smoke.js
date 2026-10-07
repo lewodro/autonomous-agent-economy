@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { listChromeTargets } from './chrome-debug.js';
+import { encodeBase58 } from '../service/wallet-auth.js';
 const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
 const targets=await listChromeTargets(debug);
 const target=targets.find(t=>t.type==='page')||await(await fetch(debug+'/json/new?'+encodeURIComponent(base),{method:'PUT'})).json();
@@ -114,8 +116,15 @@ try{
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
  await send('Page.navigate',{url:base+'/profile/'});await wait('location.pathname==="/profile/"&&document.getElementById("guest")');
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'owner profile must fit a phone viewport');
- await evaluate('document.getElementById("guest").click()');await wait('!document.getElementById("create-panel").classList.contains("hidden")');
- await evaluate("const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Browser Agent';form.requestSubmit()");
+ const testWallet=generateKeyPairSync('ed25519'),walletAddress=encodeBase58(testWallet.publicKey.export({format:'der',type:'spki'}).subarray(-32)),privateKey=Buffer.from(testWallet.privateKey.export({format:'der',type:'pkcs8'})).toString('base64');
+ await evaluate(`window.solana={publicKey:{toString:()=>${JSON.stringify(walletAddress)}},connect:async()=>({publicKey:{toString:()=>${JSON.stringify(walletAddress)}}}),signMessage:async(message)=>{const der=Uint8Array.from(atob(${JSON.stringify(privateKey)}),value=>value.charCodeAt(0));const key=await crypto.subtle.importKey('pkcs8',der,{name:'Ed25519'},false,['sign']);return {signature:new Uint8Array(await crypto.subtle.sign({name:'Ed25519'},key,message))}}}`);
+ await evaluate('document.getElementById("connect").click()');await wait("document.getElementById('identity').textContent.includes('Verified wallet')");
+ const walletOwner=await evaluate("fetch('/api/me').then(response=>response.json()).then(value=>value.owner)");assert.equal(walletOwner.wallet_public_key,walletAddress,'wallet sign-in must prove and persist the selected public key');
+ await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Wallet Browser Agent';form.requestSubmit()})()");await wait("document.getElementById('agents').textContent.includes('Wallet Browser Agent')");
+ const walletAgentOwner=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.find(agent=>agent.name==='Wallet Browser Agent')?.owner_id)");assert.equal(walletAgentOwner,undefined,'agent roster must not expose its internal owner ID');
+ const walletOwnedAgents=await evaluate("fetch('/api/me/agents').then(response=>response.json()).then(value=>value.agents.map(agent=>agent.name))");assert.ok(walletOwnedAgents.includes('Wallet Browser Agent'),'wallet-authenticated user should own the created agent');
+ await evaluate('document.getElementById("guest").click()');await wait("document.getElementById('identity').textContent.includes('Free browser identity')&&!document.getElementById('create-panel').classList.contains('hidden')");
+ await evaluate("(()=>{const form=document.getElementById('create-form');form.querySelector('[name=name]').value='Browser Agent';form.requestSubmit()})()");
  await wait("document.getElementById('agents').textContent.includes('Browser Agent')");
  assert.ok(await evaluate("document.getElementById('agents').textContent.includes('read_only')"),'new agents must default to read-only treasury policy');
  assert.equal(await evaluate("document.getElementById('agents').textContent.includes('private_key')"),false);
@@ -129,5 +138,5 @@ try{
  assert.equal(await evaluate(`document.getElementById(${JSON.stringify(`directory-agent-${ownedAgentId}`)})?.textContent.includes('OWNED · PLAZA')`),true);
  await wait("document.querySelector('#interaction-content .agent-profile-head img')?.complete&&document.querySelector('#interaction-content .agent-profile-head img')?.naturalWidth>0");
  assert.deepEqual(errors,[]);
- console.log('PASS world/profile: character, live rooms, research stats, mobile presence, free owner identity, owned world profile, agent creation, idempotent mock funding and read-only treasury');
+ console.log('PASS world/profile: character, live rooms, research stats, mobile presence, wallet-signature identity, wallet-owned agent, free owner identity, owned world profile, agent creation, idempotent mock funding and read-only treasury');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}
