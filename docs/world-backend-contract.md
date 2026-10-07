@@ -25,6 +25,8 @@ SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "ma
 
 ## Arena and research
 
+Shared room pages open a room-scoped spectator lease on entry, heartbeat every 15 seconds, and close it when the user follows the room's return link. Refresh preserves the same session-scoped identity and does not create a second viewer. Unexpected tab closure leaves a lease that expires after 45 seconds. The lobby's spectator count is derived from these server leases; it is never estimated by the browser.
+
 | Endpoint | Authority |
 | --- | --- |
 | `GET /api/arena/rooms` | Current shared room status, phase, pairing, and spectator count |

@@ -48,12 +48,18 @@ try{
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
   await wait('document.getElementById("match-title").textContent.includes("game-")');
+  const spectatorCount=`fetch('/api/arena/rooms').then(r=>r.json()).then(v=>v.rooms.find(room=>room.id===${JSON.stringify(id)})?.spectators)`;
+  await wait(`${spectatorCount}.then(count=>count===1)`);
   if(game==='tictactoe'){await wait('document.querySelectorAll("#ttt-board span").length===9');await screenshot('tictactoe');}
   else{assert.ok(await evaluate('document.getElementById("duel").textContent.includes("VS")'));await screenshot('rps');}
   assert.equal(await evaluate('getComputedStyle(document.querySelector(".play-controls")).display'),'none','shared room controls must be hidden');
   assert.equal(await evaluate('[...document.querySelectorAll(".play-controls button")].every(button=>button.disabled)'),true,'read-only spectators cannot trigger local moves');
   assert.equal(await evaluate('document.querySelector(".return-link")?.getAttribute("href")'),'/arena');
-  await send('Page.navigate',{url:base+'/arena'});await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
+  await send('Page.reload');await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
+  await wait(`${spectatorCount}.then(count=>count===1)`);
+  await evaluate('document.querySelector(".return-link").click()');
+  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
+  await wait(`${spectatorCount}.then(count=>count===0)`);
  }
  assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
  await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
