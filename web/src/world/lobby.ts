@@ -26,7 +26,7 @@ function paintSurvival():void{
   if(selection?.kind==='agent'){
     const a=snapshot.agents.find(agent=>agent.id===selection!.id);if(!a){selection=undefined;return;}
     const engagement=snapshot.engagements.find(e=>e.attacker_id===a.id||e.target_id===a.id);const target=engagement&&snapshot.agents.find(v=>v.id===(engagement.attacker_id===a.id?engagement.target_id:engagement.attacker_id));
-    inspector(a.name.toUpperCase(),[`Strategy: ${a.strategy}`,`HP: ${a.hp} / ${a.max_hp}`,`Target: ${target?.name||'None'}`,`Status: ${a.status}`,`Recent action: ${a.recent_action}`,`Research: ${a.research||'No recent structured research.'}`,`Record: ${a.wins} wins · ${a.losses} losses`],`/world?agent=${encodeURIComponent(a.id)}`);
+    const m=a.metrics;inspector(a.name.toUpperCase(),[`Strategy: ${a.strategy}`,`HP: ${a.hp} / ${a.max_hp}`,`Target: ${target?.name||'None'}`,`Status: ${a.status}`,`Recent action: ${a.recent_action}`,`Research: ${a.research||'No recent structured research.'}`,`Record: ${a.wins} wins · ${a.losses} losses`,...(m?[`Combat: ${m.attacks_landed} hits · ${m.damage_dealt} dealt · ${m.damage_taken} taken`,`Survival: ${m.time_alive} rounds · ${m.retreat_count} retreats · ${m.times_cornered} cornered · ${m.escapes} escapes`,`Placement: ${m.final_placement===null?'in progress':`#${m.final_placement}`}`]:[])],`/world?agent=${encodeURIComponent(a.id)}`);
   }else if(selection?.kind==='fight'){
     const e=snapshot.engagements.find(f=>f.id===selection!.id);if(!e){selection=undefined;return;}
     const a=snapshot.agents.find(v=>v.id===e.attacker_id)!,b=snapshot.agents.find(v=>v.id===e.target_id)!;

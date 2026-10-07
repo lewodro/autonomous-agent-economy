@@ -1,19 +1,31 @@
 import { SPRITES } from './sprites.js';
 import { request } from './gateway.js';
 
-export type SurvivalEventType='AgentSpawned'|'TargetSelected'|'TargetChanged'|'ChaseStarted'|'AttackStarted'|'AttackLanded'|'DamageTaken'|'RetreatStarted'|'AgentCornered'|'AgentEscaped'|'AgentEliminated'|'WinnerDeclared';
-export interface SurvivalAgent {id:string;name:string;sprite:string;x:number;y:number;hp:number;max_hp:number;status:'alive'|'eliminated'|'queued'|'spectating';target_id:string|null;strategy:string;recent_action:string;research:string|null;wins:number;losses:number}
+export type SurvivalEventType='SurvivalMatchStarted'|'SurvivalMatchCompleted'|'AgentSpawned'|'TargetSelected'|'TargetChanged'|'ChaseStarted'|'AttackStarted'|'AttackLanded'|'DamageTaken'|'RetreatStarted'|'AgentCornered'|'AgentEscaped'|'AgentEliminated'|'WinnerDeclared'|'ResearchUpdated';
+export interface SurvivalMetrics {damage_dealt:number;damage_taken:number;attacks_landed:number;target_changes:number;retreat_count:number;time_alive:number;eliminations:number;times_cornered:number;escapes:number;final_placement:number|null}
+export interface SurvivalAgent {id:string;name:string;sprite:string;x:number;y:number;hp:number;max_hp:number;status:'alive'|'eliminated'|'queued'|'spectating';target_id:string|null;strategy:string;recent_action:string;research:string|null;wins:number;losses:number;direction:'up'|'down'|'left'|'right';movement_intent:'chase'|'retreat'|'reposition'|'idle';metrics:SurvivalMetrics}
 export interface SurvivalObstacle {id:string;x:number;y:number;width:number;height:number;kind:'wall'|'barrier'}
 export interface SurvivalEngagement {id:string;attacker_id:string;target_id:string;status:'chasing'|'fighting'|'retreating';recent_damage:number|null;recent_actions:string[]}
 export interface SurvivalEvent {seq:number;type:SurvivalEventType;agent_id:string;target_id?:string|null;round:number;summary:string}
 export interface SurvivalSnapshot {schema_version:1;match_id:string;status:'preparing'|'live'|'finished';sequence:number;updated_at:string;round:number;map:{width:number;height:number;obstacles:SurvivalObstacle[]};agents:SurvivalAgent[];engagements:SurvivalEngagement[];leader_id:string|null;events:SurvivalEvent[]}
 
-const eventTypes=new Set<SurvivalEventType>(['AgentSpawned','TargetSelected','TargetChanged','ChaseStarted','AttackStarted','AttackLanded','DamageTaken','RetreatStarted','AgentCornered','AgentEscaped','AgentEliminated','WinnerDeclared']);
+export function hitEffectAgent(event:SurvivalEvent):string|undefined {
+ if(event.type==='DamageTaken')return event.agent_id;
+ if(event.type==='AttackLanded')return event.target_id||event.agent_id;
+ return undefined;
+}
+
+const eventTypes=new Set<SurvivalEventType>(['SurvivalMatchStarted','SurvivalMatchCompleted','AgentSpawned','TargetSelected','TargetChanged','ChaseStarted','AttackStarted','AttackLanded','DamageTaken','RetreatStarted','AgentCornered','AgentEscaped','AgentEliminated','WinnerDeclared','ResearchUpdated']);
 const idOk=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(value);
 const finite=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value);
+function validMetrics(value:unknown):value is SurvivalMetrics {
+ if(!value||typeof value!=='object')return false;const metrics=value as SurvivalMetrics;
+ const counts=[metrics.damage_dealt,metrics.damage_taken,metrics.attacks_landed,metrics.target_changes,metrics.retreat_count,metrics.time_alive,metrics.eliminations,metrics.times_cornered,metrics.escapes];
+ return counts.every(count=>Number.isSafeInteger(count)&&count>=0)&&(metrics.final_placement===null||Number.isInteger(metrics.final_placement)&&metrics.final_placement>=1&&metrics.final_placement<=20);
+}
 function validAgent(value:unknown,width:number,height:number):value is SurvivalAgent {
  if(!value||typeof value!=='object')return false;const a=value as SurvivalAgent;
- return idOk(a.id)&&typeof a.name==='string'&&a.name.length>0&&a.name.length<=48&&typeof a.sprite==='string'&&SPRITES.some(s=>s.sheet==='/'+a.sprite)&&finite(a.x)&&finite(a.y)&&a.x>=0&&a.x<=width&&a.y>=0&&a.y<=height&&finite(a.hp)&&finite(a.max_hp)&&a.max_hp>0&&a.hp>=0&&a.hp<=a.max_hp&&['alive','eliminated','queued','spectating'].includes(a.status)&&(a.target_id===null||idOk(a.target_id))&&typeof a.strategy==='string'&&a.strategy.length<=120&&typeof a.recent_action==='string'&&a.recent_action.length<=180&&(a.research===null||typeof a.research==='string'&&a.research.length<=240)&&Number.isInteger(a.wins)&&a.wins>=0&&Number.isInteger(a.losses)&&a.losses>=0;
+ return idOk(a.id)&&typeof a.name==='string'&&a.name.length>0&&a.name.length<=48&&typeof a.sprite==='string'&&SPRITES.some(s=>s.sheet==='/'+a.sprite)&&finite(a.x)&&finite(a.y)&&a.x>=0&&a.x<=width&&a.y>=0&&a.y<=height&&finite(a.hp)&&finite(a.max_hp)&&a.max_hp>0&&a.hp>=0&&a.hp<=a.max_hp&&['alive','eliminated','queued','spectating'].includes(a.status)&&(a.target_id===null||idOk(a.target_id))&&typeof a.strategy==='string'&&a.strategy.length<=120&&typeof a.recent_action==='string'&&a.recent_action.length<=180&&(a.research===null||typeof a.research==='string'&&a.research.length<=240)&&Number.isInteger(a.wins)&&a.wins>=0&&Number.isInteger(a.losses)&&a.losses>=0&&['up','down','left','right'].includes(a.direction)&&['chase','retreat','reposition','idle'].includes(a.movement_intent)&&validMetrics(a.metrics);
 }
 /** Strictly accept renderable server snapshots. The browser never fills gaps with simulated combat. */
 export function parseSurvivalSnapshot(value:unknown):SurvivalSnapshot {
@@ -42,8 +54,8 @@ export function hitTest(snapshot:SurvivalSnapshot,x:number,y:number):Selection|u
 export class SurvivalRenderer {
  private ctx:CanvasRenderingContext2D;private images=new Map<string,HTMLImageElement>();private previous?:SurvivalSnapshot;private flashUntil=new Map<string,number>();private raf=0;
  constructor(private canvas:HTMLCanvasElement){const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Canvas rendering is unavailable');this.ctx=ctx;for(const sprite of SPRITES){const image=new Image();image.src=sprite.sheet;this.images.set(sprite.sheet,image);}}
- render(s:SurvivalSnapshot,selection?:Selection):void {
-  const previous=this.previous;this.previous=s;const now=performance.now();for(const event of s.events)if((event.type==='AttackLanded'||event.type==='DamageTaken')&&(!previous||event.seq>previous.sequence))this.flashUntil.set(event.target_id||event.agent_id,now+420);
+  render(s:SurvivalSnapshot,selection?:Selection):void {
+  const previous=this.previous;this.previous=s;const now=performance.now();for(const event of s.events){const affected=hitEffectAgent(event);if(affected&&(!previous||event.seq>previous.sequence))this.flashUntil.set(affected,now+420);}
   if(this.raf)cancelAnimationFrame(this.raf);const frame=(time:number)=>{this.drawFrame(s,selection,Math.min(1,(time-now)/1200),time,previous);if(time-now<1200||[...this.flashUntil.values()].some(until=>until>time))this.raf=requestAnimationFrame(frame);else this.raf=0;};this.raf=requestAnimationFrame(frame);
  }
  private drawFrame(s:SurvivalSnapshot,selection:Selection|undefined,alpha:number,time:number,previous?:SurvivalSnapshot):void {

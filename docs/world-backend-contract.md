@@ -25,6 +25,44 @@ SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "ma
 
 ## Arena and research
 
+### Survival Arena
+
+```mermaid
+flowchart LR
+  Browser[Existing Survival renderer] -->|GET snapshot every 1.5s| API[Read-only HTTP route]
+  API --> Service[Node scheduler and checkpoint coordinator]
+  Service -->|step / validate / import| Rust[Rust Survival engine]
+  Rust -->|state + ordered semantic events| Service
+  Service -->|atomic periodic/final checkpoint| Disk[(arena/survival.json)]
+  Service -->|result + structured research| Profiles[Existing Arena profile/statistics API]
+  Profiles -->|bounded public research hint| Rust
+```
+
+`GET /api/survival/current` returns the current public Rust simulation snapshot. It is read-only; the Node service schedules Rust steps and persists bounded checkpoints, but does not decide movement or combat. The browser polls at 1.5-second intervals and may interpolate sprite positions for display. The server continuously runs one public 20-agent match; a short finished-results interval is followed by the next seeded match. The current snapshot is recovered after restart, and only periodic/final checkpoints are written rather than each rendered frame.
+
+The version 1 snapshot contains `match_id`, `status` (`preparing`, `live`, `finished`), monotonic `sequence`, `updated_at`, `round`, fixed `map` dimensions/obstacles, all `agents`, active `engagements`, `leader_id`, and the latest 50 semantic `events`. Each agent includes identity/display fields, `x`/`y`, `hp`/`max_hp`, `status`, `target_id`, strategy, recent action, research summary, wins/losses, direction, movement intent, and structured survival metrics. Event sequence numbers are monotonic for a match. The TypeScript parser rejects malformed state and does not synthesize combat.
+
+| Event | Meaning |
+| --- | --- |
+| `SurvivalMatchStarted`, `AgentSpawned` | Match lifecycle and spawn state |
+| `TargetSelected`, `TargetChanged`, `ChaseStarted` | Rust target and movement intent |
+| `AttackStarted`, `AttackLanded`, `DamageTaken` | Melee and authoritative HP result |
+| `RetreatStarted`, `AgentCornered`, `AgentEscaped` | Survival behavior and map pressure |
+| `AgentEliminated`, `WinnerDeclared`, `SurvivalMatchCompleted` | Placement and result |
+| `ResearchUpdated` | Public structured result summary, without hidden model reasoning |
+
+The combat record tracks damage dealt/taken, landed attacks, target changes, retreats, time alive, eliminations, cornered events, escapes, and final placement. A completed result is retained in Arena history/logs with at most 512 ordered semantic events and aggregated into agent profiles/statistics. Movement frames are not archived. The next Survival config includes the previous match's public research summary and `source_match`; a structured `avoid_surrounded` hint changes target scoring/retreat behavior when the agent was eliminated after being cornered. This is rule-based adaptation from public match outcomes, not model inference.
+
+| Operation | Endpoint | Authority |
+| --- | --- | --- |
+| Current snapshot | `GET /api/survival/current` | Read-only authoritative match state and recent events |
+| Agent research/profile | `GET /api/arena/agents` | Retained RPS, Tic-Tac-Toe, and Survival rollups |
+| Aggregate statistics | `GET /api/arena/statistics` | Counts and decisions from retained results |
+| Result history | `GET /api/arena/history` | Completed public match summaries |
+| Result/research JSON | `GET /api/arena/logs/:runId` | Retained structured match result |
+
+Survival is an unfunded simulation. Its result does not trigger wallet activity or payment settlement.
+
 Shared room pages open a room-scoped spectator lease on entry, heartbeat every 15 seconds, and close it when the user follows the room's return link. Refresh preserves the same session-scoped identity and does not create a second viewer. Unexpected tab closure leaves a lease that expires after 45 seconds. The lobby's spectator count is derived from these server leases; it is never estimated by the browser.
 
 | Endpoint | Authority |
