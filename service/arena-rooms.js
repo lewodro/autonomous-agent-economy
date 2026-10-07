@@ -122,7 +122,8 @@ export class ArenaRoomPool {
     }
     room.finishedAt=0;room.current=null;room.status='starting';room.running=true;
     const orchestrator=new Orchestrator(room.state,{onStage:async(phase,match)=>{
-      room.phase=phase;room.current=match;room.status=phase==='settle'?'finished':'live';
+      // The terminal result is not public until the final checkpoint succeeds.
+      room.phase=phase;room.current=match;room.status='live';
       if(this.stageMs)await this.delay(this.stageMs);
     },onSave:()=>this.checkpoint(room)});
     try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();

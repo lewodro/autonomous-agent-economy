@@ -35,7 +35,7 @@ Only configured world IDs are accepted; the public deployment currently configur
 | `GET /api/arena/history` | Recent completed matches |
 | `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
-Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
+Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. A room remains `live` through settlement and becomes `finished` only after its result checkpoint commits. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
 
 ## Free plaza table
 
