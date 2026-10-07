@@ -10,7 +10,7 @@
 
 ## World client integration
 
-The world renderer currently uses local browser movement and local NPCs. It does not yet join the presence endpoints. To add multi-user presence, call the API in [world-backend-contract.md](world-backend-contract.md), retain the opaque token in `sessionStorage`, send movement no faster than 15 times/second, and interpolate SSE snapshots. Do not put movement history in durable match storage.
+The world renderer currently uses local browser movement and local NPCs. It does not yet join the presence endpoints. The typed `web/src/world/presence-client.ts` adapter now owns join/reconnect, capability storage, bounded movement cadence, heartbeat, leave, and snapshot-first SSE reconciliation. Its `onPlayers` callback supplies public snapshots and never exposes the session token. Integrate it in the world app by mapping those snapshots to remote `WorldActor` values; keep the local visitor responsive and interpolate remote actors. Do not put movement history in durable match storage. Exact routes and payloads are in [world-backend-contract.md](world-backend-contract.md).
 
 Arena routes are already server-backed. Use `GET /api/arena/rooms` to show pairings and statuses, `/api/arena/agents` for agent profiles, `/api/arena/statistics` for the research house, and `/api/arena/history` for retained matches. Table play uses `/api/world/table`; do not introduce a second table route or state owner.
 
