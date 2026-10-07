@@ -5,6 +5,7 @@ export class MatchRuntime {
   constructor(store=null){this.store=store;this.busy=new Set();this.budgets=new Map();}
   budget(session){if(!this.budgets.has(session))this.budgets.set(session,new InferenceBudget());return this.budgets.get(session);}
   async checkpoint(session,replay){if(this.store)await this.store.save(session,replay,this.budget(session).snapshot());}
+  async remove(session){if(this.store)await this.store.remove(session);this.budgets.delete(session);}
   async restore(core,sessions){
     if(!this.store)return;
     for(const record of await this.store.load()){

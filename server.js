@@ -31,7 +31,7 @@ const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matche
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
-const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
+const funded=new FundedRuntime(core,runtime,liveEvents,sessions,{ensureCapacity:ensureSessionCapacity});
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
@@ -43,15 +43,16 @@ const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
 async function createSession(command, data) {
-  if (sessions.size >= 100) throw new Error('Local session limit reached; restart the service to clear sessions');
+  await ensureSessionCapacity();
   const session = randomUUID();
   sessions.set(session, true);
   try {
     const { replay } = await core.request({ command, session, ...data });
     await runtime.checkpoint(session,replay);
+    if(replay.final_state.ended){await persist(replay);await runtime.store?.archive(session,replay.match_id);}
     sessions.set(session,{kind:'free',replay});
     return { session, replay };
-  } catch (error) { sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});throw error; }
+  } catch (error) { sessions.delete(session);await core.request({command:'drop',session}).catch(()=>{});await runtime.remove(session).catch(()=>{});throw error; }
 }
 async function body(req, limit = 1_000_000) {
   const chunks = []; let length = 0;
@@ -68,6 +69,18 @@ async function persist(replay) {
     const target = path.join(directory, `${replay.match_id}.json`), temp = target + `.${randomUUID()}.tmp`;
     await writeFile(temp, JSON.stringify(replay)); await rename(temp, target);
   });
+}
+async function ensureSessionCapacity(){
+  for(const [session,value] of sessions){
+    if(sessions.size<100)break;
+    if(value?.kind!=='free'||!value.replay?.final_state?.ended||liveEvents.hasViewers(session))continue;
+    await persist(value.replay);
+    await runtime.store?.archive(session,value.replay.match_id);
+    await core.request({command:'drop',session});
+    await runtime.remove(session);
+    sessions.delete(session);
+  }
+  if(sessions.size>=100)throw Object.assign(new Error('Session capacity reached: all retained sessions are active or currently watched'),{status:429,code:'SESSION_CAPACITY'});
 }
 const server = http.createServer(async (req, res) => {
   try {
@@ -219,6 +232,16 @@ const server = http.createServer(async (req, res) => {
     }
     const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events|observe))?$/);
     if(match&&!sessions.has(match[1]))await funded.register(match[1]);
+    if(match&&!sessions.has(match[1])){
+      const archivedMatch=await runtime.store?.archivedMatch(match[1]);
+      if(archivedMatch){
+        const archived=JSON.parse(await readFile(path.join(directory,`${archivedMatch}.json`),'utf8'));
+        const {replay}=await core.request({command:'verify',replay:archived});
+        if(req.method==='GET'&&!match[2])return json(res,200,{replay});
+        if(req.method==='GET'&&match[2]==='events'){liveEvents.connect(match[1],replay,res);return;}
+        return json(res,410,{error:'This match has finished; open its archived replay instead',match_id:archivedMatch});
+      }
+    }
     if (match && sessions.has(match[1])) {
       const session = match[1];
       if (req.method === 'GET' && !match[2]) return json(res, 200, await core.request({ command: 'get', session }));

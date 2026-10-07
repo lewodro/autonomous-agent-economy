@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-test('service reserves session capacity atomically for starts and replay imports', {
+test('service reclaims completed sessions while preserving their replay and spectator URL', {
   skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
   timeout: 20000,
 }, async () => {
@@ -41,23 +41,38 @@ test('service reserves session capacity atomically for starts and replay imports
     const started = await post('/api/matches', { config });
     assert.equal(started.status, 201);
     const path = `/api/matches/${started.data.session}/step`;
-    assert.equal((await post(path, {})).status, 200);
+    const firstStep=await post(path, {});
+    assert.equal(firstStep.status, 200);
     const ended = await post(path, {});
     assert.equal(ended.status, 400);
     assert.match(ended.data.error, /already ended/);
     const oversized = await fetch(base + '/api/matches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(1_000_001) });
     assert.equal(oversized.status, 413);
     await oversized.json();
-    const largeImport = await fetch(base + '/api/replays/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(8_100_000) + JSON.stringify({ replay: started.data.replay }) });
+    const largeImport = await fetch(base + '/api/replays/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(8_100_000) + JSON.stringify({ replay: firstStep.data.replay }) });
     assert.equal(largeImport.status, 200);
     await largeImport.json();
     const responses = await Promise.all(Array.from({ length: 105 }, (_, i) => i % 2
       ? post('/api/matches', { config })
-      : post('/api/replays/import', { replay: started.data.replay })));
-    assert.equal(responses.filter(r => r.status < 300).length, 98);
-    const denied = responses.filter(r => r.status >= 300);
-    assert.equal(denied.length, 7);
-    for (const result of denied) assert.match(result.data.error, /session limit/);
+      : post('/api/replays/import', { replay: firstStep.data.replay })));
+    assert.equal(responses.filter(r => r.status === 201 || r.status === 200).length, 105,JSON.stringify(responses.filter(r=>r.status>=300)));
+    assert.equal(responses.filter(r => r.status >= 300).length, 0,JSON.stringify(responses.filter(r=>r.status>=300)));
+    const archived = await fetch(base + `/api/matches/${started.data.session}`).then(r => r.json());
+    assert.equal(archived.replay.match_id, firstStep.data.replay.match_id);
+    const snapshot = await fetch(base + `/api/matches/${started.data.session}/events`).then(r => r.text());
+    assert.match(snapshot, /event: snapshot/);
+    assert.match(snapshot, new RegExp(firstStep.data.replay.match_id));
+    const noAdvance = await post(`/api/matches/${started.data.session}/step`, {});
+    assert.equal(noAdvance.status, 410);
+    let capacityResponse;
+    for(let i=0;i<100;i++){
+      capacityResponse=await post('/api/matches',{config});
+      if(capacityResponse.status===429)break;
+      assert.equal(capacityResponse.status,201);
+    }
+    assert.equal(capacityResponse.status,429);
+    assert.equal(capacityResponse.data.code,'SESSION_CAPACITY');
+    assert.equal((await fetch(base+'/api/games/ongoing').then(r=>r.json())).games.length,20,'ongoing-game directory intentionally returns its latest twenty games');
   } finally {
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
   }

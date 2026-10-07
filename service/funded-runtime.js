@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 const State=Object.freeze({Funding:'funding',Funded:'funded',Running:'running',SettlementPending:'settlement_pending',RefundPending:'refund_pending'});
 /** Admission is Rust-owned. This host schedules turns and publishes verified public projections. */
 export class FundedRuntime {
- constructor(core,runtime,events,sessions){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
+ constructor(core,runtime,events,sessions,{ensureCapacity=null}={}){this.core=core;this.runtime=runtime;this.events=events;this.sessions=sessions;this.ensureCapacity=ensureCapacity;this.matches=new Map();this.busy=new Set();this.running=false;this.cursor=0;this.logged=new Map();}
  remember(result){const session=result.session||result.economy?.session;if(session&&result.economy)this.matches.set(session,{...result,nextAttempt:0});return result;}
  publish(result){
   this.remember(result);const session=result.session||result.economy?.session;
@@ -17,6 +17,7 @@ export class FundedRuntime {
  async command(session,action,extra={}){return this.core.request({command:'funded-host',session,action,...extra});}
  async register(session){try{const result=await this.command(session,'get');this.sessions.set(session,true);this.remember(result);return true;}catch{return false;}}
  async create(config,data){
+  await this.ensureCapacity?.();
   if(this.sessions.size>=100)throw Object.assign(Error('Local session limit reached'),{status:429});
   const terminal=new Set(['settled','refunded','failed']);
   const active=[...this.matches.values()].filter(value=>!terminal.has(value.economy.economy.state)).length;

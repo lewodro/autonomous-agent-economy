@@ -7,6 +7,7 @@ const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$
 export class SessionStore {
   constructor(directory){this.directory=directory;this.pending=new Map();}
   file(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,`${session}.json`);}
+  archiveFile(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,'finished',`${session}.json`);}
   save(session,replay,budget){
     const target=this.file(session),bytes=JSON.stringify({format:1,session,replay,budget});
     const prior=this.pending.get(session)||Promise.resolve();
@@ -35,5 +36,21 @@ export class SessionStore {
       records.push(record);
     }
     return records;
+  }
+  async archive(session,matchId){
+    if(!/^seat-[a-f0-9]{64}$/.test(matchId))throw new Error('Invalid archived match identifier');
+    const target=this.archiveFile(session),temp=`${target}.${randomUUID()}.tmp`;
+    await mkdir(path.dirname(target),{recursive:true});
+    try{const file=await open(temp,'wx',0o600);try{await file.writeFile(JSON.stringify({format:1,session,match_id:matchId}));await file.sync();}finally{await file.close();}await rename(temp,target);}
+    finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
+  }
+  async archivedMatch(session){
+    let record;try{record=JSON.parse(await readFile(this.archiveFile(session),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
+    if(record.format!==1||record.session!==session||!/^seat-[a-f0-9]{64}$/.test(record.match_id))throw new Error('Invalid finished-session archive');
+    return record.match_id;
+  }
+  async remove(session){
+    await this.pending.get(session)?.catch(()=>{});
+    await unlink(this.file(session)).catch(error=>{if(error.code!=='ENOENT')throw error;});
   }
 }

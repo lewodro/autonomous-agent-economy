@@ -42,6 +42,18 @@ test('queued checkpoints retain submission order and reject corrupt metadata',as
  assert.throws(()=>InferenceBudget.restore({...budget,requests:1}),/Inconsistent/);
 });
 
+test('finished session aliases survive checkpoint eviction without consuming active capacity',async t=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-archive-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const store=new SessionStore(directory),session=randomUUID(),matchId=`seat-${'a'.repeat(64)}`;
+ await store.save(session,{final_state:{ended:true}},new InferenceBudget().snapshot());
+ await store.archive(session,matchId);
+ assert.equal(await store.archivedMatch(session),matchId);
+ await store.remove(session);
+ assert.deepEqual(await store.load(),[]);
+ assert.equal(await store.archivedMatch(session),matchId);
+ await assert.rejects(store.archive(session,'../unsafe'),/match identifier/);
+});
+
 test('a failed reservation checkpoint prevents any paid provider request',async()=>{
  const before=globalThis.fetch;let calls=0;
  const budget=new InferenceBudget();budget.persist=async()=>{throw new Error('Checkpoint unavailable');};

@@ -23,6 +23,12 @@ test('live observer receives semantic transitions without HTTP turn requests',as
  }finally{observer.close();globalThis.EventSource=prior;}
  assert.equal(source.closed,true);
 });
+test('live observer closes after receiving an archived finished-match snapshot',async()=>{
+ const prior=globalThis.EventSource;let source;class Source extends EventTarget{constructor(url){super();this.url=url;source=this;}close(){this.closed=true;}send(type,data){this.dispatchEvent(new MessageEvent(type,{data:JSON.stringify(data)}));}}
+ globalThis.EventSource=Source;const statuses=[],histories=[];const observer=new LiveObserver('finished-session',run=>histories.push(run),value=>statuses.push(value));
+ try{source.send('snapshot',{replay:{events:[],final_state:{turn:4,ended:true}}});source.onerror?.();assert.equal(source.closed,true);assert.equal(histories.length,1);assert.deepEqual(statuses,[true]);}
+ finally{observer.close();globalThis.EventSource=prior;}
+});
 test('observer player can pause and inspect without advancing the Rust session',async()=>{
  const core=new Core();let advances=0;
  const player=new Player(()=>{},()=>{}, {advance:async()=>{advances++;throw new Error('Viewer must not advance');}});
