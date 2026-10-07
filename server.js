@@ -118,7 +118,8 @@ const server = http.createServer(async (req, res) => {
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/verify'){
       if(!walletVerifyRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
-      const data=await body(req,4096),verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature);
+      const data=await body(req,4096),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
+      const verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature,origin);
       const currentOwnerId=ownerIdFromRequest(req),currentOwner=currentOwnerId?ownershipStore.owner(currentOwnerId):null;
       const owner=currentOwner?.identity_type==='anonymous'
         ?await ownershipStore.linkWalletOwner(currentOwner.id,verified.publicKey)

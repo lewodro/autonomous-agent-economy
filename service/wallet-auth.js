@@ -41,10 +41,11 @@ export class WalletChallengeService{
   this.pending.set(id,{publicKey,origin,message,expiresAt});
   return {challenge_id:id,public_key:publicKey,message,expires_at:new Date(expiresAt).toISOString()};
  }
- verify(challengeId,publicKey,signature){
+ verify(challengeId,publicKey,signature,requestOrigin){
   const challenge=this.pending.get(challengeId);
   if(!challenge||challenge.expiresAt<=this.now()){this.pending.delete(challengeId);throw Object.assign(new Error('Wallet challenge is missing or expired'),{status:401,code:'CHALLENGE_EXPIRED'});}
   this.pending.delete(challengeId);
+  if(typeof requestOrigin!=='string'||requestOrigin!==challenge.origin)throw Object.assign(new Error('Wallet challenge must be verified from the origin that requested it'),{status:401,code:'CHALLENGE_ORIGIN_MISMATCH'});
   if(publicKey!==challenge.publicKey)throw Object.assign(new Error('Wallet does not match the challenge'),{status:401,code:'WALLET_MISMATCH'});
   try{if(!verifyWalletMessage(publicKey,challenge.message,signature))throw new Error('Signature did not verify');}
   catch(error){if(error?.code==='WALLET_MISMATCH')throw error;throw Object.assign(new Error('Wallet signature is invalid'),{status:401,code:'INVALID_SIGNATURE'});}

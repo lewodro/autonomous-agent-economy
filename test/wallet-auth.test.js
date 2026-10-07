@@ -9,18 +9,22 @@ test('Solana wallet challenges verify an Ed25519 signature and are single-use',(
  let now=1_800_000_000_000;const challenges=new WalletChallengeService({now:()=>now}),{pair,publicKey}=wallet();
  const challenge=challenges.issue(publicKey,'https://arena.example');
  const signature=sign(null,Buffer.from(challenge.message),pair.privateKey).toString('base64url');
- assert.equal(challenges.verify(challenge.challenge_id,publicKey,signature).publicKey,publicKey);
- assert.throws(()=>challenges.verify(challenge.challenge_id,publicKey,signature),{code:'CHALLENGE_EXPIRED'});
+ assert.equal(challenges.verify(challenge.challenge_id,publicKey,signature,'https://arena.example').publicKey,publicKey);
+ assert.throws(()=>challenges.verify(challenge.challenge_id,publicKey,signature,'https://arena.example'),{code:'CHALLENGE_EXPIRED'});
 });
 test('wallet challenges bind origin and wallet, expire, and consume invalid attempts',()=>{
  let now=1_800_000_000_000;const challenges=new WalletChallengeService({now:()=>now,ttlMs:1000}),a=wallet(),b=wallet();
  const challenge=challenges.issue(a.publicKey,'http://127.0.0.1:3000');
  const badSignature=sign(null,Buffer.from(challenge.message),b.pair.privateKey).toString('base64url');
- assert.throws(()=>challenges.verify(challenge.challenge_id,a.publicKey,badSignature),{code:'INVALID_SIGNATURE'});
- assert.throws(()=>challenges.verify(challenge.challenge_id,a.publicKey,badSignature),{code:'CHALLENGE_EXPIRED'});
+ assert.throws(()=>challenges.verify(challenge.challenge_id,a.publicKey,badSignature,'http://127.0.0.1:3000'),{code:'INVALID_SIGNATURE'});
+ assert.throws(()=>challenges.verify(challenge.challenge_id,a.publicKey,badSignature,'http://127.0.0.1:3000'),{code:'CHALLENGE_EXPIRED'});
  const other=challenges.issue(a.publicKey,'https://arena.example');
- assert.throws(()=>challenges.verify(other.challenge_id,b.publicKey,'invalid'),{code:'WALLET_MISMATCH'});
- now+=1001;assert.throws(()=>challenges.verify(other.challenge_id,a.publicKey,'invalid'),{code:'CHALLENGE_EXPIRED'});
+ const signature=sign(null,Buffer.from(other.message),a.pair.privateKey).toString('base64url');
+ assert.throws(()=>challenges.verify(other.challenge_id,a.publicKey,signature,'https://alternate.example'),{code:'CHALLENGE_ORIGIN_MISMATCH'});
+ assert.throws(()=>challenges.verify(other.challenge_id,b.publicKey,'invalid','https://arena.example'),{code:'CHALLENGE_EXPIRED'});
+ const mismatch=challenges.issue(a.publicKey,'https://arena.example');
+ assert.throws(()=>challenges.verify(mismatch.challenge_id,b.publicKey,'invalid','https://arena.example'),{code:'WALLET_MISMATCH'});
+ now+=1001;assert.throws(()=>challenges.verify(mismatch.challenge_id,a.publicKey,'invalid','https://arena.example'),{code:'CHALLENGE_EXPIRED'});
 });
 test('wallet addresses and signatures are canonical and bounded',()=>{
  const {pair,publicKey}=wallet(),message='test message',signature=sign(null,Buffer.from(message),pair.privateKey).toString('base64url');
