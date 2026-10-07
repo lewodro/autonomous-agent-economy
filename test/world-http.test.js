@@ -20,6 +20,12 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
   const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);
   const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'verified retained arena runs');assert.equal(statistics.totals.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0}});
+  for(let index=0;index<12;index++){
+    const joined=await fetch(base+'/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:`presence-test-${index}`,position:{x:160,y:180}})});
+    assert.equal(joined.status,201);
+  }
+  const blockedJoin=await fetch(base+'/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'presence-test-overflow',position:{x:160,y:180}})});
+  assert.equal(blockedJoin.status,429);assert.equal((await blockedJoin.json()).code,'RATE_LIMITED');
   const post=async(action,data={},cookie='')=>{const response=await fetch(base+'/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(data)});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:await response.json()};};
   const a=await post('join',{mode:'human'}),b=await post('join',{mode:'human'});assert.equal(a.data.yourSeat,'human-x');assert.equal(b.data.yourSeat,'human-o');
   assert.ok(!JSON.stringify(a.data).includes('credential'));assert.notEqual(a.cookie,b.cookie);

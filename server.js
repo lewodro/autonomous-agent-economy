@@ -50,6 +50,7 @@ const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_0
 const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentFundingRequests=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentPolicyChanges=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
+const presenceJoins=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
 const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
 function clientRateKey(req){
   if(trustProxy){const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();if(isIP(forwarded))return forwarded;}
@@ -219,6 +220,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
+      if(action==='join'&&!presenceJoins.allow(clientRateKey(req)))return json(res,429,{error:'World join requests are temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,4096);
       const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
       return json(res,action==='join'?201:200,result);

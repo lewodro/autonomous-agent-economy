@@ -4,11 +4,11 @@ The browser world is a presentation and presence layer. The server owns player s
 
 ## Presence API
 
-Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Heartbeats are capped at one per second, and unchanged heartbeat activity is not broadcast. Each world accepts up to 100 concurrent SSE viewers. Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
+Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Heartbeats are capped at one per second, and unchanged heartbeat activity is not broadcast. Each world accepts up to 40 players and 100 concurrent SSE viewers. New joins are limited to 12 per source address per minute (configure `TRUST_PROXY=true` only behind a proxy that overwrites `X-Forwarded-For`). Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
 
 | Operation | Endpoint | Request / result |
 | --- | --- | --- |
-| Join | `POST /api/worlds/:world/presence/join` | `{ player_id?, avatar?, position, direction?, activity? }`; returns snapshot, server ID, and `session_token` |
+| Join | `POST /api/worlds/:world/presence/join` | `{ player_id?, session_token?, avatar?, position, direction?, activity? }`; returns snapshot, server ID, and `session_token` |
 | Snapshot | `GET /api/worlds/:world/presence` | Current public players, without tokens |
 | Subscribe | `GET /api/worlds/:world/presence/events` | SSE events: `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, `PlayerLeft` |
 | Move | `POST /api/worlds/:world/presence/move` | `{ player_id, session_token, position, direction, animation_state }` |
