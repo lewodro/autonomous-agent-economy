@@ -124,6 +124,40 @@ test('presence SSE viewers are capped and released on disconnect',()=>{
   second.emit('close');
 });
 
+test('presence remains bounded with forty actors and one hundred spectators',()=>{
+  class Response extends EventEmitter {
+    constructor(){super();this.destroyed=false;this.writableLength=0;this.events=[];}
+    writeHead(){return this;}
+    write(value){this.events.push(value);return true;}
+    destroy(){this.destroyed=true;this.emit('close');}
+  }
+  let now=1_000;
+  const service=new WorldPresenceService({now:()=>now,maxPlayers:40,maxViewers:100,staleMs:45_000});
+  const players=Array.from({length:40},(_,index)=>service.join('main',{
+    player_id:`visitor-${index}`,position:{x:100,y:100+index*10},
+  }));
+  assert.equal(service.health().active_players,40);
+  assert.throws(()=>service.join('main',{player_id:'visitor-overflow',position:{x:100,y:100}}),{code:'WORLD_FULL'});
+  const viewers=Array.from({length:101},()=>new Response());
+  assert.equal(viewers.slice(0,100).filter(viewer=>service.connect('main',viewer)).length,100);
+  assert.equal(service.connect('main',viewers[100]),false);
+  now+=66;
+  for(let index=0;index<players.length;index++)service.move('main',{
+    player_id:`visitor-${index}`,session_token:players[index].session_token,
+    position:{x:101,y:100+index*10},direction:'right',animation_state:'walk',
+  });
+  const expectedOrder=Array.from({length:40},(_,index)=>`visitor-${index}`);
+  for(const viewer of viewers.slice(0,100)){
+    const received=viewer.events.filter(event=>event.startsWith('event: PlayerMoved'))
+      .map(event=>JSON.parse(event.match(/^data: (.+)$/m)[1]).player.player_id);
+    assert.deepEqual(received,expectedOrder,'every viewer receives the same ordered movement fan-out');
+  }
+  for(const viewer of viewers.slice(0,100))viewer.emit('close');
+  assert.equal(service.health().event_streams,0);
+  now+=45_001;
+  assert.equal(service.snapshot('main').players.length,0,'stale cleanup releases all actor records');
+});
+
 test('presence health reports live counts and safe deployment limits',()=>{
   let now=100;const service=new WorldPresenceService({now:()=>now,staleMs:50,maxPlayers:4,maxViewers:7});
   service.join('main',{player_id:'active'});
