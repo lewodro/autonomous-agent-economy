@@ -2,7 +2,7 @@ import {FundedRuntime} from './service/funded-runtime.js';
 import {resolveConfig} from './service/config.js';
 import {MachinePayments} from './service/payments.js';
 import http from 'node:http';
-import { readFile, writeFile, mkdir, rename, access } from 'node:fs/promises';
+import { readFile, mkdir, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +19,8 @@ import { KeyedSlidingWindowLimiter, SlidingWindowLimiter } from './service/rate-
 import { clientRateKey } from './service/client-ip.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
-import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
+import { requestErrorStatus } from './service/http-error.js';
+import { ReplayArchive } from './service/replay-archive.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { OwnershipStore } from './service/ownership-store.js';
@@ -34,6 +35,7 @@ const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
+const replayArchive=new ReplayArchive(directory);
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
@@ -79,11 +81,7 @@ async function body(req, limit = 1_000_000) {
   return value;
 }
 async function persist(replay) {
-  await withStorageFailure('replay archive',async()=>{
-    await mkdir(directory, { recursive: true });
-    const target = path.join(directory, `${replay.match_id}.json`), temp = target + `.${randomUUID()}.tmp`;
-    await writeFile(temp, JSON.stringify(replay)); await rename(temp, target);
-  });
+  await replayArchive.save(replay);
 }
 async function ensureSessionCapacity(){
   for(const [session,value] of sessions){
