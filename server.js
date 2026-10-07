@@ -54,6 +54,7 @@ function authenticatedOwner(req){const session=ownerSessionFromRequest(req);if(!
 const identityCreates=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletChallengeRequests=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
 const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
+const walletDemoRequests=new KeyedSlidingWindowLimiter({limit:10,windowMs:60_000});
 const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentFundingRequests=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
 const agentPolicyChanges=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
@@ -389,6 +390,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && route === '/api/wallet-demo') {
       // Only the offline capability is callable from the browser. No model-supplied CLI args.
+      if(!walletDemoRequests.allow(clientRateKey(req,{trustProxy})))return json(res,429,{error:'Wallet demo requests are temporarily limited',code:'RATE_LIMITED'});
+      await body(req,1024);
       const child = spawn(path.join(root, 'rust/target/debug/wallet-demo'), [], { stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '', errors = ''; child.stdout.on('data', b => output += b); child.stderr.on('data', b => errors += b);
       await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(errors))); });

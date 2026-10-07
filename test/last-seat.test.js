@@ -73,6 +73,10 @@ test('HTTP replay sharing verifies the exact prefix and refuses tampering or cro
     });
     assert.equal(spoofedHost,421);
     assert.equal((await fetch(base+'/rust/Cargo.toml')).status,404);
-    const wallet=await post('/api/wallet-demo',{}).then(r=>r.json());assert.equal(wallet.mode,'mock');assert.ok(wallet.events.some(e=>e.type==='WalletTransferConfirmed'));
+    const oversizedWallet=await post('/api/wallet-demo',{padding:'x'.repeat(2048)});assert.equal(oversizedWallet.status,413);
+    const walletResponse=await post('/api/wallet-demo',{});assert.equal(walletResponse.status,200);
+    const wallet=await walletResponse.json();assert.equal(wallet.mode,'mock');assert.ok(wallet.events.some(e=>e.type==='WalletTransferConfirmed'));
+    for(let index=0;index<8;index++)assert.equal((await post('/api/wallet-demo',{})).status,200);
+    const limitedWallet=await post('/api/wallet-demo',{});assert.equal(limitedWallet.status,429);assert.equal((await limitedWallet.json()).code,'RATE_LIMITED');
   }finally{if(child.exitCode===null){child.kill('SIGTERM');await once(child,'exit');}}
 });
