@@ -10,6 +10,8 @@ pub mod wallet_demo;
 
 pub mod solana_wallet;
 
+pub mod arena_survival;
+
 pub mod economy;
 
 pub mod public_reason;
