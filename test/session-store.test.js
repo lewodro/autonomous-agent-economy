@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,readdir,rm,writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -40,6 +40,18 @@ test('queued checkpoints retain submission order and reject corrupt metadata',as
  await writeFile(store.file(session),JSON.stringify({format:1,session:'wrong',replay:{},budget}));
  await assert.rejects(store.load(),/checkpoint/);
  assert.throws(()=>InferenceBudget.restore({...budget,requests:1}),/Inconsistent/);
+});
+
+test('session and archive checkpoints sync their directories and recover after sync failure',async t=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'last-seat-store-sync-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const session=randomUUID(),matchId=`seat-${'b'.repeat(64)}`,synced=[];let failSync=true;
+ const store=new SessionStore(directory,{syncFolder:async target=>{synced.push(target);if(failSync){failSync=false;throw Object.assign(new Error('simulated directory sync failure'),{code:'EIO'});}}});
+ await assert.rejects(store.save(session,{turn:7},new InferenceBudget().snapshot()),{status:503,code:'EIO'});
+ assert.deepEqual(await readdir(directory),[`${session}.json`]);
+ assert.equal((await new SessionStore(directory).load())[0].replay.turn,7,'renamed checkpoint remains readable after the reported sync failure');
+ await store.archive(session,matchId);assert.equal(await store.archivedMatch(session),matchId);
+ assert.deepEqual(synced,[directory,path.join(directory,'finished')]);
+ assert.deepEqual(await readdir(path.join(directory,'finished')),[`${session}.json`]);
 });
 
 test('finished session aliases survive checkpoint eviction without consuming active capacity',async t=>{

@@ -2,10 +2,11 @@ import {mkdir,open,rename,readFile,readdir,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {withStorageFailure} from './http-error.js';
+async function syncDirectory(directory){const handle=await open(directory,'r');try{await handle.sync();}finally{await handle.close();}}
 const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 /** Storage contains Rust-verifiable history plus orchestration metadata, never keys. */
 export class SessionStore {
-  constructor(directory){this.directory=directory;this.pending=new Map();}
+  constructor(directory,{syncFolder=syncDirectory}={}){this.directory=directory;this.syncFolder=syncFolder;this.pending=new Map();}
   file(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,`${session}.json`);}
   archiveFile(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,'finished',`${session}.json`);}
   save(session,replay,budget){
@@ -17,7 +18,7 @@ export class SessionStore {
       try {
         const file=await open(temp,'wx',0o600);
         try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
-        await rename(temp,target);
+        await rename(temp,target);await this.syncFolder(this.directory);
       } finally {await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
     }));
     this.pending.set(session,writing);
@@ -40,9 +41,12 @@ export class SessionStore {
   async archive(session,matchId){
     if(!/^seat-[a-f0-9]{64}$/.test(matchId))throw new Error('Invalid archived match identifier');
     const target=this.archiveFile(session),temp=`${target}.${randomUUID()}.tmp`;
-    await mkdir(path.dirname(target),{recursive:true});
-    try{const file=await open(temp,'wx',0o600);try{await file.writeFile(JSON.stringify({format:1,session,match_id:matchId}));await file.sync();}finally{await file.close();}await rename(temp,target);}
-    finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
+    const directory=path.dirname(target);
+    await withStorageFailure('finished-session archive',async()=>{
+      await mkdir(directory,{recursive:true});
+      try{const file=await open(temp,'wx',0o600);try{await file.writeFile(JSON.stringify({format:1,session,match_id:matchId}));await file.sync();}finally{await file.close();}await rename(temp,target);await this.syncFolder(directory);}
+      finally{await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error;});}
+    });
   }
   async archivedMatch(session){
     let record;try{record=JSON.parse(await readFile(this.archiveFile(session),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
