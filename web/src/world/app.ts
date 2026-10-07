@@ -7,6 +7,7 @@ import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents } from './npc.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 import { mountTable } from './table.js';
+import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection');
@@ -14,6 +15,10 @@ const settings=loadSettings(),gateway=new HttpArenaGateway();
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
+const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
+let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
+let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,lastPresenceMoveAt=0,lastPresenceMoveState='';
+let arenaOnline=false;
 let camera={x:Math.max(0,player.position.x-renderer.viewport().width/2),y:Math.max(0,player.position.y-renderer.viewport().height/2)};
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
@@ -22,6 +27,70 @@ const events:WorldEvent[]=[];
 let interactionVersion=0;
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
+function updateWorldLabel():void {
+  const others=remotePlayers.size,visitorLabel=others===1?'other visitor':'other visitors';
+  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza and ${others} ${visitorLabel} online. Agents fighting are inside the Arena. Use WASD or arrow keys to move, E to interact. Free table southwest; arena statistics south.`);
+}
+function updateConnectionLabel():void {
+  updateWorldLabel();
+  if(!entered){connection.textContent=arenaOnline?'ARENA ONLINE · SIMULATION':'ARENA OFFLINE · retrying';return;}
+  const presenceText=presenceState==='connected'?'ONLINE':presenceState==='reconnecting'?'RECONNECTING':presenceState==='closed'?'OFFLINE':'CONNECTING';
+  connection.textContent=`WORLD ${presenceText} · ${remotePlayers.size+1} HERE${arenaOnline?'':' · ARENA DATA OFFLINE'}`;
+}
+function syncRemotePlayers(snapshot:PresenceSnapshot):void {
+  const next=new Set<string>(),ownId=presenceClient?.player_id;
+  for(const value of snapshot.players){
+    if(value.player_id===ownId)continue;
+    const id=`presence:${value.player_id}`;next.add(id);
+    const facing=value.direction==='up'||value.direction==='left'||value.direction==='right'?value.direction:'down';
+    const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_ember';
+    const current=remotePlayers.get(id);
+    if(current){
+      current.actor.name=`Visitor ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;
+      current.actor.facing=facing;current.actor.movementState=value.animation_state==='walk'?'walking':'idle';current.actor.activity=value.activity;
+      current.target={...value.position};
+    }else{
+      remotePlayers.set(id,{target:{...value.position},actor:{id,type:'human',name:`Visitor ${value.player_id.slice(-4).toUpperCase()}`,
+        position:{...value.position},facing,movementState:value.animation_state==='walk'?'walking':'idle',spriteId,activity:value.activity,recentWinner:false}});
+    }
+  }
+  for(const id of remotePlayers.keys())if(!next.has(id))remotePlayers.delete(id);
+  updateConnectionLabel();
+}
+function presenceError(client:WorldPresenceClient):void {
+  if(stopped||presenceClient!==client)return;
+  presenceState='reconnecting';updateConnectionLabel();
+  if(presenceReconnect)return;
+  presenceReconnect=window.setTimeout(()=>{presenceReconnect=0;connectPresence(client);},1_000);
+}
+function connectPresence(client:WorldPresenceClient):void {
+  if(stopped||presenceClient!==client||presenceConnecting)return;
+  presenceConnecting=true;presenceState='connecting';updateConnectionLabel();
+  void client.connect().then(()=>{lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
+    .catch(()=>presenceError(client)).finally(()=>{presenceConnecting=false;});
+}
+function startPresence():void {
+  if(!entered||stopped||presenceClient)return;
+  let client:WorldPresenceClient;
+  client=new WorldPresenceClient({avatar:player.spriteId,position:{...player.position},direction:player.facing,activity:player.activity,
+    onPlayers:syncRemotePlayers,onConnection:state=>{
+      if(presenceClient!==client)return;
+      presenceState=state==='closed'?'closed':state;updateConnectionLabel();
+    }});
+  presenceClient=client;connectPresence(client);
+  presenceHeartbeat=window.setInterval(()=>{
+    if(presenceClient!==client)return;
+    void client.heartbeat(player.activity).catch(()=>presenceError(client));
+  },1_000);
+}
+async function leavePresence():Promise<void> {
+  const client=presenceClient;if(!client)return;
+  presenceClient=undefined;presenceState='closed';
+  if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);presenceHeartbeat=0;
+  if(presenceReconnect)window.clearTimeout(presenceReconnect);presenceReconnect=0;
+  remotePlayers.clear();updateConnectionLabel();
+  try{await client.leave();}catch{client.close();}
+}
 function resetInput():void {keyboard.reset();touch.reset();}
 function show(title:string):number {resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
@@ -74,7 +143,7 @@ async function showResearch():Promise<void> {
   }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','Arena statistics are temporarily unavailable. Close this panel and try again.');}}
 }
 function portal():void {
-  persist();resetInput();emit({type:'world:entered-arena',actorId:player.id});document.body.classList.add('leaving');
+  persist();resetInput();void leavePresence();emit({type:'world:entered-arena',actorId:player.id});document.body.classList.add('leaving');
   setTimeout(()=>location.assign('/arena'),matchMedia('(prefers-reduced-motion: reduce)').matches?0:220);
 }
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
@@ -127,14 +196,14 @@ async function presetButtons():Promise<void> {
     if(!button){
       button=document.createElement('button');button.type='button';button.dataset.avatar=id;
       const image=document.createElement('img');image.src=preview;image.alt='';button.append(image,document.createTextNode(name.toUpperCase()));
-      button.onclick=()=>{player.spriteId=id;presetButtons();persist();};presets.append(button);
+      button.onclick=()=>{player.spriteId=id;presetButtons();persist();if(presenceClient)void presenceClient.updateAvatar(id).catch(()=>presenceClient&&presenceError(presenceClient));};presets.append(button);
     }
     button.setAttribute('aria-pressed',String(player.spriteId===id));
   }
 }
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
-$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();};
+$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();startPresence();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
   resetInput();
@@ -161,7 +230,7 @@ function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
   npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',recentWinner:profile.recentWinner});
   controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena));
-  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza. Agents fighting are inside the Arena. Use WASD or arrow keys to move, E to interact. Free table southwest; arena statistics south.`);
+  updateWorldLabel();
 }
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
@@ -174,7 +243,8 @@ async function refreshProfiles():Promise<void> {
       if(!existing)addNpc(profile,index,profile.arenaStatus==='finished');
       else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished'&&existing.movementState==='idle')existing.activity='Back in the plaza · match complete';}
     });
-    connection.textContent='ARENA ONLINE · SIMULATION';
+    updateWorldLabel();
+    arenaOnline=true;updateConnectionLabel();
     const directory=$('agent-directory'),current=new Set<string>();
     for(const profile of profiles){
       const id='directory-agent-'+profile.id;current.add(id);
@@ -184,7 +254,7 @@ async function refreshProfiles():Promise<void> {
     }
     for(const b of directory.querySelectorAll<HTMLButtonElement>('button'))if(!current.has(b.id))b.remove();
     if(requestedAgent&&entered){showProfile(requestedAgent);requestedAgent=null;}
-  }catch{connection.textContent='ARENA OFFLINE · retrying';}
+  }catch{arenaOnline=false;updateConnectionLabel();}
   if(!stopped)setTimeout(refreshProfiles,5000);
 }
 function frame(time:number):void {
@@ -201,13 +271,26 @@ function frame(time:number):void {
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
     if(time-lastSave>3000){persist();lastSave=time;}
   }else{resetInput();player.movementState='idle';}
+  if(entered&&presenceClient&&time-lastPresenceMoveAt>=80){
+    const state=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;
+    if(state!==lastPresenceMoveState){
+      lastPresenceMoveAt=time;const client=presenceClient;
+      void client.move({...player.position},player.facing,player.movementState==='walking'?'walk':'idle').then(sent=>{if(sent)lastPresenceMoveState=state;}).catch(()=>presenceError(client));
+    }
+  }
   const message=nearby?`E / Interact · ${nearby.label}`:'WASD / arrows to walk · E to interact';
   if(hint.textContent!==message)hint.textContent=message;
   $<HTMLButtonElement>('interact').disabled=!nearby;
   camera=followCamera(camera,player.position,renderer.viewport().width,renderer.viewport().height,dt);
-  renderer.render({actors:[player,...npcs],camera,nearby,time});raf=requestAnimationFrame(frame);
+  const interpolation=1-Math.exp(-14*Math.max(0,dt));
+  for(const remote of remotePlayers.values()){
+    remote.actor.position.x+=(remote.target.x-remote.actor.position.x)*interpolation;
+    remote.actor.position.y+=(remote.target.y-remote.actor.position.y)*interpolation;
+  }
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time});raf=requestAnimationFrame(frame);
 }
-window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();});
+window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
+  if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);presenceClient?.close();presenceClient=undefined;});
 // The lab uses the production state and controller; no second renderer or game engine.
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
@@ -217,4 +300,4 @@ if(location.pathname==='/labs/world'){
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-void presetButtons().then(()=>{if(!entered)character.showModal();else canvas.focus();void refreshProfiles();raf=requestAnimationFrame(frame);});
+void presetButtons().then(()=>{if(!entered)character.showModal();else{canvas.focus();startPresence();}void refreshProfiles();raf=requestAnimationFrame(frame);});
