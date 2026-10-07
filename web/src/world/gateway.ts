@@ -7,14 +7,15 @@ export interface AgentProfile {
   scope:string;recentWinner:boolean;roomId:string|null;arenaStatus:'fighting'|'finished'|'queued';
   memory:{matchId:string;opponent:string;move:string;observed:string;runId:string;game:string}[];
   latestMatch:{runId:string;matchId:string;game:string}|null;
+  survival?:{matches:number;wins:number;losses:number;damage_dealt:number;damage_taken:number;attacks_landed:number;target_changes:number;retreat_count:number;time_alive:number;eliminations:number;times_cornered:number;escapes:number;average_placement:number|null;latest_placement:number|null;latest_research:string|null};
 }
 export interface MatchRecord {
-  runId:string;roomId:string;game:string;id:string;result:'a'|'b'|'draw';players:{id:string;name:string}[];
+  runId:string;roomId:string;game:'rps'|'tictactoe'|'survival';id:string;result:'a'|'b'|'draw';players:{id:string;name:string}[];
   completedAt:string;logUrl:string;moves:{turn?:number;round?:number;agent:string;action:string;cell?:number[]}[];
 }
 export interface ArenaStatistics {
   scope:string;updated_at:string|null;totals:{matches:number;decisions:number;draws:number};
-  games:{rps:{matches:number;draws:number;decisions:number};tictactoe:{matches:number;draws:number;decisions:number}};
+  games:{rps:{matches:number;draws:number;decisions:number};tictactoe:{matches:number;draws:number;decisions:number};survival:{matches:number;draws:number;decisions:number}};
   agents:(AgentProfile&{win_rate:number})[];
 }
 export interface ArenaGateway {

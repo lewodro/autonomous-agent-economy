@@ -107,14 +107,14 @@ function showProfile(id:string):void {
   for(const memory of profile.memory.slice().reverse()){
     const row=text('div',`${memory.game.toUpperCase()} · ${memory.matchId}`);row.className='memory-row';
     text('p',`${profiles.find(a=>a.id===memory.opponent)?.name||memory.opponent}: ${memory.observed}. Played ${memory.move}.`,row);
-    link('Download verified run',`/api/arena/logs/${memory.runId}`,row);
+    link('Download match record',`/api/arena/logs/${memory.runId}`,row);
   }
   if(!profile.memory.length)text('p','No completed arena matches recorded yet. Watch a room to begin the story.');
   const actions=text('div','');actions.className='profile-actions';link('View all agents','/arena#agents',actions);
-  if(profile.roomId)link('Watch current match',`/arena/${profile.roomId.startsWith('rps')?'rps':'tictactoe'}/${profile.roomId}`,actions);
+  if(profile.roomId)link('Watch current match',profile.roomId==='survival-main'?'/arena/survival/survival-main':`/arena/${profile.roomId.startsWith('rps')?'rps':'tictactoe'}/${profile.roomId}`,actions);
 }
 async function showResearch():Promise<void> {
-  const version=show('Arena research');text('p','Loading verified arena statistics…');
+  const version=show('Arena research');text('p','Loading authoritative arena statistics…');
   try{
     const [stats,matches]=await Promise.all([gateway.statistics(),gateway.history()]);
     if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();
@@ -124,7 +124,7 @@ async function showResearch():Promise<void> {
       const item=text('article','',totals);text('strong',String(value),item);text('span',label,item);
     }
     text('h3','Games recorded');
-    for(const [game,label] of [['rps','Rock Paper Scissors'],['tictactoe','Tic-Tac-Toe']] as const){
+    for(const [game,label] of [['rps','Rock Paper Scissors'],['tictactoe','Tic-Tac-Toe'],['survival','Survival melee']] as const){
       const summary=stats.games[game];const row=text('p',`${label} · ${summary.matches} matches · ${summary.decisions} decisions · ${summary.draws} draws`);row.className='research-game';
     }
     text('h3','Agent standings · retained runs');
@@ -134,11 +134,11 @@ async function showResearch():Promise<void> {
       text('p',`${agent.wins} wins · ${agent.matches} matches · ${agent.win_rate}% win rate · ${agent.strategy}`,row);
       link('Inspect agent in the world',`/world?agent=${encodeURIComponent(agent.id)}`,row);
     }
-    text('h3','Latest verified results');
+    text('h3','Latest match results');
     for(const match of matches.slice(0,6)){
       const row=text('article',`${match.game.toUpperCase()} · ${match.players.map(a=>a.name).join(' vs ')}`);row.className='archive-row';
       text('p',match.result==='draw'?'Draw':`Winner: ${match.players[match.result==='a'?0:1]!.name}`,row);
-      link('Watch room',`/arena/${match.game}/${match.roomId}`,row);link('Download run',match.logUrl,row);
+      link('Watch room',`/arena/${match.game}/${match.roomId}`,row);link('Download match record',match.logUrl,row);
     }
   }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','Arena statistics are temporarily unavailable. Close this panel and try again.');}}
 }

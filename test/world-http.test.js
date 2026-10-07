@@ -7,6 +7,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { verifyTicTacToeProof } from '../src/tictactoe.js';
+import { parseSurvivalSnapshot } from '../web/dist/world/survival.js';
 test('world HTTP gateway serves deployable assets, shared rooms and capability-scoped free tables',{timeout:20000},async()=>{
  const child=spawn(process.execPath,['server.js'],{cwd:new URL('../',import.meta.url),env:{...process.env,PORT:'0',MATCHES_DIR:await mkdtemp(path.join(os.tmpdir(),'world-http-'))},stdio:['ignore','pipe','pipe']});
  let errors='';child.stderr.on('data',b=>errors+=b);
@@ -16,10 +17,12 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   const worldApp=await(await fetch(base+'/web/dist/world/app.js')).text();assert.match(worldApp,/assets\/avatars\/index\.json/);assert.doesNotMatch(worldApp,/assets\/aae_avatar_kit\/examples/);
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json','/assets/sprites-agent/missing.png','/assets/avatars/clean/mentor.png'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
-  const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});assert.deepEqual(health.presence,{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:0,event_streams:0,limits:{players_per_world:40,event_streams_per_world:100}});
+  const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});assert.equal(health.survival.status,'ok');assert.match(health.survival.match_id,/^survival-\d+-1$/);assert.equal(health.survival.alive,20);assert.equal(health.survival.pending_research,false);assert.deepEqual(health.presence,{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:0,event_streams:0,limits:{players_per_world:40,event_streams_per_world:100}});
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
-  const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);
-  const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'verified retained arena runs');assert.equal(statistics.totals.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0}});
+  const survival=parseSurvivalSnapshot(await(await fetch(base+'/api/survival/current')).json());assert.equal(survival.agents.length,20);assert.ok(survival.sequence>=21);assert.equal(survival.status,'live');assert.ok(survival.events.some(event=>event.type==='SurvivalMatchStarted'));
+  assert.equal((await fetch(base+'/api/survival/current',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
+  const profiles=await(await fetch(base+'/api/arena/agents')).json();assert.equal(profiles.agents.length,20);assert.equal('balance' in profiles.agents[0],false);assert.ok(profiles.agents.every(agent=>agent.survival?.matches===0));
+  const statistics=await(await fetch(base+'/api/arena/statistics')).json();assert.equal(statistics.scope,'retained RPS, Tic-Tac-Toe, and Survival results');assert.equal(statistics.games.survival.matches,0);assert.deepEqual(statistics.games,{rps:{matches:0,draws:0,decisions:0},tictactoe:{matches:0,draws:0,decisions:0},survival:{matches:0,draws:0,decisions:0}});
   const post=async(action,data={},cookie='')=>{const response=await fetch(base+'/api/world/table/'+action,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(data)});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:await response.json()};};
   const a=await post('join',{mode:'human'}),b=await post('join',{mode:'human'});assert.equal(a.data.yourSeat,'human-x');assert.equal(b.data.yourSeat,'human-o');
   assert.ok(!JSON.stringify(a.data).includes('credential'));assert.notEqual(a.cookie,b.cookie);

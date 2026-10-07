@@ -21,6 +21,7 @@ import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
+import { ArenaSurvivalService } from './service/arena-survival.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
@@ -35,6 +36,7 @@ const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
+const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles()});
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
@@ -130,16 +132,20 @@ const server = http.createServer(async (req, res) => {
       const result=action==='join'?roomSpectators.join(roomId,data):action==='heartbeat'?roomSpectators.heartbeat(roomId,data):roomSpectators.leave(roomId,data);
       return json(res,action==='join'?201:200,result);
     }
+    if(route==='/api/survival/current'){
+      if(req.method!=='GET')return json(res,405,{error:'Survival state is read-only'});
+      return json(res,200,arenaSurvival.snapshot());
+    }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
       if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:roomSpectators.count(room.id)}))});
-      if(route==='/api/arena/agents')return json(res,200,{agents:arenaRooms.profiles()});
-      if(route==='/api/arena/statistics')return json(res,200,arenaRooms.statistics());
-      if(route==='/api/arena/history')return json(res,200,{matches:arenaRooms.history()});
+      if(route==='/api/arena/agents')return json(res,200,{agents:arenaSurvival.mergeProfiles(arenaRooms.profiles())});
+      if(route==='/api/arena/statistics')return json(res,200,arenaSurvival.statistics(arenaRooms.statistics()));
+      if(route==='/api/arena/history')return json(res,200,{matches:[...arenaRooms.history(),...arenaSurvival.history()].sort((a,b)=>String(b.completedAt).localeCompare(String(a.completedAt))).slice(0,60)});
       const room=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])$/);
       if(room)return json(res,200,arenaRooms.getRoom(room[1]));
       const log=route.match(/^\/api\/arena\/logs\/([a-f0-9-]{36})$/);
-      if(log)return json(res,200,arenaRooms.log(log[1]),{'Content-Disposition':`attachment; filename="arena-${log[1]}.json"`});
+      if(log){let result;try{result=arenaRooms.log(log[1]);}catch(error){if(error.status!==404)throw error;result=arenaSurvival.log(log[1]);}return json(res,200,result,{'Content-Disposition':`attachment; filename="arena-${log[1]}.json"`});}
       return json(res,404,{error:'Arena resource not found'});
     }
     if(req.method==='POST'&&route==='/api/funded-matches'){
@@ -180,11 +186,11 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',presence:worldPresence.health(),arena:arenaRooms.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,engine:'Rust',storage:'ok',presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
-      game_modes:['last-seat','rps','tictactoe'],
+      game_modes:['last-seat','survival','rps','tictactoe'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
@@ -248,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/'].includes(pathname) ? '/world/arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
     if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css)|world\/(index\.html|arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
@@ -261,7 +267,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await worldTable.restore();funded.start();arenaRooms.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();funded.start();arenaRooms.start();arenaSurvival.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
@@ -277,7 +283,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

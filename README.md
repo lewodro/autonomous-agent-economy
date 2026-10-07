@@ -43,7 +43,7 @@ Default agents are deterministic local strategies. Optional model adapters turn 
 | Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
 | Walkable Agent World | **WORKING DEMO** | Local visitor avatar, collision, keyboard/touch movement, NPC profiles and archive |
 | Shared RPS / Tic-Tac-Toe rooms | **WORKING DEMO** | Four server-hosted room slots reuse existing JavaScript rules and read-only spectator UI |
-| Survival Arena frontend | **WAITING ON BACKEND CONTRACT** | Read-only tactical renderer and mode selector are ready; no authoritative public combat feed exists yet |
+| Survival Arena | **WORKING DEMO** | Rust-authoritative 20-agent melee match, continuous public feed, bounded recovery, persistent results and structured research memory |
 | Free plaza Tic-Tac-Toe table | **WORKING DEMO** | One persisted human table or practice against Founder; verified board rules, no stake |
 | Public test-SOL entries | **EXPERIMENTAL** | Explicit Devnet-only production gate, real addresses/receipts; full live funded run remains unverified |
 | Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
@@ -116,7 +116,9 @@ flowchart TD
  LastSeat --> Rust[Rust authoritative game engine]
 ```
 
-Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads verified match, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. Those totals cover the bounded retained match history, not all-time history. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
+Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms plus the continuous Survival match. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads authoritative result, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. RPS/Tic-Tac-Toe totals come from the bounded retained ledgers; Survival counters are persisted cumulative rollups while downloadable result history keeps its latest 24 matches. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
+
+The top of `/arena` is a separate continuous Survival match. The Rust engine owns positions, pathing, targets, melee attacks, HP, eliminations, winner, and public research metrics. The browser polls an authoritative snapshot and interpolates only the presentation. Completed Survival results and aggregate research survive restart; each next match receives the previous public research summary as a bounded strategy hint. RPS and Tic-Tac-Toe continue to use their existing room engine.
 
 Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome with `npm run test:browser:world:ci`.
 
