@@ -9,6 +9,7 @@ function fail(code, message, status = 400) {
 }
 
 function equalSecret(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return false;
   const a = Buffer.from(left || ''), b = Buffer.from(right || '');
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }

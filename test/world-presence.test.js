@@ -31,6 +31,19 @@ test('presence limits update frequency and does not expose session tokens', () =
   assert.equal(service.worlds.has('unconfigured-world-1'),false,'unknown world requests cannot allocate process-local state');
 });
 
+test('malformed session token values fail authorization without throwing',()=>{
+  const service=new WorldPresenceService();
+  const joined=service.join('main',{player_id:'visitor'});
+  const invalidTokens=[{},[],42,null];
+  for(const session_token of invalidTokens){
+    assert.throws(()=>service.join('main',{player_id:'visitor',session_token}),{code:'PRESENCE_NOT_AUTHORIZED',status:403});
+    assert.throws(()=>service.move('main',{player_id:'visitor',session_token,position:{x:161,y:180}}),{code:'PRESENCE_NOT_AUTHORIZED',status:403});
+    assert.throws(()=>service.heartbeat('main',{player_id:'visitor',session_token}),{code:'PRESENCE_NOT_AUTHORIZED',status:403});
+    assert.throws(()=>service.leave('main',{player_id:'visitor',session_token}),{code:'PRESENCE_NOT_AUTHORIZED',status:403});
+  }
+  assert.equal(service.join('main',{player_id:'visitor',session_token:joined.session_token}).player.player_id,'visitor');
+});
+
 test('heartbeat and reconnect timestamps do not distort the movement speed budget',()=>{
   let now=1_000;const service=new WorldPresenceService({now:()=>now,minUpdateMs:50});
   const joined=service.join('main',{player_id:'visitor',position:{x:100,y:100}});
