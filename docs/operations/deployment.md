@@ -44,7 +44,7 @@ There are **no database migrations** in this topology. `npm ci` and `npm run bui
 | `PUBLIC_ORIGIN` | Required unless Railway domain exists | Canonical HTTPS origin, no path or trailing slash |
 | `RAILWAY_PUBLIC_DOMAIN` | Railway-provided alternative | Temporary approved HTTPS host |
 | `PORT` | Hosting-provided | HTTP listener port; defaults to 3000 |
-| `TRUST_PROXY` | Optional, default `false` | Set `true` only when a trusted ingress overwrites `X-Forwarded-For`; per-client limits otherwise use the direct peer address |
+| `TRUST_PROXY` | Optional, default `false` | Set `true` behind trusted ingress; Railway supplies `X-Real-IP`, other proxies must overwrite `X-Real-IP` or `X-Forwarded-For` |
 | `MODEL_BASE_URL`, `MODEL_API_KEY_ENV` | Optional | Explicit approved model endpoint and server-side key variable name |
 | `ECONOMY_LAB`, `MACHINE_PAYMENTS_DEMO` | Must remain off | Local development demonstrations only |
 | `ENTRY_FEE_ENABLED` | Off for free launch | Set only with the complete experimental Devnet variable set |
