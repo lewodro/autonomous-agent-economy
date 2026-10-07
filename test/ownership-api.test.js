@@ -12,7 +12,7 @@ test('owner API supports guest and wallet identity, private agent management, an
  const directory=await mkdtemp(path.join(os.tmpdir(),'aae-owner-api-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  let child,output='',stderr='',base;
  const start=async()=>{
-  output='';stderr='';child=spawn(process.execPath,['server.js'],{cwd:path.resolve('.'),env:{...process.env,NODE_ENV:'test',APP_MODE:'mock',HOST:'127.0.0.1',PORT:'0',MATCHES_DIR:directory},stdio:['ignore','pipe','pipe']});
+  output='';stderr='';child=spawn(process.execPath,['server.js'],{cwd:path.resolve('.'),env:{...process.env,NODE_ENV:'test',APP_MODE:'mock',TRUST_PROXY:'true',HOST:'127.0.0.1',PORT:'0',MATCHES_DIR:directory},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',chunk=>{output+=chunk.toString();const found=output.match(/http:\/\/localhost:(\d+)/);if(found)base=`http://127.0.0.1:${found[1]}`;});
   child.stderr.on('data',chunk=>stderr+=chunk.toString());
   const until=Date.now()+12_000;while(!base&&Date.now()<until){if(child.exitCode!==null)throw Error(`server exited ${child.exitCode}: ${stderr}`);await new Promise(resolve=>setTimeout(resolve,30));}
@@ -52,6 +52,9 @@ test('owner API supports guest and wallet identity, private agent management, an
   assert.equal((await call('/api/auth/wallet/verify',{method:'POST',body:JSON.stringify({challenge_id:issued.value.challenge_id,public_key:publicKey,signature})})).response.status,401);
   await stop();base=undefined;await start();
   const restored=await call('/api/me/agents',{cookie:guest.cookie});assert.equal(restored.response.status,200);assert.equal(restored.value.agents[0].treasury.available_base_units,'123');
+  for(let index=0;index<20;index++)assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,201);
+  assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'192.0.2.20'}})).response.status,429);
+  assert.equal((await call('/api/auth/anonymous',{method:'POST',body:'{}',headers:{'X-Forwarded-For':'198.51.100.30'}})).response.status,201,'one visitor rate limit must not block other addresses');
  }finally{await stop();}
 });
 

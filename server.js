@@ -2,6 +2,7 @@ import {FundedRuntime} from './service/funded-runtime.js';
 import {resolveConfig} from './service/config.js';
 import {MachinePayments} from './service/payments.js';
 import http from 'node:http';
+import { isIP } from 'node:net';
 import { readFile, writeFile, mkdir, rename, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -15,7 +16,7 @@ import { MatchEventStream } from './service/event-stream.js';
 import { authorizeRequest } from './service/http-policy.js';
 import { validateDeploymentConfig } from './service/deployment-config.js';
 import { hostCookie, hasHostCookie } from './service/host-auth.js';
-import { SlidingWindowLimiter } from './service/rate-limit.js';
+import { KeyedSlidingWindowLimiter, SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
@@ -29,7 +30,7 @@ const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const approvedAvatarSet = new Set(approvedAvatarIds);
 const deployment = validateDeploymentConfig();
-const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
+const { production, publicDevnet, publicOrigins, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled, mainnetMatchWageringEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
@@ -40,13 +41,17 @@ const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const worldTable=new TableSession(path.join(directory,'world'));
-const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const walletChallenges=new WalletChallengeService();
 const ownershipStore=new OwnershipStore(path.join(directory,'identity'));
-const identityCreates=new SlidingWindowLimiter({limit:20,windowMs:60_000});
-const walletChallengeRequests=new SlidingWindowLimiter({limit:20,windowMs:60_000});
-const walletVerifyRequests=new SlidingWindowLimiter({limit:12,windowMs:60_000});
-const agentCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
+const identityCreates=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
+const walletChallengeRequests=new KeyedSlidingWindowLimiter({limit:20,windowMs:60_000});
+const walletVerifyRequests=new KeyedSlidingWindowLimiter({limit:12,windowMs:60_000});
+const agentCreates=new KeyedSlidingWindowLimiter({limit:30,windowMs:60_000});
+const tableActions=new KeyedSlidingWindowLimiter({limit:120,windowMs:60_000});
+function clientRateKey(req){
+  if(trustProxy){const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();if(isIP(forwarded))return forwarded;}
+  return isIP(req.socket.remoteAddress||'')?req.socket.remoteAddress:'unknown';
+}
 let shuttingDown=false;
 const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds});
 const roomSpectators=new RoomSpectators();
@@ -102,19 +107,19 @@ const server = http.createServer(async (req, res) => {
       if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'Use application/json' });
     }
     if(req.method==='POST'&&route==='/api/auth/anonymous'){
-      if(!identityCreates.allow())return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
+      if(!identityCreates.allow(clientRateKey(req)))return json(res,429,{error:'Identity creation is temporarily limited',code:'RATE_LIMITED'});
       const owner=await ownershipStore.createAnonymous();
       console.log(JSON.stringify({event:'owner_created',identity_type:'anonymous'}));
       return json(res,201,{owner},{'Set-Cookie':ownerCookie(owner.id)});
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/challenge'){
-      if(!walletChallengeRequests.allow())return json(res,429,{error:'Wallet sign-in is temporarily limited',code:'RATE_LIMITED'});
+      if(!walletChallengeRequests.allow(clientRateKey(req)))return json(res,429,{error:'Wallet sign-in is temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,2048),origin=req.headers.origin||deployment.publicOrigin||`http://${req.headers.host}`;
       const challenge=walletChallenges.issue(data.public_key,origin);
       return json(res,200,challenge);
     }
     if(req.method==='POST'&&route==='/api/auth/wallet/verify'){
-      if(!walletVerifyRequests.allow())return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
+      if(!walletVerifyRequests.allow(clientRateKey(req)))return json(res,429,{error:'Wallet verification is temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,4096),verified=walletChallenges.verify(data.challenge_id,data.public_key,data.signature);
       const currentOwnerId=ownerIdFromRequest(req),currentOwner=currentOwnerId?ownershipStore.owner(currentOwnerId):null;
       const owner=currentOwner?.identity_type==='anonymous'
@@ -132,7 +137,7 @@ const server = http.createServer(async (req, res) => {
       const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
       if(req.method==='GET')return json(res,200,{agents:ownershipStore.agentsForOwner(ownerId).map(agent=>({...agent,owner_id:undefined}))});
       if(req.method==='POST'){
-        if(!agentCreates.allow())return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+        if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
         const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet);
         console.log(JSON.stringify({event:'agent_created',ownership_status:'user',provider:'mock'}));
         return json(res,201,{agent:{...agent,owner_id:undefined}});
@@ -141,7 +146,7 @@ const server = http.createServer(async (req, res) => {
     }
     if(route==='/api/me/agents/import'&&req.method==='POST'){
       const ownerId=ownerIdFromRequest(req);if(!ownerId||!ownershipStore.owner(ownerId))return json(res,401,{error:'Sign in or continue as a guest',code:'OWNER_SESSION_REQUIRED'});
-      if(!agentCreates.allow())return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
+      if(!agentCreates.allow(ownerId))return json(res,429,{error:'Agent creation is temporarily limited',code:'RATE_LIMITED'});
       const data=await body(req,8192),agent=await ownershipStore.createAgent(ownerId,data,approvedAvatarSet,{importing:true});
       console.log(JSON.stringify({event:'agent_imported',ownership_status:'user',provider:'mock'}));
       return json(res,201,{agent:{...agent,owner_id:undefined}});
@@ -213,7 +218,7 @@ const server = http.createServer(async (req, res) => {
       const visitor=visitorIdentity(req);
       if(req.method==='GET'&&route==='/api/world/table')return json(res,200,worldTable.snapshot(visitor.hash));
       if(req.method==='POST'&&route!=='/api/world/table'){
-        if(!tableActions.allow())return json(res,429,{error:'Table actions are temporarily limited. Try again shortly.'});
+        if(!tableActions.allow(clientRateKey(req)))return json(res,429,{error:'Table actions are temporarily limited. Try again shortly.'});
         const snapshot=await worldTable.act(visitor.hash,route.split('/').at(-1),await body(req,2048));
         return json(res,200,snapshot,{'Set-Cookie':`world_visitor=${visitor.token}; HttpOnly; SameSite=Strict; Path=/api/world/table; Max-Age=86400${production?'; Secure':''}`});
       }

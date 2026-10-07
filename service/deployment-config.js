@@ -2,6 +2,8 @@ import path from 'node:path';
 
 export function validateDeploymentConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
+  if(env.TRUST_PROXY!==undefined&&!['true','false'].includes(env.TRUST_PROXY))throw new Error('TRUST_PROXY must be true or false.');
+  const trustProxy=env.TRUST_PROXY==='true';
   const rawPort = env.PORT ?? '3000';
   const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 1 to 65535 (or 0 in tests).');
@@ -54,5 +56,5 @@ export function validateDeploymentConfig(env = process.env) {
   }
 
   const publicOrigins = [...new Set([publicOrigin, env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : null].filter(Boolean))];
-  return { production, publicDevnet, publicPredictions, appMode, solanaNetwork, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
+  return { production, publicDevnet, publicPredictions, appMode, solanaNetwork, trustProxy, mainnetAgentFundingEnabled:false, mainnetMatchWageringEnabled:false, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
 }
