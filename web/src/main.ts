@@ -5,6 +5,7 @@ import {SpectatorHUD,setHTML} from './spectator.js';
 import type { AgentConfig, Config, GameEvent, MatchResponse, Replay } from './types.js';
 import { api } from './api.js';
 import { Player } from './player.js';
+import { HttpMatchTransport } from './transport.js';
 import { Renderer } from './renderer.js';
 import { mountOngoingGames } from './ongoing.js';
 import { moments } from './replay.js';
@@ -17,7 +18,7 @@ let observer:LiveObserver|null=null,watchSession='',watchConnected=false;
 try { favorites=new Set(JSON.parse(localStorage.getItem('last-seat-favorites')||'[]') as string[]); } catch {}
 const notice=(text:string)=>{$('notice').textContent=text;};
 const economyHUD=new EconomyHUD($('economy-hud'),notice);
-const player=new Player(update,notice);
+const player=new Player(update,notice,new HttpMatchTransport('/api/experiments'));
 const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const renderer=new Renderer($<HTMLCanvasElement>('board'),id=>{selected=id;$<HTMLDetailsElement>('agent-drawer').open=true;update();});
 const mobile=matchMedia('(max-width:760px)');const log=document.querySelector<HTMLDetailsElement>('.live-log')!;log.open=!mobile.matches;mobile.addEventListener('change',()=>log.open=!mobile.matches);
@@ -55,6 +56,14 @@ function inspect(profile:AgentConfig) {
 }
 function download(content:string,name:string,type='application/json') {const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function randomSeed():number{return crypto.getRandomValues(new Uint32Array(1))[0]||1;}
+interface ExperimentSummary {experiment_id:string;created_at:string;status:string;seed:number;match_id:string}
+async function refreshExperiments(){
+ const {experiments}=await api<{experiments:ExperimentSummary[]}>('/api/experiments');
+ const list=$('my-experiments');
+ list.innerHTML=experiments.length?experiments.map(item=>`<div><button data-experiment="${item.experiment_id}">${escape(new Date(item.created_at).toLocaleString())} · seed ${item.seed} · ${escape(item.status)}</button><button data-delete-experiment="${item.experiment_id}" aria-label="Delete experiment">Delete</button></div>`).join(''):'<p class="personality">Your private experiments will appear here.</p>';
+}
+async function openExperiment(id:string){const {replay}=await api<{replay:Replay}>(`/api/experiments/${encodeURIComponent(id)}`);renderer.reset();player.load(replay,id);notice('Private experiment restored.');}
+async function downloadPrivate(path:string,name:string){const response=await fetch(path);if(!response.ok)throw new Error((await response.json()).error||'Download failed');download(await response.text(),name);}
 function watchMatch(session:string,initial?:Replay){
  observer?.close();watchSession=session;watchConnected=false;
  if(initial){renderer.reset();player.load(initial,'',true);player.observing=true;selected=initial.config.agents[0]!.id;}
@@ -67,8 +76,15 @@ async function create(config:Config,economy?:{mode:string;entry_amount_sol:strin
   const result=await api<MatchResponse>('/api/funded-matches',{config,...economy});
   history.replaceState(null,'',`/?watch=${result.session}`);watchMatch(result.session,result.replay);notice('Funding open. Fund test entries to admit the match.');return;
  }
- const result=await api<MatchResponse>('/api/matches',{config});observer?.close();observer=null;watchSession='';watchConnected=false;history.replaceState(null,'',location.pathname);selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);try{localStorage.setItem('last-seat-replay-v1',JSON.stringify(result.replay));}catch{}notice(`Seed ${result.replay.config.seed} · ${result.replay.config.agents.length} agents · Rust core. Ready.`);
+ const result=await api<MatchResponse>('/api/experiments',{config});observer?.close();observer=null;watchSession='';watchConnected=false;history.replaceState(null,'',location.pathname);selected=result.replay.config.agents[0]!.id;renderer.reset();player.load(result.replay,result.session);await refreshExperiments();notice(`Private experiment · seed ${result.replay.config.seed} · ${result.replay.config.agents.length} agents. Ready.`);
 }
+document.addEventListener('click',e=>{
+ const target=e.target as HTMLElement;
+ const deleteId=target.closest<HTMLElement>('[data-delete-experiment]')?.dataset.deleteExperiment;
+ if(deleteId){void (async()=>{const response=await fetch(`/api/experiments/${deleteId}`,{method:'DELETE'});if(!response.ok)throw new Error((await response.json()).error||'Delete failed');if(player.session===deleteId){player.pause();player.session='';localStorage.removeItem('last-seat-session');}await refreshExperiments();notice('Private experiment deleted.');})().catch(error=>notice((error as Error).message));return;}
+ const id=target.closest<HTMLElement>('[data-experiment]')?.dataset.experiment;
+ if(id)void openExperiment(id).catch(error=>notice((error as Error).message));
+});
 $('play').onclick=()=>{if(player.playing)player.pause();else player.resume();};
 $('step').onclick=()=>{void player.step();};
 $('replay').onclick=()=>{player.seek(0);notice('Replaying recorded events. Providers and rules are not called for recorded turns.');};
@@ -90,15 +106,18 @@ $('close-config').onclick=()=>dialog.close();
 $('preset').onclick=async()=>{try{const config=await api<Config>(`/api/config?agents=${$<HTMLSelectElement>('population').value}`);config.seed=Number($<HTMLInputElement>('seed').value);config.max_turns=Number($<HTMLInputElement>('max-turns').value);config.agents.forEach(a=>a.starting_credits=Number($<HTMLInputElement>('credits').value));$<HTMLTextAreaElement>('config-json').value=JSON.stringify(config,null,2);}catch(error){$('config-error').textContent=(error as Error).message;}};
 $('config-form').onsubmit=async e=>{e.preventDefault();try{await create(parseConfig($<HTMLTextAreaElement>('config-json').value) as Config,{mode:$<HTMLSelectElement>('economy-mode').value,entry_amount_sol:$<HTMLSelectElement>('economy-entry').value});dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
 $('download-config').onclick=()=>{download($<HTMLTextAreaElement>('config-json').value,'simulation.json');};
-$('export').onclick=()=>{if(player.run)download(JSON.stringify(player.run,null,2),`${player.run.match_id}.json`);};
+$('export').onclick=()=>{if(player.run&&player.session)void downloadPrivate(`/api/experiments/${player.session}/export`,`experiment-${player.session}.json`).catch(error=>notice((error as Error).message));};
+$('export-match').onclick=()=>{if(player.run&&player.session)void downloadPrivate(`/api/experiments/${player.session}/matches/${player.run.match_id}.json`,`match-${player.run.match_id}.json`).catch(error=>notice((error as Error).message));};
 $('config-copy').onclick=async()=>{if(!player.run)return;try{await navigator.clipboard.writeText(JSON.stringify(player.run.config,null,2));notice('Config copied. Edit and paste into New / remix.');}catch{download(JSON.stringify(player.run.config,null,2),'simulation.json');}};
 $('share-live').onclick=async()=>{
+ if(player.session){notice('This experiment is private to this browser. Use Download Experiment JSON to keep a copy.');return;}
  const session=watchSession||player.session;if(!session){notice('Remix this history to start a live match.');return;}
  const url=new URL(location.href);url.search='';url.searchParams.set('watch',session);
  try{await navigator.clipboard.writeText(url.toString());notice('Live watch link copied. Viewers follow this match; pause controls only their view. Local links require this service.');}catch{notice(url.toString());}
 };
-$<HTMLInputElement>('import').onchange=async()=>{const file=$<HTMLInputElement>('import').files?.[0];if(!file)return;try{if(file.size>32_000_000)throw new Error('Replay exceeds 32 MB');const result=await api<MatchResponse>('/api/replays/import',{replay:JSON.parse(await file.text())});observer?.close();observer=null;watchSession='';watchConnected=false;player.load(result.replay,'',true);notice('Replay verified by Rust. Play from turn zero; no model calls.');}catch(error){notice((error as Error).message);}};
+$<HTMLInputElement>('import').onchange=async()=>{const file=$<HTMLInputElement>('import').files?.[0];if(!file)return;try{if(file.size>32_000_000)throw new Error('Replay exceeds 32 MB');const result=await api<MatchResponse>('/api/experiments/import',{replay:JSON.parse(await file.text())});observer?.close();observer=null;watchSession='';watchConnected=false;player.load(result.replay,result.session,true);await refreshExperiments();notice('Verified replay imported as your private experiment.');}catch(error){notice((error as Error).message);}};
 async function share(final:boolean) {
+  if(player.session){notice('Private experiments are not published. Download your JSON to keep or share a copy.');return;}
   player.pause();
   if(player.state)player.seek(player.state.turn);
   const run=player.run,state=player.state;if(!run||!state)return;
@@ -117,11 +136,12 @@ try {
   if(watch){watchMatch(watch);}
   else if(id){const result=await api<{replay:Replay}>(`/api/replays/${encodeURIComponent(id)}`);player.load(result.replay,'',true);player.seek(Math.max(0,Math.min(result.replay.final_state.turn,Number(params.get('turn')||0))));notice('Shared replay loaded. New / remix forks its config.');}
   else {
+    await refreshExperiments();
     const firstVisit=localStorage.getItem('last-seat-first-run-v2')!=='1';
     if(firstVisit){localStorage.removeItem('last-seat-session');localStorage.removeItem('last-seat-replay-v1');}
     const savedSession=firstVisit?null:localStorage.getItem('last-seat-session'),saved=firstVisit?null:localStorage.getItem('last-seat-replay-v1');
-    if(savedSession){try{const {replay}=await api<{replay:Replay}>(`/api/matches/${encodeURIComponent(savedSession)}`);renderer.reset();player.load(replay,savedSession);notice('Live session restored with its existing inference budget.');}catch(error){if(!(error instanceof Error))throw error;await create(await api<Config>('/api/config?agents=4'));}}
-    else if(saved){const result=await api<MatchResponse>('/api/replays/import',{replay:JSON.parse(saved)});renderer.reset();player.load(result.replay,result.session);notice('Verified local replay restored. Restart for an identical fresh run.');}
+    if(savedSession){try{await openExperiment(savedSession);}catch(error){if(!(error instanceof Error))throw error;await create(await api<Config>('/api/config?agents=4'));}}
+    else if(saved){const result=await api<MatchResponse>('/api/experiments/import',{replay:JSON.parse(saved)});renderer.reset();player.load(result.replay,result.session);await refreshExperiments();notice('Verified local replay restored as a private experiment.');}
     else {const config=await api<Config>('/api/config?agents=4');if(firstVisit)config.seed=randomSeed();await create(config);if(firstVisit)localStorage.setItem('last-seat-first-run-v2','1');}
   }
 }catch(error){notice((error as Error).message);try{await create(await api<Config>('/api/config?agents=4'));}catch{notice('Start the local service with npm start.');}}
