@@ -1,5 +1,7 @@
 import { SPRITES } from './sprites.js';
+import { drawActorSprite } from './renderer.js';
 import { request } from './gateway.js';
+import type { Position } from './model.js';
 
 export type SurvivalEventType='SurvivalMatchStarted'|'SurvivalMatchCompleted'|'AgentSpawned'|'TargetSelected'|'TargetChanged'|'ChaseStarted'|'AttackStarted'|'AttackLanded'|'DamageTaken'|'RetreatStarted'|'AgentCornered'|'AgentEscaped'|'AgentEliminated'|'WinnerDeclared'|'ResearchUpdated';
 export interface SurvivalMetrics {damage_dealt:number;damage_taken:number;attacks_landed:number;target_changes:number;retreat_count:number;time_alive:number;eliminations:number;times_cornered:number;escapes:number;final_placement:number|null}
@@ -43,30 +45,153 @@ export function parseSurvivalSnapshot(value:unknown):SurvivalSnapshot {
  return s;
 }
 export async function loadSurvivalSnapshot():Promise<SurvivalSnapshot>{return parseSurvivalSnapshot(await request<unknown>('/api/survival/current'));}
+export function acceptsSurvivalUpdate(current:SurvivalSnapshot|undefined,next:SurvivalSnapshot):boolean {
+ return !current||current.match_id!==next.match_id||next.sequence>=current.sequence;
+}
 
 export interface Selection {kind:'agent'|'fight';id:string}
-export function hitTest(snapshot:SurvivalSnapshot,x:number,y:number):Selection|undefined {
- const agent=[...snapshot.agents].reverse().find(a=>Math.hypot(a.x-x,a.y-y)<24);if(agent)return {kind:'agent',id:agent.id};
- for(const e of snapshot.engagements){const a=snapshot.agents.find(v=>v.id===e.attacker_id)!,b=snapshot.agents.find(v=>v.id===e.target_id)!;const dx=b.x-a.x,dy=b.y-a.y,t=Math.max(0,Math.min(1,((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1)));if(Math.hypot(x-a.x-t*dx,y-a.y-t*dy)<16)return {kind:'fight',id:e.id};}
+export function hitTest(snapshot:SurvivalSnapshot,x:number,y:number,positions?:ReadonlyMap<string,Position>):Selection|undefined {
+ const at=(a:SurvivalAgent)=>positions?.get(a.id)||a;
+ const agent=[...snapshot.agents].reverse().find(a=>Math.hypot(at(a).x-x,at(a).y-y)<20);if(agent)return {kind:'agent',id:agent.id};
+ for(const e of snapshot.engagements){const a=at(snapshot.agents.find(v=>v.id===e.attacker_id)!),b=at(snapshot.agents.find(v=>v.id===e.target_id)!);const dx=b.x-a.x,dy=b.y-a.y,t=Math.max(0,Math.min(1,((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1)));if(Math.hypot(x-a.x-t*dx,y-a.y-t*dy)<12)return {kind:'fight',id:e.id};}
  return undefined;
 }
 
 export class SurvivalRenderer {
- private ctx:CanvasRenderingContext2D;private images=new Map<string,HTMLImageElement>();private previous?:SurvivalSnapshot;private flashUntil=new Map<string,number>();private raf=0;
- constructor(private canvas:HTMLCanvasElement){const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Canvas rendering is unavailable');this.ctx=ctx;for(const sprite of SPRITES){const image=new Image();image.src=sprite.sheet;this.images.set(sprite.sheet,image);}}
-  render(s:SurvivalSnapshot,selection?:Selection):void {
-  const previous=this.previous;this.previous=s;const now=performance.now();for(const event of s.events){const affected=hitEffectAgent(event);if(affected&&(!previous||event.seq>previous.sequence))this.flashUntil.set(affected,now+420);}
-  if(this.raf)cancelAnimationFrame(this.raf);const frame=(time:number)=>{this.drawFrame(s,selection,Math.min(1,(time-now)/1200),time,previous);if(time-now<1200||[...this.flashUntil.values()].some(until=>until>time))this.raf=requestAnimationFrame(frame);else this.raf=0;};this.raf=requestAnimationFrame(frame);
+ private ctx:CanvasRenderingContext2D;
+ private map=document.createElement('canvas');
+ private mapKey='';
+ private images=new Map<string,HTMLImageElement>();
+ private current?:SurvivalSnapshot;
+ private selection?:Selection;
+ private from=new Map<string,Position>();
+ private transitionAt=0;
+ private seenEventSeq=-1;
+ private flashUntil=new Map<string,number>();
+ private attackUntil=new Map<string,number>();
+ private eliminatedAt=new Map<string,number>();
+ private winnerAt=0;
+ private raf=0;
+ private active=true;
+ constructor(private canvas:HTMLCanvasElement){
+  const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Canvas rendering is unavailable');this.ctx=ctx;
+  for(const sprite of SPRITES){const image=new Image();image.src=sprite.sheet;this.images.set(sprite.sheet,image);}
  }
- private drawFrame(s:SurvivalSnapshot,selection:Selection|undefined,alpha:number,time:number,previous?:SurvivalSnapshot):void {
-  const prior=new Map((previous?.match_id===s.match_id?previous.agents:[]).map(a=>[a.id,a]));
-  const positions=new Map(s.agents.map(a=>{const old=prior.get(a.id);return [a.id,{x:old?old.x+(a.x-old.x)*alpha:a.x,y:old?old.y+(a.y-old.y)*alpha:a.y}] as const;}));
-  const ratio=Math.min(2,window.devicePixelRatio||1),w=Math.max(1,this.canvas.clientWidth),h=Math.max(1,this.canvas.clientHeight);if(this.canvas.width!==Math.round(w*ratio)||this.canvas.height!==Math.round(h*ratio)){this.canvas.width=Math.round(w*ratio);this.canvas.height=Math.round(h*ratio);}const c=this.ctx,scale=Math.min(w/s.map.width,h/s.map.height);c.setTransform(ratio*scale,0,0,ratio*scale,(w-s.map.width*scale)*ratio/2,(h-s.map.height*scale)*ratio/2);c.imageSmoothingEnabled=false;c.fillStyle='#172922';c.fillRect(0,0,s.map.width,s.map.height);
-  for(let y=0;y<s.map.height;y+=32)for(let x=0;x<s.map.width;x+=32){c.fillStyle=((x/32+y/32)%2)?'#294338':'#263f35';c.fillRect(x,y,32,32);c.strokeStyle='#385447';c.lineWidth=1;c.strokeRect(x+.5,y+.5,32,32);}
-  for(const o of s.map.obstacles){c.fillStyle=o.kind==='wall'?'#596151':'#736b51';c.fillRect(o.x,o.y,o.width,o.height);c.strokeStyle=o.kind==='wall'?'#858875':'#a09069';c.lineWidth=2;c.strokeRect(o.x+1,o.y+1,o.width-2,o.height-2);}
-  for(const e of s.engagements){const a={...s.agents.find(v=>v.id===e.attacker_id)!,...positions.get(e.attacker_id)},b={...s.agents.find(v=>v.id===e.target_id)!,...positions.get(e.target_id)};c.save();c.strokeStyle=e.status==='fighting'?'#ef8374':'#e9c875';c.lineWidth=e.status==='fighting'?3:2;c.setLineDash(e.status==='chasing'?[7,5]:[]);c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();c.fillStyle='#101b18';c.beginPath();c.arc((a.x+b.x)/2,(a.y+b.y)/2,10,0,Math.PI*2);c.fill();c.fillStyle='#f2e7d1';c.font='bold 10px monospace';c.textAlign='center';c.textBaseline='middle';c.fillText('VS',(a.x+b.x)/2,(a.y+b.y)/2);c.restore();}
-  for(const source of s.agents){const a={...source,...positions.get(source.id)},dead=a.status==='eliminated',focused=selection?.kind==='agent'&&selection.id===a.id||selection?.kind==='fight'&&s.engagements.find(e=>e.id===selection.id&&[e.attacker_id,e.target_id].includes(a.id));if(focused){c.strokeStyle='#c5ec78';c.lineWidth=3;c.beginPath();c.arc(a.x,a.y,25,0,Math.PI*2);c.stroke();}if((this.flashUntil.get(a.id)||0)>time){c.fillStyle='#ed625d88';c.beginPath();c.arc(a.x,a.y,25,0,Math.PI*2);c.fill();}const def=SPRITES.find(v=>v.sheet==='/'+a.sprite),image=def&&this.images.get(def.sheet);if(def&&image?.complete&&image.naturalWidth){c.globalAlpha=dead ? .35 : 1;c.drawImage(image,0,0,def.frameWidth,def.frameHeight,a.x-18,a.y-20,36,36);c.globalAlpha=1;}else{c.fillStyle=dead?'#777':'#e9d8b7';c.fillRect(a.x-10,a.y-10,20,20);}c.fillStyle='#101b18';c.fillRect(a.x-18,a.y-31,36,7);c.fillStyle=dead?'#777':a.hp/a.max_hp<.3?'#ed8075':'#b9eb69';c.fillRect(a.x-18,a.y-31,36*a.hp/a.max_hp,7);c.fillStyle=dead?'#9b9b8b':'#f0eadb';c.font='10px monospace';c.textAlign='center';c.fillText(a.name.slice(0,12).toUpperCase(),a.x,a.y-37);if(dead){c.fillStyle='#f08d80';c.fillText('OUT',a.x,a.y+24);}}
+ render(s:SurvivalSnapshot,selection?:Selection):void {
+  const now=performance.now(),old=this.current,sameMatch=old?.match_id===s.match_id;
+  this.selection=selection;
+  if(old===s)return;
+  this.from=sameMatch?this.positions(now):new Map(s.agents.map(a=>[a.id,{x:a.x,y:a.y}]));
+  this.current=s;this.transitionAt=now;
+  if(!sameMatch){this.seenEventSeq=-1;this.flashUntil.clear();this.attackUntil.clear();this.eliminatedAt.clear();this.winnerAt=0;}
+  for(const a of s.agents)if(sameMatch&&old?.agents.find(p=>p.id===a.id)?.status!=='eliminated'&&a.status==='eliminated')this.eliminatedAt.set(a.id,now);
+  for(const event of s.events){
+   if(event.seq<=this.seenEventSeq)continue;
+   if(event.round>=s.round-1){
+    const victim=hitEffectAgent(event);if(victim)this.flashUntil.set(victim,now+460);
+    if(event.type==='AttackStarted'||event.type==='AttackLanded')this.attackUntil.set(event.agent_id,now+380);
+    if(event.type==='AgentEliminated')this.eliminatedAt.set(event.agent_id,now);
+   }
+  }
+  this.seenEventSeq=Math.max(this.seenEventSeq,...s.events.map(event=>event.seq));
+  if(s.status==='finished'&&s.leader_id&&!this.winnerAt)this.winnerAt=now;
+  const key=JSON.stringify(s.map);if(key!==this.mapKey){this.mapKey=key;this.paintMap(s);}
+  if(this.active&&!this.raf)this.raf=requestAnimationFrame(this.frame);
  }
- point(event:PointerEvent,s:SurvivalSnapshot):{x:number;y:number}|undefined{const rect=this.canvas.getBoundingClientRect(),scale=Math.min(rect.width/s.map.width,rect.height/s.map.height);return {x:(event.clientX-rect.left-(rect.width-s.map.width*scale)/2)/scale,y:(event.clientY-rect.top-(rect.height-s.map.height*scale)/2)/scale};}
- destroy():void{if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.images.clear();}
+ setActive(active:boolean):void{
+  this.active=active;
+  if(!active&&this.raf){cancelAnimationFrame(this.raf);this.raf=0;}
+  if(active&&this.current&&!this.raf)this.raf=requestAnimationFrame(this.frame);
+ }
+ positions(time=performance.now()):Map<string,Position>{
+  const s=this.current,blend=Math.min(1,Math.max(0,(time-this.transitionAt)/1450));
+  return new Map((s?.agents||[]).map(a=>{const start=this.from.get(a.id)||a;return [a.id,{x:start.x+(a.x-start.x)*blend,y:start.y+(a.y-start.y)*blend}] as const;}));
+ }
+ private paintMap(s:SurvivalSnapshot):void {
+  const {width,height,obstacles}=s.map;this.map.width=width;this.map.height=height;
+  const c=this.map.getContext('2d')!;c.imageSmoothingEnabled=false;
+  c.fillStyle='#182a26';c.fillRect(0,0,width,height);
+  for(let y=0;y<height;y+=32)for(let x=0;x<width;x+=32){
+   c.fillStyle=(x/32+y/32)%2?'#263a30':'#293e33';c.fillRect(x,y,32,32);
+   c.fillStyle='#355143';c.fillRect(x+3,y+3,2,2);
+   if((x*3+y)%128===0){c.fillStyle='#526445';c.fillRect(x+22,y+23,5,2);}
+  }
+  // Only the obstacle rectangles from the authoritative map are rendered as solid cover.
+  c.fillStyle='#31483b';c.fillRect(width*.28,0,width*.44,height);
+  c.fillStyle='#365044';c.fillRect(0,height*.38,width,height*.24);
+  c.strokeStyle='#62775b';c.lineWidth=3;c.strokeRect(width*.37,height*.25,width*.26,height*.5);
+  c.strokeStyle='#738464';c.lineWidth=2;c.beginPath();c.arc(width/2,height/2,76,0,Math.PI*2);c.stroke();
+  c.fillStyle='#72846c';c.font='bold 12px monospace';c.textAlign='center';
+  c.fillText('NORTH PASS',width/2,42);c.fillText('SOUTH PASS',width/2,height-28);
+  for(const o of obstacles){
+   c.fillStyle='#10231f';c.fillRect(o.x+5,o.y+7,o.width,o.height);
+   c.fillStyle=o.kind==='wall'?'#657568':'#877961';c.fillRect(o.x,o.y,o.width,o.height);
+   c.fillStyle=o.kind==='wall'?'#9ca695':'#b5a177';c.fillRect(o.x,o.y,o.width,5);
+   c.fillStyle=o.kind==='wall'?'#3d574c':'#635b48';c.fillRect(o.x,o.y+o.height-5,o.width,5);
+   c.strokeStyle=o.kind==='wall'?'#425348':'#665b47';c.lineWidth=2;
+   if(o.kind==='wall')for(let y=o.y+13;y<o.y+o.height;y+=16){c.beginPath();c.moveTo(o.x,y);c.lineTo(o.x+o.width,y);c.stroke();}
+   else for(let x=o.x+14;x<o.x+o.width;x+=16){c.beginPath();c.moveTo(x,o.y+5);c.lineTo(x,o.y+o.height-5);c.stroke();}
+  }
+  c.strokeStyle='#a0a783';c.lineWidth=8;c.strokeRect(4,4,width-8,height-8);
+  c.strokeStyle='#41584a';c.lineWidth=3;c.strokeRect(14,14,width-28,height-28);
+ }
+ private frame=(time:number):void=>{
+  this.raf=0;if(!this.current||!this.active)return;
+  this.drawFrame(this.current,time,this.positions(time));
+  this.raf=requestAnimationFrame(this.frame);
+ };
+ private drawFrame(s:SurvivalSnapshot,time:number,positions:ReadonlyMap<string,Position>):void {
+  const ratio=Math.min(2,window.devicePixelRatio||1),w=Math.max(1,this.canvas.clientWidth),h=Math.max(1,this.canvas.clientHeight);
+  if(this.canvas.width!==Math.round(w*ratio)||this.canvas.height!==Math.round(h*ratio)){this.canvas.width=Math.round(w*ratio);this.canvas.height=Math.round(h*ratio);}
+  const c=this.ctx,scale=Math.min(w/s.map.width,h/s.map.height),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  c.setTransform(ratio,0,0,ratio,0,0);c.fillStyle='#111d1a';c.fillRect(0,0,w,h);
+  c.setTransform(ratio*scale,0,0,ratio*scale,(w-s.map.width*scale)*ratio/2,(h-s.map.height*scale)*ratio/2);
+  c.imageSmoothingEnabled=false;c.drawImage(this.map,0,0);
+  for(const e of s.engagements){
+   const a=positions.get(e.attacker_id)!,b=positions.get(e.target_id)!;
+   const fighting=e.status==='fighting',focused=this.selection?.kind==='fight'&&this.selection.id===e.id;
+   c.save();c.strokeStyle=fighting?'#ff7b63':e.status==='retreating'?'#8ccef0':'#edc66d';c.globalAlpha=focused?1:.74;
+   c.lineWidth=focused?5:fighting?3:2;c.setLineDash(fighting?[]:[8,6]);c.lineDashOffset=reduced?0:-time/55;
+   c.beginPath();c.moveTo(a.x,a.y-5);c.lineTo(b.x,b.y-5);c.stroke();c.setLineDash([]);
+   const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+   c.fillStyle=c.strokeStyle;c.beginPath();c.moveTo(mx+dx/length*7,my+dy/length*7);c.lineTo(mx-dy/length*4,my+dx/length*4);c.lineTo(mx+dy/length*4,my-dx/length*4);c.fill();
+   if(fighting){c.strokeStyle='#ffb07b';c.lineWidth=1.5;c.beginPath();c.arc(mx,my,14+(reduced?0:Math.sin(time/150)*2),0,Math.PI*2);c.stroke();}
+   c.restore();
+  }
+  const labels:{x:number;y:number;width:number}[]=[];
+  for(const a of [...s.agents].sort((one,two)=>positions.get(one.id)!.y-positions.get(two.id)!.y)){
+   const base=positions.get(a.id)!,dead=a.status==='eliminated',target=a.target_id&&positions.get(a.target_id);
+   const attacking=(this.attackUntil.get(a.id)||0)>time&&!!target;
+   const attackProgress=attacking?Math.max(0,Math.min(1,(this.attackUntil.get(a.id)!-time)/380)):0;
+   const lunge=attacking&&!reduced?Math.sin((1-attackProgress)*Math.PI)*9:0;
+   const distance=target?Math.hypot(target.x-base.x,target.y-base.y)||1:1;
+   const x=base.x+(target?(target.x-base.x)/distance*lunge:0),y=base.y+(target?(target.y-base.y)/distance*lunge:0);
+   const focused=this.selection?.kind==='agent'&&this.selection.id===a.id||this.selection?.kind==='fight'&&s.engagements.some(e=>e.id===this.selection!.id&&(e.attacker_id===a.id||e.target_id===a.id));
+   const winner=s.status==='finished'&&s.leader_id===a.id;
+   if(focused||winner){c.strokeStyle=winner?'#f2ce78':'#c5ec78';c.lineWidth=3;c.beginPath();c.ellipse(x,y+5,23+(winner&&!reduced?Math.sin(time/200)*3:0),10,0,0,Math.PI*2);c.stroke();}
+   c.fillStyle='#101d19a8';c.beginPath();c.ellipse(x,y+8,16,6,0,0,Math.PI*2);c.fill();
+   const def=SPRITES.find(sprite=>sprite.sheet==='/'+a.sprite),image=def&&this.images.get(def.sheet);
+   const fade=dead?Math.max(.2,1-Math.max(0,time-(this.eliminatedAt.get(a.id)||0))/700):1;
+   c.save();c.globalAlpha=fade;
+   drawActorSprite(c,def,image,{position:{x,y},facing:a.direction,movementState:a.movement_intent==='idle'?'idle':'walking'},time,reduced,38);
+   c.restore();
+   if((this.flashUntil.get(a.id)||0)>time){c.save();c.globalAlpha=.35+.25*Math.sin(time/40)**2;c.fillStyle='#ff333b';c.fillRect(x-17,y-31,34,32);c.strokeStyle='#ff6868';c.lineWidth=3;c.beginPath();c.arc(x,y-8,23,0,Math.PI*2);c.stroke();c.restore();}
+   if(attacking&&target){c.strokeStyle='#ffe4a0';c.lineWidth=3;c.beginPath();c.arc(target.x,target.y-10,15,-.9,.7);c.stroke();}
+   if(winner){
+    const pulse=reduced?0:Math.sin((time-this.winnerAt)/180)*3;
+    c.fillStyle='#eec767';c.fillRect(x-10,y-43+pulse,20,5);c.fillRect(x-10,y-49+pulse,4,6);c.fillRect(x-2,y-53+pulse,4,10);c.fillRect(x+6,y-49+pulse,4,6);
+    if(!reduced)for(let n=0;n<6;n++){const angle=n*Math.PI/3+time/850;c.fillRect(x+Math.cos(angle)*32,y-12+Math.sin(angle)*21,3,3);}
+   }
+   c.fillStyle='#10211b';c.fillRect(x-16,y-35,32,5);
+   c.fillStyle=dead?'#738078':a.hp/a.max_hp<.3?'#ed6d65':'#b9eb69';c.fillRect(x-15,y-34,30*a.hp/a.max_hp,3);
+   const label=a.name.slice(0,13).toUpperCase(),labelWidth=label.length*5.5+8,labelX=x-labelWidth/2;
+   if(focused||winner||!labels.some(other=>labelX<other.x+other.width&&labelX+labelWidth>other.x&&Math.abs(y-45-other.y)<13)){
+    labels.push({x:labelX,y:y-45,width:labelWidth});
+    c.fillStyle='#10211be0';c.fillRect(labelX,y-49,labelWidth,11);c.fillStyle=dead?'#a7aea5':winner?'#f3d582':'#e8e8d8';c.font='bold 9px monospace';c.textAlign='center';c.fillText(label,x,y-40);
+   }
+   if(dead){c.fillStyle='#ef8e80';c.font='bold 9px monospace';c.textAlign='center';c.fillText('OUT',x,y+20);}
+  }
+ }
+ point(event:PointerEvent,s:SurvivalSnapshot):Position{const rect=this.canvas.getBoundingClientRect(),scale=Math.min(rect.width/s.map.width,rect.height/s.map.height);return {x:(event.clientX-rect.left-(rect.width-s.map.width*scale)/2)/scale,y:(event.clientY-rect.top-(rect.height-s.map.height*scale)/2)/scale};}
+ destroy():void{if(this.raf)cancelAnimationFrame(this.raf);this.raf=0;this.images.clear();this.current=undefined;}
 }

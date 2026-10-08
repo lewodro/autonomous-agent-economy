@@ -12,6 +12,15 @@ includes health, target, movement intent, combat metrics, and public research.
 The browser validates the complete snapshot before rendering it. It retains the
 last valid snapshot during a connection interruption.
 
+The tactical canvas shares the World renderer's sprite frame selection and the
+registered agent art. The snapshot's obstacle rectangles are the only solid
+cover shown; terrain patterns are decorative. Chases, attacks, damage flashes,
+eliminations, and the winner effect visualize recorded state and events. Agent
+art currently has one frame per character, so attack motion reuses that frame.
+Click selection follows interpolated display positions, while the inspector,
+research, statistics, semantic events, and downloadable records remain backed
+by server data.
+
 The [world backend contract](../world-backend-contract.md#survival-arena)
 documents the active endpoint, event types, persistence, profiles, and research
 loop. The [world asset validator](../../scripts/validate-world-assets.js) and

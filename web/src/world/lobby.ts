@@ -1,5 +1,5 @@
 import { HttpArenaGateway } from './gateway.js';
-import { loadSurvivalSnapshot, SurvivalRenderer, hitTest, type Selection, type SurvivalSnapshot } from './survival.js';
+import { acceptsSurvivalUpdate, loadSurvivalSnapshot, SurvivalRenderer, hitTest, type Selection, type SurvivalSnapshot } from './survival.js';
 const gateway=new HttpArenaGateway(),rooms=document.getElementById('rooms')!,status=document.getElementById('lobby-status')!,agents=document.getElementById('arena-agents')!;
 let stopped=false;window.addEventListener('pagehide',()=>stopped=true);
 let gameMode='survival',snapshot:SurvivalSnapshot|undefined,selection:Selection|undefined,survivalRenderer:SurvivalRenderer|undefined;
@@ -8,6 +8,7 @@ const survivalStatus=document.getElementById('survival-status')!;
 function setMode(mode:string):void{
   gameMode=mode;for(const button of document.querySelectorAll<HTMLButtonElement>('[data-game-mode]'))button.setAttribute('aria-pressed',String(button.dataset.gameMode===mode));
   const survival=mode==='survival';document.getElementById('survival-view')!.hidden=!survival;document.getElementById('rooms-view')!.hidden=survival;
+  survivalRenderer?.setActive(survival);
   if(!survival){for(const card of rooms.querySelectorAll<HTMLElement>('.room-card'))card.hidden=!card.id.startsWith(mode==='rps'?'room-rps-':'room-ttt-');}
   else if(snapshot)paintSurvival();
 }
@@ -33,10 +34,10 @@ function paintSurvival():void{
     inspector(`${a.name.toUpperCase()} VS ${b.name.toUpperCase()}`,[`${a.name}: ${a.hp} / ${a.max_hp} HP · ${e.status}`,`${b.name}: ${b.hp} / ${b.max_hp} HP · ${e.status}`,`Recent damage: ${e.recent_damage??'—'}`,...e.recent_actions.slice(-4)]);
   }else inspector('LIVE SURVIVAL MATCH',[`Match ${snapshot.match_id} · round ${snapshot.round}`,`${snapshot.engagements.length} active engagements`,...snapshot.events.slice(-5).reverse().map(event=>`R${event.round} · ${event.summary}`)]);
 }
-survivalCanvas.addEventListener('pointerdown',event=>{if(!snapshot)return;const p=survivalRenderer?.point(event,snapshot);if(!p)return;selection=hitTest(snapshot,p.x,p.y);paintSurvival();});
+survivalCanvas.addEventListener('pointerdown',event=>{if(!snapshot)return;const p=survivalRenderer?.point(event,snapshot);if(!p)return;selection=hitTest(snapshot,p.x,p.y,survivalRenderer?.positions());paintSurvival();});
 async function refreshSurvival():Promise<void>{
   if(stopped)return;
-  try{const next=await loadSurvivalSnapshot();if(!snapshot||next.sequence>=snapshot.sequence){snapshot=next;if(gameMode==='survival')paintSurvival();}}
+  try{const next=await loadSurvivalSnapshot();if(acceptsSurvivalUpdate(snapshot,next)){snapshot=next;if(gameMode==='survival')paintSurvival();}}
   catch(error){if(!snapshot){document.getElementById('survival-overlay')!.hidden=false;survivalStatus.textContent=error instanceof Error&&error.message.includes('404')?'SURVIVAL FEED NOT AVAILABLE':'SURVIVAL FEED UNAVAILABLE';}else survivalStatus.textContent='CONNECTION INTERRUPTED · LAST SERVER SNAPSHOT SHOWN';}
   if(!stopped)window.setTimeout(()=>void refreshSurvival(),1500);
 }
