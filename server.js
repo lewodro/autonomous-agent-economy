@@ -2,15 +2,18 @@ import {FundedRuntime} from './service/funded-runtime.js';
 import {resolveConfig} from './service/config.js';
 import {MachinePayments} from './service/payments.js';
 import http from 'node:http';
-import { readFile, writeFile, mkdir, rename, access } from 'node:fs/promises';
+import { readFile, mkdir, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { Core } from './service/core.js';
 import { MatchRuntime } from './service/runtime.js';
 import { SessionStore } from './service/session-store.js';
+import { ExperimentStore,experimentLimits,experimentExport } from './service/experiment-store.js';
+import { visitorSession } from './service/visitor-session.js';
+import { ReplayArchive } from './service/replay-archive.js';
 import { MatchEventStream } from './service/event-stream.js';
 import { authorizeRequest } from './service/http-policy.js';
 import { validateDeploymentConfig } from './service/deployment-config.js';
@@ -18,7 +21,7 @@ import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
-import { requestErrorStatus, withStorageFailure } from './service/http-error.js';
+import { requestErrorStatus } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
@@ -26,14 +29,21 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const deployment = validateDeploymentConfig();
-const { production, publicDevnet, publicOrigins } = deployment;
+const { production, publicDevnet, publicOrigins, publicModelInferenceEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
+const replayArchive=new ReplayArchive(directory);
 const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
+const experiments=new ExperimentStore(path.join(directory,'experiments'),runtime.store,experimentLimits());
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
 const publicMatchCreates=new SlidingWindowLimiter({limit:30,windowMs:60_000});
+const experimentCreates=new SlidingWindowLimiter({limit:20,windowMs:60_000});
+const experimentSteps=new SlidingWindowLimiter({limit:240,windowMs:60_000});
+const experimentDownloads=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+const publicReplayShares=new SlidingWindowLimiter({limit:20,windowMs:60_000});
+const presenceJoins=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles()});
@@ -44,7 +54,11 @@ const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds})
 const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
+let experimentAdmission=Promise.resolve();
+const deletingExperiments=new Set();
 async function createSession(command, data) {
+  const config=command==='start'?data.config:data.replay?.config;
+  if(production&&config?.agents?.some(agent=>['http','openai-compatible'].includes(agent.provider))&&!publicModelInferenceEnabled)throw Object.assign(new Error('Server-paid model inference is disabled for public experiments'),{status:403,code:'PUBLIC_MODEL_INFERENCE_DISABLED'});
   if (sessions.size >= 100) throw new Error('Local session limit reached; restart the service to clear sessions');
   const session = randomUUID();
   sessions.set(session, true);
@@ -54,6 +68,18 @@ async function createSession(command, data) {
     sessions.set(session,{kind:'free',replay});
     return { session, replay };
   } catch (error) { sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});throw error; }
+}
+function createExperiment(owner,command,data){
+  const task=experimentAdmission.catch(()=>{}).then(async()=>{
+    const removed=await experiments.prune();
+    for(const id of removed){sessions.delete(id);runtime.budgets.delete(id);await core.request({command:'drop',session:id});}
+    experiments.checkCapacity(owner);
+    const created=await createSession(command,data);
+    try{const record=await experiments.create(created.session,owner,created.replay);return {...created,experiment:experiments.summary(record)};}
+    catch(error){sessions.delete(created.session);runtime.budgets.delete(created.session);await runtime.store.delete(created.session);await core.request({command:'drop',session:created.session});throw error;}
+  });
+  experimentAdmission=task.catch(()=>{});
+  return task;
 }
 async function body(req, limit = 1_000_000) {
   const chunks = []; let length = 0;
@@ -65,11 +91,7 @@ async function body(req, limit = 1_000_000) {
   return value;
 }
 async function persist(replay) {
-  await withStorageFailure('replay archive',async()=>{
-    await mkdir(directory, { recursive: true });
-    const target = path.join(directory, `${replay.match_id}.json`), temp = target + `.${randomUUID()}.tmp`;
-    await writeFile(temp, JSON.stringify(replay)); await rename(temp, target);
-  });
+  await replayArchive.save(replay);
 }
 const server = http.createServer(async (req, res) => {
   try {
@@ -106,6 +128,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
+      if(action==='join'&&!presenceJoins.allow())return json(res,429,{error:'Presence joins are temporarily limited'});
       const data=await body(req,4096);
       const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
       return json(res,action==='join'?201:200,result);
@@ -167,6 +190,7 @@ const server = http.createServer(async (req, res) => {
       return json(res,405,{error:'Method not allowed'});
     }
     if (req.method === 'POST' && route === '/api/replays/share') {
+      if(!publicReplayShares.allow())return json(res,429,{error:'Replay sharing is temporarily limited'});
       const data = await body(req, 32_000_000);
       const { replay } = await core.request({ command: 'verify', replay: data.replay });
       await persist(replay);
@@ -186,7 +210,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,engine:'Rust',storage:'ok',presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',experiments:experiments.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -195,19 +219,72 @@ const server = http.createServer(async (req, res) => {
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
+    if(route==='/api/experiments'||route.startsWith('/api/experiments/')){
+      const visitor=visitorSession(req);
+      const cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      if(route==='/api/experiments'&&req.method==='GET')return json(res,200,{experiments:experiments.list(visitor.id)},cookie);
+      if(route==='/api/experiments'&&req.method==='POST'){
+        if(!experimentCreates.allow())return json(res,429,{error:'Experiment creation is temporarily limited'});
+        const data=await body(req,64_000);
+        const config=await resolveConfig(core,data.config);
+        const created=await createExperiment(visitor.id,'start',{config});
+        return json(res,201,created,cookie);
+      }
+      if(route==='/api/experiments/import'&&req.method==='POST'){
+        if(!experimentCreates.allow())return json(res,429,{error:'Experiment creation is temporarily limited'});
+        const data=await body(req,experiments.limits.exportMaxBytes);
+        const created=await createExperiment(visitor.id,'import',{replay:data.replay});
+        return json(res,201,created,cookie);
+      }
+      const matchRoute=route.match(/^\/api\/experiments\/([a-f0-9-]{36})(?:\/(step|export|matches\/seat-[a-f0-9]{64}\.json))?$/);
+      if(!matchRoute)return json(res,404,{error:'Experiment not found'},cookie);
+      const record=experiments.get(matchRoute[1],visitor.id),session=record.experiment_id,action=matchRoute[2];
+      if(req.method==='DELETE'&&!action){
+        if(runtime.busy.has(session))return json(res,409,{error:'Experiment turn is resolving'},cookie);
+        if(deletingExperiments.has(session))return json(res,409,{error:'Experiment deletion is resolving'},cookie);
+        deletingExperiments.add(session);
+        try{await experiments.delete(session,visitor.id);sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});}
+        finally{deletingExperiments.delete(session);}
+        return json(res,200,{deleted:true},cookie);
+      }
+      if(req.method==='GET'&&!action)return json(res,200,{...(await core.request({command:'get',session})),experiment:experiments.summary(record)},cookie);
+      if(req.method==='POST'&&action==='step'){
+        if(deletingExperiments.has(session))return json(res,409,{error:'Experiment deletion is resolving'},cookie);
+        if(!experimentSteps.allow())return json(res,429,{error:'Experiment actions are temporarily limited'});
+        const data=await body(req,4096);
+        const result=await runtime.step(core,session,data);
+        sessions.set(session,{kind:'free',replay:result.replay});
+        await experiments.update(record,result.replay);
+        if(data.compact)return json(res,200,{events:result.events,match_id:result.replay.match_id,final_state:result.replay.final_state,winner:result.replay.winner,statistics:result.replay.statistics,budget:runtime.budget(session).view()},cookie);
+        return json(res,200,result,cookie);
+      }
+      if(req.method==='GET'&&(action==='export'||action?.startsWith('matches/'))){
+        if(!experimentDownloads.allow())return json(res,429,{error:'Experiment downloads are temporarily limited'});
+        const {replay}=await core.request({command:'get',session});
+        if(action?.startsWith('matches/')&&action!==`matches/${replay.match_id}.json`)return json(res,404,{error:'Match not found'},cookie);
+        const exported=experimentExport(record,replay);
+        const payload=action==='export'?exported:exported.matches[0];
+        if(Buffer.byteLength(JSON.stringify(payload))>experiments.limits.exportMaxBytes)return json(res,413,{error:'Export exceeds configured size'},cookie);
+        return json(res,200,payload,{...cookie,'Content-Disposition':`attachment; filename="${action==='export'?'experiment-'+session:'match-'+replay.match_id}.json"`});
+      }
+      return json(res,405,{error:'Method not allowed'},cookie);
+    }
     if (req.method === 'POST' && route === '/api/matches') {
+      if(production)return json(res,404,{error:'Use private experiments'});
       if(production&&!publicMatchCreates.allow())return json(res,429,{error:'Match creation is temporarily limited. Try again later.'});
       const data = await body(req);
       const created=await createSession('start', { config: await resolveConfig(core,data.config) });
       return json(res,201,created,{'Set-Cookie':hostCookie(created.session)});
     }
     if (req.method === 'POST' && route === '/api/replays/import') {
+      if(production)return json(res,404,{error:'Use private experiments'});
       const data = await body(req, 32_000_000);
       const created=await createSession('import', { replay: data.replay });
       return json(res,200,created,{'Set-Cookie':hostCookie(created.session)});
     }
     if(req.method==='GET'&&route==='/api/games/ongoing'){
       const games=[...sessions.entries()].flatMap(([session,value])=>{
+        if(experiments.records.has(session))return [];
         const replay=value&&typeof value==='object'&&'replay' in value?value.replay:funded.matches.get(session)?.replay;
         if(!replay||replay.final_state.ended)return [];
         return [{session,match_id:replay.match_id,turn:replay.final_state.turn,
@@ -219,11 +296,13 @@ const server = http.createServer(async (req, res) => {
     }
     const archived = route.match(/^\/api\/replays\/(seat-[a-f0-9]{64})$/);
     if (req.method === 'GET' && archived) {
-      const replay = JSON.parse(await readFile(path.join(directory, `${archived[1]}.json`), 'utf8'));
+      const replay = await replayArchive.load(archived[1]);
+      if(!replay)return json(res,404,{error:'Replay not found'});
       const { replay: checked } = await core.request({ command: 'verify', replay });
       return json(res, 200, { replay: checked });
     }
     const match = route.match(/^\/api\/matches\/([a-f0-9-]{36})(?:\/(step|share|events|observe))?$/);
+    if(match&&experiments.records.has(match[1]))return json(res,404,{error:'Match not found'});
     if(match&&!sessions.has(match[1]))await funded.register(match[1]);
     if (match && sessions.has(match[1])) {
       const session = match[1];
@@ -256,7 +335,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
     const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css)|world\/(index\.html|arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     let detail;try{detail=JSON.parse(error.message);}catch{}
@@ -267,7 +346,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();funded.start();arenaRooms.start();arenaSurvival.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();funded.start();arenaRooms.start();arenaSurvival.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
