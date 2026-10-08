@@ -59,6 +59,7 @@ try{
  // unreliable in headless Chrome and the ambient NPC path is frame-timed.
  await send('Page.navigate',{url:base+'/arena'});
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
+ assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
  await wait('!document.getElementById("survival-view").hidden&&document.getElementById("survival-overlay").hidden&&document.getElementById("survival-status").textContent.includes("LIVE")');
@@ -95,6 +96,10 @@ try{
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
  assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ const archiveUrl=await evaluate('document.querySelector(".archive-row a:last-child")?.getAttribute("href")');
+ assert.ok(archiveUrl,'Research House must keep a downloadable match record');
+ const archive=await evaluate(`fetch(${JSON.stringify(archiveUrl)}).then(async r=>({status:r.status,contentType:r.headers.get('content-type'),body:await r.json()}))`);
+ assert.equal(archive.status,200);assert.ok(archive.contentType.includes('application/json'));assert.ok(archive.body&&typeof archive.body==='object');
  await evaluate('document.getElementById("interaction-close").click()');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
