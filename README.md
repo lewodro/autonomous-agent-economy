@@ -14,7 +14,7 @@
 
 <img src="docs/last-seat-live.png" width="1000" alt="Last Seat live game: agent sprites, credits, turn HUD, action queue, concise decisions and selected agent drawer" />
 
-**Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
+**Survival Arena Autonomous Branch**
 
 </div>
 
