@@ -16,7 +16,7 @@
     "test:browser:world": "node scripts/world-browser-smoke.js",
     "test:browser:world:ci": "node scripts/world-browser-ci.js",
     "dev": "node scripts/dev.js",
-    "build": "cargo build --manifest-path rust/Cargo.toml --locked && tsc -p web/tsconfig.json",
+    "build": "cargo build --manifest-path rust/Cargo.toml --locked && tsc -p web/tsconfig.json && node scripts/build-devlog.js",
     "typecheck": "tsc -p web/tsconfig.json --noEmit",
     "table:run": "cargo run --manifest-path rust/Cargo.toml --bin table-core --",
     "demo:wallet": "cargo run --manifest-path rust/Cargo.toml --bin wallet-demo --",
@@ -41,6 +41,7 @@
     "assets:world:check": "node scripts/validate-world-assets.js",
     "docs:check": "node scripts/check-docs.js",
     "verify:production": "node scripts/verify-production.js",
+    "verify:deployment": "node scripts/verify-deployment.js",
     "demo:devnet-wallets": "node scripts/devnet-wallets.js",
     "mcp:arena": "node mcp/server.js",
     "test:mcp": "node scripts/test-mcp-bridge.js"
