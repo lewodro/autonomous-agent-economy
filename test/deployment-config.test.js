@@ -4,7 +4,7 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicPredictions: false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, publicPredictions: false, publicModelInferenceEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
 });
 
@@ -53,4 +53,12 @@ test('rejects origins with paths and invalid port settings', () => {
   const base = { NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32) };
   assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_ORIGIN: 'https://axile.example/app' }), /ORIGIN/);
   assert.throws(() => validateDeploymentConfig({ ...base, PORT: 'nope' }), /PORT/);
+});
+
+test('production model spend is opt-in and remote providers require HTTPS',()=>{
+  const base={NODE_ENV:'production',PUBLIC_ORIGIN:'https://axile.example',MATCHES_DIR:'/data/matches',HOST_SESSION_SECRET:'a'.repeat(32)};
+  assert.equal(validateDeploymentConfig(base).publicModelInferenceEnabled,false);
+  assert.throws(()=>validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'yes'}),/true or false/);
+  assert.throws(()=>validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'true',MODEL_BASE_URL:'http://provider.example/v1'}),/HTTPS/);
+  assert.equal(validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'true',MODEL_BASE_URL:'https://provider.example/v1'}).publicModelInferenceEnabled,true);
 });

@@ -66,6 +66,7 @@ async function waitForDevTools(profile,chrome){
   throw new Error(`Chrome DevTools did not become ready (${lastError?.message||'timeout'}):\n${chrome.output()}`);
 }
 
+let failed=false;
 try{
   console.log(`Using headless Chrome at ${chromePath}`);
   const server=launch(process.execPath,[path.join(root,'server.js')],{cwd:root,env:{...process.env,PORT:'0',MATCHES_DIR:path.join(directory,'matches'),WORLD_LAB:'1'}});
@@ -79,6 +80,8 @@ try{
   const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:{...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug}});
   const [code,signal]=await once(smoke,'exit');
   if(code!==0)throw new Error(`World browser journey failed (${signal||code}):\n${smoke.output()}`);
-}finally{
+}catch(error){failed=true;console.error(error);}
+finally{
   for(const child of tracked.slice().reverse())await stop(child);
 }
+process.exit(failed?1:0);

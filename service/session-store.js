@@ -1,4 +1,4 @@
-import {mkdir,open,rename,readFile,readdir,unlink} from 'node:fs/promises';
+import {mkdir,open,rename,readFile,readdir,unlink,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {withStorageFailure} from './http-error.js';
@@ -9,6 +9,8 @@ export class SessionStore {
   file(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,`${session}.json`);}
   save(session,replay,budget){
     const target=this.file(session),bytes=JSON.stringify({format:1,session,replay,budget});
+    const max=Number(process.env.EVENT_LOG_MAX_SIZE||32_000_000);
+    if(Buffer.byteLength(bytes)>max)throw Object.assign(new Error('Match checkpoint exceeds configured size'),{status:413});
     const prior=this.pending.get(session)||Promise.resolve();
     const writing=prior.catch(()=>{}).then(()=>withStorageFailure('match session',async()=>{
       await mkdir(this.directory,{recursive:true});
@@ -23,6 +25,11 @@ export class SessionStore {
     void writing.finally(()=>{if(this.pending.get(session)===writing)this.pending.delete(session);}).catch(()=>{});
     return writing;
   }
+  async delete(session){
+    const file=this.file(session);
+    await this.pending.get(session)?.catch(()=>{});
+    await unlink(file).catch(error=>{if(error.code!=='ENOENT')throw error;});
+  }
   async load(){
     let names;try{names=await readdir(this.directory);}catch(error){if(error.code==='ENOENT')return [];throw error;}
     const files=names.filter(name=>name.endsWith('.json')).sort();
@@ -30,6 +37,9 @@ export class SessionStore {
     const records=[];
     for(const name of files){
       const session=name.slice(0,-5),target=this.file(session);
+      const info=await lstat(target);
+      const max=Number(process.env.EVENT_LOG_MAX_SIZE||32_000_000);
+      if(!info.isFile()||info.size>max)throw new Error(`Match checkpoint exceeds configured size: ${name}`);
       const record=JSON.parse(await readFile(target,'utf8'));
       if(record.format!==1||record.session!==session||!record.replay||!record.budget)throw new Error(`Invalid checkpoint: ${name}`);
       records.push(record);

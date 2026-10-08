@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "date": "2026-10-03",
+      "title": "Keep economic authority outside the model",
+      "summary": "Exact amounts, mock escrow, typed intents and payout checks established a separate economic boundary.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/05d5287",
+      "pr": null,
+      "detail": "## What shipped\nThe lab separated game credits from lamports, validated state transitions and tested conservation and idempotent settlement. Models propose actions; deterministic code authorizes economic effects.\n\n## Limit\nMock balances are not public funds. Mainnet match wagering remains disabled.",
+      "source": "2026-10-03-economy-lab.md"
+    },
+    {
+      "date": "2026-10-03",
+      "title": "Replays became evidence",
+      "summary": "Versioned rule records, typed events, persistent sessions and bounded inference made results inspectable and recoverable.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/ed65d96",
+      "pr": null,
+      "detail": "## What shipped\nRust records deterministic events; the web renderer consumes them. Session checkpoints and inference reservations survive process restarts. Replay verification rejects mismatched histories.\n\n## Limit\nAn archived result is a verified simulation record, not proof of an on-chain payment.",
+      "source": "2026-10-03-replays-and-research.md"
+    },
+    {
+      "date": "2026-10-03",
+      "title": "Rock Paper Scissors with commitments",
+      "summary": "RPS gained commit-reveal checks so a player cannot choose after seeing the other move.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/7310973",
+      "pr": null,
+      "detail": "## Why\nAn inspectable contest needs deterministic resolution and a move-order safeguard.\n\n## What shipped\nCommitments bind a move before reveal. Tests cover all nine outcomes and settlement invariants.",
+      "source": "2026-10-03-rps-commit-reveal.md"
+    },
+    {
+      "date": "2026-10-03",
+      "title": "A Rust table that decides the result",
+      "summary": "The first playable Last Seat slice put bounded agent decisions inside a seeded Rust simulation.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/a8494a1",
+      "pr": null,
+      "detail": "## Why\nThe match needed one authority for rules and outcomes before it could become a live product.\n\n## What shipped\nThe engine owns turns, credits, elimination and winner selection. The browser presents those facts. Early pixel sprites made the table legible.\n\n## Boundary\nThis was a free simulation, not a real-money game.",
+      "source": "2026-10-03-simulation-foundation.md"
+    },
+    {
+      "date": "2026-10-04",
+      "title": "Devnet, clearly separated from free play",
+      "summary": "A test-SOL rail and visible addresses were added behind explicit production configuration.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/c538e95",
+      "pr": null,
+      "detail": "## What shipped\nDedicated Devnet payment records and recovery paths support experiments with valueless test SOL. The free site does not require a wallet.\n\n## Limit\nPublic Devnet funding is experimental. Mainnet wagering is unavailable.",
+      "source": "2026-10-04-devnet-boundary.md"
+    },
+    {
+      "date": "2026-10-04",
+      "title": "A second verified arena game",
+      "summary": "Tic-Tac-Toe joined RPS with deterministic legal moves and replayable results.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/b9be505",
+      "pr": null,
+      "detail": "## What shipped\nThe Agent Arena gained turn legality, terminal result checks and browser presentation for Tic-Tac-Toe. Its public room later became part of the shared world.",
+      "source": "2026-10-04-tictactoe.md"
+    },
+    {
+      "date": "2026-10-05",
+      "title": "Give visitors and agents recognizable sprites",
+      "summary": "Animated avatar presets and transparent agent art made world identities visible.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/5e33fe7",
+      "pr": null,
+      "detail": "## What shipped\nThe sprite manifest and animation pipeline provided approved visitor presets and agent visuals. Later asset checks rejected opaque previews and invalid entries.",
+      "source": "2026-10-05-avatar-system.md"
+    },
+    {
+      "date": "2026-10-05",
+      "title": "Bring models through a local MCP host",
+      "summary": "A local bridge let an MCP host control free agent seats while Rust kept the rules.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/e59c4f1",
+      "pr": null,
+      "detail": "## What shipped\nThe host can create an arena, submit structured decisions and read public events. Saved host sessions support recovery without exposing provider credentials in game records.\n\n## Limit\nThis bridge is local and has no public wallet or payout tool.",
+      "source": "2026-10-05-mcp-arenas.md"
+    },
+    {
+      "date": "2026-10-05",
+      "title": "Walk into the agent world",
+      "summary": "The top-down plaza brought movement, collision, NPC profiles and arena entrances together.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/361f88e",
+      "pr": null,
+      "detail": "## What shipped\nThe existing world renderer gained a walkable map, bounded movement, profile inspection and nearby agent research. Later browser checks covered desktop, touch controls and arena travel.",
+      "source": "2026-10-05-walkable-world.md"
+    },
+    {
+      "date": "2026-10-06",
+      "title": "Research became visible in the world",
+      "summary": "The Research House surfaced live profile statistics and retained match history.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/6c87278",
+      "pr": null,
+      "detail": "## What shipped\nVisitors can inspect agent profiles and cumulative public results. Browser smoke checks exercise the Research House and its live statistics.",
+      "source": "2026-10-06-research-house.md"
+    },
+    {
+      "date": "2026-10-06",
+      "title": "One shared world, with live tables",
+      "summary": "Server presence, reconnects and durable free human tables gave visitors a common plaza.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/47864b6",
+      "pr": null,
+      "detail": "## What shipped\nThe server tracks bounded world positions and publishes presence through SSE. Shared RPS and Tic-Tac-Toe rooms run authoritative game rules; table checkpoints recover after restart.\n\n## Limit\nPresence frames are transient. A single service instance owns the shared world.",
+      "source": "2026-10-06-shared-presence-and-tables.md"
+    },
+    {
+      "date": "2026-10-07",
+      "title": "Prepare data for the next restart",
+      "summary": "Sprite-path migration, backup-first local reset and randomized first-browser seeds completed the release integration.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/acea221",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/18",
+      "detail": "## What shipped\nOlder verified sprite paths migrate to current assets. Local reset archives old data before preparing a fresh directory. A first browser gets a new experiment seed.\n\n## Limit\nThe local reset command refuses production and requires explicit confirmation.",
+      "source": "2026-10-07-recovery.md"
+    },
+    {
+      "date": "2026-10-07",
+      "title": "Survival became an authoritative continuous match",
+      "summary": "Twenty agents gained server-owned combat, elimination, memory and a live public feed.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/13e85a1",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/18",
+      "detail": "## What shipped\nThe Rust melee simulation owns positions, HP, targeting, chase, damage and winner. The host runs consecutive matches, checkpoints history and feeds research into later rounds.\n\n## Limit\nThe tactical map displays these facts; it does not decide combat.",
+      "source": "2026-10-07-survival-backend.md"
+    },
+    {
+      "date": "2026-10-07",
+      "title": "Put Survival on a tactical map",
+      "summary": "The existing world renderer now shows the authoritative fight as a compact arena.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/a3820f5",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/19",
+      "detail": "## What shipped\nTwenty agent positions, interpolation, attack sprites, damage flashes, HP bars, fight emphasis and winner presentation sit above the existing Research House, logs, statistics and JSON archive.\n\n## Limit\nThe frontend does not determine targets or damage.",
+      "source": "2026-10-07-tactical-survival.md"
+    }
+  ]
+}

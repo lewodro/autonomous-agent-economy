@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {validateProviderTransport} from './provider-transport.js';
 
 export function validateDeploymentConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
@@ -18,6 +19,11 @@ export function validateDeploymentConfig(env = process.env) {
   }
 
   const publicDevnet = production && env.ENTRY_FEE_ENABLED === 'true' && env.ECONOMY_MODE === 'DEVNET';
+  if(env.ENABLE_PUBLIC_MODEL_INFERENCE!==undefined&&!['true','false'].includes(env.ENABLE_PUBLIC_MODEL_INFERENCE))throw new Error('ENABLE_PUBLIC_MODEL_INFERENCE must be true or false.');
+  if(production&&env.ENABLE_PUBLIC_MODEL_INFERENCE==='true'){
+    validateProviderTransport(env.MODEL_BASE_URL||'https://api.openai.com/v1',{production:true});
+    if(env.AGENT_HTTP_ENDPOINT)validateProviderTransport(env.AGENT_HTTP_ENDPOINT,{production:true});
+  }
   const publicPredictions = env.PREDICTIONS_ENABLED === 'true';
   if (publicPredictions && !publicDevnet) throw new Error('Public predictions require explicit production DEVNET test SOL mode.');
   if (publicPredictions) throw new Error('Public prediction routes and payment integration are not implemented; leave PREDICTIONS_ENABLED disabled.');
@@ -35,5 +41,5 @@ export function validateDeploymentConfig(env = process.env) {
   }
 
   const publicOrigins = [...new Set([publicOrigin, env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : null].filter(Boolean))];
-  return { production, publicDevnet, publicPredictions, publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
+  return { production, publicDevnet, publicPredictions, publicModelInferenceEnabled:env.ENABLE_PUBLIC_MODEL_INFERENCE==='true', publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
 }

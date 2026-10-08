@@ -37,7 +37,7 @@ async function stop(child) {
   if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
 }
 
-test('public games are visible after restart while only the host can advance them', {
+test('private experiments survive restart and stay isolated while the world stays shared', {
   skip: !existsSync(new URL('../rust/target/debug/table-core', import.meta.url)) && 'Build the Rust worker to run service integration tests',
   timeout: 30_000,
 }, async () => {
@@ -89,22 +89,48 @@ test('public games are visible after restart while only the host can advance the
     assert.deepEqual(capabilities.body.funded_modes, []);
     assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'survival', 'rps', 'tictactoe']);
     const config = (await request(running.base, '/api/config?agents=2')).body;
-    const created = await request(running.base, '/api/matches', { config });
+    assert.equal((await request(running.base, '/api/matches', {config})).status,404);
+    const created = await request(running.base, '/api/experiments', { config });
     assert.equal(created.status, 201);
     assert.match(created.cookie, /HttpOnly; SameSite=Strict/);
+    assert.match(created.cookie, /Secure/);
     const session = created.body.session;
     const ongoing = await request(running.base, '/api/games/ongoing');
-    assert.equal(ongoing.body.games[0].session, session);
-    const route = `/api/matches/${session}/step`;
-    assert.equal((await request(running.base, route, {})).status, 403);
+    assert.equal(ongoing.body.games.some(game=>game.session===session),false);
+    assert.equal((await request(running.base, `/api/matches/${session}`)).status,404);
+    const route = `/api/experiments/${session}/step`;
+    assert.equal((await request(running.base, route, {})).status, 404);
     const cookie = created.cookie.split(';')[0];
+    const bobVisitor=await request(running.base,'/api/experiments');
+    assert.equal(bobVisitor.body.experiments.length,0);
+    const bobCreated=await request(running.base,'/api/experiments',{config},bobVisitor.cookie.split(';')[0]);
+    assert.equal(bobCreated.status,201);
+    assert.notEqual(bobCreated.body.session,session);
+    assert.equal((await request(running.base,`/api/experiments/${session}`,undefined,bobVisitor.cookie.split(';')[0])).status,404);
+    assert.equal((await request(running.base,`/api/experiments/${session}/export`,undefined,bobVisitor.cookie.split(';')[0])).status,404);
+    assert.equal((await request(running.base,`/api/experiments/${session}/step`,{},bobVisitor.cookie.split(';')[0])).status,404);
+    assert.equal((await request(running.base,`/api/experiments/${bobCreated.body.session}/step`,{},created.cookie.split(';')[0])).status,404);
+    const deniedDelete=await fetch(running.base+`/api/experiments/${session}`,{method:'DELETE',headers:{Host:'seat.example',Origin:'https://seat.example',Cookie:bobVisitor.cookie.split(';')[0]}});
+    assert.equal(deniedDelete.status,404);
+    assert.equal((await request(running.base,`/api/experiments/${session}/export`,undefined,cookie)).status,200);
+    const exported=(await request(running.base,`/api/experiments/${session}/export`,undefined,cookie)).body;
+    assert.equal(exported.experiment_id,session);
+    assert.equal(Array.isArray(exported.structured_events),true);
+    assert.equal(Array.isArray(exported.research_summaries),true);
+    assert.equal(JSON.stringify(exported).includes('prompt'),false);
+    assert.equal((await request(running.base,`/api/experiments/${session}/matches/${exported.matches[0].match_id}.json`,undefined,cookie)).status,200);
+    assert.equal((await request(running.base,`/api/experiments/${session}`,undefined,cookie)).status,200);
     assert.equal((await request(running.base, route, {}, cookie)).status, 200);
     await stop(running.child);
     running = await start(directory);
-    assert.equal((await request(running.base, '/api/games/ongoing')).body.games[0].session, session);
+    assert.equal((await request(running.base, '/api/experiments',undefined,cookie)).body.experiments[0].experiment_id, session);
+    assert.equal((await request(running.base, '/api/experiments',undefined,bobVisitor.cookie.split(';')[0])).body.experiments.length,1);
     assert.equal((await request(running.base, route, {}, cookie)).status, 200);
     assert.equal((await request(running.base, '/api/funded-matches')).status, 404);
     assert.equal((await request(running.base, '/premium-tool')).status, 404);
+    const deleted=await fetch(running.base+`/api/experiments/${bobCreated.body.session}`,{method:'DELETE',headers:{Host:'seat.example',Origin:'https://seat.example',Cookie:bobVisitor.cookie.split(';')[0]}});
+    assert.equal(deleted.status,200);
+    assert.equal((await request(running.base,`/api/experiments/${bobCreated.body.session}`,undefined,bobVisitor.cookie.split(';')[0])).status,404);
   } finally {
     if (running) await stop(running.child);
     await rm(directory, { recursive: true, force: true });

@@ -1,5 +1,7 @@
 # Deploying the public free-match website
 
+**Current release guide:** use [the Railway deployment guide](../deployment.md) and [domain steps](../domain.md). The details below describe the earlier public-host milestone and predate private anonymous experiments.
+
 This repository can host **free, seeded Last Seat matches** with read-only live spectators. The `/rps` and tic-tac-toe economy is currently a browser-local **simulated SOL** experiment. Do not ask visitors to send SOL to its generated mock addresses. An explicit opt-in Devnet mode exists for public test-SOL experiments; it is documented separately and never enables mainnet custody.
 
 ## Railway topology

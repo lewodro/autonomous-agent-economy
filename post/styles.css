@@ -56,6 +56,9 @@ h1 span { color: var(--green); }
 .entry-meta { margin-bottom: 9px; font-size: 9px; }
 .entry h2, .next-note h2 { margin-bottom: 13px; color: var(--text); font: 600 clamp(21px, 3.5vw, 28px)/1.24 Georgia, "Times New Roman", serif; letter-spacing: -.025em; }
 .entry-body p:not(.entry-meta), .next-note p:not(.eyebrow) { margin-bottom: 13px; color: #c3cec1; }
+.entry-details { margin: 10px 0; color: #c3cec1; }
+.entry-details summary { color: var(--gold); cursor: pointer; font: 11px/1.6 var(--mono); }
+.entry-details p { white-space: pre-line; margin: 8px 0; }
 .commit-link { display: inline-block; margin: 5px 14px 0 0; color: var(--bright); font: 10px/1.5 var(--mono); text-decoration: none; border-bottom: 1px solid #506b51; }
 .commit-link:hover { color: #f1ffdc; border-color: var(--bright); }
 .commit-link.secondary { color: var(--muted); }

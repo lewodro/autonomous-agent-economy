@@ -7,10 +7,11 @@ export function mergeTransition(current:Replay,next:Transition):Replay {
 }
 export interface MatchTransport {advance(session:string,current:Replay):Promise<Replay>}
 export class HttpMatchTransport implements MatchTransport {
+ constructor(private base='/api/matches'){}
  async advance(session:string,current:Replay):Promise<Replay>{
   let next:Transition;
-  try{next=await api<Transition>(`/api/matches/${session}/step`,{compact:true,expected_turn:current.final_state.turn});}
-  catch(error){if(!(error instanceof ApiError)||error.status!==409||!error.message.includes('Stale'))throw error;return (await api<{replay:Replay}>(`/api/matches/${session}`)).replay;}
+  try{next=await api<Transition>(`${this.base}/${session}/step`,{compact:true,expected_turn:current.final_state.turn});}
+  catch(error){if(!(error instanceof ApiError)||error.status!==409||!error.message.includes('Stale'))throw error;return (await api<{replay:Replay}>(`${this.base}/${session}`)).replay;}
   return mergeTransition(current,next);
  }
 }
