@@ -7,10 +7,13 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY rust ./rust
 COPY web ./web
+COPY post ./post
+COPY docs/devlog ./docs/devlog
+COPY scripts/build-devlog.js ./scripts/build-devlog.js
 RUN npm run build
 
 FROM node:22-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl util-linux \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
@@ -21,12 +24,12 @@ COPY package.json server.js index.html styles.css entry.css entry.js ./
 COPY service ./service
 COPY src ./src
 COPY legacy ./legacy
-COPY post ./post
+COPY --from=build /app/post ./post
 COPY world ./world
 COPY labs ./labs
 COPY assets ./assets
-RUN mkdir -p /data/matches && chown -R node:node /data/matches
-USER node
+COPY scripts/start-production.sh ./scripts/start-production.sh
+RUN mkdir -p /data/matches
 ENV MATCHES_DIR=/data/matches
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "scripts/start-production.sh"]
