@@ -19,6 +19,7 @@ CLAUDE.md
 
 /web/dist/
 /matches/
+/.matches.reset-backups/
 *.wallet.bin
 
 /match.json

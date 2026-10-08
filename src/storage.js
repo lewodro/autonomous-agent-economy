@@ -45,8 +45,18 @@ export async function validateState(input) {
   }
   const stripTime = events => events.map(({ time, ...event }) => event);
   if (!same(stripTime(rebuilt.events), stripTime(input.events))) throw new Error('Ledger event ordering or values do not reconcile');
+  // Agent art moved from sprites-agent/ to agents/. Accept only the exact old
+  // path corresponding to the ledger-derived current path for the same agent.
+  const comparable = structuredClone(input);
+  for (let index = 0; index < rebuilt.agents.length; index++) {
+    const expected = rebuilt.agents[index].sprite;
+    const previous = expected.replace(/^assets\/agents\//, 'assets/sprites-agent/');
+    if (comparable.agents[index]?.id === rebuilt.agents[index].id && comparable.agents[index].sprite === previous) {
+      comparable.agents[index].sprite = expected;
+    }
+  }
   for (const key of ['agents', 'matches', 'config', 'seed', 'mode', 'paused', 'treasury', 'externalCapital', 'nextMatch', 'tournament']) {
-    if (!same(rebuilt[key], input[key])) throw new Error(`Saved ${key} does not match the verified ledger`);
+    if (!same(rebuilt[key], comparable[key])) throw new Error(`Saved ${key} does not match the verified ledger`);
   }
   rebuilt.rng = input.rng;
   rebuilt.events = structuredClone(input.events);

@@ -9,6 +9,10 @@ The service restores and verifies all checkpoints before accepting requests.
 Corrupt state fails startup rather than silently resetting a match or spending
 budget. The directory supports at most 100 active sessions; archive or remove
 finished session files while the server is stopped to reclaim capacity.
+Verified Arena ledgers migrate the exact previous `assets/sprites-agent/` path
+to the current `assets/agents/` path during load; other participant or ledger
+mismatches remain fatal. For a local clean start, use the backup-first
+[data reset command](./visitor-experiments.md#reset-local-development-data).
 
 Writes are serialized per session, use a private temporary file, flush its data,
 then atomically rename. Each model reservation is checkpointed **before** its HTTP

@@ -45,7 +45,7 @@ try{
  const guestLeave=await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)}})}).then(r=>r.status)`);
  assert.equal(guestLeave,200,'the second visitor should be able to leave');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
- await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("6 visiting agents in the plaza")');
+ await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
  await wait('document.activeElement?.id==="world-canvas"');
  await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
  await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
@@ -53,7 +53,7 @@ try{
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
  await wait('document.getElementById("interaction-dialog").open');
- assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained arena runs")'));
+ assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained RPS, Tic-Tac-Toe, and Survival runs")'));
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
  // Exercise arena routes directly. Browser-generated keyboard holds are
  // unreliable in headless Chrome and the ambient NPC path is frame-timed.
@@ -61,6 +61,11 @@ try{
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
+ await wait('!document.getElementById("survival-view").hidden&&document.getElementById("survival-overlay").hidden&&document.getElementById("survival-status").textContent.includes("LIVE")');
+ await wait("fetch('/api/survival/current').then(r=>r.json()).then(s=>s.agents.length===20&&s.events.some(e=>e.type==='AttackLanded'))");
+ await evaluate("fetch('/api/survival/current').then(r=>r.json()).then(s=>{const a=s.agents[0],c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height),x=r.left+(r.width-s.map.width*scale)/2+a.x*scale,y=r.top+(r.height-s.map.height*scale)/2+a.y*scale;c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}))})");
+ await wait('document.getElementById("survival-inspector-title").textContent.length>0&&document.getElementById("survival-inspector-body").textContent.includes("HP:")');
+ assert.ok(await evaluate('document.getElementById("survival-inspector-body").textContent.includes("Strategy:")'),'Survival inspection must use server-authoritative agent state');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
@@ -86,10 +91,10 @@ try{
  await wait('!document.getElementById("interact").disabled');
  await evaluate("window.__researchStats=null;window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/api/arena/statistics'))window.__researchStats=await response.clone().json();if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("interact").click()');
- await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest verified results")');
+ await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest match results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
- assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from verified retained arena runs')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
  await evaluate('document.getElementById("interaction-close").click()');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
@@ -112,5 +117,5 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
- console.log('PASS world: character, NPC profile, live render loop, arena routes, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
+ console.log('PASS world: character, NPC profile, live render loop, Survival combat/inspection, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
 }finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();}

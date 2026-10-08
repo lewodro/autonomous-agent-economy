@@ -54,6 +54,7 @@ function inspect(profile:AgentConfig) {
   const wallet=$('wallet-demo');if(wallet)wallet.onclick=async()=>{try{const result=await api<{wallet:{address:string;balance:number};events:unknown[]}>('/api/wallet-demo',{});notice(`Mock wallet ${result.wallet.address}: ${result.wallet.balance} lamports. ${result.events.length} activity events. Credits are separate.`);}catch(error){notice((error as Error).message);}};
 }
 function download(content:string,name:string,type='application/json') {const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function randomSeed():number{return crypto.getRandomValues(new Uint32Array(1))[0]||1;}
 function watchMatch(session:string,initial?:Replay){
  observer?.close();watchSession=session;watchConnected=false;
  if(initial){renderer.reset();player.load(initial,'',true);player.observing=true;selected=initial.config.agents[0]!.id;}
@@ -84,7 +85,7 @@ void api<{funded_modes:string[];payment_notice:string}>('/api/capabilities').the
   $('payment-notice').textContent=capabilities.payment_notice;
 }).catch(()=>{$<HTMLElement>('economy-options').hidden=true;$('payment-notice').textContent='Payment modes are unavailable.';});
 $('new').onclick=()=>{player.pause();if(player.run){$<HTMLTextAreaElement>('config-json').value=JSON.stringify(player.run.config,null,2);$<HTMLInputElement>('seed').value=String(player.run.seed);$<HTMLSelectElement>('population').value=String(player.run.config.agents.length);$<HTMLInputElement>('credits').value=String(player.run.config.agents[0]!.starting_credits);$<HTMLInputElement>('max-turns').value=String(player.run.config.max_turns);}$('config-error').textContent='';dialog.showModal();};
-$('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(crypto.getRandomValues(new Uint32Array(1))[0]||1);};
+$('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(randomSeed());};
 $('close-config').onclick=()=>dialog.close();
 $('preset').onclick=async()=>{try{const config=await api<Config>(`/api/config?agents=${$<HTMLSelectElement>('population').value}`);config.seed=Number($<HTMLInputElement>('seed').value);config.max_turns=Number($<HTMLInputElement>('max-turns').value);config.agents.forEach(a=>a.starting_credits=Number($<HTMLInputElement>('credits').value));$<HTMLTextAreaElement>('config-json').value=JSON.stringify(config,null,2);}catch(error){$('config-error').textContent=(error as Error).message;}};
 $('config-form').onsubmit=async e=>{e.preventDefault();try{await create(parseConfig($<HTMLTextAreaElement>('config-json').value) as Config,{mode:$<HTMLSelectElement>('economy-mode').value,entry_amount_sol:$<HTMLSelectElement>('economy-entry').value});dialog.close();}catch(error){$('config-error').textContent=(error as Error).message;}};
@@ -116,9 +117,11 @@ try {
   if(watch){watchMatch(watch);}
   else if(id){const result=await api<{replay:Replay}>(`/api/replays/${encodeURIComponent(id)}`);player.load(result.replay,'',true);player.seek(Math.max(0,Math.min(result.replay.final_state.turn,Number(params.get('turn')||0))));notice('Shared replay loaded. New / remix forks its config.');}
   else {
-    const savedSession=localStorage.getItem('last-seat-session'),saved=localStorage.getItem('last-seat-replay-v1');
+    const firstVisit=localStorage.getItem('last-seat-first-run-v2')!=='1';
+    if(firstVisit){localStorage.removeItem('last-seat-session');localStorage.removeItem('last-seat-replay-v1');}
+    const savedSession=firstVisit?null:localStorage.getItem('last-seat-session'),saved=firstVisit?null:localStorage.getItem('last-seat-replay-v1');
     if(savedSession){try{const {replay}=await api<{replay:Replay}>(`/api/matches/${encodeURIComponent(savedSession)}`);renderer.reset();player.load(replay,savedSession);notice('Live session restored with its existing inference budget.');}catch(error){if(!(error instanceof Error))throw error;await create(await api<Config>('/api/config?agents=4'));}}
     else if(saved){const result=await api<MatchResponse>('/api/replays/import',{replay:JSON.parse(saved)});renderer.reset();player.load(result.replay,result.session);notice('Verified local replay restored. Restart for an identical fresh run.');}
-    else await create(await api<Config>('/api/config?agents=4'));
+    else {const config=await api<Config>('/api/config?agents=4');if(firstVisit)config.seed=randomSeed();await create(config);if(firstVisit)localStorage.setItem('last-seat-first-run-v2','1');}
   }
 }catch(error){notice((error as Error).message);try{await create(await api<Config>('/api/config?agents=4'));}catch{notice('Start the local service with npm start.');}}

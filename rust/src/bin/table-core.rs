@@ -1,3 +1,4 @@
+use agent_arena_demo::arena_survival::{self, Simulation};
 use agent_arena_demo::{config, engine, model::*, replay, strategy};
 use serde_json::{json, Value};
 use std::{
@@ -7,9 +8,45 @@ use std::{
 fn request(
     value: Value,
     runs: &mut BTreeMap<String, Replay>,
+    survival_runs: &mut BTreeMap<String, Simulation>,
     lab: &mut Option<agent_arena_demo::economy::lab::EconomyLab>,
 ) -> Result<Value, String> {
     let command = value["command"].as_str().ok_or("command required")?;
+    if let Some(action) = command.strip_prefix("arena-survival-") {
+        let session = value["session"]
+            .as_str()
+            .unwrap_or("arena-survival")
+            .to_string();
+        if action == "start" {
+            let config: arena_survival::Config =
+                serde_json::from_value(value["config"].clone()).map_err(|e| e.to_string())?;
+            let updated_at = value["updated_at"].as_str().unwrap_or("").to_string();
+            let simulation = arena_survival::start(config, updated_at)?;
+            survival_runs.insert(session, simulation.clone());
+            return Ok(json!({"simulation":simulation}));
+        }
+        if action == "validate" || action == "import" {
+            let simulation: Simulation =
+                serde_json::from_value(value["simulation"].clone()).map_err(|e| e.to_string())?;
+            arena_survival::validate(&simulation)?;
+            if action == "import" {
+                survival_runs.insert(session, simulation.clone());
+            }
+            return Ok(json!({"simulation":simulation}));
+        }
+        let simulation = survival_runs
+            .get_mut(&session)
+            .ok_or("Survival match not found")?;
+        return match action {
+            "get" => Ok(json!({"simulation":simulation})),
+            "step" => {
+                let updated_at = value["updated_at"].as_str().unwrap_or("").to_string();
+                let events = arena_survival::advance(simulation, updated_at)?;
+                Ok(json!({"events":events,"simulation":simulation}))
+            }
+            _ => Err("Unknown Arena Survival command".into()),
+        };
+    }
     if command == "funded-host" {
         return agent_arena_demo::economy::host_api::request(&value)
             .map_err(|e| serde_json::to_string(&e).unwrap());
@@ -142,12 +179,13 @@ fn main() {
         return;
     }
     let mut runs = BTreeMap::new();
+    let mut survival_runs = BTreeMap::new();
     let mut lab = None;
     for line in io::stdin().lock().lines() {
         let result = line
             .map_err(|e| e.to_string())
             .and_then(|line| serde_json::from_str(&line).map_err(|e| e.to_string()))
-            .and_then(|value| request(value, &mut runs, &mut lab));
+            .and_then(|value| request(value, &mut runs, &mut survival_runs, &mut lab));
         let output = match result {
             Ok(result) => json!({"ok":true,"result":result}),
             Err(error) => json!({"ok":false,"error":error}),
@@ -164,10 +202,12 @@ mod tests {
     fn verification_does_not_retain_a_session() {
         let run = engine::start(config::default_config(2, 42)).unwrap();
         let mut runs = BTreeMap::new();
+        let mut survival_runs = BTreeMap::new();
         let mut lab = None;
         request(
             json!({"command":"verify","replay":run}),
             &mut runs,
+            &mut survival_runs,
             &mut lab,
         )
         .unwrap();
@@ -175,6 +215,7 @@ mod tests {
         request(
             json!({"command":"import","session":"loaded","replay":run}),
             &mut runs,
+            &mut survival_runs,
             &mut lab,
         )
         .unwrap();
