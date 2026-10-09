@@ -21,6 +21,7 @@ pub struct ServiceJob {
     pub expected_sha256: String,
     pub attempts: u8,
     pub settled: bool,
+    pub canceled: bool,
     pub receipt_sha256: Option<String>,
 }
 
@@ -118,6 +119,7 @@ impl ServiceMarket {
                 expected_sha256: expected_sha256.to_ascii_lowercase(),
                 attempts: 0,
                 settled: false,
+                canceled: false,
                 receipt_sha256: None,
             },
         );
@@ -150,7 +152,8 @@ impl ServiceMarket {
             .jobs
             .get(job_id)
             .ok_or_else(|| EconomyError::InvalidInput("Unknown job".into()))?;
-        if &job.assignee != agent_id || job.settled || job.attempts >= MAX_ATTEMPTS {
+        if &job.assignee != agent_id || job.settled || job.canceled || job.attempts >= MAX_ATTEMPTS
+        {
             return Err(EconomyError::InvalidTransition(
                 "Job unavailable for this agent".into(),
             ));
@@ -208,7 +211,74 @@ impl ServiceMarket {
                 "Mock funds conservation failed".into(),
             ));
         }
+        let mut paid_by_agent = BTreeMap::<AgentId, Amount>::new();
+        let mut count_by_agent = BTreeMap::<AgentId, u32>::new();
+        for job in self.jobs.values() {
+            let escrow = self.ledger.balance(&escrow_id(&job.id)?)?;
+            let expected = if job.settled || job.canceled {
+                Amount::ZERO
+            } else {
+                job.reward
+            };
+            if escrow != expected || (job.settled && job.canceled) || job.attempts > MAX_ATTEMPTS {
+                return Err(EconomyError::InvalidTransition(
+                    "Job escrow or state inconsistent".into(),
+                ));
+            }
+            if job.settled {
+                if job.receipt_sha256.as_deref() != Some(job.expected_sha256.as_str()) {
+                    return Err(EconomyError::InvalidTransition(
+                        "Missing verified receipt".into(),
+                    ));
+                }
+                let prior = paid_by_agent
+                    .get(&job.assignee)
+                    .copied()
+                    .unwrap_or(Amount::ZERO);
+                paid_by_agent.insert(job.assignee.clone(), prior.add(job.reward)?);
+                let count = count_by_agent.get(&job.assignee).copied().unwrap_or(0_u32);
+                count_by_agent.insert(
+                    job.assignee.clone(),
+                    count.checked_add(1).ok_or(EconomyError::Overflow)?,
+                );
+            }
+        }
+        for (agent, earned) in &self.earned {
+            if *earned != paid_by_agent.get(agent).copied().unwrap_or(Amount::ZERO)
+                || self.ledger.balance(&AccountId::new(agent.as_str())?)? != *earned
+                || self.verified_jobs.get(agent).copied()
+                    != Some(count_by_agent.get(agent).copied().unwrap_or(0))
+            {
+                return Err(EconomyError::InvalidTransition(
+                    "Agent earnings inconsistent".into(),
+                ));
+            }
+        }
         Ok(())
+    }
+
+    /// Refunds an unfilled job to the simulated buyer. Safe to retry after a crash.
+    pub fn cancel(&mut self, job_id: &OperationId) -> Result<()> {
+        let job = self
+            .jobs
+            .get(job_id)
+            .ok_or_else(|| EconomyError::InvalidInput("Unknown job".into()))?;
+        if job.canceled {
+            return Ok(());
+        }
+        if job.settled {
+            return Err(EconomyError::InvalidTransition(
+                "Paid job cannot be canceled".into(),
+            ));
+        }
+        let reward = job.reward;
+        self.ledger
+            .transfer(&escrow_id(job_id)?, &AccountId::new(BUYER)?, reward)?;
+        self.jobs
+            .get_mut(job_id)
+            .ok_or(EconomyError::Conflict)?
+            .canceled = true;
+        self.check_conservation()
     }
 }
 
