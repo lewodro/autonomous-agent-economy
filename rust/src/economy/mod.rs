@@ -59,3 +59,4 @@ mod host_events;
 pub mod host_factory;
 
 pub mod health;
+pub mod service_market;
