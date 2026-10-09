@@ -124,7 +124,28 @@ fn attempts_and_funding_are_bounded() {
             .units(),
         10
     );
+    m.cancel(&op("job")).unwrap();
+    m.cancel(&op("job")).unwrap();
+    assert_eq!(
+        m.ledger
+            .balance(&AccountId::new("service_buyer").unwrap())
+            .unwrap()
+            .units(),
+        100
+    );
     m.check_conservation().unwrap();
+}
+
+#[test]
+fn paid_job_cannot_be_refunded_and_tampered_snapshot_fails_validation() {
+    let mut m = market();
+    m.publish(op("j"), agent("b"), Amount::new(20), sha256_hex(b"done"))
+        .unwrap();
+    m.submit(op("delivery"), &op("j"), &agent("b"), "done")
+        .unwrap();
+    assert!(m.cancel(&op("j")).is_err());
+    m.earned.insert(agent("b"), Amount::new(21));
+    assert!(m.check_conservation().is_err());
 }
 
 #[test]
