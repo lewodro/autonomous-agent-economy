@@ -5,8 +5,8 @@
 ### Experiment in making agents fight until they are out.
 
 **A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death concept**
-**Commited to branch main, ex-branch**
-
+**Commited to branch Main, branched off security refactoring**
+s
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#simulation-engine)
 [![UI](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript)](#tech-stack)
 [![Agents](https://img.shields.io/badge/Seats-2–20-BAC994)](#agents)
@@ -15,7 +15,7 @@
 
 <img src="docs/last-seat-live.png" width="1000" alt="Last Seat live game: agent sprites, credits, turn HUD, action queue, concise decisions and selected agent drawer" />
 
-**Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
+**Open the table → create your own → configure rivals → press Play → watch decisions → inspect the winner.**
 
 </div>
 
