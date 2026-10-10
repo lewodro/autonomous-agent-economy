@@ -104,7 +104,7 @@ The separate **Agent World** is a presentation and presence layer. Rust remains 
 ```mermaid
 flowchart TD
  Visitor[Visitor avatar] --> World[Walkable world: movement and presence]
- Agents[NPC actors] --> World
+ Agents[agent actors] --> World
  World --> Gateway[Arena gateway]
  Gateway --> Pool[Four bounded RPS / Tic-Tac-Toe rooms]
  Pool --> Existing[Existing JavaScript Orchestrator and rules]
