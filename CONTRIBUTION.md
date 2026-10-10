@@ -19,3 +19,5 @@ Thanks for helping improve this simple agent economy game. Before contributing, 
 ## Pull requests
 
 Describe the motivation and changes, note any impact on gameplay or the economy, and report the checks you ran. Link related issues and include reproduction steps or screenshots when useful. Keep review discussions respectful and constructive.
+
+## [This Branch and others were pull Requested by Dimi Junodor on cxwig, in seek of other collaborators}
