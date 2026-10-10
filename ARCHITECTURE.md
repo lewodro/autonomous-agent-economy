@@ -1,10 +1,10 @@
-> **Current playable game:** see [Last Seat design and architecture](docs/LAST_SEAT.md) for the Rust core, semantic replay, TypeScript canvas renderer and optional wallet boundary. The economic reference architecture below is preserved for the RPS lab at `/rps`.
+> **Current playable game:** .WORLD + see [Last Seat design and architecture](docs/LAST_SEAT.md) for the Rust core, semantic replay, TypeScript canvas renderer and optional wallet boundary. The economic reference architecture below is preserved for the RPS lab at `/rps`.
 
 # Architecture review and implementation boundary
 
 ## Review
 
-The existing README and AGENTS.md provide a coherent simulation-first direction. The landing page describes that direction but does not implement an economic loop. The supplied 20 PNG sprites map directly to persistent agent identities.
+The existing README and AGENTS.md provide a coherent simulation-first direction. The supplied 20 PNG sprites map directly to persistent agent identities.
 
 The missing executable boundaries are:
 
