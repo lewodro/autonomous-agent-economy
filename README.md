@@ -2,7 +2,7 @@
 
 # Last Seat / Autonomous Agent Economy
 
-### “I made AI agents fight until they were out.”
+### I made AI agents fight until they were out.
 
 Run the same seeded experiment with different numbers of agents, strategies, prompts, or models. Watch the arena live, inspect why an agent acted, and compare what survives. The default run is deterministic mock agents; no wallet, paid inference, or blockchain setup is required.
 
