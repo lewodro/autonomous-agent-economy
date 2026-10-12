@@ -1,5 +1,7 @@
 # Live architecture
 
+This document describes the Last Seat host and presentation path. See the [public product model](product-model.md) for the shared-world/private-experiment boundary and agent types.
+
 ## System
 
 ```mermaid

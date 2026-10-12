@@ -5,7 +5,7 @@ quick start live in the repository [README](../README.md).
 
 | Folder | Contents | Start here |
 |---|---|---|
-| [Architecture](architecture/) | API, event contracts, live spectator flow, persistence, replay limits | [Live architecture](architecture/architecture-live.md) |
+| [Architecture](architecture/) | Product model, API, event contracts, live spectator flow, persistence, replay limits | [Public product model](architecture/product-model.md) |
 | [Economy](economy/) | Match funding, payment rails, local validator, recovery, Devnet | [Economy architecture](economy/economy-architecture.md) |
 | [Security](security/) | Threat model, trust boundaries, provider safety, readiness requirements | [Threat model](security/threat-model.md) |
 | [Frontend](frontend/) | Renderer/animation options, frontend stack, performance evidence | [Animation stack](frontend/animation-stack.md) |
@@ -13,7 +13,7 @@ quick start live in the repository [README](../README.md).
 | [Integrations](integrations/) | Local MCP server setup and orchestration boundary | [MCP arenas](integrations/mcp-arena.md) |
 | [Research](research/) | Dated audits, balance runs, implementation-pass notes | [Balance report](research/balance.md) |
 
-For the first-visit session model and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
+Start with the distinction between the [shared world and private experiments](architecture/product-model.md). For anonymous ownership, retention, exports, and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
 
 Screenshots and visual references remain alongside this index. Balance run data is
 in [`research/balance/`](research/balance/); architecture JSON examples are in

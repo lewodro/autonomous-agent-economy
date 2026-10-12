@@ -1,19 +1,26 @@
 # Visitor experiments and data
 
-On a browser's first visit to Last Seat, the site creates a free experiment with
-a cryptographically random seed. The server gives each run a separate random
-session ID and stores its replay/checkpoint in `MATCHES_DIR/sessions/<id>.json`.
-The browser remembers that session and resumes it on later visits from the same
-browser. Restart and replay continue to use the same seed; New / Remix starts a
-new run. No account is required.
+On a browser's first private-experiment request, the server issues a cryptographically
+random anonymous session in a signed HTTP-only cookie. Creating an experiment assigns
+a separate random experiment ID and seed, binds the metadata to that session, and
+stores its replay/checkpoint under the persistent `MATCHES_DIR`. The browser can list
+and resume its experiments on later visits. Restart and replay retain the seed; New /
+Remix creates another owned experiment. No account is required.
 
 This is browser-local anonymous ownership, not a cross-device user account. A
-visitor using another browser or clearing site storage receives a new run. The
-shared RPS/Tic-Tac-Toe rooms remain shared; only Last Seat's personal first-run
-session is per browser. Existing public archive links remain separately
-addressable.
+visitor using another browser, losing the signed cookie, or clearing site data receives
+a new anonymous identity. The canonical `/world`, Survival, RPS/Tic-Tac-Toe rooms,
+public profiles, statistics, and Research House remain shared. Private Last Seat runs
+stay outside those public statistics and cannot resolve a public prediction. Existing
+public archive links remain separately addressable and read-only.
 
-Completed run records contain the replay, configuration and public decisions.
+Experiment IDs are locators, not authorization. List, load, step, delete, match export,
+and full experiment export compare the record's `owner_session_id` with the verified
+cookie session. A URL copied into another browser cannot bypass that check.
+
+Completed run records contain the replay, configuration, public decision summaries,
+results, structured events, and bounded research summaries. Owner downloads exclude
+credentials, signing material, provider secrets, hidden reasoning, and other users' data.
 They can support later aggregate statistics, but this release does not train a
 model or associate runs with a real-world identity. Before using visitor runs
 for training, add clear opt-in, retention/deletion controls, a minimal
