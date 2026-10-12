@@ -1,5 +1,7 @@
 # Mainnet readiness — disabled
 
+This checklist covers infrastructure shared by agent funding and funded services. Public match wagering has additional fairness, abuse, responsible-use, and jurisdiction requirements in [mainnet boundaries](../mainnet.md). Passing one track does not enable the other.
+
 `PaymentMode::Mainnet` always returns `MainnetNotImplemented`. Funded matches support
 durable mock payments, an isolated local-validator rail, and an opt-in Devnet native
 transfer rail. Devnet agent/escrow address creation and reads are live-verified; a faucet
@@ -7,7 +9,7 @@ failure still blocks the first complete public-chain funded match.
 The separate wallet demo retains its tiny test-transfer cap and is not funded escrow.
 See the [2026 audit](./crypto-audit-2026.md) for current implementation and evidence.
 
-| Area | Required before any real funded service |
+| Area | Required before any real funded service or agent budget |
 |---|---|
 | Custody | Decide who controls escrow and which actors can move funds; document trust and loss boundaries |
 | Escrow | Specify/audit on-chain escrow or tightly scoped test custody; freeze deposits and payout authorization |
@@ -19,6 +21,8 @@ See the [2026 audit](./crypto-audit-2026.md) for current implementation and evid
 | Security audit | Review escrow, signer, API access, replay authorization, idempotency and adversarial tests |
 | Monitoring | Reconcile escrow liabilities, alert on stuck operations, provide pause and operator recovery |
 | Product/legal questions | Obtain qualified review of custody, entry/reward rules, jurisdiction and user obligations before launch |
+
+Production owner funding also needs wallet-origin authentication, owner/agent separation, transfer and revocation rules, bounded owner history, withdrawal recovery, and account support. The unmerged `224-add-ownership-mode-safety-gates` branch is design evidence only; its presence does not satisfy this checklist.
 
 ## Exact next step for 0.02–0.05 SOL test matches
 

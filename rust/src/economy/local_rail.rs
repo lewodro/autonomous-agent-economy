@@ -57,16 +57,21 @@ pub fn validate_genesis(expected: &str) -> Result<()> {
 fn validate_devnet_url(value: &str) -> Result<()> {
     if !value.starts_with("https://")
         || value.len() > 512
+        || value.len() <= "https://".len()
+        || value.contains('@')
+        || value.contains('#')
+        || value.to_ascii_lowercase().contains("mainnet")
         || value
             .bytes()
             .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
     {
         return Err(EconomyError::InvalidInput(
-            "Devnet RPC URL must be an HTTPS URL without whitespace".into(),
+            "Devnet RPC URL must be HTTPS without credentials, fragments, whitespace, or mainnet labels".into(),
         ));
     }
     Ok(())
 }
+
 fn validate_cluster(mode: PaymentMode, endpoint: &str, expected: &str) -> Result<()> {
     match mode {
         PaymentMode::Local => {
@@ -340,6 +345,7 @@ impl LocalPaymentRail {
         }))
     }
 }
+
 impl PaymentRail for LocalPaymentRail {
     fn get_balance(&self, a: &AccountId) -> Result<Amount> {
         self.validate_cluster()?;
@@ -407,6 +413,7 @@ impl PaymentRail for LocalPaymentRail {
         self.reconcile_known_payment(i)
     }
 }
+
 impl LocalPaymentRail {
     fn build_payment(&self, intent: &PaymentIntent) -> Result<PreparedPayment> {
         self.validate_cluster()?;
@@ -600,5 +607,25 @@ impl LocalPaymentRail {
             self.save()?;
         }
         Ok(r)
+    }
+}
+
+#[cfg(test)]
+mod devnet_url_tests {
+    use super::validate_devnet_url;
+
+    #[test]
+    fn rejects_unsafe_or_mainnet_labeled_devnet_rpc_urls_before_rpc_activity() {
+        for value in [
+            "http://devnet.example/rpc",
+            "https://",
+            "https://user:secret@devnet.example/rpc",
+            "https://devnet.example/rpc#override",
+            "https://api.mainnet-beta.solana.com",
+            "https://devnet.example/rpc path",
+        ] {
+            assert!(validate_devnet_url(value).is_err(), "accepted {value}");
+        }
+        assert!(validate_devnet_url("https://devnet.example/rpc?api-key=server-secret").is_ok());
     }
 }

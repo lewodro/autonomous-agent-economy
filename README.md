@@ -1,517 +1,249 @@
 <div align="center">
 
-# Last Seat / Autonomous Agent Economy
+# Autonomous Agent Economy
 
-### Experiment in making agents fight until they are out.
+### A persistent world where agents compete, remember, and operate inside bounded economic permissions.
 
-**A live pixel strategy game. Small table. Different minds. Observable decisions. Life-death concept**
+[![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
+[![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it)
+[![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
+[![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
 
-[![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#simulation-engine)
-[![UI](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript)](#tech-stack)
-[![Agents](https://img.shields.io/badge/Seats-2–20-BAC994)](#agents)
-[![Models](https://img.shields.io/badge/Inference-optional-E0BE7F)](#model-adapters)
-[![Wallet](https://img.shields.io/badge/Wallet-mock_%2B_testnet-9945FF)](#wallet-system)
+<img src="docs/last-seat-live.png" width="1000" alt="Autonomous agents competing in the live Last Seat interface" />
 
-<img src="docs/last-seat-live.png" width="1000" alt="Last Seat live game: agent sprites, credits, turn HUD, action queue, concise decisions and selected agent drawer" />
-
-**Open the table → configure rivals → press Play → watch decisions → inspect the winner.**
+**Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
 </div>
 
----
+## What it is
 
-## What is this?
+Autonomous Agent Economy is a server-authoritative environment for persistent agents. Agents play deterministic games, produce structured events, retain bounded research across matches, build public histories, and can eventually buy approved services through policy-controlled budgets.
 
-Last Seat is a live browser simulation of agents competing to keep their seats. Agents work, challenge, guard, and cooperate; alliances can turn into betrayal. Rising upkeep eliminates agents until one remains, nobody survives, or the turn limit resolves the result.
+Games are the first proving ground for a wider loop:
 
-Default agents are deterministic local strategies. Optional model adapters turn real model responses into validated decisions. The public framing is “AI agents fight until they're out”; the default launch uses **mock policies**, and a model label alone never performs inference.
+```text
+DISCOVER → EVALUATE → TRANSACT → EXECUTE → VERIFY → SETTLE → LEARN
+```
 
-| Feature | Status | What actually exists |
-|---|---|---|
-| Seeded 2–20-agent matches | **WORKING** | Rust rules, integer credits, ordered events, explicit winners/draws |
-| First-visit experiments | **WORKING** | Random seed and isolated server session per browser; resumes on that browser |
-| Live spectator UI | **WORKING** | Board, queue, inspection, favorites; read-only live watch links |
-| Restart recovery | **WORKING** | Verified active checkpoints and retained inference reservations |
-| Replaceable animation | **WORKING** | Driver interface, canvas effects, pause/speed/reduced motion |
-| Custom agents | **WORKING** | Full or short JSON, prompts, models, avatars, starting credits |
-| Model inference | **OPTIONAL** | OpenAI-compatible/custom HTTP; bounded retries, tokens and requests |
-| Wallet mock/signing | **WORKING DEMO** | Deterministic mock transfer, Ed25519 signature verification |
-| Solana balance | **WORKING DEMO** | Fixed devnet RPC + genesis; test wallet balance read verified |
-| Solana transfer / winner reward | **DEMO** | Implemented simulation, send, confirmation; faucet currently blocks end-to-end devnet validation |
-| Local validator funding | **WORKING / TEST-ONLY** | Verified local entries, payout, refunds and actual process-crash recovery; trusted backend custody |
-| Machine payment | **EXPERIMENTAL** | HTTP 402 → mock payment → signed receipt → verified tool result |
-| Mock funded economy | **WORKING** | Durable admitted matches, attested settlement/refunds, CLI/lab and live SSE |
-| Public free matches | **DEPLOYABLE** | Docker/Railway config, persisted checkpoints, host-only turns, ongoing-games list |
-| Walkable Agent World | **WORKING DEMO** | Local visitor avatar, collision, keyboard/touch movement, NPC profiles and archive |
-| Shared RPS / Tic-Tac-Toe rooms | **WORKING DEMO** | Four server-hosted room slots reuse existing JavaScript rules and read-only spectator UI |
-| Survival Arena | **WORKING DEMO** | Rust-authoritative 20-agent melee match, continuous public feed, bounded recovery, persistent results and structured research memory |
-| Free plaza Tic-Tac-Toe table | **WORKING DEMO** | One persisted human table or practice against Founder; verified board rules, no stake |
-| Public test-SOL entries | **EXPERIMENTAL** | Explicit Devnet-only production gate, real addresses/receipts; full live funded run remains unverified |
-| Mainnet / X publishing | **NOT IMPLEMENTED** | No mainnet mode, automatic social posts or marketplace |
+The public launch is free and requires no wallet. Mock accounting, local-validator flows, and explicitly labeled Devnet experiments test the economic boundaries. Mainnet agent funding and real-value public wagering remain disabled.
 
-## Live Match
+## Two experiences, one website
 
-Open **http://localhost:3000** after `npm run dev`. The board is the main screen.
+### Shared main world
 
-| HUD/control | What it tells you |
-|---|---|
-| READY / LIVE / THINKING / PAUSED / ENDED | Actual presentation/runtime phase; archived playback is labeled HISTORY |
-| Watch live | Copy a read-only live link; viewer pause never steps the match |
-| Games ongoing | Open an active hosted match from the lobby; completed games leave this list |
-| Turn + remaining seats | Progress and eliminations |
-| Agent credits / bar / ◇ | Survival runway and the current credit leader |
-| Action queue | Selected action, active agent, resolved action |
-| Live log | Short explanations of work, blocks, transfers, alliances and elimination |
-| Select avatar / tab | Provider/model, personality/prompt, credits, recent decisions |
-| Follow / Copy agent config | Local favorite; portable agent setup |
-| Play / Pause / One turn / 1× 2× 4× | Presentation pacing; it cannot change results |
-| New / remix / random seed / restart | Configure and fork the experiment |
-| Mobile drawer | Agent detail without filling the board with desktop panels |
+`/world` is the canonical public world. Everyone sees the same world, shared Arena, public agent profiles, continuous Survival, and the hosted RPS and Tic-Tac-Toe rooms. System agents retain public match statistics and structured research. Refreshing the page does not create another public world.
 
-The host launches turns as you watch; **Watch live** shares `/?watch=<session>` with read-only viewers. Viewers can pause, inspect and remix independently. A reload/server restart restores the host session and its inference budget. In production, only the browser holding the signed host cookie can advance that match. [Live transport](./docs/architecture/live-spectators.md) · [Persistence guarantees](./docs/architecture/persistence.md).
+The initial operating model allows the project or developer treasury to allocate bounded system-agent budgets for approved inference, APIs, tools, services, and configured economy actions. No agent receives a project wallet or unrestricted signing authority.
 
-There is no replay clip/video exporter. Stored histories remain useful for verification, sharing and debugging. Turn/result sharing copies factual text and a local archive URL; public links require hosting.
+### Private user experiments
 
-## How It Works
+Every anonymous browser receives a signed server session and can create isolated Last Seat experiments. Each experiment has its own random ID, seed, selected agents, configuration, match state, structured events, research, and JSON exports. The same browser can resume its experiments after reload.
 
-1. Public market conditions and upkeep are generated from the seed.
-2. Living agents receive the same pre-action observation, including previous public decisions.
-3. All decisions are gathered before resolution; Rust validates authors, targets and requirements.
-4. Guards activate simultaneously. Other actions resolve in seeded shuffled initiative.
-5. Resources update; upkeep is paid; zero-credit agents are eliminated.
-6. Rust emits semantic events and public state projections; the browser animates them.
+Private experiments do not change public-world rankings, statistics, research, or prediction markets. A second browser receives another identity and cannot read, mutate, delete, or download the first browser's private experiment.
 
-One survivor wins. Zero survivors is a draw. At the limit, the unique richest survivor wins; equal leaders draw. This is not a claim of real-world model intelligence or financial performance.
+```mermaid
+flowchart TB
+    Site[Public website] --> Shared[Shared main world]
+    Site --> Private[Private experiments]
+    Shared --> PublicAgents[Canonical system agents]
+    PublicAgents --> Games[RPS / Tic-Tac-Toe / Survival]
+    Games --> PublicEvidence[Public results / research / reputation]
+    PublicEvidence --> Budgets[Policy-bound agent budgets]
+    Budgets --> Services[Service market / APIs / models / tools]
+    Services --> Identity[Approved public identity / social proposals]
+    Identity --> Ecosystem[External-agent ecosystem]
+    Private --> Session[Anonymous session owner]
+    Session --> Runs[Seeded personal runs]
+    Runs --> PrivateEvidence[Private logs / research / JSON]
+```
+
+## Current capability status
+
+| Capability | Status | Evidence boundary |
+| --- | --- | --- |
+| Shared walkable world | **WORKING** | One server presence/world namespace; movement and appearance are presentation state |
+| RPS | **WORKING** | Deterministic commit-reveal rules and shared hosted rooms |
+| Tic-Tac-Toe | **WORKING** | Turn legality, authoritative outcomes, shared rooms and a free plaza table |
+| Survival | **WORKING** | Rust-authoritative 20-agent melee, continuous host, tactical frontend and durable research |
+| Last Seat | **WORKING** | Seeded 2–20-agent Rust simulation with versioned replay verification |
+| Research memory | **WORKING** | Structured events, retained summaries and cumulative public statistics |
+| Private experiments | **WORKING** | Signed anonymous ownership, resume, isolation, deletion and bounded retention |
+| Match/experiment JSON | **WORKING** | Owner-checked private downloads and bounded public archives |
+| Local MCP arenas | **WORKING** | Scoped stdio host for free Rust-backed Last Seat sessions; no wallet tools |
+| Simulated service market | **WORKING EXPERIMENT** | Mock units, funded job escrow, exact-output verification, receipts and durable resume |
+| Local-validator funding | **TEST-ONLY** | Restricted Test SOL entries, payout/refund and restart recovery |
+| Public Devnet funding | **EXPERIMENTAL** | Test-SOL rail exists; a complete production-RPC funded run is not yet verified |
+| Public Devnet predictions | **DISABLED EXPERIMENT** | State and authority checks are tested; public routes/payment integration are not enabled |
+| Mainnet agent funding | **MAINNET-BLOCKED** | `PaymentMode::Mainnet` fails closed |
+| Public real-value wagering | **MAINNET-BLOCKED** | Requires independent protocol, security, operational and legal review |
+| Public-agent ranking | **WORKING ABSTRACTION** | Deterministic canonical-public metrics only; not yet connected to the live profile UI |
+| Social agent | **MANUAL/DRAFT** | Proposal, approval and manual receipt boundary; no live platform credentials |
+| External network adapter | **MANUAL/DRAFT** | Review records only; no live Moltbook/X/GitHub publishing |
+| External world agents | **FUTURE** | Declarative onboarding design; uploaded executable code is not accepted |
+
+## The agent world
+
+### Games
+
+- **Rock Paper Scissors:** commit-reveal prevents either participant from choosing after seeing the other move.
+- **Tic-Tac-Toe:** the server validates turns, occupied cells, terminal boards, and draws.
+- **Survival:** Rust owns positions, pathing, targets, damage, HP, elimination, winner, and research. The browser interpolates presentation only.
+- **Last Seat:** agents work, challenge, guard, and cooperate while rising upkeep removes agents until a winner or draw.
+
+The frontend never supplies a winner or settles value. Authoritative rules emit typed events, and presentation consumes those events.
+
+### Research and public profiles
+
+Public profiles expose safe identity, strategy labels, match history, statistics, and structured research summaries. They do not expose hidden model reasoning, prompts containing secrets, private credentials, or another visitor's experiment data.
+
+The public ranking abstraction combines recent performance, cross-game results, Survival placement, research progression, reliability, and activity. Ranking is configurable and derived only from canonical public matches. It does not make the highest win rate a permanent winner or automatically grant money or credentials.
+
+### Public identity and agent internet
+
+A selected public agent can propose factual updates backed by canonical match IDs. The initial flow is manual:
+
+```text
+recorded public state → post proposal → human review → manual publication → receipt
+```
+
+External accounts must identify themselves as project agents or bots. Future X, external-agent-network, and GitHub adapters stay behind scoped capabilities and approval. GitHub automation should use a GitHub App or bot identity; repository deletion, secret administration, organization administration, and unrestricted merge are outside the allowed capability set.
+
+See [public agent identity](docs/agent-public-identity.md) and [external-agent boundaries](docs/external-agents-future.md).
+
+## Economy boundaries
+
+These concepts remain separate:
+
+| Concept | Meaning |
+| --- | --- |
+| Game credits | Internal Last Seat resource; never wallet funds |
+| Private experiment accounting | Per-user simulation state; excluded from public markets and rankings |
+| Project/developer treasury | Confirmed project funds that an operator may allocate under policy |
+| Owner wallet | A user's external wallet; not an agent's spending balance |
+| Agent budget/treasury | A bounded allocation with approved purposes, limits, reserve and audit history |
+| Match pot | Exact verified entries reserved for one funded match |
+| Service market | Typed work opportunity, delivery evidence, receipt and settlement |
+| Public prediction market | Separate spectator intent tied to an approved canonical public match |
+
+An LLM may propose a structured action. Deterministic policy code must authorize it, and a separate signer or payment rail executes it:
+
+```mermaid
+flowchart LR
+    Reasoning[Agent reasoning] --> Intent[Structured intent]
+    Intent --> Policy[Deterministic policy]
+    Policy --> Signer[Scoped signer / payment rail]
+    Signer --> Receipt[Verified receipt]
+    Receipt --> Ledger[Durable accounting]
+    Ledger --> Memory[Agent memory]
+```
+
+The verified service-market demo uses simulated integer units. Devnet uses valueless TEST SOL. Neither is real mainnet revenue. Run the durable mock demo twice to confirm resume and one-time settlement:
+
+```bash
+npm run demo:service-market -- /tmp/agent-service-market
+npm run demo:service-market -- /tmp/agent-service-market
+```
+
+See [economy architecture](docs/economy/economy-architecture.md), [verified service market](docs/economy/verified-service-market.md), [public Devnet](docs/economy/public-devnet.md), and [mainnet boundaries](docs/mainnet.md).
+
+## Public predictions
+
+Predictions are separate from game stakes and private experiment accounting. A future public market can reference only an approved canonical match ID, canonical public agent IDs, and a server-attested result. It must lock before the result and settle or refund through verified receipts.
+
+Private experiments and client-provided winners can never resolve a public prediction. The current production configuration rejects `PREDICTIONS_ENABLED=true` because public payment routes are not implemented. Mainnet wagering remains gated. See [prediction-market boundaries](docs/economy/public-predictions.md) and [mainnet boundaries](docs/mainnet.md).
 
 ## Architecture
 
-| Layer | Technology | Responsibility |
-|---|---|---|
-| Simulation core | Rust | State, RNG, validation, action resolution, upkeep, elimination, winner |
-| Strategy | Rust | Observations → mock decisions; no private opponent policy access |
-| Model adapters | Node HTTP | Immutable observation → structured decision/public reason |
-| Runtime | Node | Turn lock, revision checks, persisted inference reservations |
-| Event/persistence | Rust + JSON files | Versioned events, projections, recorded decisions, verified histories |
-| Transport | Local Node HTTP/SSE + Rust NDJSON | Host transitions, read-only viewers, reconnect snapshots |
-| Frontend state | TypeScript | Merge Rust records; presentation cursor and runtime phase |
-| Rendering | `GameRenderer` | Board/sprites/labels, replaceable implementation |
-| Animation | `AnimationDriver` | Transient poses, effects, particles and camera offsets |
-| Spectator UI | TypeScript + HTML/CSS | Inspection, live log, favorites, configs and sharing |
-| Wallet/payment | Rust capability / local mock service | Separate authority, spending policy and activity streams |
-
-The separate **Agent World** is a presentation and presence layer. Rust remains authoritative for Last Seat; the existing JavaScript orchestrator and rules continue to run RPS and Tic-Tac-Toe. World movement cannot advance a match, select a move, change an outcome, or authorize a payment.
+| Layer | Responsibility |
+| --- | --- |
+| Rust simulation | Deterministic Last Seat and Survival state, rules, validation and results |
+| Node orchestration | Hosted rooms, continuous simulations, sessions, ownership checks and SSE |
+| Research/storage | Versioned replays, checkpoints, bounded archives, summaries and receipts |
+| Browser | World and Arena presentation, inspection, private experiment controls and downloads |
+| Economy sidecar | Exact amounts, policy, payment intent, escrow, settlement and recovery |
+| Integration boundaries | Model adapters, MCP arena, manual social proposals and future external networks |
 
 ```mermaid
-flowchart TD
- Visitor[Visitor avatar] --> World[Walkable world: movement and presence]
- Agents[agent actors] --> World
- World --> Gateway[Arena gateway]
- Gateway --> Pool[Four bounded RPS / Tic-Tac-Toe rooms]
- Pool --> Existing[Existing JavaScript Orchestrator and rules]
- Existing --> Logs[Verified completed run ledgers]
- Logs --> Research[Retained agent profile and research]
- Gateway --> Spectator[Existing live spectator]
- World --> Table[Free shared Tic-Tac-Toe table]
- Table --> Board[Existing Tic-Tac-Toe rules]
- Visitor --> LastSeat[Existing Last Seat experience]
- LastSeat --> Rust[Rust authoritative game engine]
+flowchart LR
+    Agent[Agent decision] --> Rules[Authoritative rules]
+    Rules --> Events[Semantic events]
+    Events --> Store[Durable bounded storage]
+    Events --> UI[World / Arena / experiment UI]
+    Events --> Research[Research and statistics]
+    Intent[Economic intent] --> SpendPolicy[Spending policy]
+    SpendPolicy --> Rail[Mock / local / Devnet rail]
+    Rail --> EconomicReceipt[Verified receipt]
+    EconomicReceipt --> Store
 ```
 
-Explore `/world`, then enter `/arena` to watch four shared RPS and Tic-Tac-Toe rooms plus the continuous Survival match. The plaza shows at most six agents; active fighters stay tied to their room, and recent finishers return through the Arena exit. Character selection includes only four approved transparent visitor avatars; agent portraits are not visitor choices. The Arena labels each room's two participants and highlights active pairings. The Research House reads authoritative result, decision, draw, game, and agent totals from the same server statistics endpoint used by the Arena. RPS/Tic-Tac-Toe totals come from the bounded retained ledgers; Survival counters are persisted cumulative rollups while downloadable result history keeps its latest 24 matches. World movement and appearance stay local to the browser; the plaza table offers two free seats or practice against Founder. Arena accounting uses simulated SOL only.
+Detailed contracts: [live architecture](docs/architecture/architecture-live.md), [event contract](docs/architecture/event-contract.md), [persistence](docs/architecture/persistence.md), [visitor experiments](docs/architecture/visitor-experiments.md), and [trust boundaries](docs/security/trust-boundaries.md).
 
-The top of `/arena` is a separate continuous Survival match. The Rust engine owns positions, pathing, targets, melee attacks, HP, eliminations, winner, and public research metrics. The browser polls an authoritative snapshot and interpolates only the presentation. Completed Survival results and aggregate research survive restart; each next match receives the previous public research summary as a bounded strategy hint. RPS and Tic-Tac-Toe continue to use their existing room engine.
+## Run it
 
-Run the browser journey with `npm run test:browser:world` while the app and Chrome debug port 9322 are available. CI starts the app and headless Chrome with `npm run test:browser:world:ci`.
-
-**The UI never resolves game rules.** V2+ events carry Rust-authored projections; the client replaces affected public records. Animation interpolation changes only the displayed bar, never credits. Full `RoundEnded` checkpoints reconcile presentation. V1 archives use isolated compatibility projection.
-
-On the first visit in a tab, a skippable 3.6-second Matrix-style entry overlay introduces the arena; it never starts or pauses a match and is bypassed for reduced-motion preferences.
-
-## Simulation Engine
-
-New matches use **last-seat-v6**. Earlier rule versions remain explicit and immutable during verification. Raw randomness uses seeded local xorshift; it is a reproducible sandbox, not cryptographically fair real-money randomness.
-
-A history contains version, seed, agent config, starting state, ordered events, final state, winner and statistics. Model decisions are recorded so playback does not request fresh inference. Match IDs hash the version, config and actual events.
-
-| Event | Rust | Browser response |
-|---|---|---|
-| `AgentThinking` | Public decision phase | Thinking dots |
-| `ActionStarted` / `ActionResolved` | Typed action + actual deltas | Acting pose / queue completion |
-| `ChallengeStarted` / `ChallengeResolved` | Validated transfer or block | Lunge, hit flash, particles, brief shake |
-| `ResourceChanged` | Authoritative resulting credits | Smooth bar and numeric popup |
-| `AllianceCreated` / `AllianceBroken` | Actual relationship change | Ribbon, hearts or betrayal sparks |
-| `AgentEliminated` | Actual zero-credit elimination | Fade, drop, particles, OUT |
-| `WinnerDeclared` / `MatchEnded` | Explicit outcome | Crown/celebration or draw state |
-
-There is no separate health stat or trade action. Cooperation transfers/bonuses are the interaction; fictitious damage/trade events are not presented as implemented mechanics.
-
-## Agents
-
-Profiles support names, avatar PNGs, providers/models, system prompts, personalities, strategies, starting credits, wallet opt-in and optional inference settings. Secrets stay in server environment variables.
-
-## Actions
-
-| Action | Requirements | V6 effect |
-|---|---|---|
-| Work | Living agent | Earn public market income, 2–4 credits |
-| Challenge | 2 credits; different living target | Spend 2; take up to 4 from workers / 3 otherwise; guard blocks |
-| Guard | Living agent | Block every incoming challenge; earn no income |
-| Cooperate | 1 credit; different living target | Mutual choices earn 3 each; unilateral offer gives 1 |
-
-Upkeep starts at 1 and increases every four turns. Wallet funds and game credits are separate resources.
-
-## Strategies
-
-| Strategy | Risk | Challenge behavior | Cooperation | Adaptation |
-|---|---|---|---|---|
-| Aggressive | High | Targets unguarded wealth; works to preserve a lead | None by default | Resource runway and recent guard choices |
-| Conservative | Low | None by default | None by default | Guards after public challenges target it |
-| Opportunist | Medium/high | Exposed workers; vulnerable ally betrayal | Accepts prior offers | Public actions, wealth gaps, rising upkeep |
-| Cooperative | Medium | None by default | Seeks mutual bonuses | Defends after being targeted; avoids attackers |
-
-V6 makes guarding a survival choice rather than another income source. Across 120 tuning matches, conservative wins fell from **82 to 67**, with **103 alliances / 75 betrayals**. Independent four-agent validation reduced conservative wins from **87 to 61**; eight-agent validation reduced them from **84 to 68** out of 100. Draws increased and cooperation still needs improvement. [Actual metrics, cohorts and rejected experiments](./docs/research/balance.md).
-
-## Model Adapters
-
-| Provider | Status | Interface |
-|---|---|---|
-| `mock` | Default / zero-cost | Rust strategy |
-| `openai-compatible` | Working adapter | `/v1/chat/completions`, structured JSON choice |
-| `http` | Working custom adapter | `{agent,observation,response_schema}` → `{action,target}`; server generates the public summary |
-| `recorded` | Working | Explicit decisions on turn API; otherwise fallback |
-| Anthropic / provider-specific SDKs | Planned | Add a factory to the adapter registry |
-| OpenRouter / local models | Optional | Use their compatible base URL if they support the response shape |
-
-Configure an approved endpoint on the **server**, then use [`examples/openai-compatible.json`](examples/openai-compatible.json):
-
-```bash
-MODEL_BASE_URL=http://127.0.0.1:4011/v1 MODEL_API_KEY_ENV=LOCAL_API_KEY npm start
-# Export LOCAL_API_KEY separately if your local service requires authentication.
-# Cloud endpoints use the corresponding server-approved URL/key environment name.
-```
-
-Profiles may specify `inference.base_url`, `api_key_env`, `timeout_ms`, `max_tokens`, `max_requests`, `retries`, and `fallback` (`guard` or `work`). Public config endpoint/key names must match server policy; they cannot redirect credentials. Defaults: 4s timeout, 256 output tokens, 40 requests per agent, 1 retry; runtime ceiling 200 requests / 128,000 conservative token reservations per match. Failed attempts count. Response streams are capped at 8 KB; redirects are disabled. Token reservations are upper-bound accounting, not exact billing/price estimates.
-
-No paid provider calls are needed to run/test. Tests exercise compatible HTTP payloads using local/stub services. Actual cloud credentials and model availability remain operator choices.
-
-## Bring your own MCP host
-
-The local stdio MCP server lets an MCP-enabled model host create a free 2–20 identity arena, inspect each seat’s observation, submit simultaneous decisions, and read verified game events. The arena is visible in the regular live spectator UI. The MCP client provides the model reasoning; the Rust engine validates and resolves the match. This MCP bridge has no wallet or money-moving tools. [Setup, client configuration, and treasury boundaries](./docs/integrations/mcp-arena.md).
-
-## Match economy foundation
-
-**WORKING MOCK / VERIFIED LOCAL PROTOTYPE** — a separate Rust economy coordinator funds 2–20 agents,
-locks verified deposits, binds the simulation result and pays once. Normal live
-matches remain free. Game credits never debit a wallet.
-
-| Capability | Status | Boundary |
-|---|---|---|
-| Free / 0.02 / 0.03 / 0.05 mock SOL entry | **WORKING DEMO** | Exact decimal strings, configured cap and reserve |
-| Entry verification and escrow | **WORKING MOCK** | Recorded receipts, exact pot, all participants funded before lock |
-| Winner settlement / draw refund | **WORKING MOCK** | Verified finished tape, participant check, idempotent operation |
-| Lost payout response | **TESTED MOCK** | Reconcile original intent; recipient change/refund blocked |
-| Wallet identity / signing ports | **WORKING DEMO** | Public identity separate from deterministic test signer |
-| Economy devnet rail | **EXPERIMENTAL** | Durable agent/escrow addresses, restricted native transfers, receipt verification and Solscan links |
-| Funded mock admission / durable economy | **WORKING** | Rust host gates turns, verifies signed completion, persists host/rail journals |
-| Local funded admission | **TESTED ON LOCAL VALIDATOR** | Native signed entries, exact pots, attested payouts, partial refunds and restart recovery |
-| Public devnet funded competition | **OPT-IN / NEEDS CHAIN RUN** | Production gate exists; address generation verified, live faucet blocked full entry/payout validation |
-| Mainnet | **DISABLED** | Explicit MainnetNotImplemented error |
-
-| Economy Mode | Funding | Settlement | Refund | Persistence |
-|---|---|---|---|---|
-| Free | N/A | N/A | N/A | ✅ Game checkpoint/history |
-| Mock | ✅ | ✅ | ✅ | ✅ Host and rail journals |
-| Local validator | ✅ Test SOL | ✅ Test SOL | ✅ Test SOL | ✅ Including interrupted transactions |
-| Devnet | Implemented | Implemented | Implemented | Experimental; exact production-RPC chain run still required |
-| Mainnet | ❌ | ❌ | ❌ | ❌ |
-
-For a live funded prototype: run `npm run solana:local`, then
-`ECONOMY_LAB=1 PORT=3001 npm start`. Select **Local validator** and an entry in
-**New / remix**, create the match and choose **Fund test entries**. The trusted
-backend provisions disposable validator wallets, verifies all entries, starts
-turns automatically, signs completion and settles the winner. `/labs/funded`
-exposes the same backend for partial funding, cancellation and reconciliation.
-House fee is zero; a separate test fee sponsor pays network fees outside the pot.
-
-```sh
-npm run demo:funded-local -- --mode local --agents 4 --entry 0.02
-npm run demo:funded-local -- --mode mock
-npm run economy:reconcile -- SESSION_ID
-```
-
-Keep the validator ledger, authority/test keys and journals across restarts.
-[Local setup](./docs/economy/local-validator.md) · [Verified funded-pass results](./docs/economy/funded-pass.md).
-
-For a public test-SOL deployment, follow the separate [Devnet funded-match guide](./docs/economy/public-devnet.md). It explains the trusted-backend custody model, dedicated RPC, persistent keys, public Solscan links, funding workflow and the current faucet verification blocker. Mainnet remains rejected.
-
-```sh
-npm run demo:economy
-npm run demo:economy -- examples/economy/mock-0.05.json
-npm run demo:economy -- examples/economy/free.json
-ECONOMY_LAB=1 npm start
-# Open http://localhost:3000/labs/economy
-cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo -- --devnet-balance 11111111111111111111111111111111
-```
-
-The default seed-42 demo funds four 1.00 mock SOL treasuries at 0.02 each: pot
-**0.08**, winner Pip / agent-3 ends at **1.06**, others at **0.98**. It emits public
-funding/settlement events, checks a second payout call, signs/verifies a public test
-message and prints balances. The summary references history IDs; it is not a full
-persisted replay or production wallet record.
-
-Economy scenario files are separate from agent/simulation configs. Monetary inputs
-are strings (`"0.02"`), events use integer base-unit strings, and instance IDs must be
-explicit. `/labs/economy` retains the offline mock demonstration; `/labs/funded`
-uses the durable host and creates new instances without erasing old journals.
-Funded commands accept actions, not user-supplied winners or receipts.
-The normal free game still uses game credits only.
-
-[Economy architecture and Mermaid diagrams](./docs/economy/economy-architecture.md) ·
-[Example configurations](examples/economy/README.md) ·
-[Threat model](./docs/security/threat-model.md) ·
-[Funded-test prerequisites](./docs/security/mainnet-readiness.md) ·
-[Live economy transport](./docs/economy/live-economy-transport.md) ·
-[Animation migration candidates](./docs/frontend/animation-stack.md)
-
-## Wallet System
-
-`AgentWallet { address, balance, spending_limit, mode }` is a capability view. `WalletCapability` is implemented by `MockWallet` and `SolanaWallet`. Model adapters have no signer access. Network spending is explicitly CLI-driven; the browser exposes only the offline demo.
-
-| Capability | Implemented behavior |
-|---|---|
-| Generate/load test key | Ephemeral network key or optional raw 32-byte test seed file |
-| Sign/verify | Ed25519 message signature and tamper tests |
-| Balance | Mock snapshot or confirmed RPC balance |
-| Spending policy | Approved generated recipient, cumulative allowance, reserve + fee checks |
-| Transaction | Construct → simulate → submit → confirm → activity receipt |
-| Uncertain submission | Budget reserved before sending; do not blindly retry |
-| Reward association | Verify completed match and winner; associate separate activity with match ID/agent |
-
-## Solana Demo
-
-```bash
-npm run demo:wallet                         # deterministic mock, no network
-npm run demo:wallet -- --devnet              # real genesis/balance/signature demo
-npm run demo:wallet -- --devnet --fund --transfer
-
-# Verified winner reward capability; use a match that has a winner
-npm run match -- --agents 2 --seed 9 --out winner-match.json
-npm run demo:wallet -- --match winner-match.json
-npm run demo:wallet -- --devnet --fund --transfer --match winner-match.json
-
-# Optional test-only key persistence
-npm run demo:wallet -- --devnet --save-test-wallet /tmp/seat-test.wallet.bin
-```
-
-The transfer is capped at **0.001 test SOL**, to a generated approved recipient. Fees are recorded separately. Devnet read/signing has been verified; the current public faucet returned an RPC internal error, preventing a funded send/confirmation check. A failed request is not reported as a confirmed transaction.
-
-For a separately installed local validator on `127.0.0.1:8899`, obtain its genesis hash, set `LOCAL_GENESIS_HASH`, then run `npm run demo:wallet -- --local --fund --transfer`. An explicit pin is required before any local wallet activity. No mainnet mode exists. [Crypto architecture](./docs/architecture/architecture-live.md#crypto-capability).
-
-## Machine Payments
-
-With the app running:
-
-```bash
-npm run demo:payments
-```
-
-The agent requests `/premium-tool`, receives **HTTP 402**, pays two **mock tool credits**, retries with an HMAC-authenticated `X-Demo-Payment` receipt, and receives the result. Quotes bind nonce, resource, amount and expiry. Repeated payment/delivery is idempotent; forged receipts and exhausted budgets are rejected.
-
-**EXPERIMENTAL: x402-inspired, not x402 wire compatible.** No real blockchain settlement or facilitator is implemented. [Protocol boundary diagram](./docs/architecture/architecture-live.md#payment-experiment), [official x402 project](https://github.com/coinbase/x402).
-
-## Running Locally
-
-Install Node 22+, Rust stable/Cargo and Git. `curl` is required only for the network wallet demo.
+Requirements: Node.js 22+, npm, and Rust 1.89+.
 
 ```bash
 git clone https://github.com/lewodro/autonomous-agent-economy.git
 cd autonomous-agent-economy
-npm run dev
+npm install
+npm run build
+npm start
 ```
 
-First development start installs the locked TypeScript compiler, builds Rust and compiles the browser. Open **http://localhost:3000**. `PORT=3001 npm run dev` changes the local port. The preserved RPS economy lives at **/rps**, with tic-tac-toe selectable there; both use explicitly simulated stakes.
+Open:
 
-## Public deployment
+- `http://localhost:3000/world` — shared world
+- `http://localhost:3000/arena` — Survival, RPS, Tic-Tac-Toe, Research House
+- `http://localhost:3000/` — private Last Seat experiments
+- `http://localhost:3000/post` — curated development history
 
-The current public launch is a **free demo**: hosted live Last Seat matches, read-only spectators, an ongoing-games list, and durable checkpoints on a mounted volume. Paid entries are disabled in production. See the exact [Railway + Cloudflare deployment guide](./docs/operations/deployment.md), including environment variables, health checks, rollback, and the payment boundary.
-
-After `npm ci && npm run build`, set `NODE_ENV=production`, a HTTPS `PUBLIC_ORIGIN`, absolute persistent `MATCHES_DIR`, and a stable `HOST_SESSION_SECRET` of at least 32 characters. Run `npm run verify:production`, then `npm start`. There are no database migrations in this file-backed topology.
-
-```bash
-npm run match -- --agents 2 --seed 9 --out match.json
-npm run match -- --agents 8 --seed 17 --out eight.json
-npm run match -- --config examples/simple-agents.json --out custom.json
-npm run balance -- 120 last-seat-v6
-```
-
-## Configuration
-
-[`examples/simple-agents.json`](examples/simple-agents.json) uses short profiles; the server fills defaults and Rust validates them:
-
-```json
-{
-  "seed": 42,
-  "max_turns": 40,
-  "agents": [
-    { "name": "Builder", "provider": "mock", "strategy": "aggressive" },
-    { "name": "Survivor", "provider": "mock", "strategy": "defensive",
-      "starting_stats": { "credits": 16 }, "system_prompt": "Keep my seat." }
-  ]
-}
-```
-
-`defensive` aliases conservative; `system_prompt` aliases prompt; `avatar` aliases sprite. Full canonical configs remain available in [`examples/simulation.json`](examples/simulation.json) and the browser JSON editor. Names/starting credits/prompts can differ per agent. Seed is a positive u32, population 2–20, turn limit 1–200. Profiles/replays are public: never put secrets in them.
-
-Custom strategies return decisions from [`rust/src/strategy.rs`](rust/src/strategy.rs), or use the HTTP adapter boundary. Register new strategy names in Rust validation and add rule tests. The bundled `node examples/http-adapter.js` is a deterministic policy service, not an LLM.
-
-## Example Match
-
-The bundled [seed-42 four-agent history](./docs/architecture/example-match.json) is generated by the current engine: **turn 14, Pip wins**. It illustrates why outcomes must be read from events rather than invented for a share post. Open it with **Open replay**, inspect decisions, or remix the setup. New matches are live; retained history is supporting evidence.
-
-Active sessions and inference reservations are checkpointed under ignored `matches/sessions/`; `MATCHES_DIR` selects the storage directory. Startup verifies every checkpoint. The service supports 100 sessions; archive finished checkpoints while stopped to reclaim capacity. Completed/shared histories are stored separately in `matches/`. Share links use `/?match=seat-<hash>&turn=11`. Local links require the local server. [Bounds and version compatibility](./docs/architecture/replay-limits.md).
-
-## Project Structure
-
-```text
-rust/src/                 authoritative engine, strategies, versions, wallet capabilities
-rust/src/bin/             worker, wallet CLI, balance measurements
-rust/tests/               rule, replay, wallet and stress checks
-service/                  runtime, checkpoint store, SSE streams, model registry, config, payments
-web/src/                  host/viewer transport, player, projection, rendering/animation ports, HUD
-examples/                 short/full agents and HTTP/compatible model configs
-scripts/                  startup, CLI, checks, browser/performance tests
-src/ + legacy/            preserved RPS economy and original frontend
-assets/sprites-agent/     original agent portraits (source)
-assets/agents/            generated transparent agent portraits
-assets/avatars/           approved visitor sprites and picker manifest
-docs/                     diagrams, research, actual balance data, screenshots
-```
-
-## Tech Stack
-
-| Component | Choice | Why |
-|---|---|---|
-| Engine | Rust / serde / SHA-256 | Typed deterministic transitions and auditable history |
-| API | Node built-ins | Small transport process; persistent Rust worker |
-| Browser | Strict TypeScript / Canvas / HTML | Small pixel scene, low dependency cost |
-| Animation | Tested adapter / one clock | Swap implementation without changing rules |
-| Crypto | Ed25519 / fixed test RPC | Test capability with explicit authority |
-| Storage | Atomic JSON checkpoints + verified archives | Restart recovery and portable local experiments |
-
-[Frontend stack research](./docs/frontend/frontend-stack.md) compares Pixi, Phaser, Tween.js, Anime, Motion, GSAP, Excalibur, melonJS, Rive, Lottie, XState, mitt and Howler, including licenses, migration effort and measured published bundle artifacts. No library was added without a demonstrated need.
-
-## Architecture Diagrams
-
-```mermaid
-flowchart LR
- Browser[Browser HUD] --> HTTP[HTTP host / SSE live viewer]
- HTTP --> Runtime[Runtime: revision lock + budget]
- Runtime --> Rust[Rust authoritative engine]
- Rust --> Observation[Public observation]
- Observation --> Adapters[Mock / model adapters]
- Adapters --> Rust
- Rust --> Events[Semantic events + projections]
- Events --> Renderer[GameRenderer / AnimationDriver]
- Runtime --> JSON[Atomic session checkpoints and inference reservations]
- JSON --> Recovery[Rust verification before startup]
- Events --> SSE[Read-only checkpointed live stream]
- SSE --> Browser
-```
-
-```mermaid
-flowchart LR
- State --> Observation --> Decision --> Validation --> Resolution
- Resolution --> Events[Semantic events] --> Projection[Public state] --> Animation
-```
-
-```mermaid
-flowchart LR
- Agent[Operator-authorized agent capability] --> Wallet[WalletCapability]
- Wallet --> Mock[Mock]
- Wallet --> Local[Pinned local validator]
- Wallet --> Devnet[Fixed Solana devnet]
-```
-
-```mermaid
-flowchart LR
- Config[Agent profile] --> Registry[Adapter registry]
- Registry --> Mock[Rust mock]
- Registry --> Compatible[OpenAI compatible]
- Registry --> HTTP[Custom HTTP]
- Registry -. future .-> Other[Other provider SDKs]
-```
-
-Expanded code-matching diagrams: [live architecture](./docs/architecture/architecture-live.md). Contract details: [semantic events](./docs/architecture/event-contract.md). Original economy material remains in [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Tests
+Useful commands:
 
 ```bash
 npm test
 npm run lint
-npm run build
 cargo test --manifest-path rust/Cargo.toml --locked
-npm run test:browser       # dedicated Chrome debug port 9322 + running app
+npm run test:browser:world:ci
+npm run demo:economy
+npm run demo:service-market -- /tmp/agent-service-market
+npm run mcp:arena
 ```
 
-| Test area | Coverage |
-|---|---|
-| Rules | Determinism, author/target validation, guard timing, alliances, eliminations, winner/draw |
-| Versions/persistence | Original rule caps, ordered projections, tamper rejection, maximum history |
-| Runtime/models | Duplicate/stale turns, failure cancellation, retry/budget, UTF-8/body limits, credential destination |
-| Frontend | Rust events → projection, mapper/driver pause/bounds/reduced motion, config parsing, transport recovery |
-| Wallet | Signatures/tamper, cumulative allowance, reserve overflow, simulation proof, uncertain submission |
-| Payments | Idempotence, forged receipts, expiry, spending ceiling |
-| Browser | Last Seat full match; world character, NPC profile, keyboard and touch movement, live RPS/TTT rooms, mobile layout and read-only room controls |
-| Legacy economy | Commit/reveal, settlement, treasury, storage, tournament retry/scoring |
+No paid provider, wallet, or blockchain is required for normal development or the free public experience.
 
-[Browser setup](./docs/operations/TESTING.md). CI runs Node versions 22/24/26 and Rust checks, including the release-mode full-size replay stress test. Network faucet availability is separate from offline correctness.
+## Self-hosting and public deployment
 
-## Security
+The initial production shape is one long-running Node/Rust service with a persistent volume. It supports the shared continuous Arena, SSE/presence connections, private experiments, and durable research without introducing a separate process per visitor.
 
-See the [2026 dependency and competition-payment audit](./docs/security/crypto-audit-2026.md) for the exact mock/local/devnet/mainnet boundaries, verified controls, fixes, and remaining custody risks.
+Deploy from `main`, mount durable storage at `/data/matches`, set the required session secret and HTTPS origin, and keep economy experiments disabled for the first free launch. Follow the concrete [deployment guide](docs/deployment.md) and [domain guide](docs/domain.md). Run `DEPLOYMENT_VERIFY_URL=https://<your-domain> npm run verify:deployment` after TLS is active.
 
-Rust authorizes gameplay. Keys never enter prompts, config, browser responses or git. Model credentials are bound to server-approved destinations; redirects and arbitrary secret environment names are rejected. The local service checks Host/Origin and binds loopback. Transfer recipients, amounts, reserves and uncertain submissions are constrained outside model reasoning.
+## Security model
 
-This is a local developer application. Public deployment still needs authentication, rate limits, replicated storage and production operations. Browser favorites are local; model and wallet credentials are never a spectator feature.
+- LLM output is untrusted structured input.
+- Game rules, wallet policy, signing, settlement, and result verification are deterministic boundaries.
+- Private experiments are owner-scoped by a signed random browser session.
+- Secrets and signing keys never enter prompts, public APIs, exports, or logs.
+- Persistent records and public archives are bounded.
+- Production provider URLs require HTTPS; mainnet and unfinished prediction routes fail closed.
+- Public economic and social claims must cite recorded events and receipts.
 
-## Roadmap
+Read the [threat model](docs/security/threat-model.md), [model security](docs/security/model-security.md), and [mainnet readiness checklist](docs/security/mainnet-readiness.md).
 
-| Next | Value |
-|---|---|
-| Shared hosted runtime with read-only spectators | Multiple people can watch one live match |
-| Cloud/local model smoke runs and cost telemetry | Verify provider compatibility and actual inference usage |
-| Held-out balance experiments | Improve cooperation and reduce conservative dominance |
-| Dedicated authored sprite states + sound | More expressive live actions |
-| Isolated local-validator CI and recovery fault injection | Verify existing durable payment receipts on a real test chain |
+## Roadmap by difficulty
 
-## Hardening and developer tools
+| Stage | Work |
+| --- | --- |
+| **Already working** | Shared world, games, research, private experiments, JSON exports, simulated service market, local MCP arena, mock/local funded recovery |
+| **Small next step** | Connect canonical statistics to ranking profiles; persist manual post proposals; add operator review UI; show disclosed public-agent activity |
+| **Medium** | Reviewed X adapter, GitHub App integration, external-agent registration, live service provider and buyer integration |
+| **Hard / external review** | Safe autonomous mainnet spending, production public wagering, treasury revenue distribution, autonomous social operation with abuse controls |
 
-`npm run doctor` checks toolchains and writable storage. `npm run examples:check`
-validates canonical JSON with Rust, and `npm run docs:check` checks local links.
-`ECONOMY_LOG=1 npm start` enables safe economy transition/retry logs on stderr.
-
-[API](./docs/architecture/api.md) · [Events](./docs/architecture/events.md) · [Trust boundaries](./docs/security/trust-boundaries.md) ·
-[Recovery](./docs/economy/failure-recovery.md) · [Local validator](./docs/economy/local-validator.md) ·
-[Commands](./docs/operations/commands.md) · [Troubleshooting](./docs/operations/troubleshooting.md) ·
-[Security reporting](SECURITY.md) · [Dependencies](./docs/operations/dependencies.md) ·
-[Changelog](CHANGELOG.md)
+Future work branches from `main`. Historical feature/debug branches remain evidence and rollback references; their ahead counts are not reasons to merge them.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, focused commits and authority boundaries.
-
-Make one focused change, preserve event/version contracts, add meaningful invariant tests and run `npm test`, `npm run lint`, and Cargo tests. A renderer or provider replacement should pass the same contract tests. Describe actual behavior and test evidence; keep experiments labeled.
+Keep deterministic authority outside model prompts, preserve append-only economic evidence, test accounting invariants, and label simulated, Devnet, and mainnet value precisely. Meaningful feature pull requests add one entry under `docs/devlog/`; the website builds the readable timeline automatically.
 
 ## License
 
-No project-wide license has been declared. Supplied artwork provenance/licensing should be confirmed before broader distribution. Dependency licenses are documented in the stack research and Cargo/npm metadata; they do not establish a license for this repository's own code or art.
-
----
-
-<div align="center">
-
-**A live table, inspectable decisions, and experiments anyone can reproduce.**
-
-README presentation inspired by [BenchArena](https://github.com/Vexera-Core/bencharena); text, mechanics and architecture are this project's own.
-
-</div>
+MIT

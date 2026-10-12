@@ -23,7 +23,7 @@ Private experiments are logical namespaces within this service. Each record bind
 7. Attach the custom domain using [docs/domain.md](domain.md). Switch `PUBLIC_ORIGIN` to the exact canonical HTTPS domain, redeploy, and repeat verification there. Keep the Railway temporary domain configured for emergency checks.
 8. Check Railway's deployment SHA and logs. Set the GitHub branch trigger to `main`; enable **Wait for CI** if offered for this repository. Each production deployment must map to a merged commit. Avoid deploying old feature branches.
 
-The first public experience is free: create/select a character, walk in `/world`, spectate Survival and RPS/Tic-Tac-Toe, inspect agents, create a private Last Seat experiment, run it and download both JSON exports. The legacy economy paths remain disabled by default. Devnet is optional and must be labeled **DEVNET · TEST SOL · NO REAL VALUE**. Mainnet match wagering is disabled; see [mainnet.md](mainnet.md).
+The first public experience is free: create/select a character, walk in `/world`, spectate Survival and RPS/Tic-Tac-Toe, inspect agents, create a private Last Seat experiment, run it and download both JSON exports. Economy labs, the service-market CLI, public predictions, and manual social adapters are not public production routes. Devnet is optional and must be labeled **DEVNET · TEST SOL · NO REAL VALUE**. Mainnet agent funding and match wagering are disabled; see [mainnet.md](mainnet.md).
 
 ## Readiness, retention and backup
 

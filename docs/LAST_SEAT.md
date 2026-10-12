@@ -80,7 +80,7 @@ Agent config includes id, name, sprite, strategy, personality, prompt summary/fu
 | Copy turn/result URL and factual text; download canvas share card | Video/clip exporter |
 | `/api/matches`, `/api/replays/:id` | X gateway commands: run, replay, why, remix |
 
-No X publishing is implemented. A future gateway parses those four commands and calls the same run/replay endpoints under rate limits and inference budgets. It cannot bypass core validation or wallet policy. Localhost links work locally; public sharing requires hosting this service.
+No live X publishing is implemented. A separate manual-first publisher can hold an evidence-backed draft, human approval, and manual publication receipt, but it is not mounted as a public route or connected to credentials. A future X adapter calls approved run/replay endpoints under rate limits and inference budgets; it cannot bypass core validation, social policy, or wallet policy. Localhost links work locally; public sharing requires hosting this service. See [public agent identity](agent-public-identity.md).
 
 ## Wallet boundary
 

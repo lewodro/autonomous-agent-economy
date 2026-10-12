@@ -1,4 +1,6 @@
-# Overnight economy architecture pass
+# Historical document — initial economy foundation
+
+This file records the earlier implementation pass and its then-current gaps. See the current [economy architecture](economy-architecture.md) for present terminology, system/user agent budgets, service-market state, and network boundaries.
 
 Baseline: commit `040`, Rust rules V6. The live game remains authoritative and
 separate from wallet funds. Existing HTTP host / SSE viewer transport, checkpoint
