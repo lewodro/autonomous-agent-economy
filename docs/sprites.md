@@ -1,5 +1,7 @@
 # World sprites and avatar kit
 
+Created in ASEPRITE.
+
 The world loads only registered sprite URLs from `web/src/world/sprites.ts`. Actor logic stores a registered `spriteId`; it never infers actor identity or behavior from a filename. Character selection is additionally gated by `assets/avatars/index.json`: only approved entries with valid transparent PNG previews/sheets and a matching code allowlist appear. A usable image must contain visible pixels and at least 1% fully transparent pixels; partial-alpha edges alone do not qualify. Placeholder, debug, invalid, missing, non-PNG, and opaque previews are excluded.
 
 ## Asset folders
