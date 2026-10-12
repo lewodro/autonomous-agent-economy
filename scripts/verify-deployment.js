@@ -9,7 +9,9 @@ async function request(path,{method='GET',body,cookie}={}){
 }
 function expect(response,status,label){if(response.status!==status)throw new Error(`${label}: expected ${status}, received ${response.status}: ${JSON.stringify(response.data).slice(0,300)}`);return response;}
 const health=expect(await request('/api/health'),200,'health').data;
-if(health.ok!==true||health.storage!=='ok'||health.experiments?.status!=='ok'||health.arena?.status!=='ok'||health.survival?.status!=='ok')throw new Error('Health readiness failed');
+const ready=health.ok===true&&health.application==='ready'&&health.simulation_host==='ready'&&health.storage==='ok'&&health.session==='ready'&&health.presence?.status==='ok'&&health.experiments?.status==='ok'&&health.arena?.status==='ok'&&health.survival?.status==='ok';
+const safeEconomy=(health.network_mode==='simulated'&&health.payments==='disabled')||(health.network_mode==='devnet'&&health.payments==='devnet_test_sol');
+if(!ready||!safeEconomy)throw new Error(`Health readiness failed: ${JSON.stringify({application:health.application,simulation_host:health.simulation_host,storage:health.storage,session:health.session,presence:health.presence?.status,experiments:health.experiments?.status,arena:health.arena?.status,survival:health.survival?.status,network_mode:health.network_mode,payments:health.payments})}`);
 for(const route of ['/','/world','/arena','/rps'])expect(await request(route),200,route);
 expect(await request('/api/arena/rooms'),200,'RPS/TTT rooms');
 expect(await request('/api/survival/current'),200,'Survival');
