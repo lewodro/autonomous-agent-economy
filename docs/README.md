@@ -13,6 +13,8 @@ quick start live in the repository [README](../README.md).
 | [Integrations](integrations/) | Local MCP server setup and orchestration boundary | [MCP arenas](integrations/mcp-arena.md) |
 | [Research](research/) | Dated audits, balance runs, implementation-pass notes | [Balance report](research/balance.md) |
 
+Cross-cutting current docs: [public agent identity](agent-public-identity.md), [external-agent onboarding](external-agents-future.md), [deployment](deployment.md), and [mainnet boundaries](mainnet.md).
+
 Start with the distinction between the [shared world and private experiments](architecture/product-model.md). For anonymous ownership, retention, exports, and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
 
 Screenshots and visual references remain alongside this index. Balance run data is

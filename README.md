@@ -108,7 +108,7 @@ recorded public state → post proposal → human review → manual publication 
 
 External accounts must identify themselves as project agents or bots. Future X, external-agent-network, and GitHub adapters stay behind scoped capabilities and approval. GitHub automation should use a GitHub App or bot identity; repository deletion, secret administration, organization administration, and unrestricted merge are outside the allowed capability set.
 
-See [external-agent boundaries](docs/external-agents-future.md). The current public-agent identity contract is documented alongside the manual adapter in the next documentation layer.
+See [public agent identity](docs/agent-public-identity.md) and [external-agent boundaries](docs/external-agents-future.md).
 
 ## Economy boundaries
 
