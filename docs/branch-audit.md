@@ -1,15 +1,17 @@
-# Remote branch audit — 2026-10-08
+# Remote branch audit — refreshed 2026-10-11
 
-Baseline: `origin/main` at `aa02032a35d66db741e175faf2e4f61ba3d00b52` after PR #19. `git fetch --all --prune`, `git branch -r`, `git log --all --graph --decorate --oneline --date-order -200`, ancestor checks, both directional logs and patch-ID checks were used. Ahead counts alone were not used for decisions. No remote branch was deleted. Future work branches from `main`.
+Baseline: `origin/main` at `8240c0d3be4d695500800a6b60f63ea772949fc3`, including PR #20, PR #22, and the latest contributor documentation commit. `git fetch --all --prune`, remote enumeration, ancestor checks, both directional logs, file diffs, and patch inspection were used. Ahead counts alone were not used for decisions. No remote branch was deleted. Future work branches from `main`.
 
 | Branch | HEAD | Unique commits | Classification | Action |
 | --- | --- | ---: | --- | --- |
-| `origin/224-add-ownership-mode-safety-gates` | `ade9fb8` | 81 | UNIQUE / REVIEW NEEDED | Do not merge wholesale; safety concepts selected below; ownership mode remains experimental. |
-| `origin/debug-new-features` | `2fbe3cb` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
+| `origin/224-add-ownership-mode-safety-gates` | `e4e3c4b` | 83 | UNIQUE / REVIEW NEEDED | Do not merge wholesale; ownership/wallet path remains experimental and behind current architecture. |
+| `origin/debug-new-features` | `261b064` | 1 | SUPERSEDED | The unique malformed contributor note does not add a product capability; keep as history. |
 | `origin/debugging-initial` | `72ba11f` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
 | `origin/debugging-world-ci` | `edfae7e` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
 | `origin/feat/autonomous-agent-world` | `2786009` | 3 | SUPERSEDED | Equivalent world_070/071 and Survival work reached main via later integration; do not merge old merge commit. |
-| `origin/feat/survival-tactical-arena` | `2fb25b7` | 0 | ALREADY IN MAIN | PR #19 merged; keep as rollback/history. |
+| `origin/feat/mainnet-public-readiness` | `0fd0196` | 6 | UNIQUE / ACTIVE REVIEW | Active feature branch at fetch time; new work continues here from current main. |
+| `origin/feat/survival-tactical-arena` | `a2bcc17` | 1 | SUPERSEDED | PR #19 code is in main; the remaining branch-only README tagline is obsolete. |
+| `origin/feat/verified-service-economy` | `630d900` | 6 | UNIQUE / REVIEW NEEDED | PR #23 contains the focused service-market work; equivalent commits are preserved on the active readiness branch. |
 | `origin/fix/agent-sprite-serving` | `9c7df68` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
 | `origin/fix/final-integration-record` | `48b24eb` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
 | `origin/fix/world-browser-screenshot-timing` | `89c3f1b` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
@@ -18,10 +20,11 @@ Baseline: `origin/main` at `aa02032a35d66db741e175faf2e4f61ba3d00b52` after PR #
 | `origin/integration/public-release` | `ca11aa6` | 0 | ALREADY IN MAIN | PR #18 merged; keep as rollback/history. |
 | `origin/integration/survival-ready` | `13e85a1` | 0 | ALREADY IN MAIN | PR #18 merged; keep as rollback/history. |
 | `origin/integration/world-backend` | `5a045d8` | 0 | ALREADY IN MAIN | Keep as rollback/history. |
+| `origin/release/public-readiness` | `c652268` | 2 | SUPERSEDED | PR #20 code is in main; two later branch-only README edits are superseded by current product documentation. |
 
 ## Special audit: `224-add-ownership-mode-safety-gates`
 
-Its 81 commits are all patch-unique against this main (`git cherry -v` reports `+`), but patch uniqueness does not imply a public-release requirement. The branch also predates the PR #18/#19 Survival and recovery integration and changes 91 files. Its ownership, wallet and profile implementation is a separate experimental product path. A whole-branch merge would overwrite current world/Arena assumptions. The table below records every unique commit and its release disposition. `Deferred` means it is preserved on the remote branch for a separate review, not falsely claimed to be equivalent to main.
+Its 83 commits are patch-unique against this main, but patch uniqueness does not imply a public-release requirement. The branch is 27 commits behind current main, predates the PR #18/#19 Survival and recovery integration, and changes 92 files relative to its merge base. Its ownership, wallet and profile implementation is a separate experimental product path. A whole-branch merge would overwrite current world/Arena assumptions. The table below records every unique commit and its release disposition. `Deferred` means it is preserved on the remote branch for a separate review, not falsely claimed to be equivalent to main.
 
 Selected public-release safeguards were **adapted into the current main architecture**, without cherry-picking old branch commits: signed private visitor sessions and owner checks, limited private checkpoint/export size, bounded public replay archive and reads, production provider TLS, default-off public model inference, presence-join throttling, and updated domain guidance. No ownership/funding feature was imported. The exact adapted release commits are listed in the release PR.
 
@@ -108,7 +111,11 @@ Selected public-release safeguards were **adapted into the current main architec
 | [`87901ec`](https://github.com/lewodro/autonomous-agent-economy/commit/87901ec) | 301-doc-run-local-experiments-and-domain-launch | Adapted safeguard in release branch |
 | [`4e4e706`](https://github.com/lewodro/autonomous-agent-economy/commit/4e4e706) | 302-debug-animate-arena-agent-pairings | Current Survival/world presentation supersedes this path |
 | [`ade9fb8`](https://github.com/lewodro/autonomous-agent-economy/commit/ade9fb8) | 303-debug-stabilize-table-drain-regression | Deferred for separate review; no wholesale merge |
+| [`fa935bf`](https://github.com/lewodro/autonomous-agent-economy/commit/fa935bf) | Refactor architecture description | Superseded by the current product architecture rewrite |
+| [`e4e3c4b`](https://github.com/lewodro/autonomous-agent-economy/commit/e4e3c4b) | Refactor README tagline | Superseded by the current product README rewrite |
 
 ## Public-launch decision
 
-The 224 branch remains **UNIQUE / REVIEW NEEDED**, especially wallet signatures, owner registries, funding and policy APIs; those are outside the first free launch. Main contains its own shared world, Rust-authored Survival, recovery path and browser smoke coverage. The three unique commits on `feat/autonomous-agent-world` are a historical merge plus old `world_070/071` forms; main has `841f91b`, `50ce548`, `1413eb4`, PR #18 and PR #19, so that branch is superseded. All other remote refs are ancestors of main. Treat every old branch as archived/rollback-only for development, and do not delete them automatically.
+The 224 branch remains **UNIQUE / REVIEW NEEDED**, especially wallet signatures, owner registries, owner funding, and policy APIs; those are outside the first free launch and do not satisfy current mainnet requirements. Main contains newer shared-world, Survival, private-session, recovery, archive, TLS, storage, deployment, and browser-smoke architecture. No 224 commit was cherry-picked in this pass.
+
+The three unique commits on `feat/autonomous-agent-world` are a historical merge plus old `world_070/071` forms and remain superseded. Branch-only README/contributor edits on `debug-new-features`, `feat/survival-tactical-arena`, and `release/public-readiness` add no current capability and remain history. PR #23 is the focused service-market review; the active `feat/mainnet-public-readiness` branch carries equivalent service-market work on the latest main plus the current documentation and public-identity boundaries. Treat historical branches as archived/rollback-only, do not delete them automatically, and branch future work from `main` after reviewed changes merge.
