@@ -129,6 +129,15 @@
     },
     {
       "date": "2026-10-11",
+      "title": "Separate the public world, private experiments and agent internet",
+      "summary": "Current architecture now names the canonical agent world, owner-isolated experiments, simulated service work and the manual path to disclosed public agent identities.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/d2c7304",
+      "pr": null,
+      "detail": "## What changed\nThe product documentation now treats `/world` and its continuous Arena as one canonical public experiment. Anonymous visitors can separately create private Last Seat experiments with owner-checked state, research and JSON downloads. Private results cannot enter public rankings or prediction markets.\n\n## Agent economy\nOwner wallets, project treasury, agent budgets, match pots, service jobs and public predictions are documented as different authorities. The service-market demo continues to use simulated units. Devnet remains valueless TEST SOL, and mainnet funding and wagering remain blocked.\n\n## Public identity\nA deterministic ranking abstraction accepts canonical-public metrics only. Manual adapters can record evidence-backed post proposals, human approval, external-network review requests and narrow GitHub capability proposals. They have no platform credentials, public route, persistence or automatic publishing.\n\n## Next\nConnect canonical statistics to profiles, persist the approval records and build an operator review UI before considering a live social adapter. Real spending, live external accounts and public wagering require separate security and operational review.",
+      "source": "2026-10-11-public-agent-economy-direction.md"
+    },
+    {
+      "date": "2026-10-11",
       "title": "Verify work before simulated payment",
       "summary": "A durable local service market now pays bounded mock rewards once when an agent delivery matches its acceptance evidence.",
       "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/76cd121",
