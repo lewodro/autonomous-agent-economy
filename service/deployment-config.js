@@ -1,6 +1,18 @@
 import path from 'node:path';
 import {validateProviderTransport} from './provider-transport.js';
 
+function validateDevnetRpc(value) {
+  let parsed;
+  try { parsed = new URL(value); } catch { throw new Error('Public Devnet requires a valid dedicated HTTPS SOLANA_DEVNET_RPC_URL.'); }
+  if (value.length > 512 || parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+    throw new Error('Public Devnet requires a dedicated HTTPS SOLANA_DEVNET_RPC_URL without credentials or fragments.');
+  }
+  if (`${parsed.hostname}${parsed.pathname}`.toLowerCase().includes('mainnet')) {
+    throw new Error('SOLANA_DEVNET_RPC_URL must not identify a mainnet endpoint.');
+  }
+  return parsed;
+}
+
 export function validateDeploymentConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const rawPort = env.PORT ?? '3000';
@@ -36,7 +48,7 @@ export function validateDeploymentConfig(env = process.env) {
     if (env.ECONOMY_MODE && !['SIMULATED', 'DEVNET'].includes(env.ECONOMY_MODE)) throw new Error('Production economy mode must be SIMULATED or DEVNET.');
     if (publicDevnet) {
       if (env.PUBLIC_DEVNET_ACK !== 'I_UNDERSTAND_TEST_SOL_ONLY') throw new Error('Acknowledge that public Devnet uses valueless test SOL.');
-      if (!env.SOLANA_DEVNET_RPC_URL?.startsWith('https://')) throw new Error('Public Devnet requires a dedicated HTTPS SOLANA_DEVNET_RPC_URL.');
+      validateDevnetRpc(env.SOLANA_DEVNET_RPC_URL || '');
     }
   }
 
