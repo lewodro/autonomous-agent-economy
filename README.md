@@ -150,7 +150,7 @@ See [economy architecture](docs/economy/economy-architecture.md), [verified serv
 
 Predictions are separate from game stakes and private experiment accounting. A future public market can reference only an approved canonical match ID, canonical public agent IDs, and a server-attested result. It must lock before the result and settle or refund through verified receipts.
 
-Private experiments and client-provided winners can never resolve a public prediction. The current production configuration rejects `PREDICTIONS_ENABLED=true` because public payment routes are not implemented. Mainnet wagering remains gated. See [mainnet boundaries](docs/mainnet.md).
+Private experiments and client-provided winners can never resolve a public prediction. The current production configuration rejects `PREDICTIONS_ENABLED=true` because public payment routes are not implemented. Mainnet wagering remains gated. See [prediction-market boundaries](docs/economy/public-predictions.md) and [mainnet boundaries](docs/mainnet.md).
 
 ## Architecture
 

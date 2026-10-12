@@ -6,7 +6,7 @@ quick start live in the repository [README](../README.md).
 | Folder | Contents | Start here |
 |---|---|---|
 | [Architecture](architecture/) | Product model, API, event contracts, live spectator flow, persistence, replay limits | [Public product model](architecture/product-model.md) |
-| [Economy](economy/) | Match funding, payment rails, local validator, recovery, Devnet | [Economy architecture](economy/economy-architecture.md) |
+| [Economy](economy/) | Budgets, match funding, service market, public predictions, payment rails, recovery, Devnet | [Economy architecture](economy/economy-architecture.md) |
 | [Security](security/) | Threat model, trust boundaries, provider safety, readiness requirements | [Threat model](security/threat-model.md) |
 | [Frontend](frontend/) | Renderer/animation options, frontend stack, performance evidence | [Animation stack](frontend/animation-stack.md) |
 | [Operations](operations/) | Build/test commands, dependencies, deployment, troubleshooting | [Deployment](operations/deployment.md) |
