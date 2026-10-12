@@ -248,6 +248,7 @@ For a public test-SOL deployment, follow the separate [Devnet funded-match guide
 npm run demo:economy
 npm run demo:economy -- examples/economy/mock-0.05.json
 npm run demo:economy -- examples/economy/free.json
+npm run demo:service-market -- /tmp/agent-service-market
 ECONOMY_LAB=1 npm start
 # Open http://localhost:3000/labs/economy
 cargo run --manifest-path rust/Cargo.toml --locked --bin economy-demo -- --devnet-balance 11111111111111111111111111111111
@@ -265,6 +266,11 @@ explicit. `/labs/economy` retains the offline mock demonstration; `/labs/funded`
 uses the durable host and creates new instances without erasing old journals.
 Funded commands accept actions, not user-supplied winners or receipts.
 The normal free game still uses game credits only.
+
+The [verified service-market experiment](./docs/economy/verified-service-market.md)
+uses the same checked mock accounting to demonstrate bounded work, deterministic
+acceptance, durable receipts and one-time simulated payment. Its earnings are mock
+units and are never presented as real revenue.
 
 [Economy architecture and Mermaid diagrams](./docs/economy/economy-architecture.md) ·
 [Example configurations](examples/economy/README.md) ·
