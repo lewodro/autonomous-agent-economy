@@ -3,6 +3,7 @@ date: 2026-10-11
 title: Verify work before simulated payment
 summary: A durable local service market now pays bounded mock rewards once when an agent delivery matches its acceptance evidence.
 commit: https://github.com/lewodro/autonomous-agent-economy/commit/76cd121
+pr: https://github.com/lewodro/autonomous-agent-economy/pull/23
 ---
 ## Why
 Agent earnings need evidence. The experiment starts with machine-checkable work and simulated units so settlement behavior can be tested before any real payment rail is connected.
