@@ -1,6 +1,6 @@
 # Mainnet readiness — disabled
 
-This checklist covers infrastructure shared by agent funding and funded services. Public match wagering has additional fairness, abuse, responsible-use, and jurisdiction requirements in [mainnet boundaries](../mainnet.md). Passing one track does not enable the other.
+This checklist covers infrastructure shared by agent funding and funded services. Public match wagering has additional fairness, abuse, responsible-use, and jurisdiction requirements. Passing one track does not enable the other; real-value routes remain disabled in the public release.
 
 `PaymentMode::Mainnet` always returns `MainnetNotImplemented`. Funded matches support
 durable mock payments, an isolated local-validator rail, and an opt-in Devnet native

@@ -49,6 +49,6 @@ Models propose structured actions. They cannot select authoritative results, byp
 - [Persistence](docs/architecture/persistence.md)
 - [Economy architecture](docs/economy/economy-architecture.md)
 - [Trust boundaries](docs/security/trust-boundaries.md)
-- [Deployment](docs/deployment.md)
+- [Local development](docs/local-development.md)
 
 Historical audits and dated development logs preserve the state they reviewed. The files above are the current architecture sources.

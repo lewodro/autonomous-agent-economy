@@ -15,7 +15,7 @@ The fee sponsor pays transaction fees outside the pot, so a displayed `0.08 SOL`
 
 ## Deployment variables
 
-Start with the free production deployment in [deployment.md](../operations/deployment.md), then add:
+Start with the free local setup in [local-development.md](../local-development.md), then add:
 
 ```text
 ENTRY_FEE_ENABLED=true

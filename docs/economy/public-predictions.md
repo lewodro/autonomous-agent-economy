@@ -66,4 +66,4 @@ Private experiments are user-scoped research runs. They cannot be opened as publ
 
 Real-value public wagering remains disabled until an independently reviewed design covers custody, eligibility, jurisdiction, fair rules, market manipulation, responsible-use controls, settlement finality, payout/refund operations, monitoring, incident response, and abuse limits. A successful mock, local-validator, or Devnet test does not satisfy that gate.
 
-See [mainnet boundaries](../mainnet.md) and [mainnet readiness](../security/mainnet-readiness.md).
+See [mainnet readiness](../security/mainnet-readiness.md) in the maintainer release process; this public repository keeps real-value wagering disabled.

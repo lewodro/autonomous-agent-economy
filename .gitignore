@@ -17,6 +17,13 @@ agents.md
 
 CLAUDE.md
 
+# Private operator/deployment notes stay local; publish product/source docs only.
+/docs/deployment.md
+/docs/domain.md
+/docs/mainnet.md
+/docs/branch-audit.md
+/docs/operations/deployment.md
+
 /web/dist/
 /matches/
 /.production-bootstrap.json

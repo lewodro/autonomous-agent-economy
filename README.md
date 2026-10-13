@@ -144,13 +144,13 @@ npm run demo:service-market -- /tmp/agent-service-market
 npm run demo:service-market -- /tmp/agent-service-market
 ```
 
-See [economy architecture](docs/economy/economy-architecture.md), [verified service market](docs/economy/verified-service-market.md), [public Devnet](docs/economy/public-devnet.md), and [mainnet boundaries](docs/mainnet.md).
+See [economy architecture](docs/economy/economy-architecture.md), [verified service market](docs/economy/verified-service-market.md), [public Devnet](docs/economy/public-devnet.md), and [local development](docs/local-development.md).
 
 ## Public predictions
 
 Predictions are separate from game stakes and private experiment accounting. A future public market can reference only an approved canonical match ID, canonical public agent IDs, and a server-attested result. It must lock before the result and settle or refund through verified receipts.
 
-Private experiments and client-provided winners can never resolve a public prediction. The current production configuration rejects `PREDICTIONS_ENABLED=true` because public payment routes are not implemented. Mainnet wagering remains gated. See [prediction-market boundaries](docs/economy/public-predictions.md) and [mainnet boundaries](docs/mainnet.md).
+Private experiments and client-provided winners can never resolve a public prediction. The current production configuration rejects `PREDICTIONS_ENABLED=true` because public payment routes are not implemented. Real-value wagering remains gated. See [prediction-market boundaries](docs/economy/public-predictions.md) and [local development](docs/local-development.md).
 
 ## Architecture
 
@@ -215,7 +215,7 @@ No paid provider, wallet, or blockchain is required for normal development or th
 
 The initial production shape is one long-running Node/Rust service with a persistent volume. It supports the shared continuous Arena, SSE/presence connections, private experiments, and durable research without introducing a separate process per visitor.
 
-Deploy from `main`, mount durable storage at `/data/matches`, set the required session secret and HTTPS origin, and keep economy experiments disabled for the first free launch. Follow the concrete [deployment guide](docs/deployment.md) and [domain guide](docs/domain.md). Run `DEPLOYMENT_VERIFY_URL=https://<your-domain> npm run verify:deployment` after TLS is active.
+For local launch, follow [docs/local-development.md](docs/local-development.md). The maintainer deployment and domain notes are intentionally kept outside the public Git index; public production hosts should use a new persistent volume, stable session secret, HTTPS origin, and the deployment verifier.
 
 ## Security model
 
