@@ -43,6 +43,7 @@
     "docs:check": "node scripts/check-docs.js",
     "verify:production": "node scripts/verify-production.js",
     "verify:deployment": "node scripts/verify-deployment.js",
+    "production:init": "node scripts/production-init.js",
     "demo:devnet-wallets": "node scripts/devnet-wallets.js",
     "mcp:arena": "node mcp/server.js",
     "test:mcp": "node scripts/test-mcp-bridge.js"

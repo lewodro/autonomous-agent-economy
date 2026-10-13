@@ -11,12 +11,16 @@ function expect(response,status,label){if(response.status!==status)throw new Err
 const health=expect(await request('/api/health'),200,'health').data;
 const ready=health.ok===true&&health.application==='ready'&&health.simulation_host==='ready'&&health.storage==='ok'&&health.session==='ready'&&health.presence?.status==='ok'&&health.experiments?.status==='ok'&&health.arena?.status==='ok'&&health.survival?.status==='ok';
 const safeEconomy=(health.network_mode==='simulated'&&health.payments==='disabled')||(health.network_mode==='devnet'&&health.payments==='devnet_test_sol');
-if(!ready||!safeEconomy)throw new Error(`Health readiness failed: ${JSON.stringify({application:health.application,simulation_host:health.simulation_host,storage:health.storage,session:health.session,presence:health.presence?.status,experiments:health.experiments?.status,arena:health.arena?.status,survival:health.survival?.status,network_mode:health.network_mode,payments:health.payments})}`);
+const cleanBootstrap=health.production_storage?.status==='ok'&&health.production_storage.public_world_id==='main'&&health.production_storage.canonical_agents===20;
+if(!ready||!safeEconomy||!cleanBootstrap)throw new Error(`Health readiness failed: ${JSON.stringify({application:health.application,simulation_host:health.simulation_host,storage:health.storage,production_storage:health.production_storage,session:health.session,presence:health.presence?.status,experiments:health.experiments?.status,arena:health.arena?.status,survival:health.survival?.status,network_mode:health.network_mode,payments:health.payments})}`);
 for(const route of ['/','/world','/arena','/rps'])expect(await request(route),200,route);
 expect(await request('/api/arena/rooms'),200,'RPS/TTT rooms');
 expect(await request('/api/survival/current'),200,'Survival');
 const a=expect(await request('/api/experiments'),200,'visitor A'),b=expect(await request('/api/experiments'),200,'visitor B');
 if(!a.cookie||!b.cookie||a.cookie===b.cookie)throw new Error('Anonymous session isolation failed');
+if(a.data.experiments?.length!==0||b.data.experiments?.length!==0)throw new Error('New anonymous visitors inherited private experiments');
+const publicAgents=expect(await request('/api/arena/agents'),200,'canonical agents').data;
+if(!Array.isArray(publicAgents.agents)||publicAgents.agents.length!==20)throw new Error('Canonical public agents are not available');
 const config=expect(await request('/api/config?agents=2'),200,'config').data;
 config.max_turns=2;config.seed=crypto.getRandomValues(new Uint32Array(1))[0]||1;
 const created=expect(await request('/api/experiments',{method:'POST',body:{config},cookie:a.cookie}),201,'create').data;

@@ -19,6 +19,14 @@ CLAUDE.md
 
 /web/dist/
 /matches/
+/.production-bootstrap.json
+/sessions/
+/experiments/
+/storage/
+/backups/
+/logs/
+/arena/
+/world-state/
 /.matches.reset-backups/
 *.wallet.bin
 
