@@ -29,6 +29,7 @@ COPY world ./world
 COPY labs ./labs
 COPY assets ./assets
 COPY scripts/start-production.sh ./scripts/start-production.sh
+COPY scripts/production-init.js ./scripts/production-init.js
 RUN mkdir -p /data/matches
 ENV MATCHES_DIR=/data/matches
 EXPOSE 3000

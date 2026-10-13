@@ -21,6 +21,7 @@ test('production image includes every runtime-owned browser and service director
   const startup=await readFile(new URL('../scripts/start-production.sh',import.meta.url),'utf8');
   assert.match(startup,/chown node:node/);
   assert.match(startup,/runuser -u node -- node server\.js/);
+  assert.match(dockerfile, /COPY scripts\/production-init\.js \.\/scripts\/production-init\.js/);
 });
 
 test('Railway uses the Docker build and health endpoint', async () => {

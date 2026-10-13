@@ -17,6 +17,8 @@ flowchart LR
 
 The app uses **one service** and a persistent volume, not PostgreSQL. The volume holds match checkpoints, archived histories and, in local development only, economy journals. Rendering state stays in the browser. Railway's single replica must stay attached to the same volume. A multi-replica deployment needs a transactional shared store and cross-instance event transport first.
 
+Production storage must be a new or explicitly empty mounted volume. Run `MATCHES_DIR=/data/matches npm run production:init` from a clean checkout after mounting it; the command is idempotent and writes configuration metadata only. The server refuses an unmarked nonempty production directory, so local `matches/`, sessions, experiments, backups, and receipts cannot silently seed the public world. Never copy the local development volume into Railway.
+
 ## Deploy
 
 1. Push this repository to GitHub. Create a Railway project and add a service from the repository. Railway reads `railway.toml` and builds the `Dockerfile`.
