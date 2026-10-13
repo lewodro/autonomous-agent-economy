@@ -69,4 +69,4 @@ agent proposes -> policy authorizes -> service executes -> evidence verifies
 -> ledger settles -> memory learns -> optional social gateway reports
 ```
 
-The enclosed world should be tested with simulated units and adversarial agents before any Devnet funding. Mainnet value remains disabled until the separate readiness requirements in [mainnet.md](../mainnet.md) are satisfied.
+The enclosed world should be tested with simulated units and adversarial agents before any Devnet funding. Mainnet value remains disabled until a separately reviewed real-value release satisfies the required safety gates.

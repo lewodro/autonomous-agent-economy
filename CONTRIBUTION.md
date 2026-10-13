@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve this simple agent economy game. Before contributing, read [`AGENTS.md`](./AGENTS.md) for repository-specific instructions and [`README.md`](./README.md) for the project overview, setup, and usage. Follow any requirements in those files; this guide supplements them.
+Thanks for helping improve this simple agent economy game. Read [`README.md`](./README.md) for the project overview, [`docs/local-development.md`](./docs/local-development.md) for the public local setup, and this guide for contribution checks. Maintainer-only instructions are kept outside the public source release.
 
 ## Contribution guidelines
 
@@ -12,7 +12,7 @@ Thanks for helping improve this simple agent economy game. Before contributing, 
 
 ## Validation
 
-- Run `npm test` and `npm run check`, plus the setup and validation commands documented in `AGENTS.md` and `README.md` that apply to your change.
+- Run `npm test`, `npm run check`, and the setup and validation commands in `README.md` and [`docs/local-development.md`](./docs/local-development.md) that apply to your change.
 - Review the final diff and confirm it contains only intended changes.
 - If you cannot run a relevant check, mention that in your pull request.
 
