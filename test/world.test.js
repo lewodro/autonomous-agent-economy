@@ -4,7 +4,7 @@ import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
 import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
-import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
+import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
 const actor = position => ({ id:'visitor',type:'human',name:'Visitor',position,facing:'down',movementState:'idle',spriteId:'founder',activity:'Exploring',recentWinner:false });
@@ -88,17 +88,18 @@ test('all twenty current agent profiles have safe, separated world spawn positio
   for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
  }
 });
-test('finished agent exits from the Arena and returns to a plaza route',()=>{
- const start=arenaExitPosition(0),npc={...actor(start),type:'npc',activity:'Leaving the Arena'},control=new NpcController(0,true);
- assert.equal(collides(start),false);let returned=false;
- for(let frame=0;frame<200;frame++){
+test('finished agent walks from its plaza spawn to the Arena lounge and waits',()=>{
+ const start=npcSpawnPosition(0),npc={...actor(start),type:'npc',activity:'Leaving the Arena'},control=new NpcController(0,true);
+ assert.equal(collides(start),false);let arrived=false;
+ for(let frame=0;frame<400;frame++){
   const before={...npc.position};control.update(npc,.1);
   assert.equal(collides(npc.position),false);
-  if(npc.activity==='Back in the plaza · match complete')returned=true;
-  if(Math.hypot(npc.position.x-before.x,npc.position.y-before.y)>0)assert.notEqual(npc.activity,'Fighting');
-  if(returned)break;
+  if(npc.activity==='Waiting at the Arena · next match'){arrived=true;assert.equal(npc.movementState,'idle');break;}
+  if(Math.hypot(npc.position.x-before.x, npc.position.y-before.y)>0)assert.notEqual(npc.activity,'Fighting');
  }
- assert.equal(returned,true,'the post-match visitor should visibly reach the plaza');
+ assert.equal(arrived,true,'the post-match visitor should reach the Arena lounge');
+ const held={...npc.position};for(let frame=0;frame<100;frame++)control.update(npc,.1);
+ assert.deepEqual(npc.position,held,'the returned agent should wait in the lobby until the next match');
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
  const visitor=actor({x:10,y:20}),nearby={...actor({x:100,y:20}),type:'npc'},distant={...actor({x:500,y:20}),type:'npc'};

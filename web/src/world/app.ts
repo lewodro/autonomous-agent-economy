@@ -4,7 +4,7 @@ import { moveActor, followCamera } from './movement.js';
 import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
-import { NpcController, npcSpawnPosition, arenaExitPosition, selectPlazaAgents } from './npc.js';
+import { NpcController, npcSpawnPosition, selectPlazaAgents } from './npc.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
@@ -228,7 +228,7 @@ canvas.addEventListener('pointerdown',event=>{
 });
 function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',recentWinner:profile.recentWinner});
+  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',recentWinner:profile.recentWinner});
   controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena));
   updateWorldLabel();
 }
@@ -241,7 +241,7 @@ async function refreshProfiles():Promise<void> {
     selected.forEach((profile,index)=>{
       const existing=npcs.find(npc=>npc.agentId===profile.id);
       if(!existing)addNpc(profile,index,profile.arenaStatus==='finished');
-      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished'&&existing.movementState==='idle')existing.activity='Back in the plaza · match complete';}
+      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished')controllers.get(existing.id)?.returnToArenaLounge();}
     });
     updateWorldLabel();
     arenaOnline=true;updateConnectionLabel();

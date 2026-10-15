@@ -38,10 +38,16 @@ export interface AgentController { update(actor:WorldActor, seconds:number):void
 export class NpcController implements AgentController {
   private waypoint=0;private pause=0;private stuck=0;
   private returningFromArena:boolean;
+  private arenaLounge=false;
   constructor(index:number,returningFromArena=false) {
     this.waypoint=returningFromArena?10:index%WAYPOINTS.length;this.pause=returningFromArena?0:index*.3;this.returningFromArena=returningFromArena;
   }
+  returnToArenaLounge():void {
+    if(this.returningFromArena)return;
+    this.returningFromArena=true;this.arenaLounge=false;this.waypoint=10;this.pause=0;this.stuck=0;
+  }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
+    if(this.arenaLounge){actor.movementState='idle';actor.activity='Waiting at the Arena · next match';return;}
     if(this.pause>0){this.pause-=seconds;actor.movementState='idle';return;}
     const waypoint=WAYPOINTS[this.waypoint]!;
     const target=waypoint.position;
@@ -53,7 +59,15 @@ export class NpcController implements AgentController {
     moveActor(actor,{x:dx,y:dy,interact:false},seconds,48,obstacles);
     const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y);
     this.stuck=moved<.1?this.stuck+seconds:0;
-    if(Math.hypot(dx,dy)<10){this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;this.stuck=0;actor.activity=this.returningFromArena?'Back in the plaza · match complete':waypoint.arrival;this.returningFromArena=false;}
-    else if(this.stuck>.5){this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;this.stuck=0;actor.activity='Taking a plaza break';this.returningFromArena=false;}
+    if(Math.hypot(dx,dy)<10){
+      this.stuck=0;
+      if(this.returningFromArena){this.arenaLounge=true;actor.movementState='idle';actor.activity='Waiting at the Arena · next match';}
+      else{this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;actor.activity=waypoint.arrival;}
+    }
+    else if(this.stuck>.5){
+      this.stuck=0;
+      if(this.returningFromArena){this.arenaLounge=true;actor.movementState='idle';actor.activity='Waiting at the Arena · next match';}
+      else{this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;actor.activity='Taking a plaza break';}
+    }
   }
 }
