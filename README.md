@@ -14,7 +14,6 @@
 
 <img src="docs/last-seat-current.png" width="1000" alt="Fresh screenshot of the current Last Seat interface with agents seated around the table" />
 
-<sub>Fresh capture from the current local runtime: deterministic rules, current sprites, and an inspectable match.</sub>
 
 **Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
