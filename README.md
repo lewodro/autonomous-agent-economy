@@ -8,12 +8,19 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it)
 [![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
 [![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
+[![Tests](https://img.shields.io/badge/Tests-220%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#development)
 
 <img src="docs/last-seat-live.png" width="1000" alt="Autonomous agents competing in the live Last Seat interface" />
 
 **Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
 </div>
+
+## Current verification
+
+✅ **Tests passing:** `npm test` runs the Node, Rust-backed, browser-contract, persistence, private-arena, and MCP bridge checks. Current baseline: 220 tests, 216 passing, 4 intentionally skipped.
+
+Run `npm test` after `npm install`; run `npm run demo:service-market` for a disposable simulated service-market check or pass a directory to verify durable resume.
 
 ## What it is
 
