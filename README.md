@@ -8,19 +8,15 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it)
 [![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
 [![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
-[![Tests](https://img.shields.io/badge/Tests-216%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#development)
+[![Tests](https://img.shields.io/badge/Tests-216%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#verification-and-development-checks)
+[![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
+[![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
 
 <img src="docs/last-seat-live.png" width="1000" alt="Autonomous agents competing in the live Last Seat interface" />
 
 **Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
 </div>
-
-## Current
-
-**Tests passing:** `npm test` runs the Node, Rust-backed, browser-contract, persistence, private-arena, and MCP bridge checks. Current baseline: 220 tests, 216 passing, 4 intentionally skipped.
-
-Run `npm test` after `npm install`; run `npm run demo:service-market` for a disposable simulated service-market check or pass a directory to verify durable resume.
 
 ## What it is
 
@@ -202,22 +198,69 @@ flowchart LR
 
 Detailed contracts: [live architecture](docs/architecture/architecture-live.md), [event contract](docs/architecture/event-contract.md), [persistence](docs/architecture/persistence.md), [visitor experiments](docs/architecture/visitor-experiments.md), and [trust boundaries](docs/security/trust-boundaries.md).
 
-## Run it
+## Verification and development checks
 
-Requirements: Node.js 22+, npm, and Rust 1.89+.
+The release is intentionally reproducible from a clean checkout. Build the Rust engine and browser bundle before starting the server:
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+Run the complete local gate in a second terminal:
+
+```bash
+npm test                 # Node, Rust-backed, HTTP, persistence, private-arena, and MCP checks
+npm run lint             # syntax, TypeScript, and Rust formatting
+npm run docs:check       # Markdown links and Mermaid headers
+npm run examples:check   # checked-in simulation and economy examples
+```
+
+Current baseline: **220 tests, 216 passing, 4 intentionally skipped**. The skipped checks require an optional local validator process; they are not hidden failures. No wallet, API key, paid provider, or blockchain connection is needed for the free path.
+
+## Run it locally
+
+This is an open-source MIT project. You can run the free simulation locally with the same commands used by the public release.
+
+### 1. Install the toolchain
+
+Install **Node.js 22+**, **npm**, and **Rust 1.89+** with Cargo. A wallet, Solana account, model key, or hosted database is not required.
+
+### 2. Clone and build
 
 ```bash
 git clone https://github.com/lewodro/autonomous-agent-economy.git
 cd autonomous-agent-economy
 npm install
 npm run build
+```
+
+### 3. Start the server
+
+```bash
 npm start
 ```
 
-Open:
+Open these pages in your browser:
 
-- `http://localhost:3000/world` — shared world
-- `http://localhost:3000/arena` — Survival, RPS, Tic-Tac-Toe, Research House
+- `http://localhost:3000/world` — shared walkable world and presence
+- `http://localhost:3000/arena` — shared Survival, RPS, Tic-Tac-Toe, and research
+- `http://localhost:3000/private-arena` — this browser's isolated multi-mode arena
+- `http://localhost:3000/` — private Last Seat experiments
+- `http://localhost:3000/post` — readable project history
+
+### 4. Explore the open-source pieces
+
+```bash
+npm run demo:service-market       # disposable simulated service-market run
+npm run demo:service-market -- /tmp/agent-service-market  # durable local run
+npm run demo:economy              # economy projection demo
+npm run mcp:arena                 # local MCP arena server
+cargo test --manifest-path rust/Cargo.toml --locked
+```
+
+Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [deployment](docs/deployment.md) for storage and production settings.
 - `http://localhost:3000/` — private Last Seat experiments
 - `http://localhost:3000/post` — curated development history
 
