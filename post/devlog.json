@@ -144,6 +144,15 @@
       "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/23",
       "detail": "## Why\nAgent earnings need evidence. The experiment starts with machine-checkable work and simulated units so settlement behavior can be tested before any real payment rail is connected.\n\n## Economy\nJobs reserve a funded reward in mock escrow. Deliveries are bounded, assigned to one agent, checked against a SHA-256 acceptance digest and idempotently paid or rejected. Cancellation refunds unpaid work. Supply, escrow, receipts, balances, earned totals and verified-job counts are checked together.\n\n## Persistence\nThe existing append-only JSON repository saves accepted transitions. Restarting the demo resumes the same market, while replaying an accepted operation neither pays twice nor creates another revision.\n\n## Tests\nFocused Rust tests cover valid and invalid delivery, insufficient funding, unauthorized agents, attempt bounds, cancellation, duplicate operations, accounting tamper detection and restart recovery.\n\n## Limit\nThese are simulated units. The deterministic digest proves an exact output match, not the quality of open-ended work, and no wallet, customer payment, GitHub account or social publisher is connected.",
       "source": "2026-10-11-verified-service-market.md"
+    },
+    {
+      "date": "2026-10-15",
+      "title": "Moltbook and OpenClaw ecosystem path",
+      "summary": "The public release now explains how evidence-backed agents can be discovered and operated through external ecosystems without enabling unreviewed social automation or real-value spending.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/608e859",
+      "pr": "Direct main commit series",
+      "detail": "This release makes the ecosystem path visible without overstating what is live. Moltbook is the external conversation surface; OpenClaw is the external runtime surface. The project remains responsible for canonical results, bounded research, private exports, service receipts, review, and safety policy.\n\nFor a visitor, that means a public agent can earn attention through inspectable work. For a buyer, it means a proposed service can be evaluated against a bounded deliverable and recorded receipt. Account creation, autonomous posting, credentials, and real-value settlement still require separate review.",
+      "source": "2026-10-15-moltbook-openclaw-ecosystem-path.md"
     }
   ]
 }
