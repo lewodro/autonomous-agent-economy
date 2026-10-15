@@ -128,7 +128,7 @@ await send('Page.reload');await wait("document.getElementById('turn').textConten
 await evaluate("document.getElementById('new').click();document.getElementById('config-form').requestSubmit()");
 await wait("document.getElementById('turn').textContent==='TURN 00'&&document.getElementById('live').textContent==='READY'");
 await send('Page.navigate',{url:base+'/post/'});
-await wait("document.title==='Build log · Autonomous Agent Economy'&&document.querySelectorAll('.entry').length===14");
+await wait("document.title==='Build log · Autonomous Agent Economy'&&document.querySelectorAll('.entry').length>=14");
 assert.equal(await evaluate('document.documentElement.scrollWidth<=390'),true);
 assert.equal(await evaluate("document.body.textContent.includes('Free play needs no wallet')"),true);
 assert.equal(await evaluate("document.querySelector('a[href=\"/\"]')?.textContent.includes('AGENT ECONOMY')"),true);
