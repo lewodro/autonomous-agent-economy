@@ -3,11 +3,19 @@ use agent_arena_demo::economy::service_market::DurableServiceMarket;
 use agent_arena_demo::economy::service_market::ServiceMarket;
 use agent_arena_demo::hashing::sha256_hex;
 use serde_json::json;
+use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = std::env::args()
-        .nth(1)
-        .ok_or("Usage: service-market-demo <storage-directory>")?;
+    let (directory, cleanup) = match std::env::args().nth(1) {
+        Some(value) => (PathBuf::from(value), false),
+        None => (
+            std::env::temp_dir().join(format!(
+                "autonomous-agent-service-market-{}",
+                std::process::id()
+            )),
+            true,
+        ),
+    };
     let worker = AgentId::new("agent_alpha")?;
     let peer = AgentId::new("agent_beta")?;
     let job = OperationId::new("research_summary_001")?;
@@ -26,17 +34,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
     }
     store.apply(|market| market.submit(delivery, &job, &worker, "verified research summary"))?;
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json!({
-            "mode": "SIMULATED",
-            "real_revenue": false,
-            "storage_directory": directory,
-            "job_id": job,
-            "verified_jobs": store.market.verified_jobs,
-            "mock_units_earned": store.market.earned,
-            "buyer_remaining_mock_units": store.market.ledger.balance(&agent_arena_demo::economy::primitives::AccountId::new("service_buyer")?)?,
-        }))?
-    );
+    let output = serde_json::to_string_pretty(&json!({
+        "mode": "SIMULATED",
+        "real_revenue": false,
+        "storage_directory": directory,
+        "job_id": job,
+        "verified_jobs": store.market.verified_jobs,
+        "mock_units_earned": store.market.earned,
+        "buyer_remaining_mock_units": store.market.ledger.balance(&agent_arena_demo::economy::primitives::AccountId::new("service_buyer")?)?,
+    }))?;
+    if cleanup {
+        std::fs::remove_dir_all(&directory).ok();
+    }
+    println!("{output}");
     Ok(())
 }
