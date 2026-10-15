@@ -33,6 +33,7 @@ CLAUDE.md
 /backups/
 /logs/
 /arena/
+/private-arena/
 /world-state/
 /.matches.reset-backups/
 *.wallet.bin

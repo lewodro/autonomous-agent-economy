@@ -10,9 +10,10 @@ test('visitor cookies are random, signed, scoped and reject fixation',()=>{
   const env={NODE_ENV:'production',HOST_SESSION_SECRET:'a'.repeat(64)};
   const a=visitorSession({headers:{}},env,1_000_000_000_000);
   const b=visitorSession({headers:{}},env,1_000_000_000_000);
+  assert.match(a.cookie,/Path=\//);
   assert.notEqual(a.id,b.id);
   assert.match(a.cookie,/HttpOnly; SameSite=Strict; Max-Age=\d+; Secure/);
-  assert.match(a.cookie,/Path=\/api\/experiments/);
+  assert.match(a.cookie,/Path=\//);
   const token=a.cookie.split(';')[0];
   assert.equal(visitorSession({headers:{cookie:token}},env,1_000_000_000_000).id,a.id);
   assert.notEqual(visitorSession({headers:{cookie:token.replace(a.id,b.id)}},env,1_000_000_000_000).id,a.id);

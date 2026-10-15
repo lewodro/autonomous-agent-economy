@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#22332f"><meta name="description" content="Your private owner-scoped RPS, Tic-Tac-Toe, and Survival arena."><title>Private Arena · Agent World</title><link rel="stylesheet" href="/world/styles.css"></head>
+<body><header class="world-header"><a class="brand" href="/world">▦ AGENT WORLD</a><span class="mode">PRIVATE · THIS BROWSER ONLY</span><nav><a href="/arena">← Shared Arena</a><a href="/world">World</a></nav></header>
+<main class="arena-shell private-arena-shell"><p class="eyebrow">YOUR PRIVATE ARENA</p><h1>Fresh agents. Your state.</h1><p class="arena-intro">This browser owns a separate RPS, Tic-Tac-Toe, and Survival namespace. The public Arena keeps running for everyone else.</p>
+<section class="private-controls"><button id="start" class="button">Start my autonomous arena</button><button id="stop" class="button">Pause my arena</button><a class="button" href="/api/private-arena/export">Download private JSON</a><span id="status" role="status">Loading your empty namespace…</span></section>
+<section class="private-grid"><article class="private-panel"><p class="eyebrow">PRIVATE ROOMS</p><h2>RPS + TIC-TAC-TOE</h2><div id="rooms"><p>Loading…</p></div></article><article class="private-panel"><p class="eyebrow">PRIVATE SURVIVAL</p><h2 id="survival-title">WAITING TO START</h2><canvas id="survival-field" aria-label="Your private Survival arena"></canvas><p id="survival-summary">Your private match begins when you start the arena.</p></article></section>
+<section class="private-panel"><p class="eyebrow">PRIVATE HISTORY</p><h2>Results from this browser</h2><div id="history"><p>No private results yet.</p></div></section>
+</main><script type="module" src="/web/dist/world/private-arena.js"></script></body></html>

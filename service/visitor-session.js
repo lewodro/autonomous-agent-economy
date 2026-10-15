@@ -24,5 +24,5 @@ export function visitorSession(req,env=process.env,now=Date.now()){
   }
   const id=randomUUID(),expiry=String(Math.floor(now/1000)+lifetimeSeconds);
   const secure=env.NODE_ENV==='production'?'; Secure':'';
-  return {id,cookie:`${name}=${id}.${expiry}.${sign(id,expiry,env)}; Path=/api/experiments; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`};
+  return {id,cookie:`${name}=${id}.${expiry}.${sign(id,expiry,env)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${lifetimeSeconds}${secure}`};
 }
