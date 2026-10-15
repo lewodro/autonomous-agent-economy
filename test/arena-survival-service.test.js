@@ -11,6 +11,14 @@ import {parseSurvivalSnapshot} from '../web/dist/world/survival.js';
 const profiles=()=>createState().agents;
 const service=(core,directory)=>new ArenaSurvivalService(core,directory,{profiles,seedFactory:()=>731,syncFolder:async()=>{}});
 
+test('eliminated agents are marked as returning to the shared plaza before Survival ends',()=>{
+ const survival=new ArenaSurvivalService({},'/tmp/arena-survival-plaza-test',{profiles});
+ survival.saved={current:{status:'live',agents:[{id:'agent-1',status:'eliminated'}]},history:[],records:{}};
+ const merged=survival.mergeProfiles(profiles());
+ assert.equal(merged.find(agent=>agent.id==='agent-1').arenaStatus,'finished');
+ assert.equal(merged.find(agent=>agent.id==='agent-2').arenaStatus,'fighting');
+});
+
 test('authoritative Survival service checkpoints, recovers, records research, and supplies it to the next match',{timeout:30000},async()=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'arena-survival-'));
  let core=new Core(),survival=service(core,directory);
