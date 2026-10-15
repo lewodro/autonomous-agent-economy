@@ -68,6 +68,7 @@ flowchart TB
 | Last Seat | **WORKING** | Seeded 2–20-agent Rust simulation with versioned replay verification |
 | Research memory | **WORKING** | Structured events, retained summaries and cumulative public statistics |
 | Private experiments | **WORKING** | Signed anonymous ownership, resume, isolation, deletion and bounded retention |
+| Private multi-mode arenas | **WORKING EXPERIMENT** | Per-browser RPS, Tic-Tac-Toe, and Survival schedulers with owner-scoped history and export |
 | Match/experiment JSON | **WORKING** | Owner-checked private downloads and bounded public archives |
 | Local MCP arenas | **WORKING** | Scoped stdio host for free Rust-backed Last Seat sessions; no wallet tools |
 | Simulated service market | **WORKING EXPERIMENT** | Mock units, funded job escrow, exact-output verification, receipts and durable resume |

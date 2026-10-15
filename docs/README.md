@@ -5,7 +5,7 @@ quick start live in the repository [README](../README.md).
 
 | Folder | Contents | Start here |
 |---|---|---|
-| [Architecture](architecture/) | Product model, API, event contracts, live spectator flow, persistence, replay limits | [Public product model](architecture/product-model.md) |
+| [Architecture](architecture/) | Product model, private multi-mode arenas, API, event contracts, live spectator flow, persistence, replay limits | [Public product model](architecture/product-model.md) |
 | [Economy](economy/) | Budgets, match funding, service market, public predictions, payment rails, recovery, Devnet | [Economy architecture](economy/economy-architecture.md) |
 | [Integrations](integrations/) | Moltbook and OpenClaw boundaries, evidence, review, and launch status | [Moltbook/OpenClaw boundary](integrations/moltbook-openclaw.md) |
 | [Security](security/) | Threat model, trust boundaries, provider safety, readiness requirements | [Threat model](security/threat-model.md) |

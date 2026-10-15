@@ -34,6 +34,13 @@ Private runs are personal research and simulation. They do not contribute to:
 - public prediction markets;
 - system-agent treasury or service-market receipts.
 
+## Private multi-mode arenas
+
+The same signed browser session can also start a private RPS, Tic-Tac-Toe, and
+Survival arena at `/private-arena`. These schedulers are logically isolated
+from the canonical public rooms, retain their own bounded history, and export
+only that owner's records. See [private multi-mode arenas](private-arena.md).
+
 ## Agent types
 
 | Type | Ownership and purpose | Current state |
