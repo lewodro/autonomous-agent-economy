@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Eight autonomous agents seated around the Last Seat table</title>
+  <desc id="desc">The current open-source agent sprites Founder, Trader, Gambler, Analyst, Defender, Strategist, Social, and Degen are seated around a simulated table.</desc>
+  <rect width="1280" height="720" fill="#20282a"/>
+  <rect x="36" y="36" width="1208" height="648" rx="8" fill="#263c35" stroke="#d8bf83" stroke-width="3"/>
+  <path d="M74 126h1132M74 594h1132" stroke="#526c59" stroke-width="2" stroke-dasharray="10 12"/>
+  <text x="74" y="88" fill="#e7dfc5" font-family="monospace" font-size="22" letter-spacing="4">AUTONOMOUS AGENT ECONOMY</text>
+  <text x="1206" y="88" text-anchor="end" fill="#b9eb69" font-family="monospace" font-size="16" letter-spacing="2">OPEN SOURCE · FREE SIMULATION</text>
+  <rect x="284" y="206" width="712" height="310" rx="22" fill="#9e744c" stroke="#e5c684" stroke-width="5"/>
+  <rect x="318" y="240" width="644" height="242" rx="14" fill="#b58a5b" stroke="#6e513d" stroke-width="3"/>
+  <path d="M342 300h596M342 360h596M342 420h596" stroke="#8d6748" stroke-width="2"/>
+  <text x="640" y="340" text-anchor="middle" fill="#29332d" font-family="monospace" font-size="31" font-weight="700" letter-spacing="6">LAST SEAT</text>
+  <text x="640" y="390" text-anchor="middle" fill="#3b443b" font-family="monospace" font-size="15" letter-spacing="3">WORK · CHALLENGE · LEARN</text>
+  <g fill="#172923" stroke="#d8bf83" stroke-width="3">
+    <ellipse cx="224" cy="246" rx="78" ry="31"/><ellipse cx="430" cy="160" rx="78" ry="31"/><ellipse cx="850" cy="160" rx="78" ry="31"/><ellipse cx="1056" cy="246" rx="78" ry="31"/>
+    <ellipse cx="224" cy="476" rx="78" ry="31"/><ellipse cx="430" cy="562" rx="78" ry="31"/><ellipse cx="850" cy="562" rx="78" ry="31"/><ellipse cx="1056" cy="476" rx="78" ry="31"/>
+  </g>
+  <g image-rendering="pixelated">
+    <image x="176" y="166" width="96" height="96" href="../assets/sprites-agent/01-founder.png"/><image x="382" y="80" width="96" height="96" href="../assets/sprites-agent/02-trader.png"/><image x="802" y="80" width="96" height="96" href="../assets/sprites-agent/03-gambler.png"/><image x="1008" y="166" width="96" height="96" href="../assets/sprites-agent/04-analyst.png"/>
+    <image x="176" y="396" width="96" height="96" href="../assets/sprites-agent/05-defender.png"/><image x="382" y="482" width="96" height="96" href="../assets/sprites-agent/06-strategist.png"/><image x="802" y="482" width="96" height="96" href="../assets/sprites-agent/07-social.png"/><image x="1008" y="396" width="96" height="96" href="../assets/sprites-agent/08-degen.png"/>
+  </g>
+  <g fill="#e7dfc5" font-family="monospace" font-size="14" font-weight="700" text-anchor="middle">
+    <text x="224" y="300">FOUNDER</text><text x="430" y="214">TRADER</text><text x="850" y="214">GAMBLER</text><text x="1056" y="300">ANALYST</text>
+    <text x="224" y="530">DEFENDER</text><text x="430" y="616">STRATEGIST</text><text x="850" y="616">SOCIAL</text><text x="1056" y="530">DEGEN</text>
+  </g>
+  <text x="640" y="650" text-anchor="middle" fill="#b9eb69" font-family="monospace" font-size="14" letter-spacing="2">DETERMINISTIC RULES · BOUNDED STATE · INSPECTABLE RESULTS</text>
+</svg>

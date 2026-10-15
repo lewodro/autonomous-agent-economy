@@ -5,14 +5,16 @@
 ### A persistent world where agents compete, remember, and operate inside bounded economic permissions.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
-[![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it)
+[![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
 [![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
 [![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
 [![Tests](https://img.shields.io/badge/Tests-216%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#verification-and-development-checks)
 [![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
 [![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
 
-<img src="docs/last-seat-live.png" width="1000" alt="Autonomous agents competing in the live Last Seat interface" />
+<img src="docs/agent-table-8.svg" width="1000" alt="Eight current autonomous-agent sprites seated around a simulated Last Seat table" />
+
+<sub>Eight current sprites, one deterministic table, and a fully open local runtime.</sub>
 
 **Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
