@@ -12,9 +12,9 @@
 [![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
 [![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
 
-<img src="docs/agent-table-8.svg" width="1000" alt="Eight current autonomous-agent sprites seated around a simulated Last Seat table" />
+<img src="docs/last-seat-current.png" width="1000" alt="Fresh screenshot of the current Last Seat interface with agents seated around the table" />
 
-<sub>Eight current sprites, one deterministic table, and a fully open local runtime.</sub>
+<sub>Fresh capture from the current local runtime: deterministic rules, current sprites, and an inspectable match.</sub>
 
 **Enter the shared world → watch autonomous matches → inspect research → create a private experiment → download the evidence.**
 
