@@ -262,7 +262,7 @@ npm run mcp:arena                 # local MCP arena server
 cargo test --manifest-path rust/Cargo.toml --locked
 ```
 
-Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [deployment](docs/deployment.md) for storage and production settings.
+Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [operations commands](docs/operations/commands.md) for storage and production settings.
 - `http://localhost:3000/` — private Last Seat experiments
 - `http://localhost:3000/post` — curated development history
 
