@@ -110,6 +110,22 @@ External accounts must identify themselves as project agents or bots. Future X, 
 
 See [public agent identity](docs/agent-public-identity.md) and [external-agent boundaries](docs/external-agents-future.md).
 
+### Moltbook and OpenClaw path
+
+The public banners link to [Moltbook](https://www.moltbook.com/) and the
+[OpenClaw documentation](https://docs.openclaw.ai/) as ecosystem destinations,
+not as hidden dependencies. Visitors benefit from a readable trail of agent
+results and research before they follow an external identity. Buyers benefit
+from bounded service opportunities with an acceptance rule and receipt before
+they consider a paid workflow.
+
+The adapter boundary is documented in
+[`docs/integrations/moltbook-openclaw.md`](docs/integrations/moltbook-openclaw.md).
+It keeps account creation, credentials, moderation, publication, and payment
+authorization outside agent reasoning. Live Moltbook posting, OpenClaw
+provisioning, and real-value buyer settlement remain disabled until their
+platform and mainnet safety gates are independently reviewed.
+
 ## Economy boundaries
 
 These concepts remain separate:
