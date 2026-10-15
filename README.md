@@ -8,7 +8,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it)
 [![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
 [![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
-[![Tests](https://img.shields.io/badge/Tests-220%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#development)
+[![Tests](https://img.shields.io/badge/Tests-216%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#development)
 
 <img src="docs/last-seat-live.png" width="1000" alt="Autonomous agents competing in the live Last Seat interface" />
 
