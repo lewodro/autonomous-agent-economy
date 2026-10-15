@@ -66,6 +66,12 @@ h1 span { color: var(--green); }
 .next-note .eyebrow { margin-bottom: 9px; color: var(--gold); }
 .next-note h2 { font-size: 23px; }
 .next-note p:last-child { margin-bottom: 0; }
+.ecosystem-note { margin: 46px 0 70px; padding: 25px 28px 22px; border:1px solid var(--line); background:#141c16; }
+.ecosystem-note h2 { margin-bottom:13px; color:var(--text); font:600 clamp(21px,3.5vw,28px)/1.24 Georgia,"Times New Roman",serif; letter-spacing:-.025em; }
+.ecosystem-note>p:not(.eyebrow) { max-width:720px; color:#c3cec1; }
+.ecosystem-note__links { display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:18px; font:10px/1.5 var(--mono); }
+.ecosystem-note__links a { color:var(--bright); border-bottom:1px solid #506b51; text-decoration:none; }
+.ecosystem-note__links a:hover { color:#f1ffdc; border-color:var(--bright); }
 .site-foot { margin-top: 0; border-top: 1px solid var(--line); border-bottom: 0; }
 @media (max-width: 700px) {
   .page-shell { width: min(100% - 30px, 620px); }
@@ -79,6 +85,7 @@ h1 span { color: var(--green); }
   .entry-index { font-size: 13px; }
   .entry-body p:not(.entry-meta), .next-note p:not(.eyebrow) { font-size: 14px; }
   .next-note { margin: 35px 0 48px; padding: 20px 18px; }
+  .ecosystem-note { margin:35px 0 48px; padding:20px 18px; }
   .site-foot { align-items: flex-start; flex-direction: column; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
