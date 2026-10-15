@@ -35,6 +35,16 @@ test('presence joins, validates bounded movement, and removes stale players', ()
   assert.equal(service.snapshot('main').players.length, 0);
 });
 
+test('presence assigns stable public watcher names without exposing the session token', () => {
+  const service = new WorldPresenceService();
+  const first = service.join('main', { player_id: 'alice', position: { x: 100, y: 100 } });
+  const second = service.join('main', { player_id: 'bob', position: { x: 120, y: 100 } });
+  assert.equal(first.player.display_name, 'Watcher 1');
+  assert.equal(second.player.display_name, 'Watcher 2');
+  assert.equal(service.join('main', { player_id: 'alice', session_token: first.session_token }).player.display_name, 'Watcher 1');
+  assert.equal('token' in first.player, false);
+});
+
 test('presence limits update frequency and does not expose session tokens', () => {
   const service = new WorldPresenceService({ now: () => 1_000, minUpdateMs: 100 });
   const joined = service.join('main', { player_id: 'visitor', position: { x: 100, y: 100 } });

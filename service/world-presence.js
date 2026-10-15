@@ -56,6 +56,12 @@ export class WorldPresenceService {
     return avatar;
   }
   publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...value } = player; return value; }
+  nextDisplayName(world) {
+    const used = new Set([...world.values()].map(player => player.display_name));
+    let number = 1;
+    while (used.has(`Watcher ${number}`)) number++;
+    return `Watcher ${number}`;
+  }
   emit(worldId, type, payload) {
     const event = { type, world_id: worldId, ...payload };
     for (const res of this.listeners.get(worldId) || []) {
@@ -76,7 +82,7 @@ export class WorldPresenceService {
     const position = existing ? existing.position : this.sanitizePosition(input.position || { x: 160, y: 180 });
     const now = this.now();
     const player = {
-      player_id: id, avatar: input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar), position,
+      player_id: id, display_name: existing?.display_name || this.nextDisplayName(world), avatar: input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar), position,
       direction: DIRECTIONS.has(input.direction) ? input.direction : existing?.direction||'down',
       animation_state: 'idle', activity: typeof input.activity === 'string' ? input.activity.slice(0, 80) : existing?.activity||'Exploring',
       updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now,

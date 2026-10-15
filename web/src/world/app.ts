@@ -46,11 +46,11 @@ function syncRemotePlayers(snapshot:PresenceSnapshot):void {
     const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_ember';
     const current=remotePlayers.get(id);
     if(current){
-      current.actor.name=`Visitor ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;
+      current.actor.name=value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;
       current.actor.facing=facing;current.actor.movementState=value.animation_state==='walk'?'walking':'idle';current.actor.activity=value.activity;
       current.target={...value.position};
     }else{
-      remotePlayers.set(id,{target:{...value.position},actor:{id,type:'human',name:`Visitor ${value.player_id.slice(-4).toUpperCase()}`,
+      remotePlayers.set(id,{target:{...value.position},actor:{id,type:'human',name:value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`,
         position:{...value.position},facing,movementState:value.animation_state==='walk'?'walking':'idle',spriteId,activity:value.activity,recentWinner:false}});
     }
   }

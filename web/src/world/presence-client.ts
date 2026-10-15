@@ -1,6 +1,6 @@
 export interface PresencePosition {x:number;y:number}
 export interface PresencePlayer {
-  player_id:string;avatar:string;position:PresencePosition;direction:'up'|'down'|'left'|'right';
+  player_id:string;display_name:string;avatar:string;position:PresencePosition;direction:'up'|'down'|'left'|'right';
   animation_state:'idle'|'walk';activity:string;updated_at:string;
 }
 export interface PresenceSnapshot {world_id:string;players:PresencePlayer[]}
