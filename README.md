@@ -16,9 +16,9 @@
 
 </div>
 
-## Current verification
+## Current
 
-✅ **Tests passing:** `npm test` runs the Node, Rust-backed, browser-contract, persistence, private-arena, and MCP bridge checks. Current baseline: 220 tests, 216 passing, 4 intentionally skipped.
+**Tests passing:** `npm test` runs the Node, Rust-backed, browser-contract, persistence, private-arena, and MCP bridge checks. Current baseline: 220 tests, 216 passing, 4 intentionally skipped.
 
 Run `npm test` after `npm install`; run `npm run demo:service-market` for a disposable simulated service-market check or pass a directory to verify durable resume.
 
