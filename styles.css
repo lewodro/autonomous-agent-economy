@@ -25,8 +25,7 @@ a:hover { color:var(--gold); }
 .ecosystem-card small { margin-top:3px; color:var(--muted); font-size:9px; }
 .ecosystem-banner__status { grid-column:1/-1; padding-top:9px; border-top:1px solid #514c46; font:9px/1.5 ui-monospace,monospace!important; color:#c7d29e!important; }
 .wordmark { display:flex; align-items:center; gap:12px; }
-.header-actions { display:flex; align-items:center; gap:7px; }
-.world-entry-button { border-color:var(--accent); color:var(--accent); background:#38463b; }
+.header-actions { display:flex; align-items:center; gap:15px; }
 .seat-mark { color:var(--gold); font-size:38px; line-height:1; }
 h1 { font-family:ui-monospace,monospace; font-size:22px; letter-spacing:3px; margin:0; }
 .wordmark p { margin:5px 0 0; color:var(--muted); font-size:11px; }
