@@ -89,7 +89,10 @@ try{
   await wait(`${spectatorCount}.then(count=>count===0)`);
  }
  assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
+ await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
  await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:560,y:480},'entering from Arena must reset the visitor to the plaza spawn');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Open arena statistics').click()");
