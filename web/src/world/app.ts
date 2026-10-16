@@ -237,7 +237,9 @@ canvas.addEventListener('pointerdown',event=>{
 });
 function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner});
+  const actor:WorldActor={id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner};
+  const initial=publicSpeech(profile,'idle',index); actor.speech={text:initial.text,expiresAt:performance.now()+7000,synthetic:initial.synthetic};
+  npcs.push(actor);
   controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena,profile));
   updateWorldLabel();
 }
@@ -277,7 +279,8 @@ function frame(time:number):void {
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
     const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<150);
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
-    if(closeNpc&&closeProfile&&speechLimiter.allow(closeNpc.id,Date.now())){
+    if(closeNpc&&closeNpc.speech&&closeNpc.speech.expiresAt>time){speechNotice.textContent=`${closeNpc.name}: ${closeNpc.speech.text}`;speechNotice.hidden=false;}
+    else if(closeNpc&&closeProfile&&speechLimiter.allow(closeNpc.id,Date.now())){
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
       closeNpc.speech={text:speech.text,expiresAt:time+7000,synthetic:speech.synthetic}; speechNotice.textContent=`${closeNpc.name}: ${speech.text}`; speechNotice.hidden=false;
     }
