@@ -22,6 +22,7 @@ if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
+const arenaStatuses=new Map<string,AgentProfile['arenaStatus']>();
 const speechLimiter=new SpeechLimiter();
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
@@ -249,7 +250,8 @@ async function refreshProfiles():Promise<void> {
     selected.forEach((profile,index)=>{
       const existing=npcs.find(npc=>npc.agentId===profile.id);
       if(!existing)addNpc(profile,index,profile.arenaStatus==='finished');
-      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished')controllers.get(existing.id)?.returnToArenaLounge();}
+      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished'&&arenaStatuses.get(profile.id)!=='finished')controllers.get(existing.id)?.returnToArenaLounge();}
+      arenaStatuses.set(profile.id,profile.arenaStatus);
     });
     updateWorldLabel();
     arenaOnline=true;updateConnectionLabel();

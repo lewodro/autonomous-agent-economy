@@ -50,6 +50,7 @@ try{
  // plaza while they wait for the next match.  Assert that the roster is
  // present instead of expecting the old empty-plaza behavior.
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
+ await wait('!document.getElementById("world-speech").hidden&&document.getElementById("world-speech").textContent.includes(":")');
  await wait('document.activeElement?.id==="world-canvas"');
  await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
  await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
