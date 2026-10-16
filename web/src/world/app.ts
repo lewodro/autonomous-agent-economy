@@ -286,7 +286,7 @@ function frame(time:number):void {
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
       closeNpc.speech={text:speech.text,expiresAt:time+7000,synthetic:speech.synthetic}; speechNotice.textContent=`${closeNpc.name}: ${speech.text}`; speechNotice.hidden=false;
     }
-    if(!closeNpc||!closeNpc.speech||closeNpc.speech.expiresAt<time)speechNotice.hidden=true;
+    if(!eventNpc&&speechNotice.textContent==='')speechNotice.hidden=true;
     const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`Inspect ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
