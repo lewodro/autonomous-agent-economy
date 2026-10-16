@@ -4,13 +4,14 @@ import { moveActor, followCamera } from './movement.js';
 import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
-import { NpcController, npcSpawnPosition, selectPlazaAgents } from './npc.js';
+import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
+import { publicSpeech, SpeechLimiter } from './speech.js';
 import { HttpArenaGateway, type AgentProfile } from './gateway.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
-const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection');
+const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),speechNotice=$<HTMLDivElement>('world-speech');
 const settings=loadSettings(),gateway=new HttpArenaGateway();
 // A world visit from Last Seat, Arena, or an external link starts in the
 // plaza again. Reloading the world itself keeps the visitor's saved position.
@@ -21,6 +22,7 @@ if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
+const speechLimiter=new SpeechLimiter();
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
 let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,lastPresenceMoveAt=0,lastPresenceMoveState='';
@@ -234,8 +236,8 @@ canvas.addEventListener('pointerdown',event=>{
 });
 function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',recentWinner:profile.recentWinner});
-  controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena));
+  npcs.push({id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner});
+  controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena,profile));
   updateWorldLabel();
 }
 async function refreshProfiles():Promise<void> {
@@ -271,6 +273,13 @@ function frame(time:number):void {
     // Ambient agents remain inspectable, but cannot form a moving wall across the visitor's route.
     moveActor(player,input,dt,150,WALLS);
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
+    const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<150);
+    const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
+    if(closeNpc&&closeProfile&&speechLimiter.allow(closeNpc.id,Date.now())){
+      const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
+      closeNpc.speech={text:speech.text,expiresAt:time+7000,synthetic:speech.synthetic}; speechNotice.textContent=`${closeNpc.name}: ${speech.text}`; speechNotice.hidden=false;
+    }
+    if(!closeNpc||!closeNpc.speech||closeNpc.speech.expiresAt<time)speechNotice.hidden=true;
     const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`Inspect ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();

@@ -1,28 +1,40 @@
 import { moveActor, presenceObstacles } from './movement.js';
 import { WALLS } from './map.js';
-import type { WorldActor, Position } from './model.js';
-export const MAX_PLAZA_AGENTS=6;
+import type { WorldActor, Position, WorldActivityState } from './model.js';
+
+export const MAX_PLAZA_AGENTS = 6;
 const PLAZA_WAYPOINTS: Position[] = [
   {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:780,y:420},
   {x:430,y:510},{x:660,y:570},{x:360,y:680},{x:720,y:680},{x:450,y:650},
   {x:735,y:740},{x:390,y:390},{x:650,y:300},{x:400,y:570},{x:755,y:520},
   {x:440,y:730},{x:680,y:760},{x:340,y:430},{x:755,y:310},{x:700,y:620},
 ];
-interface Waypoint {position:Position;travel:string;arrival:string}
-const WAYPOINTS:Waypoint[]=PLAZA_WAYPOINTS.map(position=>({position,travel:'Walking through the plaza',arrival:'Taking a plaza break'}));
-const SPAWN_POINTS:Position[]=[
+const SPAWN_POINTS: Position[] = [
   {x:408,y:320},{x:476,y:320},{x:644,y:320},{x:712,y:320},{x:776,y:320},
   {x:408,y:425},{x:476,y:425},{x:644,y:425},{x:712,y:425},{x:776,y:425},
   {x:408,y:545},{x:476,y:545},{x:644,y:545},{x:712,y:545},{x:776,y:545},
   {x:408,y:660},{x:476,y:660},{x:644,y:660},{x:712,y:660},{x:776,y:660},
 ];
-export function npcSpawnPosition(index:number):Position {
-  return {...SPAWN_POINTS[((index%SPAWN_POINTS.length)+SPAWN_POINTS.length)%SPAWN_POINTS.length]!};
+const LABELS: Record<WorldActivityState,string> = {
+  idle:'Taking a plaza break', wander:'Wandering the plaza', walk_to_arena:'Heading to the Arena',
+  inside_arena:'In the Arena', exit_arena:'Leaving the Arena · match complete', walk_to_poi:'Walking to a point of interest',
+  studying:'Studying the last match', talking:'Talking with visitors', cooldown:'Cooling down after a match',
+};
+export function activityLabel(state:WorldActivityState):string { return LABELS[state]; }
+export interface PlazaAgent { id:string; arenaStatus:'fighting'|'finished'|'queued' }
+export interface NpcProfileLike { id?:string; name?:string; strategy?:string }
+export interface AgentBehaviorProfile { speed:number; idleSeconds:number; routeBias:number; arenaInterest:number; social:boolean }
+function hash(value:string):number { let result=2166136261; for(const char of value){result^=char.charCodeAt(0);result=Math.imul(result,16777619);} return result>>>0; }
+export function behaviorProfile(profile:NpcProfileLike|undefined,index=0):AgentBehaviorProfile {
+  const key=profile?.id||profile?.name||`npc-${index}`; const seed=hash(key); const strategy=(profile?.strategy||'').toLowerCase();
+  if(/aggress|gambler|wild/.test(strategy))return {speed:58,idleSeconds:1.1,routeBias:seed%PLAZA_WAYPOINTS.length,arenaInterest:0.8,social:false};
+  if(/analyst|research/.test(strategy))return {speed:40,idleSeconds:3.5,routeBias:10,arenaInterest:0.28,social:false};
+  if(/defend|guard/.test(strategy))return {speed:43,idleSeconds:3,routeBias:14,arenaInterest:0.35,social:false};
+  if(/trader|social/.test(strategy))return {speed:48,idleSeconds:2,routeBias:7,arenaInterest:0.5,social:true};
+  return {speed:46,idleSeconds:1.8+(seed%10)/10,routeBias:seed%PLAZA_WAYPOINTS.length,arenaInterest:0.5,social:seed%3===0};
 }
-export function arenaExitPosition(index:number):Position {
-  return {x:880+(index%3)*32,y:724+Math.floor(index/3)*24};
-}
-export interface PlazaAgent {id:string;arenaStatus:'fighting'|'finished'|'queued'}
+export function npcSpawnPosition(index:number):Position { return {...SPAWN_POINTS[((index%SPAWN_POINTS.length)+SPAWN_POINTS.length)%SPAWN_POINTS.length]!}; }
+export function arenaExitPosition(index:number):Position { return {x:880+(index%3)*32,y:724+Math.floor(index/3)*24}; }
 /** Keep the plaza readable while reserving two visitor slots for recent finishers. */
 export function selectPlazaAgents<T extends PlazaAgent>(profiles:T[],currentIds:string[]=[]):T[] {
   const eligible=profiles.filter(profile=>profile.arenaStatus!=='fighting');
@@ -30,44 +42,38 @@ export function selectPlazaAgents<T extends PlazaAgent>(profiles:T[],currentIds:
   const returningIds=new Set(returning.map(profile=>profile.id));
   const current=eligible.filter(profile=>currentIds.includes(profile.id)&&!returningIds.has(profile.id));
   const waiting=eligible.filter(profile=>!returningIds.has(profile.id)&&!currentIds.includes(profile.id));
-  const selected=[...returning,...current,...waiting];
-  return selected.slice(0,MAX_PLAZA_AGENTS);
+  return [...returning,...current,...waiting].slice(0,MAX_PLAZA_AGENTS);
 }
-export interface AgentController { update(actor:WorldActor, seconds:number):void }
-/** Presence only: neither selects minigame moves nor claims research results. */
+export interface AgentController { update(actor:WorldActor,seconds:number,actors?:WorldActor[]):void }
+/** Presentation only: the server remains authoritative for every match decision. */
 export class NpcController implements AgentController {
-  private waypoint=0;private pause=0;private stuck=0;
-  private returningFromArena:boolean;
-  private arenaLounge=false;
-  constructor(index:number,returningFromArena=false) {
-    this.waypoint=returningFromArena?10:index%WAYPOINTS.length;this.pause=returningFromArena?0:index*.3;this.returningFromArena=returningFromArena;
+  private waypoint=0; private pause=0; private stuck=0; private lounge=0; private studying=0;
+  private returningFromArena:boolean; private readonly behavior:AgentBehaviorProfile;
+  constructor(index:number,returningFromArena=false,profile?:NpcProfileLike) {
+    this.behavior=behaviorProfile(profile,index); this.waypoint=(this.behavior.routeBias+index)%PLAZA_WAYPOINTS.length;
+    this.pause=returningFromArena?0:index*.2; this.returningFromArena=returningFromArena;
   }
-  returnToArenaLounge():void {
-    if(this.returningFromArena)return;
-    this.returningFromArena=true;this.arenaLounge=false;this.waypoint=10;this.pause=0;this.stuck=0;
-  }
+  returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=10; this.pause=0; this.stuck=0; }
+  private setState(actor:WorldActor,state:WorldActivityState):void { actor.activityState=state; actor.activity=activityLabel(state); }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
-    if(this.arenaLounge){actor.movementState='idle';actor.activity='Waiting at the Arena · next match';return;}
-    if(this.pause>0){this.pause-=seconds;actor.movementState='idle';return;}
-    const waypoint=WAYPOINTS[this.waypoint]!;
-    const target=waypoint.position;
-    const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
-    const before={...actor.position};
-    actor.activity=this.returningFromArena?'Leaving the Arena · match complete':waypoint.travel;
-    const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
-    const obstacles=[...WALLS,...presenceObstacles(nearby,actor)];
-    moveActor(actor,{x:dx,y:dy,interact:false},seconds,48,obstacles);
-    const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y);
-    this.stuck=moved<.1?this.stuck+seconds:0;
-    if(Math.hypot(dx,dy)<10){
-      this.stuck=0;
-      if(this.returningFromArena){this.arenaLounge=true;actor.movementState='idle';actor.activity='Waiting at the Arena · next match';}
-      else{this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;actor.activity=waypoint.arrival;}
+    if(this.returningFromArena&&this.lounge>0){
+      this.lounge-=seconds; actor.movementState='idle'; this.setState(actor,'cooldown');
+      if(this.lounge<=0)this.studying=4; return;
     }
-    else if(this.stuck>.5){
-      this.stuck=0;
-      if(this.returningFromArena){this.arenaLounge=true;actor.movementState='idle';actor.activity='Waiting at the Arena · next match';}
-      else{this.waypoint=(this.waypoint+1)%WAYPOINTS.length;this.pause=1.8;actor.activity='Taking a plaza break';}
+    if(this.returningFromArena&&this.studying>0){
+      this.studying-=seconds; actor.movementState='idle'; this.setState(actor,'studying');
+      if(this.studying<=0){this.returningFromArena=false;this.pause=this.behavior.idleSeconds;} return;
+    }
+    if(this.pause>0){this.pause-=seconds;actor.movementState='idle';this.setState(actor,'idle');return;}
+    const target=PLAZA_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
+    const before={...actor.position}; const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
+    this.setState(actor,this.returningFromArena?'exit_arena':(this.behavior.social&&nearby.length?'talking':'wander'));
+    actor.movementState='walking'; moveActor(actor,{x:dx,y:dy,interact:false},seconds,this.behavior.speed,[...WALLS,...presenceObstacles(nearby,actor)]);
+    const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y); this.stuck=moved<.1?this.stuck+seconds:0;
+    if(Math.hypot(dx,dy)<10||this.stuck>.5){
+      this.stuck=0; this.waypoint=(this.waypoint+1)%PLAZA_WAYPOINTS.length; this.pause=this.behavior.idleSeconds;
+      if(this.returningFromArena){this.lounge=4;actor.movementState='idle';this.setState(actor,'cooldown');}
+      else{actor.movementState='idle';this.setState(actor,'idle');}
     }
   }
 }

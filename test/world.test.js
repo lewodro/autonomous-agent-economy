@@ -88,18 +88,17 @@ test('all twenty current agent profiles have safe, separated world spawn positio
   for(let j=i+1;j<positions.length;j++)assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y)>=60);
  }
 });
-test('finished agent walks from its plaza spawn to the Arena lounge and waits',()=>{
+test('finished agent exits the Arena, studies the result, then returns to the plaza',()=>{
  const start=npcSpawnPosition(0),npc={...actor(start),type:'npc',activity:'Leaving the Arena'},control=new NpcController(0,true);
- assert.equal(collides(start),false);let arrived=false;
+ assert.equal(collides(start),false);let studied=false;
  for(let frame=0;frame<400;frame++){
   const before={...npc.position};control.update(npc,.1);
   assert.equal(collides(npc.position),false);
-  if(npc.activity==='Waiting at the Arena · next match'){arrived=true;assert.equal(npc.movementState,'idle');break;}
+  if(npc.activity==='Studying the last match')studied=true;
   if(Math.hypot(npc.position.x-before.x, npc.position.y-before.y)>0)assert.notEqual(npc.activity,'Fighting');
  }
- assert.equal(arrived,true,'the post-match visitor should reach the Arena lounge');
- const held={...npc.position};for(let frame=0;frame<100;frame++)control.update(npc,.1);
- assert.deepEqual(npc.position,held,'the returned agent should wait in the lobby until the next match');
+ assert.equal(studied,true,'the returned agent should have a short study state');
+ assert.ok(npc.activityState==='idle'||npc.activityState==='wander','the agent should resume plaza behavior');
 });
 test('renderer name visibility tolerates NPC-only presence snapshots',()=>{
  const visitor=actor({x:10,y:20}),nearby={...actor({x:100,y:20}),type:'npc'},distant={...actor({x:500,y:20}),type:'npc'};
