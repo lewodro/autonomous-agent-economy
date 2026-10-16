@@ -238,7 +238,7 @@ canvas.addEventListener('pointerdown',event=>{
 function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
   const actor:WorldActor={id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner};
-  const initial=publicSpeech(profile,'idle',index); actor.speech={text:initial.text,expiresAt:performance.now()+60000,synthetic:initial.synthetic};
+  const initial=publicSpeech(profile,'idle',index); actor.speech={text:initial.text,expiresAt:performance.now()+300000,synthetic:initial.synthetic};
   speechNotice.textContent=`${profile.name}: ${initial.text}`; speechNotice.hidden=false;
   npcs.push(actor);
   controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena,profile));
