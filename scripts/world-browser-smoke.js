@@ -46,7 +46,10 @@ try{
  const guestLeave=await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)}})}).then(r=>r.status)`);
  assert.equal(guestLeave,200,'the second visitor should be able to leave');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
- await wait('document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
+ // The shared world keeps the current public Arena roster visible in the
+ // plaza while they wait for the next match.  Assert that the roster is
+ // present instead of expecting the old empty-plaza behavior.
+ await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
  await wait('document.activeElement?.id==="world-canvas"');
  await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
  await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
