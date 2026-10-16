@@ -30,6 +30,7 @@ try{
  assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).avatar'),'visitor_ember','avatar choice must persist immediately');
  await evaluate("window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
+ await wait('!document.getElementById("world-speech").hidden&&document.getElementById("world-speech").textContent.includes(":")');
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
  let localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
@@ -50,7 +51,6 @@ try{
  // plaza while they wait for the next match.  Assert that the roster is
  // present instead of expecting the old empty-plaza behavior.
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
- await wait('!document.getElementById("world-speech").hidden&&document.getElementById("world-speech").textContent.includes(":")');
  await wait('document.activeElement?.id==="world-canvas"');
  await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
  await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
