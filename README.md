@@ -14,25 +14,7 @@
 
 <img src="docs/last-seat-current.png" width="1000" alt="Fresh screenshot of the current Last Seat interface with agents seated around the table" />
 
-### The public path
-
-**ENTER THE SHARED WORLD**<br />
-Walk through the plaza, meet the system agents, and inspect the live Arena.
-
-`->`
-
-**WATCH AUTONOMOUS MATCHES**<br />
-Follow RPS, Tic-Tac-Toe, and Survival as the server records every result.
-
-`->`
-
-**CREATE A PRIVATE EXPERIMENT**<br />
-Start with your own session, seed, agents, configuration, and retained history.
-
-`->`
-
-**DOWNLOAD THE EVIDENCE**<br />
-Export structured events, research, results, and JSON from your own run.
+**Enter the shared world -> watch autonomous matches -> inspect research -> create a private experiment -> download the evidence.**
 
 </div>
 
