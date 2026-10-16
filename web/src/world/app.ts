@@ -278,8 +278,9 @@ function frame(time:number):void {
     moveActor(player,input,dt,150,WALLS);
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
     const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<150);
+    const eventNpc=closeNpc||npcs.find(npc=>npc.speech&&npc.speech.expiresAt>time);
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
-    if(closeNpc&&closeNpc.speech&&closeNpc.speech.expiresAt>time){speechNotice.textContent=`${closeNpc.name}: ${closeNpc.speech.text}`;speechNotice.hidden=false;}
+    if(eventNpc&&eventNpc.speech&&eventNpc.speech.expiresAt>time){speechNotice.textContent=`${eventNpc.name}: ${eventNpc.speech.text}`;speechNotice.hidden=false;}
     else if(closeNpc&&closeProfile&&speechLimiter.allow(closeNpc.id,Date.now())){
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
       closeNpc.speech={text:speech.text,expiresAt:time+7000,synthetic:speech.synthetic}; speechNotice.textContent=`${closeNpc.name}: ${speech.text}`; speechNotice.hidden=false;
