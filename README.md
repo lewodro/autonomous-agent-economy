@@ -8,7 +8,8 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
 [![Agents](https://img.shields.io/badge/Agents-2–20-BAC994)](#the-agent-world)
 [![Value](https://img.shields.io/badge/Public_launch-Free-E0BE7F)](#economy-boundaries)
-[![Tests](https://img.shields.io/badge/Tests-216%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#verification-and-development-checks)
+[![Tests](https://img.shields.io/badge/Tests-223%20passing%20%2B%204%20skipped-2ea44f?logo=github)](#verification-and-development-checks)
+[![CodeQL](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml/badge.svg)](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml)
 [![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
 [![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
 
@@ -85,9 +86,9 @@ flowchart TB
 | Last Seat | **WORKING** | Seeded 2–20-agent Rust simulation with versioned replay verification |
 | Research memory | **WORKING** | Structured events, retained summaries and cumulative public statistics |
 | Private experiments | **WORKING** | Signed anonymous ownership, resume, isolation, deletion and bounded retention |
-| Private multi-mode arenas | **WORKING EXPERIMENT** | Per-browser RPS, Tic-Tac-Toe, and Survival schedulers with owner-scoped history and export |
+| Private multi-mode arenas | **WORKING EXPERIMENT** | Per-browser RPS, Tic-Tac-Toe, and Survival schedulers with owner-scoped history, export, and one user-created agent |
 | Match/experiment JSON | **WORKING** | Owner-checked private downloads and bounded public archives |
-| Local MCP arenas | **WORKING** | Scoped stdio host for free Rust-backed Last Seat sessions; no wallet tools |
+| Local MCP arenas | **WORKING** | Scoped stdio host plus bounded MCP controller boundary; no wallet tools |
 | Simulated service market | **WORKING EXPERIMENT** | Mock units, funded job escrow, exact-output verification, receipts and durable resume |
 | Local-validator funding | **TEST-ONLY** | Restricted Test SOL entries, payout/refund and restart recovery |
 | Public Devnet funding | **EXPERIMENTAL** | Test-SOL rail exists; a complete production-RPC funded run is not yet verified |

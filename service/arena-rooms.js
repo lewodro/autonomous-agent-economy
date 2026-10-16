@@ -14,8 +14,8 @@ const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500 }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, agentOverride=null }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.agentOverride=agentOverride;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -31,6 +31,7 @@ export class ArenaRoomPool {
           if(run.state.matches.some(m=>(m.type||'rps')!==game))throw new Error(`Arena game mismatch: ${id}`);
         }
       } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};
+      this.applyAgentOverride(saved.state);for(const run of saved.previous)this.applyAgentOverride(run.state);
       const state=structuredClone(saved.state),latest=state.matches.filter(match=>match.status==='settled').at(-1);
       const lastCompletedAt=latest?Date.parse(completionTime({run:{state},match:latest})):0;
       this.rooms.set(id,{saved,state,phase:'waiting',status:'waiting',current:latest||null,finishedAt:Number.isFinite(lastCompletedAt)?lastCompletedAt:0});
@@ -59,10 +60,13 @@ export class ArenaRoomPool {
     return {room:this.listRooms().find(r=>r.id===id),state,phase:room.phase,current:structuredClone(room.current)};
   }
   runs() {return [...this.rooms.values()].flatMap(r=>[r.saved,...r.saved.previous].map(run=>({...run,roomId:r.saved.id,game:r.saved.game})));}
+  setAgentOverride(agentOverride) { this.agentOverride=agentOverride||null;for(const room of this.rooms.values()){this.applyAgentOverride(room.state);this.applyAgentOverride(room.saved.state);for(const run of room.saved.previous)this.applyAgentOverride(run.state);} }
+  applyAgentOverride(state) { if(!this.agentOverride||!Array.isArray(state?.agents))return;const agent=state.agents.find(value=>value.id==='agent-1');if(!agent)return;agent.name=this.agentOverride.name;agent.strategy=this.agentOverride.strategy;agent.sprite=this.agentOverride.sprite||agent.sprite; }
   profiles() {
     // Start with retained epochs oldest-first so timestamp ties remain chronological.
     const chronologicalRuns=this.runs().reverse();
-    return createState().agents.map(base=>{
+    const bases=createState().agents;if(this.agentOverride){const base=bases.find(value=>value.id==='agent-1');if(base){base.name=this.agentOverride.name;base.strategy=this.agentOverride.strategy;base.sprite=this.agentOverride.sprite||base.sprite;}}
+    return bases.map(base=>{
       const entries=chronologicalRuns.flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
         .sort((a,b)=>completionTime(a).localeCompare(completionTime(b)));
       const wins=entries.filter(({match})=>match.result!=='draw'&&match.players[match.result==='a'?0:1]===base.id).length;
