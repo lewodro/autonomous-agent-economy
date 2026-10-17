@@ -25,7 +25,7 @@ export type WorldEvent =
 export interface Rect extends Position { width: number; height: number }
 export interface Interactable {
   id: string; position: Position; radius: number;
-  type: 'arena' | 'table' | 'agent' | 'research'; label: string;
+  type: 'arena' | 'table' | 'agent' | 'research' | 'zone'; label: string;
 }
 export function normalizeInput(x: number, y: number, interact = false): WorldInput {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: 0, y: 0, interact };

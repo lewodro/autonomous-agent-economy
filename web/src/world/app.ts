@@ -158,7 +158,7 @@ function portal():void {
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
-  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();
+  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();else if(target.type==='zone'){show('Forest clearing');text('p','A quiet trail beyond the plaza. Canonical agents use this route for lightweight presentation-only exploration. Future world districts can connect here without changing the authoritative Arena.');}
   else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
 interface AvatarAsset {id:string;name:string;sheet:string;preview:string;frameWidth:number;frameHeight:number;columns:number;rows:number;approved:boolean;placeholder?:boolean;debug?:boolean}
