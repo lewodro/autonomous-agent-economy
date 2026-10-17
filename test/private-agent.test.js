@@ -7,11 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 test('private agent profiles are bounded and MCP credentials are excluded',()=>{
- const agent=validatePrivateAgent({name:'My Scout',strategy:'aggressive',mcp:{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','intent']}});
+ const agent=validatePrivateAgent({name:'My Scout',sprite:'assets/agents/04-analyst.png',strategy:'aggressive',mcp:{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','intent']}});
  assert.deepEqual(agent.mcp,{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','intent']});assert.equal(agent.mind.agent_id,'agent-1');
  assert.throws(()=>validatePrivateAgent({name:'x',strategy:'aggressive'}));
  assert.throws(()=>validatePrivateAgent({name:'Valid Name',strategy:'aggressive',mcp:{controller_type:'mcp',endpoint:'http://localhost/mcp',capabilities:[]}}));
  assert.throws(()=>validatePrivateAgent({name:'1invalid',strategy:'balanced'}));
+ assert.throws(()=>validatePrivateAgent({name:'Bad Sprite',strategy:'balanced',sprite:'../../secret.png'}));
  const deduped=validatePrivateAgent({name:'Agent 2',strategy:'balanced',mcp:{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','observe','intent']}});
  assert.deepEqual(deduped.mcp.capabilities,['observe','intent']);
 });

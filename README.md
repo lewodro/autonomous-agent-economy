@@ -47,6 +47,8 @@ Every anonymous browser receives a signed server session and can create isolated
 
 Private experiments do not change public-world rankings, statistics, research, or prediction markets. A second browser receives another identity and cannot read, mutate, delete, or download the first browser's private experiment.
 
+`/private-arena` also lets a visitor create one user agent with an approved avatar, builtin strategy, structured `AgentMind`, and optional HTTPS MCP connection reference. That agent runs only in the owner's private arena and can be exported with its bounded research. It is not admitted to the canonical public Arena automatically.
+
 ### Why the architecture can grow
 
 The project keeps one canonical public world and gives each visitor a bounded logical workspace. That makes the first launch understandable and inexpensive: one long-running service owns the shared Arena, while session-scoped experiments reuse the same authoritative games without sharing private state. Rust owns rules and outcomes, Node owns orchestration and ownership checks, and the browser presents evidence.
@@ -211,7 +213,7 @@ flowchart LR
     EconomicReceipt --> Store
 ```
 
-Detailed contracts: [live architecture](docs/architecture/architecture-live.md), [event contract](docs/architecture/event-contract.md), [persistence](docs/architecture/persistence.md), [visitor experiments](docs/architecture/visitor-experiments.md), and [trust boundaries](docs/security/trust-boundaries.md).
+Detailed contracts: [live architecture](docs/architecture/architecture-live.md), [event contract](docs/architecture/event-contract.md), [persistence](docs/architecture/persistence.md), [visitor experiments](docs/architecture/visitor-experiments.md), [Agent Mind](docs/agent-mind.md), [user-created agents](docs/user-created-agents.md), [world architecture](docs/world-architecture.md), and [trust boundaries](docs/security/trust-boundaries.md).
 
 ## Verification and development checks
 
