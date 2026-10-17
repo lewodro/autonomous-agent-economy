@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, ROCKS, TREES } from './map.js';
+import { MAP, BUILDINGS, CAMPFIRES, ROCKS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import type { Position, WorldActor, Interactable } from './model.js';
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number }
@@ -46,13 +46,15 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x,y,32,32,(x*7+y*13)%5===0?'#344b3e':'#30483c');
       if((x+y)%96===0)rect(x+8,y+20,4,3,'#4b6146');
     }
-    rect(392,300,364,424,'#6b6150');rect(72,420,1024,84,'#6b6150');rect(860,300,112,400,'#6b6150');
+    // Extend the existing plaza floor treatment into the new open space. The
+    // left public/training side keeps its original footprint and landmarks.
+    rect(392,300,760,560,'#6b6150');rect(72,420,1024,84,'#6b6150');rect(860,300,112,400,'#6b6150');
     rect(140,494,148,152,'#6b6150');rect(480,688,160,140,'#6b6150');
-    // The east connector opens into a low-cost forest zone with its own ground tone.
-    rect(1088,128,368,720,'#294b3a');
-    for(let y=160;y<820;y+=32)for(let x=1120;x<1440;x+=32)if((x+y)%96===0)rect(x+6,y+8,20,18,'#315840');
-    rect(1040,500,520,56,'#6b6150');rect(1110,472,360,24,'#81735c');
-    for(let y=320;y<720;y+=32)for(let x=416;x<750;x+=32)rect(x,y,26,2,'#81735c');
+    // The east connector opens into a low-cost forest and garden zone. These
+    // are copied ground treatments, with no repeated road markings.
+    rect(1088,128,472,900,'#294b3a');
+    rect(1040,500,600,56,'#6b6150');rect(1110,472,420,24,'#81735c');
+    rect(1440,480,280,360,'#3e6248');
     for(const b of BUILDINGS){
       rect(b.x+8,b.y+8,b.width,b.height,'#1c2b28');rect(b.x,b.y,b.width,b.height,b.color);
       rect(b.x+8,b.y+8,b.width-16,80,'#403838');
@@ -76,7 +78,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x,y+24,12,28,'#675542');rect(x-18,y,48,34,'#496345');rect(x-10,y-12,32,26,'#56734b');
     }
     for(const {x,y} of ROCKS){rect(x-12,y-8,24,16,'#696b60');rect(x-6,y-13,12,7,'#858474');}
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);
+    for(const {x,y} of CAMPFIRES){c.fillStyle='#533f36';c.fillRect(x-16,y+8,32,8);c.fillStyle='#ed9a4e';c.fillRect(x-7,y-10,14,18);c.fillStyle='#f4d178';c.fillRect(x-3,y-16,6,10);}
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1575,520);
     rect(32,56,MAP.width-64,8,'#77705b');rect(32,MAP.height-40,MAP.width-64,8,'#77705b');
     rect(32,56,8,MAP.height-88,'#77705b');rect(MAP.width-40,56,8,MAP.height-88,'#77705b');
   }

@@ -1,21 +1,24 @@
 import type { Interactable, Position, Rect } from './model.js';
-export const MAP = { width: 1536, height: 1024, tile: 32, spawn: { x: 560, y: 480 } };
-export type WorldZone = 'plaza'|'arena'|'research'|'forest'|'path_north'|'path_east';
+export const MAP = { width: 1792, height: 1152, tile: 32, spawn: { x: 560, y: 480 } };
+export type WorldZone = 'plaza'|'arena'|'research'|'forest'|'garden'|'agency'|'path_north'|'path_east';
 export const ZONES: Record<WorldZone, Rect> = {
-  plaza:{x:320,y:300,width:560,height:430}, arena:{x:780,y:96,width:300,height:620}, research:{x:680,y:96,width:300,height:230},
-  forest:{x:1120,y:128,width:320,height:720}, path_north:{x:400,y:64,width:360,height:220}, path_east:{x:960,y:400,width:520,height:160},
+  plaza:{x:320,y:300,width:880,height:620}, arena:{x:780,y:96,width:300,height:620}, research:{x:680,y:96,width:300,height:230},
+  forest:{x:1120,y:128,width:440,height:900}, garden:{x:1440,y:480,width:280,height:360}, agency:{x:1440,y:96,width:260,height:260},
+  path_north:{x:400,y:64,width:360,height:220}, path_east:{x:960,y:400,width:560,height:160},
 };
 export interface Building extends Rect { name: string; color: string }
 export const BUILDINGS: Building[] = [
   { x: 112, y: 120, width: 256, height: 176, name: 'AGENT HOUSE', color: '#9e7154' },
   { x: 704, y: 120, width: 240, height: 176, name: 'RESEARCH HOUSE', color: '#71938b' },
   { x: 800, y: 448, width: 256, height: 192, name: 'ARENA', color: '#b18355' },
+  { x: 1464, y: 128, width: 208, height: 160, name: 'AGENCY', color: '#806b80' },
 ];
 export const TREES: Position[] = [
   {x:60,y:120},{x:65,y:280},{x:60,y:710},{x:340,y:770},{x:1060,y:180},{x:1056,y:350},{x:1030,y:770},
   {x:1160,y:190},{x:1270,y:170},{x:1375,y:230},{x:1190,y:360},{x:1330,y:410},{x:1410,y:560},{x:1160,y:650},{x:1290,y:720},{x:1380,y:760},
 ];
 export const ROCKS: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650}];
+export const CAMPFIRES: Position[] = [{x:1510,y:560},{x:1640,y:760}];
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y})=>({x,y:y+24,width:12,height:28}));
 export const WALLS: Rect[] = [...BUILDINGS,
   { x: 500, y: 340, width: 112, height: 64 }, // plaza fountain
@@ -29,6 +32,8 @@ export const LANDMARKS: Interactable[] = [
   { id: 'plaza-table', type: 'table', position: { x: 224, y: 609 }, radius: 68, label: 'Sit · free Tic-Tac-Toe' },
   { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open arena statistics' },
   { id: 'forest-clearing', type: 'zone', position: { x: 1280, y: 500 }, radius: 86, label: 'Explore forest clearing' },
+  { id: 'botanical-garden', type: 'zone', position: { x: 1570, y: 620 }, radius: 86, label: 'Explore botanical garden' },
+  { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < 40 + radius || position.y < 64 + radius || position.x > MAP.width - 40 - radius || position.y > MAP.height - 40 - radius) return true;

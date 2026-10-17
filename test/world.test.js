@@ -53,7 +53,7 @@ test('all plaza interactions remain reachable from the visitor spawn',()=>{
 test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
   const c=followCamera({x:0,y:0},{x:9999,y:9999},600,400,100);
-  assert.deepEqual(c,{x:936,y:624});
+  assert.deepEqual(c,{x:1192,y:752});
 });
 test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
