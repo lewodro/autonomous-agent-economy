@@ -113,6 +113,7 @@ try{
  // to the browser session and does not alter the canonical world roster.
  await send('Page.navigate',{url:base+'/private-arena'});
  await wait('location.pathname==="/private-arena"&&document.getElementById("agent-form")');
+ await wait('document.getElementById("status").textContent.includes("PAUSED")');
  await evaluate("document.getElementById('agent-name').value='Browser Agent';document.getElementById('agent-strategy').value='aggressive';document.getElementById('agent-form').requestSubmit()");
  await wait("document.getElementById('agent-status').textContent.includes('Browser Agent')&&document.getElementById('agent-status').textContent.includes('private to this browser')");
  const privateExport=await evaluate("fetch('/api/private-arena/export').then(async r=>({status:r.status,body:await r.json()}))");
@@ -122,6 +123,33 @@ try{
  assert.equal(await evaluate("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.agents.some(a=>a.name==='Browser Agent'))"),false,'private agents must not enter canonical rankings');
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ // Developer probes start just inside each former edge. Walking through those
+ // coordinates exercises the real input, collision, camera and canvas paths.
+ const walkProbe=async(label,key,axis,threshold,screenshotName)=>{
+  await evaluate(`(()=>{const button=[...document.querySelectorAll('#world-lab button')].find(value=>value.textContent===${JSON.stringify(`Walk probe: ${label}`)});if(!button)throw Error('Missing walk probe');button.click()})()`);
+  await wait('document.activeElement?.id==="world-canvas"&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+  await evaluate(`document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
+  await delay(950);
+  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
+  await wait(`(()=>{const state=JSON.parse(document.querySelector('#world-lab pre').textContent);return state.player.${axis}${threshold}})()`);
+  await wait("(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player,pid=sessionStorage.getItem('aae-world-presence-v1:main:player');return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===pid);return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()");
+  await screenshot(screenshotName);
+ };
+ await walkProbe('west','a','x','<0','west-expansion');
+ await walkProbe('east','d','x','>1792','east-expansion');
+ await walkProbe('north','w','y','<0','north-expansion');
+ await walkProbe('south','s','y','>1152','south-expansion');
+ await walkProbe('garden','d','x','>1900','botanical-garden');
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(value=>value.textContent==='Walk probe: campfire').click()");
+ await wait('document.activeElement?.id==="world-canvas"&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ await wait("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return p.x===1760&&p.y===680})()");
+ await screenshot('campfire');
+ const westGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
+ assert.equal(westGuest.status,201,'a second visitor can enter the west extension');
+ await wait("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id==='browser-smoke-west'&&p.position.x===-120))");
+ await delay(80);
+ assert.equal(await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',session_token:${JSON.stringify(westGuest.session_token)},position:{x:-108,y:430},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200,'second visitor moves beyond the former west boundary');
+ assert.equal(await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',session_token:${JSON.stringify(westGuest.session_token)}})}).then(r=>r.status)`),200);
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
  const releasedPresence=await evaluate("(()=>{const player=sessionStorage.getItem('aae-world-presence-v1:main:player'),token=sessionStorage.getItem('aae-world-presence-v1:main:token');return fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:player,session_token:token})}).then(r=>{sessionStorage.removeItem('aae-world-presence-v1:main:player');sessionStorage.removeItem('aae-world-presence-v1:main:token');return r.status})})()");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');

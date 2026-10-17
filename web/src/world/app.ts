@@ -323,8 +323,9 @@ window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFr
 // The lab uses the production state and controller; no second renderer or game engine.
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
-  for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{player.position=safePosition(landmark.position);canvas.focus();};lab.append(b);}
-  for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{player.position=safePosition(position);canvas.focus();};lab.append(b);}
+  const teleport=async(position:{x:number;y:number})=>{await leavePresence();player.position=safePosition(position);persist();if(entered)startPresence();canvas.focus();};
+  for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{void teleport(landmark.position);};lab.append(b);}
+  for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{void teleport(position);};lab.append(b);}
   const spawn=document.createElement('button');spawn.textContent='Spawn next NPC';spawn.onclick=()=>{const profile=profiles.find(p=>!npcs.some(n=>n.agentId===p.id));if(profile)addNpc(profile,npcs.length);};lab.append(spawn);
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);
