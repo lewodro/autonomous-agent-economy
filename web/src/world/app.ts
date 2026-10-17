@@ -1,7 +1,7 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, followCamera } from './movement.js';
-import { MAP, LANDMARKS, WALLS, safePosition } from './map.js';
+import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
@@ -158,7 +158,14 @@ function portal():void {
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
-  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();else if(target.type==='zone'){show('Forest clearing');text('p','A quiet trail beyond the plaza. Canonical agents use this route for lightweight presentation-only exploration. Future world districts can connect here without changing the authoritative Arena.');}
+  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();else if(target.type==='zone'){
+    const zones:Record<string,[string,string]>={
+      'forest-clearing':['Forest clearing','A quiet trail and wooded rest point beyond the plaza.'],
+      'botanical-garden':['Botanical garden','Walk among planted beds, varied trees and the garden campfire.'],
+      'agent-agency':['Agent agency','This building is reserved for a future agent gathering place.'],
+    };
+    const [title,description]=zones[target.id]||[target.label,'A place to explore in the shared world.'];show(title);text('p',description);
+  }
   else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
 interface AvatarAsset {id:string;name:string;sheet:string;preview:string;frameWidth:number;frameHeight:number;columns:number;rows:number;approved:boolean;placeholder?:boolean;debug?:boolean}
@@ -317,6 +324,7 @@ window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFr
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
   for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{player.position=safePosition(landmark.position);canvas.focus();};lab.append(b);}
+  for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{player.position=safePosition(position);canvas.focus();};lab.append(b);}
   const spawn=document.createElement('button');spawn.textContent='Spawn next NPC';spawn.onclick=()=>{const profile=profiles.find(p=>!npcs.some(n=>n.agentId===p.id));if(profile)addNpc(profile,npcs.length);};lab.append(spawn);
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);

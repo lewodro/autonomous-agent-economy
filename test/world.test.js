@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUSHES, CAMPFIRES, FLOWER_BEDS, NPC_WAYPOINTS, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -35,6 +35,12 @@ test('tree trunks are shared map obstacles rather than walk-through decoration',
  for(const tree of TREES)assert.equal(collides({x:tree.x+6,y:tree.y+38}),true,`tree at ${tree.x},${tree.y} should block its trunk`);
  const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);
  assert.ok(visitor.position.x>=84,'movement must stop before crossing the first trunk');assert.ok(!collides(visitor.position));
+});
+test('garden planting and campfire collision leave flower beds walkable',()=>{
+  assert.ok(BUSHES.some(bush=>bush.solid));assert.ok(FLOWER_BEDS.length>=3);assert.ok(CAMPFIRES.length>=3);
+  for(const bush of BUSHES.filter(item=>item.solid))assert.equal(collides({x:bush.x,y:bush.y}),true);
+  for(const fire of CAMPFIRES)assert.equal(collides(fire),true);
+  for(const bed of FLOWER_BEDS)assert.equal(collides({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),false,'flowers should never seal a garden path');
 });
 test('all plaza interactions remain reachable from the visitor spawn',()=>{
  const step=8,start={x:Math.round(MAP.spawn.x/step),y:Math.round(MAP.spawn.y/step)};
@@ -76,6 +82,18 @@ test('NPC controller moves presence without changing strategy or economic fields
   const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
+});
+test('canonical NPC route reaches all new districts without crossing collision',()=>{
+  assert.ok(NPC_WAYPOINTS.every(point=>!collides(point)),'every route destination must be walkable');
+  const npc={...actor(npcSpawnPosition(0)),type:'npc'},control=new NpcController(0,false,{id:'agent-0'});
+  const visited={west:false,east:false,north:false,south:false,garden:false};
+  for(let frame=0;frame<10000;frame++){
+    control.update(npc,.1);assert.equal(collides(npc.position),false);
+    visited.west ||=npc.position.x<-300;visited.east ||=npc.position.x>2200;
+    visited.north ||=npc.position.y<-200;visited.south ||=npc.position.y>1300;
+    visited.garden ||=npc.position.x>1700&&npc.position.x<2100&&npc.position.y>700&&npc.position.y<900;
+  }
+  assert.deepEqual(visited,{west:true,east:true,north:true,south:true,garden:true});
 });
 test('plaza keeps six visitors, excludes fighters and reserves space for finishers',()=>{
  const profiles=Array.from({length:20},(_,index)=>({id:`agent-${index}`,arenaStatus:index<2?'finished':index<6?'fighting':'queued'}));
