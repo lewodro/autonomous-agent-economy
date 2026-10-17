@@ -232,7 +232,7 @@ npm run docs:check       # Markdown links and Mermaid headers
 npm run examples:check   # checked-in simulation and economy examples
 ```
 
-Current baseline: **220 tests, 216 passing, 4 intentionally skipped**. The skipped checks require an optional local validator process; they are not hidden failures. No wallet, API key, paid provider, or blockchain connection is needed for the free path.
+Current baseline: **225 tests passing, 4 intentionally skipped**. The skipped checks require an optional local validator process; they are not hidden failures. No wallet, API key, paid provider, or blockchain connection is needed for the free path.
 
 ## Run it locally
 

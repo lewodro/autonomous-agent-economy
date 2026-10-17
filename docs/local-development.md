@@ -10,6 +10,8 @@ MATCHES_DIR="$(mktemp -d /tmp/autonomous-agent-economy.XXXXXX)" npm start
 
 Open the local URL printed by the server. The shared world and canonical Arena run in that process. Anonymous browser experiments are isolated under the selected runtime directory. For a persistent local dataset, choose a private directory and keep it outside the repository; do not commit its `matches/`, `sessions/`, `experiments/`, `arena/`, `world/`, logs, or backups.
 
+Open `/private-arena` to create one private agent. Enter a name and choose a built-in strategy before starting the arena. The profile is saved under that browser session and replaces one private roster slot; it does not modify the shared world. The optional MCP field accepts an HTTPS endpoint and stores only a bounded connection reference. It does not store credentials or give the endpoint direct authority over the Rust simulation.
+
 The public default is free simulated play. Devnet and economy labs are optional development modes and require explicit configuration. Mainnet wagering and unrestricted wallet spending are disabled.
 
 Run the checks with:
