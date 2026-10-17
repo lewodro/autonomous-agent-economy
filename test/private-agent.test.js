@@ -11,6 +11,9 @@ test('private agent profiles are bounded and MCP credentials are excluded',()=>{
  assert.deepEqual(agent,{name:'My Scout',strategy:'aggressive',mcp:{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','intent']}});
  assert.throws(()=>validatePrivateAgent({name:'x',strategy:'aggressive'}));
  assert.throws(()=>validatePrivateAgent({name:'Valid Name',strategy:'aggressive',mcp:{controller_type:'mcp',endpoint:'http://localhost/mcp',capabilities:[]}}));
+ assert.throws(()=>validatePrivateAgent({name:'1invalid',strategy:'balanced'}));
+ const deduped=validatePrivateAgent({name:'Agent 2',strategy:'balanced',mcp:{controller_type:'mcp',endpoint:'https://agent.example/mcp',capabilities:['observe','observe','intent']}});
+ assert.deepEqual(deduped.mcp.capabilities,['observe','intent']);
 });
 test('private agent replaces only the owner arena roster slot',async()=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'private-agent-'));try{
