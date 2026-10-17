@@ -120,6 +120,8 @@ try{
  assert.equal(privateExport.body.custom_agent.name,'Browser Agent','private export should contain the created agent');
  assert.equal(privateExport.body.custom_agent.strategy,'aggressive','private export should retain the selected strategy');
  assert.equal(await evaluate("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.agents.some(a=>a.name==='Browser Agent'))"),false,'private agents must not enter canonical rankings');
+ await send('Page.navigate',{url:base+'/labs/world'});
+ await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
  const releasedPresence=await evaluate("(()=>{const player=sessionStorage.getItem('aae-world-presence-v1:main:player'),token=sessionStorage.getItem('aae-world-presence-v1:main:token');return fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:player,session_token:token})}).then(r=>{sessionStorage.removeItem('aae-world-presence-v1:main:player');sessionStorage.removeItem('aae-world-presence-v1:main:token');return r.status})})()");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');

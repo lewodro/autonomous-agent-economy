@@ -5,7 +5,7 @@ const DIRECTIONS = new Set(['up', 'down', 'left', 'right']);
 const ANIMATIONS = new Set(['idle', 'walk']);
 // Keep presence inside the avatar-center walkable rectangle from web/src/world/map.ts
 // (map border 40/64 px, avatar collision radius 12 px).
-export const WORLD_PLAYABLE_BOUNDS = Object.freeze({ minX: 52, minY: 76, maxX: 1100, maxY: 812 });
+export const WORLD_PLAYABLE_BOUNDS = Object.freeze({ minX: 52, minY: 76, maxX: 1484, maxY: 972 });
 
 function fail(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
