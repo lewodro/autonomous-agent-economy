@@ -7,6 +7,7 @@ export interface AgentProfile {
   scope:string;recentWinner:boolean;roomId:string|null;arenaStatus:'fighting'|'finished'|'queued';
   memory:{matchId:string;opponent:string;move:string;observed:string;runId:string;game:string}[];
   latestMatch:{runId:string;matchId:string;game:string}|null;
+  mind?:{version:number;agent_id:string;identity:{personality:string;strategy:string};goals:{type:string;summary:string}[];memory:{short_term:unknown[];long_term:unknown[];opponent_notes:unknown[]};controller:{type:string};visibility:'public'|'private'};
   survival?:{matches:number;wins:number;losses:number;damage_dealt:number;damage_taken:number;attacks_landed:number;target_changes:number;retreat_count:number;time_alive:number;eliminations:number;times_cornered:number;escapes:number;average_placement:number|null;latest_placement:number|null;latest_research:string|null};
 }
 export interface MatchRecord {

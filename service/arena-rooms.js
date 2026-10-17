@@ -6,6 +6,7 @@ import { createState } from '../src/economy.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { validateState } from '../src/storage.js';
 import { withStorageFailure } from './http-error.js';
+import { migrateAgentMind } from './agent-mind.js';
 
 const SLOTS = [['rps-1','rps'],['rps-2','rps'],['ttt-1','tictactoe'],['ttt-2','tictactoe']];
 const MAX_STEP_RETRIES = 3;
@@ -61,11 +62,11 @@ export class ArenaRoomPool {
   }
   runs() {return [...this.rooms.values()].flatMap(r=>[r.saved,...r.saved.previous].map(run=>({...run,roomId:r.saved.id,game:r.saved.game})));}
   setAgentOverride(agentOverride) { this.agentOverride=agentOverride||null;for(const room of this.rooms.values()){this.applyAgentOverride(room.state);this.applyAgentOverride(room.saved.state);for(const run of room.saved.previous)this.applyAgentOverride(run.state);} }
-  applyAgentOverride(state) { if(!this.agentOverride||!Array.isArray(state?.agents))return;const agent=state.agents.find(value=>value.id==='agent-1');if(!agent)return;agent.name=this.agentOverride.name;agent.strategy=this.agentOverride.strategy;agent.sprite=this.agentOverride.sprite||agent.sprite; }
+  applyAgentOverride(state) { if(!this.agentOverride||!Array.isArray(state?.agents))return;const agent=state.agents.find(value=>value.id==='agent-1');if(!agent)return;agent.name=this.agentOverride.name;agent.strategy=this.agentOverride.strategy;agent.sprite=this.agentOverride.sprite||agent.sprite;agent.mind=this.agentOverride.mind; }
   profiles() {
     // Start with retained epochs oldest-first so timestamp ties remain chronological.
     const chronologicalRuns=this.runs().reverse();
-    const bases=createState().agents;if(this.agentOverride){const base=bases.find(value=>value.id==='agent-1');if(base){base.name=this.agentOverride.name;base.strategy=this.agentOverride.strategy;base.sprite=this.agentOverride.sprite||base.sprite;}}
+    const bases=createState().agents;if(this.agentOverride){const base=bases.find(value=>value.id==='agent-1');if(base){base.name=this.agentOverride.name;base.strategy=this.agentOverride.strategy;base.sprite=this.agentOverride.sprite||base.sprite;base.mind=this.agentOverride.mind;}}
     return bases.map(base=>{
       const entries=chronologicalRuns.flatMap(run=>run.state.matches.filter(m=>m.status==='settled'&&m.players.includes(base.id)).map(match=>({run,match})))
         .sort((a,b)=>completionTime(a).localeCompare(completionTime(b)));
@@ -82,7 +83,7 @@ export class ArenaRoomPool {
         recentWinner:!!latest&&latest.match.result!=='draw'&&latest.match.players[latest.match.result==='a'?0:1]===base.id,
         roomId:linked?.id||null,arenaStatus:active?'fighting':linked?.status==='finished'?'finished':'queued',
         memory:entries.slice(-6).map(({run,match})=>({...run.state.agents.find(a=>a.id===base.id).memory.find(m=>m.matchId===match.id),runId:run.runId,game:run.game})),
-        latestMatch:latest?{runId:latest.run.runId,matchId:latest.match.id,game:latest.run.game}:null};
+        latestMatch:latest?{runId:latest.run.runId,matchId:latest.match.id,game:latest.run.game}:null,mind:base.mind||migrateAgentMind(base)};
     });
   }
   statistics() {

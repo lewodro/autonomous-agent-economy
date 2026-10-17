@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ArenaRoomPool } from './arena-rooms.js';
 import { ArenaSurvivalService } from './arena-survival.js';
+import { createAgentMind } from './agent-mind.js';
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_INSTANCES=40;
@@ -18,9 +19,9 @@ export function validatePrivateAgent(input={}){
     let endpoint;try{endpoint=new URL(mcp.endpoint);}catch{throw Object.assign(new Error('MCP endpoint must be HTTPS'),{status:400});}
     if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password)throw Object.assign(new Error('MCP endpoint must be HTTPS without embedded credentials'),{status:400});
     if(!Array.isArray(mcp.capabilities)||mcp.capabilities.length>6||!mcp.capabilities.every(value=>typeof value==='string'&&/^[a-z_]{1,32}$/.test(value)))throw Object.assign(new Error('Invalid MCP capabilities'),{status:400});
-    return {name:input.name.trim(),strategy:input.strategy,mcp:{controller_type:'mcp',endpoint:endpoint.toString(),capabilities:[...new Set(mcp.capabilities)]}};
+    return {name:input.name.trim(),strategy:input.strategy,mind:createAgentMind({agentId:'agent-1',personality:input.strategy,strategy:input.strategy,controller:{type:'mcp'},visibility:'private'}),mcp:{controller_type:'mcp',endpoint:endpoint.toString(),capabilities:[...new Set(mcp.capabilities)]}};
   }
-  return {name:input.name.trim(),strategy:input.strategy,mcp:{controller_type:'builtin',endpoint:null,capabilities:[]}};
+  return {name:input.name.trim(),strategy:input.strategy,mind:createAgentMind({agentId:'agent-1',personality:input.strategy,strategy:input.strategy,controller:{type:'builtin'},visibility:'private'}),mcp:{controller_type:'builtin',endpoint:null,capabilities:[]}};
 }
 
 class PrivateArenaSession {
