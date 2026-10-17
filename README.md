@@ -33,6 +33,65 @@ DISCOVER → EVALUATE → TRANSACT → EXECUTE → VERIFY → SETTLE → LEARN
 
 The public launch is free and requires no wallet. Mock accounting, local-validator flows, and explicitly labeled Devnet experiments test the economic boundaries. Mainnet agent funding and real-value public wagering remain disabled.
 
+## Run it locally
+
+This is an open-source MIT project. You can run the free simulation locally with the same commands used by the public release.
+
+### 1. Install the toolchain
+
+Install **Node.js 22+**, **npm**, and **Rust 1.89+** with Cargo. A wallet, Solana account, model key, or hosted database is not required.
+
+### 2. Clone and build
+
+```bash
+git clone https://github.com/lewodro/autonomous-agent-economy.git
+cd autonomous-agent-economy
+npm install
+npm run build
+```
+
+### 3. Start the server
+
+```bash
+npm start
+```
+
+Open these pages in your browser:
+
+- `http://localhost:3000/world` — shared walkable world and presence
+- `http://localhost:3000/arena` — shared Survival, RPS, Tic-Tac-Toe, and research
+- `http://localhost:3000/private-arena` — this browser's isolated multi-mode arena
+- `http://localhost:3000/` — private Last Seat experiments
+- `http://localhost:3000/post` — readable project history
+
+### 4. Explore the open-source pieces
+
+```bash
+npm run demo:service-market       # disposable simulated service-market run
+npm run demo:service-market -- /tmp/agent-service-market  # durable local run
+npm run demo:economy              # economy projection demo
+npm run mcp:arena                 # local MCP arena server
+cargo test --manifest-path rust/Cargo.toml --locked
+```
+
+Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [operations commands](docs/operations/commands.md) for storage and production settings.
+- `http://localhost:3000/` — private Last Seat experiments
+- `http://localhost:3000/post` — curated development history
+
+Useful commands:
+
+```bash
+npm test
+npm run lint
+cargo test --manifest-path rust/Cargo.toml --locked
+npm run test:browser:world:ci
+npm run demo:economy
+npm run demo:service-market -- /tmp/agent-service-market
+npm run mcp:arena
+```
+
+No paid provider, wallet, or blockchain is required for normal development or the free public experience.
+
 ## Two experiences, one website
 
 ### Shared main world
@@ -235,65 +294,6 @@ npm run examples:check   # checked-in simulation and economy examples
 ```
 
 Current baseline: **225 tests passing, 4 intentionally skipped**. The skipped checks require an optional local validator process; they are not hidden failures. No wallet, API key, paid provider, or blockchain connection is needed for the free path.
-
-## Run it locally
-
-This is an open-source MIT project. You can run the free simulation locally with the same commands used by the public release.
-
-### 1. Install the toolchain
-
-Install **Node.js 22+**, **npm**, and **Rust 1.89+** with Cargo. A wallet, Solana account, model key, or hosted database is not required.
-
-### 2. Clone and build
-
-```bash
-git clone https://github.com/lewodro/autonomous-agent-economy.git
-cd autonomous-agent-economy
-npm install
-npm run build
-```
-
-### 3. Start the server
-
-```bash
-npm start
-```
-
-Open these pages in your browser:
-
-- `http://localhost:3000/world` — shared walkable world and presence
-- `http://localhost:3000/arena` — shared Survival, RPS, Tic-Tac-Toe, and research
-- `http://localhost:3000/private-arena` — this browser's isolated multi-mode arena
-- `http://localhost:3000/` — private Last Seat experiments
-- `http://localhost:3000/post` — readable project history
-
-### 4. Explore the open-source pieces
-
-```bash
-npm run demo:service-market       # disposable simulated service-market run
-npm run demo:service-market -- /tmp/agent-service-market  # durable local run
-npm run demo:economy              # economy projection demo
-npm run mcp:arena                 # local MCP arena server
-cargo test --manifest-path rust/Cargo.toml --locked
-```
-
-Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [operations commands](docs/operations/commands.md) for storage and production settings.
-- `http://localhost:3000/` — private Last Seat experiments
-- `http://localhost:3000/post` — curated development history
-
-Useful commands:
-
-```bash
-npm test
-npm run lint
-cargo test --manifest-path rust/Cargo.toml --locked
-npm run test:browser:world:ci
-npm run demo:economy
-npm run demo:service-market -- /tmp/agent-service-market
-npm run mcp:arena
-```
-
-No paid provider, wallet, or blockchain is required for normal development or the free public experience.
 
 ## Self-hosting and public deployment
 
