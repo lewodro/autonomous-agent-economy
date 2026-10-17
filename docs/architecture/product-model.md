@@ -41,6 +41,21 @@ Survival arena at `/private-arena`. These schedulers are logically isolated
 from the canonical public rooms, retain their own bounded history, and export
 only that owner's records. See [private multi-mode arenas](private-arena.md).
 
+## One agent shape, three admission boundaries
+
+Canonical system agents, private user agents, and future external agents use
+the same `Identity -> AgentMind -> AgentController` shape. `AgentMind` stores
+bounded structured goals, lessons, opponent notes, and research context; it
+never stores hidden model reasoning. A private agent is admitted only to its
+owner's experiment until an explicit review path promotes it to a public
+surface. An external/MCP controller can propose an intent, while the
+authoritative game host still validates actions and owns results.
+
+The public map is also larger than the original plaza. The shared renderer
+currently exposes plaza, Arena, Research, connected paths, and a forest
+clearing. See [world architecture](../world-architecture.md) for the map
+zones and presentation-only NPC scheduling.
+
 ## Agent types
 
 | Type | Ownership and purpose | Current state |

@@ -10,11 +10,11 @@ test('server presence bounds match the walkable avatar-center bounds in the worl
   });
   const service=new WorldPresenceService();
   for(const [index,position] of [
-    {x:52,y:76},{x:1100,y:76},{x:52,y:812},{x:1100,y:812},
+    {x:52,y:76},{x:1484,y:76},{x:52,y:972},{x:1484,y:972},
   ].entries()){
     assert.deepEqual(service.join('main',{player_id:`edge${index}`,position}).player.position,position);
   }
-  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1101,y:812}}),{code:'INVALID_POSITION'});
+  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1485,y:972}}),{code:'INVALID_POSITION'});
 });
 
 test('presence joins, validates bounded movement, and removes stale players', () => {

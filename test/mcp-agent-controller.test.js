@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { McpAgentController, approvedObservation, validateAgentIntent, safeFallbackIntent } from '../service/mcp-agent-controller.js';
 
 test('MCP observation is public and bounded',()=>{
- const observation=approvedObservation({agent_id:'ember',game_state:'survival',hp:42,position:{x:1,y:2},legal_actions:['attack','bad'],nearby_agents:['watcher-1'],research_summary:'public'});
- assert.deepEqual(observation.legal_actions,['attack']);assert.equal(observation.private,undefined);
+ const observation=approvedObservation({agent_id:'ember',game_state:'survival',hp:42,position:{x:1,y:2},legal_actions:['attack','bad'],nearby_agents:['watcher-1'],research_summary:'public',mind:{identity:{personality:'analyst',strategy:'balanced'},long_term:[{summary:'public lesson'}]}});
+ assert.deepEqual(observation.legal_actions,['attack']);assert.equal(observation.mind.identity.personality,'analyst');assert.equal(observation.private,undefined);
 });
 test('MCP valid intent is accepted and invalid intent is rejected',()=>{
  assert.deepEqual(validateAgentIntent({action:'move',x:1,y:-1}),{action:'move',x:1,y:-1});

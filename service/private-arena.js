@@ -2,15 +2,19 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ArenaRoomPool } from './arena-rooms.js';
 import { ArenaSurvivalService } from './arena-survival.js';
+import { createAgentMind } from './agent-mind.js';
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_INSTANCES=40;
 const MAX_ACTIVE=20;
 const AGENT_NAME=/^[A-Za-z][A-Za-z0-9 _-]{1,31}$/;
 const STRATEGIES=new Set(['balanced','aggressive','conservative','opportunist','cooperative']);
+const SPRITES=new Set(Array.from({length:20},(_,index)=>`assets/agents/${String(index+1).padStart(2,'0')}-${['founder','trader','gambler','analyst','defender','strategist','social','degen','conservative','aggressive','explorer','builder','quant','random','tournament','mentor','rival','observer','adaptive','wild-card'][index]}.png`));
 export function validatePrivateAgent(input={}){
   if(!input||typeof input!=='object'||!AGENT_NAME.test(input.name||''))throw Object.assign(new Error('Agent name must be 2-32 letters, numbers, spaces, _ or -'),{status:400});
   if(!STRATEGIES.has(input.strategy))throw Object.assign(new Error('Choose an approved built-in strategy'),{status:400});
+  if(input.sprite!==undefined&&(!SPRITES.has(input.sprite)))throw Object.assign(new Error('Choose an approved agent sprite'),{status:400});
+  const sprite=input.sprite||'assets/agents/01-founder.png';
   const mcp=input.mcp===undefined?{controller_type:'builtin',endpoint:null,capabilities:[]}:input.mcp;
   if(!mcp||!['builtin','mcp'].includes(mcp.controller_type))throw Object.assign(new Error('Invalid controller type'),{status:400});
   if(mcp.controller_type==='mcp'){
@@ -18,9 +22,9 @@ export function validatePrivateAgent(input={}){
     let endpoint;try{endpoint=new URL(mcp.endpoint);}catch{throw Object.assign(new Error('MCP endpoint must be HTTPS'),{status:400});}
     if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password)throw Object.assign(new Error('MCP endpoint must be HTTPS without embedded credentials'),{status:400});
     if(!Array.isArray(mcp.capabilities)||mcp.capabilities.length>6||!mcp.capabilities.every(value=>typeof value==='string'&&/^[a-z_]{1,32}$/.test(value)))throw Object.assign(new Error('Invalid MCP capabilities'),{status:400});
-    return {name:input.name.trim(),strategy:input.strategy,mcp:{controller_type:'mcp',endpoint:endpoint.toString(),capabilities:[...new Set(mcp.capabilities)]}};
+    return {name:input.name.trim(),sprite,strategy:input.strategy,mind:createAgentMind({agentId:'agent-1',personality:input.strategy,strategy:input.strategy,controller:{type:'mcp'},visibility:'private'}),mcp:{controller_type:'mcp',endpoint:endpoint.toString(),capabilities:[...new Set(mcp.capabilities)]}};
   }
-  return {name:input.name.trim(),strategy:input.strategy,mcp:{controller_type:'builtin',endpoint:null,capabilities:[]}};
+  return {name:input.name.trim(),sprite,strategy:input.strategy,mind:createAgentMind({agentId:'agent-1',personality:input.strategy,strategy:input.strategy,controller:{type:'builtin'},visibility:'private'}),mcp:{controller_type:'builtin',endpoint:null,capabilities:[]}};
 }
 
 class PrivateArenaSession {

@@ -1,5 +1,10 @@
 import type { Interactable, Position, Rect } from './model.js';
-export const MAP = { width: 1152, height: 864, tile: 32, spawn: { x: 560, y: 480 } };
+export const MAP = { width: 1536, height: 1024, tile: 32, spawn: { x: 560, y: 480 } };
+export type WorldZone = 'plaza'|'arena'|'research'|'forest'|'path_north'|'path_east';
+export const ZONES: Record<WorldZone, Rect> = {
+  plaza:{x:320,y:300,width:560,height:430}, arena:{x:780,y:96,width:300,height:620}, research:{x:680,y:96,width:300,height:230},
+  forest:{x:1120,y:128,width:320,height:720}, path_north:{x:400,y:64,width:360,height:220}, path_east:{x:960,y:400,width:520,height:160},
+};
 export interface Building extends Rect { name: string; color: string }
 export const BUILDINGS: Building[] = [
   { x: 112, y: 120, width: 256, height: 176, name: 'AGENT HOUSE', color: '#9e7154' },
@@ -8,18 +13,22 @@ export const BUILDINGS: Building[] = [
 ];
 export const TREES: Position[] = [
   {x:60,y:120},{x:65,y:280},{x:60,y:710},{x:340,y:770},{x:1060,y:180},{x:1056,y:350},{x:1030,y:770},
+  {x:1160,y:190},{x:1270,y:170},{x:1375,y:230},{x:1190,y:360},{x:1330,y:410},{x:1410,y:560},{x:1160,y:650},{x:1290,y:720},{x:1380,y:760},
 ];
+export const ROCKS: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650}];
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y})=>({x,y:y+24,width:12,height:28}));
 export const WALLS: Rect[] = [...BUILDINGS,
   { x: 500, y: 340, width: 112, height: 64 }, // plaza fountain
   { x: 184, y: 530, width: 80, height: 48 }, // free table
   { x: 480, y: 720, width: 160, height: 32 }, // archive terminal
   ...TREE_TRUNKS,
+  ...ROCKS.map(({x,y})=>({x:x-12,y:y-8,width:24,height:16})),
 ];
 export const LANDMARKS: Interactable[] = [
   { id: 'arena-door', type: 'arena', position: { x: 928, y: 674 }, radius: 72, label: 'Enter Arena' },
   { id: 'plaza-table', type: 'table', position: { x: 224, y: 609 }, radius: 68, label: 'Sit · free Tic-Tac-Toe' },
   { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open arena statistics' },
+  { id: 'forest-clearing', type: 'zone', position: { x: 1280, y: 500 }, radius: 86, label: 'Explore forest clearing' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < 40 + radius || position.y < 64 + radius || position.x > MAP.width - 40 - radius || position.y > MAP.height - 40 - radius) return true;
