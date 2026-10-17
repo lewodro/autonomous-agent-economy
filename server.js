@@ -164,11 +164,12 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='GET')return json(res,405,{error:'Survival state is read-only'});
       return json(res,200,arenaSurvival.snapshot());
     }
-    if(route==='/api/private-arena'||route==='/api/private-arena/start'||route==='/api/private-arena/stop'||route==='/api/private-arena/export'){
+    if(route==='/api/private-arena'||route==='/api/private-arena/start'||route==='/api/private-arena/stop'||route==='/api/private-arena/export'||route==='/api/private-arena/agent'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(req.method==='GET'&&route==='/api/private-arena')return json(res,200,await privateArena.view(visitor.id),cookie);
       if(req.method==='GET'&&route==='/api/private-arena/export')return json(res,200,await privateArena.export(visitor.id),{...cookie,'Content-Disposition':'attachment; filename="private-arena.json"'});
       if(req.method!=='POST')return json(res,405,{error:'Private arena command requires POST'},cookie);
+      if(route==='/api/private-arena/agent')return json(res,200,await privateArena.setAgent(visitor.id,await body(req,4096)),cookie);
       if(route==='/api/private-arena/start'&&!privateArenaStarts.allow())return json(res,429,{error:'Private arena starts are temporarily limited'},cookie);
       const result=route.endsWith('/start')?await privateArena.start(visitor.id):await privateArena.stop(visitor.id);
       return json(res,200,result,cookie);

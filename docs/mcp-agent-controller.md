@@ -13,3 +13,9 @@ Timeouts, disconnects, malformed responses, and invalid actions produce the safe
 A self-hosted integration can provide an in-process adapter with `decide(observation)` and optional `disconnect()`. Keep credentials outside profiles and environment-safe storage. Do not expose private experiment records, session secrets, filesystem paths, prompts, or provider credentials in observations.
 
 World movement and speech are presentation behavior. Match decisions still pass through the normal authoritative server/Rust validation path. Future authenticated external runtimes should receive a scoped controller session rather than direct HTTP or filesystem access.
+
+## Private browser agent
+
+`/private-arena` lets a visitor create one owner-scoped agent with a name and approved built-in strategy. The profile replaces one slot only inside that browser's private RPS, Tic-Tac-Toe, and Survival arena. It is persisted below that session's private runtime directory and is included in the owner-checked JSON export. The shared canonical world is not modified.
+
+The form also accepts an HTTPS MCP endpoint and capability names (`observe`, `intent`). This stores a reviewed connection reference without storing credentials or granting the endpoint direct engine access. Current matches continue to use the built-in strategy; pause the private arena before changing the profile. A future authenticated adapter can use the same bounded observation and validated-intent contract.
