@@ -109,6 +109,17 @@ try{
  const archive=await evaluate(`fetch(${JSON.stringify(archiveUrl)}).then(async r=>({status:r.status,contentType:r.headers.get('content-type'),body:await r.json()}))`);
  assert.equal(archive.status,200);assert.ok(archive.contentType.includes('application/json'));assert.ok(archive.body&&typeof archive.body==='object');
  await evaluate('document.getElementById("interaction-close").click()');
+ // Exercise the smallest user-created-agent path. This remains owner-scoped
+ // to the browser session and does not alter the canonical world roster.
+ await send('Page.navigate',{url:base+'/private-arena'});
+ await wait('location.pathname==="/private-arena"&&document.getElementById("agent-form")');
+ await evaluate("document.getElementById('agent-name').value='Browser Agent';document.getElementById('agent-strategy').value='aggressive';document.getElementById('agent-form').requestSubmit()");
+ await wait("document.getElementById('agent-status').textContent.includes('Browser Agent')&&document.getElementById('agent-status').textContent.includes('private to this browser')");
+ const privateExport=await evaluate("fetch('/api/private-arena/export').then(async r=>({status:r.status,body:await r.json()}))");
+ assert.equal(privateExport.status,200,'private agent export should be available to its owner');
+ assert.equal(privateExport.body.custom_agent.name,'Browser Agent','private export should contain the created agent');
+ assert.equal(privateExport.body.custom_agent.strategy,'aggressive','private export should retain the selected strategy');
+ assert.equal(await evaluate("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.agents.some(a=>a.name==='Browser Agent'))"),false,'private agents must not enter canonical rankings');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
  const releasedPresence=await evaluate("(()=>{const player=sessionStorage.getItem('aae-world-presence-v1:main:player'),token=sessionStorage.getItem('aae-world-presence-v1:main:token');return fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:player,session_token:token})}).then(r=>{sessionStorage.removeItem('aae-world-presence-v1:main:player');sessionStorage.removeItem('aae-world-presence-v1:main:token');return r.status})})()");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');
