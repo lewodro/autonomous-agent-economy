@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -26,7 +26,8 @@ test('visitor can pass ambient NPCs while keeping them in interaction range',()=
  assert.equal(presenceObstacles([visitor,npc],npc).length,1,'NPC controllers use the same presence collision geometry');
 });
 test('invalid saved positions reset; interactions require spatial proximity', () => {
-  for(const value of [null,{x:NaN,y:20},{x:200,y:200},{x:-1,y:100}])assert.deepEqual(safePosition(value),MAP.spawn);
+  for(const value of [null,{x:NaN,y:20},{x:200,y:200},{x:MAP.minX-1,y:100}])assert.deepEqual(safePosition(value),MAP.spawn);
+  assert.deepEqual(safePosition({x:-1,y:100}),{x:-1,y:100});
   assert.equal(nearestInteraction(MAP.spawn,LANDMARKS),undefined);
   assert.equal(nearestInteraction({x:928,y:660},LANDMARKS)?.id,'arena-door');
 });
@@ -51,9 +52,13 @@ test('all plaza interactions remain reachable from the visitor spawn',()=>{
  }
 });
 test('camera remains inside the map',()=>{
-  assert.deepEqual(followCamera({x:0,y:0},{x:-1,y:-1},600,400,1),{x:0,y:0});
-  const c=followCamera({x:0,y:0},{x:9999,y:9999},600,400,100);
-  assert.deepEqual(c,{x:1192,y:752});
+  assert.deepEqual(followCamera({x:0,y:0},{x:-9999,y:-9999},600,400,100),{x:MAP.minX,y:MAP.minY});
+  assert.deepEqual(followCamera({x:0,y:0},{x:9999,y:9999},600,400,100),{x:MAP.minX+MAP.width-600,y:MAP.minY+MAP.height-400});
+});
+test('the old edge is now walkable in all four directions while the new edge blocks',()=>{
+  assert.equal(MAP.width*MAP.height,4*1792*1152);
+  for(const point of [{x:-200,y:600},{x:2020,y:600},{x:600,y:-200},{x:600,y:1400}])assert.equal(collides(point),false,`extension ${JSON.stringify(point)} should be walkable`);
+  for(const point of [{x:WORLD_BOUNDS.minX-1,y:600},{x:WORLD_BOUNDS.maxX+1,y:600},{x:600,y:WORLD_BOUNDS.minY-1},{x:600,y:WORLD_BOUNDS.maxY+1}])assert.equal(collides(point),true,'the new edge should block movement');
 });
 test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});

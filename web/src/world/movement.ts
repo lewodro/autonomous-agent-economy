@@ -24,8 +24,8 @@ export function moveActor(actor: WorldActor, input: WorldInput, seconds: number,
     ? direction.x > 0 ? 'right' : 'left' : direction.y > 0 ? 'down' : 'up';
 }
 export function followCamera(camera: Position, player: Position, width: number, height: number, seconds: number): Position {
-  const target = { x: Math.max(0, Math.min(MAP.width - width, player.x - width / 2)),
-    y: Math.max(0, Math.min(MAP.height - height, player.y - height / 2)) };
+  const target = { x: Math.max(MAP.minX, Math.min(MAP.minX + MAP.width - width, player.x - width / 2)),
+    y: Math.max(MAP.minY, Math.min(MAP.minY + MAP.height - height, player.y - height / 2)) };
   const blend = 1 - Math.exp(-8 * Math.max(0, seconds));
   return { x: camera.x + (target.x - camera.x) * blend, y: camera.y + (target.y - camera.y) * blend };
 }

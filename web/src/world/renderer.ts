@@ -41,8 +41,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
   private paintMap():void {
     const c=this.map.getContext('2d')!;c.imageSmoothingEnabled=false;
     const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
-    rect(0,0,MAP.width,MAP.height,'#253c36');
-    for(let y=64;y<MAP.height-40;y+=32)for(let x=40;x<MAP.width-40;x+=32){
+    c.translate(-MAP.minX,-MAP.minY);
+    rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
+    for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
       rect(x,y,32,32,(x*7+y*13)%5===0?'#344b3e':'#30483c');
       if((x+y)%96===0)rect(x+8,y+20,4,3,'#4b6146');
     }
@@ -80,8 +81,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(const {x,y} of ROCKS){rect(x-12,y-8,24,16,'#696b60');rect(x-6,y-13,12,7,'#858474');}
     for(const {x,y} of CAMPFIRES){c.fillStyle='#533f36';c.fillRect(x-16,y+8,32,8);c.fillStyle='#ed9a4e';c.fillRect(x-7,y-10,14,18);c.fillStyle='#f4d178';c.fillRect(x-3,y-16,6,10);}
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1575,520);
-    rect(32,56,MAP.width-64,8,'#77705b');rect(32,MAP.height-40,MAP.width-64,8,'#77705b');
-    rect(32,56,8,MAP.height-88,'#77705b');rect(MAP.width-40,56,8,MAP.height-88,'#77705b');
+    rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
+    rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }
   render(frame:WorldFrame):void {
     const {width,height}=this.viewport();const ratio=Math.min(2,window.devicePixelRatio||1);
@@ -89,7 +90,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     if(this.canvas.width!==pixelWidth||this.canvas.height!==pixelHeight){this.canvas.width=pixelWidth;this.canvas.height=pixelHeight;}
     const c=this.ctx;c.setTransform(ratio*this.scale,0,0,ratio*this.scale,0,0);c.imageSmoothingEnabled=false;
     c.fillStyle='#1c2b28';c.fillRect(0,0,width,height);c.translate(-Math.round(frame.camera.x),-Math.round(frame.camera.y));
-    c.drawImage(this.map,0,0);
+    c.drawImage(this.map,MAP.minX,MAP.minY);
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);

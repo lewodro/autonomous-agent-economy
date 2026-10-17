@@ -6,15 +6,15 @@ import { MAP } from '../web/dist/world/map.js';
 
 test('server presence bounds match the walkable avatar-center bounds in the world map',()=>{
   assert.deepEqual(WORLD_PLAYABLE_BOUNDS,{
-    minX:40+12,minY:64+12,maxX:MAP.width-40-12,maxY:MAP.height-40-12,
+    minX:MAP.minX+40+12,minY:MAP.minY+64+12,maxX:MAP.minX+MAP.width-40-12,maxY:MAP.minY+MAP.height-40-12,
   });
   const service=new WorldPresenceService();
   for(const [index,position] of [
-    {x:52,y:76},{x:1740,y:76},{x:52,y:1100},{x:1740,y:1100},
+    {x:-844,y:-500},{x:2636,y:-500},{x:-844,y:1676},{x:2636,y:1676},
   ].entries()){
     assert.deepEqual(service.join('main',{player_id:`edge${index}`,position}).player.position,position);
   }
-  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1741,y:1100}}),{code:'INVALID_POSITION'});
+  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:2637,y:1676}}),{code:'INVALID_POSITION'});
 });
 
 test('presence joins, validates bounded movement, and removes stale players', () => {
