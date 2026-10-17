@@ -104,11 +104,14 @@ export class WorldPresenceService {
     const player = this.requirePlayer(worldId, player_id, session_token), now = this.now();
     if (now - player.lastMoveAt < this.minUpdateMs) throw fail('PRESENCE_RATE_LIMITED', 'Move updates are limited', 429);
     const next = this.sanitizePosition(position);
-    // Match the local world controller's 150 px/s while allowing a few pixels
-    // for network/render jitter; idle time cannot bank teleport distance.
+    // Match the local world controller's 150 px/s. Short updates receive a
+    // bounded render/network-jitter allowance because backgrounded and busy
+    // browsers can batch frames; longer gaps retain the strict anti-teleport
+    // budget and idle time still cannot bank distance.
     const elapsed = Math.min(Math.max(0, now - player.lastMoveAt), 250);
     const distance = Math.hypot(next.x - player.position.x, next.y - player.position.y);
-    if (distance > elapsed * 0.15 + 6) throw fail('INVALID_POSITION', 'Movement exceeded the world speed limit');
+    const shortUpdateRate = elapsed <= 120 ? 0.22 : 0.15;
+    if (distance > elapsed * shortUpdateRate + 6) throw fail('INVALID_POSITION', 'Movement exceeded the world speed limit');
     const nextDirection = DIRECTIONS.has(direction) ? direction : player.direction;
     const nextAnimation = ANIMATIONS.has(animation_state) ? animation_state : 'idle';
     const changed = next.x !== player.position.x || next.y !== player.position.y

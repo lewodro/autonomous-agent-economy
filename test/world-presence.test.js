@@ -94,6 +94,15 @@ test('movement allowance matches world speed and idle time cannot bank teleport 
   assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:190,y:100}}),{code:'INVALID_POSITION'});
 });
 
+test('short presence updates tolerate a delayed render frame without permitting a teleport',()=>{
+  let now=1_000;const service=new WorldPresenceService({now:()=>now,minUpdateMs:50});
+  const joined=service.join('main',{player_id:'visitor',position:{x:100,y:100}});
+  now+=60;
+  assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:118,y:100}}).player.position.x,118);
+  now+=60;
+  assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:150,y:100}}),{code:'INVALID_POSITION'});
+});
+
 test('heartbeats are rate limited and only broadcast changed activity',()=>{
   let now=1_000;const service=new WorldPresenceService({now:()=>now,minHeartbeatMs:1_000});
   const joined=service.join('main',{player_id:'visitor'}),events=[];
