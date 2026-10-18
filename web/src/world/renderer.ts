@@ -155,7 +155,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
     }
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET · SIMULATED GOODS',900,1088);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET',900,1088);
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }
@@ -202,6 +202,10 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
       c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);}
     if(actor.recentWinner){c.fillStyle='#edbe66';c.fillRect(x-6,y-68,12,5);c.fillRect(x-6,y-73,3,5);c.fillRect(x-1,y-75,3,7);c.fillRect(x+4,y-73,3,5);}
+    if(actor.type==='npc'&&actor.speech&&actor.speech.expiresAt>time){
+      const lift=reduced?0:Math.floor(time/320)%2;c.fillStyle='#1a2928e8';c.fillRect(x-7,y-82-lift,14,16);
+      c.fillStyle='#f1cf78';c.fillRect(x-1,y-79-lift,3,8);c.fillRect(x-1,y-68-lift,3,3);
+    }
   }
   destroy():void {this.images.clear();}
 }

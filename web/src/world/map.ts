@@ -9,7 +9,7 @@ export const ZONES: Record<WorldZone, Rect> = {
   plaza:{x:320,y:300,width:880,height:620}, arena:{x:780,y:96,width:300,height:620}, research:{x:680,y:96,width:300,height:230},
   forest:{x:1120,y:128,width:440,height:900}, garden:{x:1440,y:460,width:760,height:680}, agency:{x:1440,y:96,width:260,height:260},
   table_area:{x:96,y:416,width:252,height:276},forest_edge:{x:1840,y:80,width:680,height:800},
-  path_north:{x:400,y:-520,width:360,height:800}, path_east:{x:960,y:400,width:1160,height:160},
+  path_north:{x:400,y:-520,width:360,height:800}, path_east:{x:1056,y:420,width:704,height:300},
   west_expansion:{x:-820,y:-360,width:800,height:1360},east_expansion:{x:1800,y:-360,width:800,height:1360},
   north_expansion:{x:0,y:-500,width:1600,height:480},south_expansion:{x:0,y:1160,width:1800,height:480},
   campfire_clearing:{x:1930,y:660,width:340,height:280},
@@ -59,7 +59,10 @@ export interface WorldPath extends Rect {color?:string}
 export const PATHS: WorldPath[] = [
   {x:392,y:300,width:760,height:560},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},
   {x:140,y:494,width:148,height:152},{x:480,y:688,width:160,height:140},{x:-730,y:420,width:802,height:84},
-  {x:392,y:-420,width:364,height:720},{x:392,y:860,width:364,height:620},{x:1040,y:500,width:600,height:56},
+  {x:392,y:-420,width:364,height:720},{x:392,y:860,width:364,height:620},
+  // Match the established 84 px town road at the plaza edge, then turn into
+  // the east district instead of ending as the previous narrow 56 px strip.
+  {x:1056,y:420,width:704,height:84},{x:1696,y:420,width:64,height:280},
   // West streets form a loose loop around the table and cottage cluster.
   {x:-650,y:260,width:72,height:160},{x:-650,y:260,width:520,height:64},{x:-190,y:260,width:64,height:244},
   {x:-500,y:650,width:254,height:62},{x:-500,y:500,width:62,height:212},{x:-246,y:650,width:318,height:62},
@@ -89,8 +92,37 @@ export const MARKET_PROPS: MarketProp[] = [
   {x:900,y:1392,kind:'well'},{x:710,y:1090,kind:'sign'},{x:548,y:1268,kind:'crates'},
   {x:1190,y:1465,kind:'barrels'},{x:1080,y:1290,kind:'crates'},{x:665,y:1460,kind:'barrels'},
 ];
+function overlaps(rect:Rect,point:Position,radius:number):boolean {
+  return point.x+radius>rect.x&&point.x-radius<rect.x+rect.width&&point.y+radius>rect.y&&point.y-radius<rect.y+rect.height;
+}
+function decorationAllowed(point:Position,radius:number):boolean {
+  if(point.x-radius<MAP.minX+48||point.y-radius<MAP.minY+72||point.x+radius>MAP.minX+MAP.width-48||point.y+radius>MAP.minY+MAP.height-48)return false;
+  return !PATHS.some(path=>overlaps(path,point,radius))&&!BUILDINGS.some(building=>overlaps(building,point,radius));
+}
+/** Natural-ground placement rules keep future decoration off roads and plazas. */
+export function canPlaceTree(point:Position):boolean { return decorationAllowed(point,28); }
+export function canPlaceBush(point:Position):boolean { return decorationAllowed(point,12); }
+export function canPlaceFlower(point:Position):boolean { return decorationAllowed(point,6); }
+export function canPlaceRock(point:Position):boolean { return decorationAllowed(point,10); }
+
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
-export const TREES: WorldTree[] = [
+export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
+export interface VegetationGroup { district:'north'|'south'|'west'|'east'; trees:WorldTree[]; bushes:WorldBush[]; flowers:Rect[]; rocks:Position[] }
+export const VEGETATION_GROUPS: VegetationGroup[] = [
+  {district:'north',trees:[{x:-520,y:-360,scale:.9,tint:1}],bushes:[{x:-475,y:-325,size:22,tint:2},{x:-555,y:-305,size:18}],flowers:[{x:-480,y:-285,width:54,height:24}],rocks:[]},
+  {district:'north',trees:[{x:120,y:-350,scale:1.05,tint:2}],bushes:[{x:170,y:-315,size:24,tint:1}],flowers:[],rocks:[{x:78,y:-305}]},
+  {district:'north',trees:[{x:1320,y:-330,scale:.9}],bushes:[{x:1280,y:-290,size:20,tint:2},{x:1370,y:-280,size:18,tint:1}],flowers:[{x:1288,y:-250,width:58,height:24}],rocks:[]},
+  {district:'south',trees:[{x:-710,y:1290,scale:1.05,tint:2}],bushes:[{x:-655,y:1325,size:22,tint:1}],flowers:[{x:-650,y:1360,width:56,height:24}],rocks:[]},
+  {district:'south',trees:[{x:-350,y:1480,scale:.9,tint:1}],bushes:[{x:-300,y:1510,size:20,tint:2}],flowers:[],rocks:[{x:-395,y:1530}]},
+  {district:'south',trees:[{x:1660,y:1450,scale:1.1}],bushes:[{x:1715,y:1490,size:24,tint:1},{x:1620,y:1510,size:18,tint:2}],flowers:[{x:1690,y:1530,width:62,height:25}],rocks:[]},
+  {district:'west',trees:[{x:-790,y:40,scale:.9}],bushes:[{x:-745,y:78,size:20,tint:1}],flowers:[],rocks:[{x:-730,y:120}]},
+  {district:'west',trees:[{x:-770,y:650,scale:1.1,tint:1}],bushes:[{x:-720,y:690,size:22,tint:2},{x:-810,y:710,size:18}],flowers:[{x:-710,y:730,width:58,height:25}],rocks:[]},
+  {district:'west',trees:[{x:-220,y:980,scale:.95,tint:2}],bushes:[{x:-170,y:1020,size:24,tint:1}],flowers:[],rocks:[{x:-260,y:1040}]},
+  {district:'east',trees:[{x:2180,y:-250,scale:1.05,tint:1}],bushes:[{x:2235,y:-210,size:20,tint:2}],flowers:[{x:2220,y:-175,width:58,height:24}],rocks:[]},
+  {district:'east',trees:[{x:2490,y:400,scale:.9,tint:2}],bushes:[{x:2440,y:445,size:22,tint:1}],flowers:[],rocks:[{x:2520,y:470}]},
+  {district:'east',trees:[{x:2470,y:1210,scale:1.1}],bushes:[{x:2415,y:1250,size:24,tint:2},{x:2520,y:1270,size:18,tint:1}],flowers:[{x:2390,y:1290,width:64,height:26}],rocks:[]},
+];
+const TREE_CANDIDATES: WorldTree[] = [
   {x:60,y:120},{x:65,y:280},{x:60,y:710},{x:340,y:770},{x:1060,y:180},{x:1056,y:350},{x:1030,y:770},
   {x:1160,y:190},{x:1270,y:170},{x:1375,y:230},{x:1190,y:360},{x:1330,y:410},{x:1410,y:560},{x:1160,y:650},{x:1290,y:720},{x:1380,y:760},
   {x:-720,y:-360,scale:1.2,tint:1},{x:-650,y:80,scale:.85,tint:2},{x:-760,y:390,scale:1.15},{x:-540,y:840,scale:.9,tint:1},
@@ -99,9 +131,10 @@ export const TREES: WorldTree[] = [
   {x:1920,y:-280,scale:1.1,tint:2},{x:2380,y:100,scale:.9},{x:2470,y:690,scale:1.2,tint:1},{x:2330,y:1250,scale:.85,tint:2},
   {x:1520,y:960,scale:1.1,tint:1},{x:1680,y:1060,scale:.85,tint:2},{x:1830,y:990,scale:1.2},
   {x:2020,y:940,scale:.9,tint:1},{x:2140,y:660,scale:1.1,tint:2},{x:2040,y:400,scale:.85},
+  ...VEGETATION_GROUPS.flatMap(group=>group.trees),
 ];
-export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
-export const BUSHES: WorldBush[] = [
+export const TREES: WorldTree[] = TREE_CANDIDATES.filter(tree=>canPlaceTree({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)}));
+const BUSH_CANDIDATES: WorldBush[] = [
   {x:1460,y:680,size:28,solid:true},{x:1520,y:790,size:20,tint:1},{x:1580,y:900,size:26,solid:true,tint:2},
   {x:1690,y:550,size:22,tint:1},{x:1810,y:510,size:30,solid:true},{x:1940,y:590,size:20,tint:2},
   {x:2080,y:780,size:28,solid:true,tint:1},{x:1950,y:1040,size:24,tint:2},
@@ -115,15 +148,20 @@ export const BUSHES: WorldBush[] = [
   {x:780,y:1595,size:22,tint:2},{x:1190,y:1580,size:30,solid:true,tint:1},{x:1570,y:1320,size:24,tint:2},
   {x:1480,y:1110,size:20,tint:1},{x:1870,y:1180,size:28,solid:true,tint:2},
   {x:-700,y:545,size:20,tint:1},{x:-330,y:345,size:22,tint:2},{x:-95,y:745,size:18,tint:1},
+  ...VEGETATION_GROUPS.flatMap(group=>group.bushes),
 ];
-export const FLOWER_BEDS: Rect[] = [
+export const BUSHES: WorldBush[] = BUSH_CANDIDATES.filter(canPlaceBush);
+const FLOWER_CANDIDATES: Rect[] = [
   {x:1510,y:600,width:90,height:42},{x:1620,y:830,width:98,height:46},{x:1770,y:570,width:96,height:40},
   {x:1900,y:845,width:102,height:44},{x:2050,y:970,width:94,height:40},
   {x:-742,y:315,width:74,height:32},{x:-410,y:750,width:76,height:30},{x:1480,y:305,width:88,height:32},
   {x:2220,y:290,width:86,height:32},{x:180,y:1360,width:76,height:30},{x:1260,y:1440,width:82,height:30},
   {x:-715,y:550,width:62,height:26},{x:-355,y:350,width:58,height:24},
+  ...VEGETATION_GROUPS.flatMap(group=>group.flowers),
 ];
-export const ROCKS: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420}];
+export const FLOWER_BEDS: Rect[] = FLOWER_CANDIDATES.filter(bed=>canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}));
+const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},...VEGETATION_GROUPS.flatMap(group=>group.rocks)];
+export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
 export const CAMPFIRES: Position[] = [{x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1040,y:1320}];
 // Ordered, collision-free targets provide a cheap loop through every district.
 // The NPC controller still uses the existing movement/collision code.
@@ -146,7 +184,7 @@ export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===90
 /** Developer-only browser probes start just inside the former map edges. */
 export const EXPLORATION_PROBES = {
   west:{x:90,y:430},east:{x:1720,y:430},north:{x:600,y:100},south:{x:700,y:1060},
-  garden:{x:1830,y:750},campfire:{x:1760,y:680},market:{x:820,y:1320},agency:{x:1568,y:340},
+  garden:{x:1830,y:750},campfire:{x:1760,y:680},market:{x:820,y:1320},agency:{x:1568,y:340},eastRoad:{x:1300,y:460},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
