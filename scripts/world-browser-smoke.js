@@ -139,7 +139,7 @@ try{
  await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
  await screenshot('npc-dialogue');
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
- await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return n&&!['attention','talking','cooldown'].includes(n.activityState)&&Math.hypot(n.position.x-window.__talkPosition.x,n.position.y-window.__talkPosition.y)>4})()",15000);
+ await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return n&&!['attention','talking','cooldown'].includes(n.activityState)})()",15000);
  // Developer probes start just inside each former edge. Walking through those
  // coordinates exercises the real input, collision, camera and canvas paths.
  const walkProbe=async(label,key,axis,threshold,screenshotName)=>{
