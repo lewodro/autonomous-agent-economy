@@ -79,13 +79,14 @@ export class CompoundGame {
       this.state.participants.push({id:`agent-${profile.id || index}`,owner:null,name:profile.name || NAMES[index % NAMES.length],type:'agent',role:'prisoner',position:clone(spawn),heat:0,inventory:index % 3 === 0 ? ['scrap'] : ['food'],objective:'Learn the compound and pursue a safe exit.',activity:'Waiting for role assignment',status:'ready',memories:[],personality:profile.strategy || PERSONALITIES[index % PERSONALITIES.length]}); index++;
     }
   }
-  startRound(owner) {
+  startRound(owner, {allowNoOwner = false} = {}) {
     if (this.state.phase === 'finished') { this.state.participants = this.state.participants.filter(value => value.type === 'human'); this.state.phase = 'lobby'; this.state.startedAt = null; this.state.endsAt = null; }
-    const member = this.participant(owner); if (!member) throw fail('COMPOUND_NOT_JOINED', 'Join the compound lobby first', 403);
+    const member = this.participant(owner); if (!member && !allowNoOwner) throw fail('COMPOUND_NOT_JOINED', 'Join the compound lobby first', 403);
     if (this.state.phase === 'active') return this.snapshot(owner);
     this.fillAgents(); this.state.participants.forEach((value,index) => { value.role = roleFor(index, this.state.participants.length); value.status='active'; value.activity=value.role === 'guard' ? 'Patrolling' : 'Following the routine'; value.objective=value.role==='guard'?'Keep the compound secure until the timer ends.':value.role==='smuggler'?'Move contraband to the utility exit.':value.role==='informant'?'Identify a suspicious escape plan for the guards.':'Find cooperation, tools, and a safe route out.'; });
     const now = this.now(); this.state.phase='active'; this.state.round++; this.state.startedAt=new Date(now).toISOString(); this.state.endsAt=now+this.roundSeconds*1000; this.state.events=[]; this.record(`Round ${this.state.round} started with ${this.state.participants.length} participants.`); this.bump(); return this.snapshot(owner);
   }
+  startAgentRound() { return this.startRound(null, {allowNoOwner:true}); }
   move(owner, input = {}) {
     const player = this.participant(owner); if (!player) throw fail('COMPOUND_NOT_JOINED','Join the compound first',403); if (this.state.phase !== 'active') throw fail('COMPOUND_NOT_ACTIVE','The compound round is not active',409);
     const x=Number(input.x),y=Number(input.y); if (!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>=WIDTH||y>=HEIGHT) throw fail('INVALID_COMPOUND_POSITION','Position is outside the compound');
