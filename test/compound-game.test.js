@@ -43,7 +43,8 @@ test('compound validates movement, inventory actions, and records a durable resu
 test('agent-only compound round advances without a human action', async () => {
   let now = 1_000;
   const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 15 });
-  game.join('owner-a', {name:'Alice'}); game.startRound('owner-a');
+  const started = game.startAgentRound();
+  assert.equal(started.participants.every(value => value.type === 'agent'), true);
   const before = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   now += 1_100; await game.tick();
   const after = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
