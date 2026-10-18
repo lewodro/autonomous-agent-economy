@@ -28,6 +28,8 @@ The expanded ground is organized as a small settlement rather than a set of disc
 
 The south market contains five decorative stalls for food, exchange, data, tools and general goods, plus a shared well and small props. These stalls are visual world building. The fictional exchange sign does not display balances, execute transactions or claim an external integration. `GROUND_DETAILS` supplies stable seeded stones, cracks and gravel; two visitors always see the same geometry and texture.
 
+The east road leaves the plaza at the established town-road width and turns south into the east and botanical routes. Road depth is calculated from the outside edge of the combined path network, avoiding internal seams. Large vegetation is admitted only when its collision footprint is outside paths, buildings and paved gathering areas.
+
 `map.ts` holds map bounds, zones, props, collision, landmarks, and NPC route targets. `renderer.ts` paints the static world and campfire flames. `movement.ts` clamps the camera to the new origin and bounds. The server presence rectangle matches the client avatar-center bounds; tests check the agreement. Canonical NPCs use the same movement and collision controller across the west, north, south, garden, and east routes. Human visitors remain separate from NPC activity and keep the reconnectable multiplayer presence transport.
 
 Future districts should extend the same map data and shared renderer. Public match authority remains in the Arena services.

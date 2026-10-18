@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -41,6 +41,17 @@ test('garden planting and campfire collision leave flower beds walkable',()=>{
   for(const bush of BUSHES.filter(item=>item.solid))assert.equal(collides({x:bush.x,y:bush.y}),true);
   for(const fire of CAMPFIRES)assert.equal(collides(fire),true);
   for(const bed of FLOWER_BEDS)assert.equal(collides({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),false,'flowers should never seal a garden path');
+});
+test('terrain-aware decoration keeps trees and planting off every road surface',()=>{
+  for(const tree of TREES)assert.equal(canPlaceTree({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)}),true);
+  for(const bush of BUSHES)assert.equal(canPlaceBush(bush),true);
+  for(const bed of FLOWER_BEDS)assert.equal(canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),true);
+  for(const rock of ROCKS)assert.equal(canPlaceRock(rock),true);
+  assert.equal(VEGETATION_GROUPS.length,12);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
+});
+test('east road matches the town road width and turns toward the east district',()=>{
+  assert.ok(PATHS.some(path=>path.x===1056&&path.y===420&&path.width===704&&path.height===84));
+  assert.ok(PATHS.some(path=>path.x===1696&&path.y===420&&path.width===64&&path.height===280));
 });
 test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
   assert.equal(GROUND_DETAILS.length,170);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
@@ -98,6 +109,13 @@ test('NPC controller moves presence without changing strategy or economic fields
   const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
+});
+test('NPC attention pauses movement, talks once, cools down and resumes wandering',()=>{
+  const npc={...actor(npcSpawnPosition(0)),type:'npc'},control=new NpcController(0);
+  assert.equal(control.offerThought(1),true);control.update(npc,.1);assert.equal(npc.activityState,'attention');assert.equal(npc.movementState,'idle');
+  control.beginTalking();control.update(npc,.1);assert.equal(npc.activityState,'talking');
+  for(let step=0;step<100;step++)control.update(npc,.1);
+  assert.ok(['idle','wander'].includes(npc.activityState));assert.notDeepEqual(npc.position,npcSpawnPosition(0));
 });
 test('canonical NPC route reaches all new districts without crossing collision',()=>{
   assert.ok(NPC_WAYPOINTS.every(point=>!collides(point)),'every route destination must be walkable');
