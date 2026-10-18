@@ -38,7 +38,7 @@ function roleFor(index, count) {
 export class CompoundGame {
   constructor(directory, { profiles = () => [], roundSeconds = Number(process.env.COMPOUND_ROUND_SECONDS || 120), now = () => Date.now() } = {}) {
     this.directory = directory; this.file = path.join(directory, 'compound.json'); this.roundSeconds = Math.max(15, Math.min(1800, Number(roundSeconds) || 120));
-    this.now = now; this.state = emptyState(this.roundSeconds); this.tail = Promise.resolve(); this.timer = null; this.profiles = profiles;
+    this.now = now; this.state = emptyState(this.roundSeconds); this.tail = Promise.resolve(); this.persistTail = Promise.resolve(); this.timer = null; this.profiles = profiles;
   }
   async restore() {
     await mkdir(this.directory, {recursive:true});
@@ -46,7 +46,7 @@ export class CompoundGame {
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (this.state.phase === 'active' && this.state.endsAt <= this.now()) this.finish('timer');
   }
-  async save() { const tmp = `${this.file}.${randomUUID()}.tmp`; await writeFile(tmp, JSON.stringify(this.state), {mode:0o600}); await rename(tmp, this.file); }
+  async save() { const task = this.persistTail.then(async () => { const tmp = `${this.file}.${randomUUID()}.tmp`; await writeFile(tmp, JSON.stringify(this.state), {mode:0o600}); await rename(tmp, this.file); }); this.persistTail = task.catch(() => {}); return task; }
   start() { if (!this.timer) { this.timer = setInterval(() => { void this.tick(); }, 1000); this.timer.unref?.(); } }
   async close() { if (this.timer) clearInterval(this.timer); this.timer = null; await this.save(); }
   participant(owner) { return this.state.participants.find(value => value.owner === owner); }
