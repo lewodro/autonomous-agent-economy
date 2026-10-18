@@ -59,7 +59,7 @@ export class NpcController implements AgentController {
   }
   returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=ARENA_LOUNGE_WAYPOINT; this.pause=0; this.stuck=0; }
   offerThought(seconds=24):boolean { if(this.attention>0||this.talking>0||this.conversationCooldown>0)return false;this.attention=seconds;return true; }
-  beginTalking():void { this.attention=0;this.talking=4; }
+  beginTalking():void { this.attention=0;this.talking=4;this.pause=0; }
   dismissThought():void { if(this.attention>0){this.attention=0;this.conversationCooldown=3;} }
   relocate(position:Position):void { this.waypoint=nearestWaypoint(position);this.stuck=0;this.pause=0; }
   private random():number {
@@ -77,7 +77,7 @@ export class NpcController implements AgentController {
   }
   private setState(actor:WorldActor,state:WorldActivityState):void { actor.activityState=state; actor.activity=activityLabel(state); }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
-    if(this.talking>0){this.talking-=seconds;actor.movementState='idle';this.setState(actor,'talking');if(this.talking<=0)this.conversationCooldown=5;return;}
+    if(this.talking>0){this.talking-=seconds;actor.movementState='idle';this.setState(actor,'talking');if(this.talking<=0)this.conversationCooldown=2.5;return;}
     if(this.attention>0){this.attention-=seconds;actor.movementState='idle';this.setState(actor,'attention');if(this.attention<=0)this.conversationCooldown=3;return;}
     if(this.conversationCooldown>0){this.conversationCooldown-=seconds;actor.movementState='idle';this.setState(actor,'cooldown');return;}
     if(this.returningFromArena&&this.lounge>0){
