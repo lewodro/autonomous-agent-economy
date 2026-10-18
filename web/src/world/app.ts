@@ -166,6 +166,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
       actor.speech=undefined;controllers.get(actor.id)?.beginTalking();
     }else showProfile(target.id);
   }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
+    if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     const zones:Record<string,[string,string]>={
       'forest-clearing':['Forest clearing','A quiet trail and wooded rest point beyond the plaza.'],
       'botanical-garden':['Botanical garden','Walk among planted beds, varied trees and the garden campfire.'],
