@@ -117,6 +117,21 @@ test('NPC attention pauses movement, talks once, cools down and resumes wanderin
   for(let step=0;step<100;step++)control.update(npc,.1);
   assert.ok(['idle','wander'].includes(npc.activityState));assert.notDeepEqual(npc.position,npcSpawnPosition(0));
 });
+
+test('canonical NPC identities choose independent seeded routes and pauses',()=>{
+ const first={...actor(npcSpawnPosition(0)),id:'npc-founder',type:'npc'};
+ const second={...actor(npcSpawnPosition(1)),id:'npc-analyst',type:'npc'};
+ const founder=new NpcController(0,false,{id:'founder',strategy:'aggressive'});
+ const analyst=new NpcController(1,false,{id:'analyst',strategy:'analyst'});
+ const samples=[];
+ for(let step=0;step<1200;step++){
+  founder.update(first,1/30,[first,second]);analyst.update(second,1/30,[first,second]);
+  if(step%120===0)samples.push(`${Math.round(first.position.x)},${Math.round(first.position.y)}:${Math.round(second.position.x)},${Math.round(second.position.y)}`);
+ }
+ assert.ok(new Set(samples).size>3,'agents should continue choosing new destinations');
+ assert.notDeepEqual(first.position,second.position,'different identities should not converge on one patrol line');
+ assert.ok(Math.hypot(first.position.x-second.position.x,first.position.y-second.position.y)>32,'independent routes should remain visibly separated');
+});
 test('canonical NPC route reaches all new districts without crossing collision',()=>{
   assert.ok(NPC_WAYPOINTS.every(point=>!collides(point)),'every route destination must be walkable');
   const npc={...actor(npcSpawnPosition(0)),type:'npc'},control=new NpcController(0,false,{id:'agent-0'});

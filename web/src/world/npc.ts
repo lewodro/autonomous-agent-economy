@@ -51,16 +51,30 @@ function nearestWaypoint(position:Position):number {
 export class NpcController implements AgentController {
   private waypoint=0; private pause=0; private stuck=0; private lounge=0; private studying=0;
   private attention=0;private talking=0;private conversationCooldown=0;
-  private returningFromArena:boolean; private readonly behavior:AgentBehaviorProfile;
+  private returningFromArena:boolean; private readonly behavior:AgentBehaviorProfile; private randomState:number; private visits=0;
   constructor(index:number,returningFromArena=false,profile?:NpcProfileLike) {
-    this.behavior=behaviorProfile(profile,index); this.waypoint=returningFromArena?ARENA_LOUNGE_WAYPOINT:nearestWaypoint(npcSpawnPosition(index));
-    this.pause=returningFromArena?0:index*.2; this.returningFromArena=returningFromArena;
+    this.behavior=behaviorProfile(profile,index); this.randomState=hash(`${profile?.id||profile?.name||index}:plaza-route`)||1;
+    this.waypoint=returningFromArena?ARENA_LOUNGE_WAYPOINT:this.chooseWaypoint(nearestWaypoint(npcSpawnPosition(index)));
+    this.pause=returningFromArena?0:.25+this.random()*Math.max(1,this.behavior.idleSeconds*1.8); this.returningFromArena=returningFromArena;
   }
   returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=ARENA_LOUNGE_WAYPOINT; this.pause=0; this.stuck=0; }
   offerThought(seconds=24):boolean { if(this.attention>0||this.talking>0||this.conversationCooldown>0)return false;this.attention=seconds;return true; }
   beginTalking():void { this.attention=0;this.talking=4; }
   dismissThought():void { if(this.attention>0){this.attention=0;this.conversationCooldown=3;} }
   relocate(position:Position):void { this.waypoint=nearestWaypoint(position);this.stuck=0;this.pause=0; }
+  private random():number {
+    // Per-agent deterministic PRNG: identities stay stable while routes diverge.
+    let value=this.randomState;value^=value<<13;value^=value>>>17;value^=value<<5;this.randomState=value>>>0;return this.randomState/4294967296;
+  }
+  private chooseWaypoint(previous:number):number {
+    const count=NPC_WAYPOINTS.length;let candidate=previous;
+    for(let attempt=0;attempt<8&&candidate===previous;attempt++){
+      const roll=this.random();
+      if(this.behavior.arenaInterest>.65&&roll<.2)candidate=ARENA_LOUNGE_WAYPOINT;
+      else candidate=Math.floor(this.random()*count);
+    }
+    this.visits++;return candidate;
+  }
   private setState(actor:WorldActor,state:WorldActivityState):void { actor.activityState=state; actor.activity=activityLabel(state); }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
     if(this.talking>0){this.talking-=seconds;actor.movementState='idle';this.setState(actor,'talking');if(this.talking<=0)this.conversationCooldown=5;return;}
@@ -86,7 +100,8 @@ export class NpcController implements AgentController {
     actor.movementState='walking'; moveActor(actor,{x:dx,y:dy,interact:false},seconds,this.behavior.speed,WALLS);
     const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y); this.stuck=moved<.1?this.stuck+seconds:0;
     if(Math.hypot(dx,dy)<10||this.stuck>.5){
-      this.stuck=0; this.waypoint=(this.waypoint+1)%NPC_WAYPOINTS.length; this.pause=this.behavior.idleSeconds;
+      this.stuck=0; const previous=this.waypoint;this.waypoint=this.chooseWaypoint(previous);
+      this.pause=Math.max(.35,this.behavior.idleSeconds*(.55+this.random()*1.35));
       if(this.returningFromArena){this.lounge=1.25;actor.movementState='idle';this.setState(actor,'cooldown');}
       else{actor.movementState='idle';this.setState(actor,'idle');}
     }
