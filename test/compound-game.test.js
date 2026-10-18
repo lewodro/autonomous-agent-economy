@@ -26,9 +26,11 @@ test('compound validates movement, inventory actions, and records a durable resu
   const directory = await mkdtemp(path.join(os.tmpdir(), 'compound-'));
   const game = new CompoundGame(directory, { now: () => now, roundSeconds: 15 });
   game.join('owner-a', {name:'Alice'}); game.startRound('owner-a');
-  assert.throws(() => game.move('owner-a', {x:99,y:1}), {code:'INVALID_COMPOUND_POSITION'});
-  const worked = game.action('owner-a', {action:'work'});
-  assert.ok(worked.participants.find(value => value.id === worked.you)?.inventory_count);
+  assert.throws(() => game.move('owner-a', {x:99,y:1}), {code:'INVALID_COMPOUND_STEP'});
+  game.state.worldItems[0].position={x:3,y:3};
+  game.move('owner-a', {x:3,y:3});
+  const picked = game.action('owner-a', {action:'pickup'});
+  assert.ok(picked.participants.find(value => value.id === picked.you)?.inventory_count>1);
   now += 16_000; await game.tick();
   assert.equal(game.snapshot().phase, 'finished');
   const next = game.startRound('owner-a');
@@ -49,4 +51,36 @@ test('agent-only compound round advances without a human action', async () => {
   now += 1_100; await game.tick();
   const after = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   assert.notDeepEqual(after, before);
+});
+
+test('compound walls, props, inventory, jobs and escape routes are authoritative', async () => {
+  const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-rules-')), { now: () => 5_000, roundSeconds: 60 });
+  game.join('owner-a', {name:'Alice'});game.startRound('owner-a');
+  const human=game.state.participants.find(value=>value.owner==='owner-a');
+  human.position={x:2,y:3};
+  assert.throws(()=>game.move('owner-a',{x:2,y:2}),{code:'COMPOUND_BLOCKED'},'beds are server-side collision');
+  human.role='worker';human.position={x:22,y:12};
+  const worked=game.action('owner-a',{action:'work'});
+  assert.equal(worked.participants.find(value=>value.id===worked.you).job_progress,1);
+  human.position={x:20,y:19};human.inventory=['food','scrap','wire'];
+  const escaped=game.action('owner-a',{action:'escape',route_id:'utility-route'});
+  assert.equal(escaped.participants.find(value=>value.id===escaped.you).status,'escaped');
+  assert.ok(escaped.events.some(event=>event.type==='escape'&&event.actor_id===human.id));
+  await game.close();
+});
+
+test('balanced roles, secret state and evidence-backed agent lessons survive round end', async () => {
+  let now=10_000;
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-learning-')),{now:()=>now,roundSeconds:15});
+  game.startAgentRound();
+  const roles=game.state.participants.map(value=>value.role);
+  assert.ok(roles.filter(role=>role==='guard').length>=1);
+  assert.ok(roles.some(role=>role!=='guard'));
+  const worker=game.state.participants.find(value=>value.role==='worker');
+  worker.position={x:22,y:12};game.performJob(worker);
+  now+=16_000;await game.tick();
+  const result=game.snapshot().results.at(-1);
+  assert.ok(result.evidence_event_ids.length>0);
+  assert.ok(game.state.participants.some(value=>value.type==='agent'&&value.memories.some(memory=>memory.evidence_event_ids.length>0)));
+  await game.close();
 });
