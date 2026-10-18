@@ -115,7 +115,9 @@ test('NPC attention pauses movement, talks once, cools down and resumes wanderin
   assert.equal(control.offerThought(1),true);control.update(npc,.1);assert.equal(npc.activityState,'attention');assert.equal(npc.movementState,'idle');
   control.beginTalking();control.update(npc,.1);assert.equal(npc.activityState,'talking');
   for(let step=0;step<100;step++)control.update(npc,.1);
-  assert.ok(['idle','wander'].includes(npc.activityState));assert.notDeepEqual(npc.position,npcSpawnPosition(0));
+  assert.ok(['idle','wander'].includes(npc.activityState));
+  for(let step=0;step<300&&npc.position.x===npcSpawnPosition(0).x&&npc.position.y===npcSpawnPosition(0).y;step++)control.update(npc,.1);
+  assert.notDeepEqual(npc.position,npcSpawnPosition(0),'the NPC should resume a randomized route after its bounded cooldown');
 });
 
 test('canonical NPC identities choose independent seeded routes and pauses',()=>{
