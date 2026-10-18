@@ -67,6 +67,8 @@ export const PATHS: WorldPath[] = [
   // West streets form a loose loop around the table and cottage cluster.
   {x:-650,y:260,width:72,height:160},{x:-650,y:260,width:520,height:64},{x:-190,y:260,width:64,height:244},
   {x:-500,y:650,width:254,height:62},{x:-500,y:500,width:62,height:212},{x:-246,y:650,width:318,height:62},
+  // The west loop now has a visible industrial approach to the Compound gate.
+  {x:-246,y:712,width:64,height:298},{x:-310,y:946,width:128,height:64},
   {x:740,y:-360,width:82,height:64},{x:1040,y:556,width:64,height:406},{x:1040,y:914,width:100,height:64},
   // South road widens into a market loop and small cross streets.
   {x:392,y:1040,width:364,height:500},{x:300,y:1100,width:1150,height:72},{x:300,y:1172,width:72,height:390},
@@ -206,7 +208,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'botanical-garden', type: 'zone', position: { x: 1570, y: 620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
   { id: 'south-market', type: 'zone', position: { x: 900, y: 1392 }, radius: 90, label: 'Visit south market' },
-  { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 1170 }, radius: 88, label: 'Enter detention compound' },
+  { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < MAP.minX + 40 + radius || position.y < MAP.minY + 64 + radius

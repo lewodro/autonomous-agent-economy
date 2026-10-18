@@ -18,7 +18,9 @@ const settings=loadSettings(),gateway=new HttpArenaGateway();
 const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming|undefined;
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
-if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
+const returnTarget=new URLSearchParams(location.search).get('return');
+if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(settings);}
+else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];

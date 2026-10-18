@@ -102,6 +102,14 @@ export class CanvasWorldRenderer implements WorldRenderer {
         rect(b.x+28,b.y+110,32,24,'#243c3a');rect(b.x+b.width-60,b.y+110,32,24,'#243c3a');
         rect(b.x+32,b.y+114,24,3,'#b2c28b');rect(b.x+b.width-56,b.y+114,24,3,'#b2c28b');
         c.font='bold 14px monospace';c.textAlign='center';c.fillStyle='#f4dfaf';c.fillText(b.name,b.x+b.width/2,b.y+105);
+        if(b.name==='DETENTION COMPOUND'){
+          // Original industrial gate language makes this public activity read
+          // as a destination rather than another house in the west district.
+          rect(b.x+b.width/2-34,b.y-12,68,20,'#25332f');rect(b.x+b.width/2-28,b.y-8,56,4,'#d0a65f');
+          for(let fence=b.x-34;fence<b.x+b.width+34;fence+=14)rect(fence,b.y-24,3,24,'#839084');
+          rect(b.x-36,b.y-26,b.width+72,3,'#839084');rect(b.x+b.width/2-22,b.y-18,44,20,'#1d2926');
+          c.font='bold 9px monospace';c.fillStyle='#f0d79c';c.fillText('PUBLIC GATE',b.x+b.width/2,b.y-5);
+        }
       }
     }
     // Fountain, table and archive use the same footprint as collision rectangles.
