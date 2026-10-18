@@ -1,4 +1,4 @@
-import { moveActor, presenceObstacles } from './movement.js';
+import { moveActor } from './movement.js';
 import { ARENA_LOUNGE_WAYPOINT, NPC_WAYPOINTS, WALLS } from './map.js';
 import type { WorldActor, Position, WorldActivityState } from './model.js';
 
@@ -78,7 +78,12 @@ export class NpcController implements AgentController {
     const target=NPC_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
     const before={...actor.position}; const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
     this.setState(actor,this.returningFromArena?'exit_arena':(this.behavior.social&&nearby.length?'talking':'wander'));
-    actor.movementState='walking'; moveActor(actor,{x:dx,y:dy,interact:false},seconds,this.behavior.speed,[...WALLS,...presenceObstacles(nearby,actor)]);
+    // NPCs use the shared wall/building collision, but do not block one
+    // another. Finished agents can return from the Arena as a group; treating
+    // their presentation sprites as solid would deadlock the whole cluster.
+    // Human visitors still use presence obstacles through the normal player
+    // movement path, and nearby NPCs continue to inform social activity.
+    actor.movementState='walking'; moveActor(actor,{x:dx,y:dy,interact:false},seconds,this.behavior.speed,WALLS);
     const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y); this.stuck=moved<.1?this.stuck+seconds:0;
     if(Math.hypot(dx,dy)<10||this.stuck>.5){
       this.stuck=0; this.waypoint=(this.waypoint+1)%NPC_WAYPOINTS.length; this.pause=this.behavior.idleSeconds;
