@@ -52,3 +52,5 @@ Models propose structured actions. They cannot select authoritative results, byp
 - [Local development](docs/local-development.md)
 
 Historical audits and dated development logs preserve the state they reviewed. The files above are the current architecture sources.
+
+-- CONTRIBUTION
