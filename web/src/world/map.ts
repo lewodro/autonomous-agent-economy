@@ -22,6 +22,7 @@ export const BUILDINGS: Building[] = [
   { x:704,y:120,width:240,height:176,name:'RESEARCH HOUSE',color:'#71938b',roof:'#344845',kind:'major' },
   { x:800,y:448,width:256,height:192,name:'ARENA',color:'#b18355',roof:'#493d36',kind:'major' },
   { x:1464,y:128,width:208,height:160,name:'AGENCY',color:'#806b80',roof:'#443b4a',kind:'major' },
+  { x:-340,y:1010,width:236,height:156,name:'DETENTION COMPOUND',color:'#6f7070',roof:'#343d45',kind:'major' },
   // Compact background buildings break up the expanded districts without
   // competing with the four major landmarks.
   {x:-690,y:170,width:142,height:112,name:'WEST COTTAGE',color:'#8f7559',roof:'#4d5c46',accent:'#d1bd86',kind:'house'},
@@ -205,6 +206,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'botanical-garden', type: 'zone', position: { x: 1570, y: 620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
   { id: 'south-market', type: 'zone', position: { x: 900, y: 1392 }, radius: 90, label: 'Visit south market' },
+  { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 1170 }, radius: 88, label: 'Enter detention compound' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < MAP.minX + 40 + radius || position.y < MAP.minY + 64 + radius
