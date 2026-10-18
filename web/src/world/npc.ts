@@ -1,16 +1,8 @@
 import { moveActor, presenceObstacles } from './movement.js';
-import { WALLS } from './map.js';
+import { ARENA_LOUNGE_WAYPOINT, NPC_WAYPOINTS, WALLS } from './map.js';
 import type { WorldActor, Position, WorldActivityState } from './model.js';
 
 export const MAX_PLAZA_AGENTS = 6;
-const PLAZA_WAYPOINTS: Position[] = [
-  {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:780,y:420},
-  {x:430,y:510},{x:660,y:570},{x:360,y:680},{x:720,y:680},{x:450,y:650},
-  {x:735,y:740},{x:390,y:390},{x:650,y:300},{x:400,y:570},{x:755,y:520},
-  {x:440,y:730},{x:680,y:760},{x:340,y:430},{x:755,y:310},{x:700,y:620},
-  {x:900,y:760},{x:1060,y:820},{x:1180,y:430},{x:1280,y:500},{x:1370,y:580},{x:1260,y:700},{x:1400,y:760},
-  {x:1500,y:420},{x:1600,y:460},{x:1510,y:620},{x:1640,y:700},{x:1540,y:860},{x:1690,y:900},
-];
 const SPAWN_POINTS: Position[] = [
   {x:408,y:320},{x:476,y:320},{x:644,y:320},{x:712,y:320},{x:776,y:320},
   {x:408,y:425},{x:476,y:425},{x:644,y:425},{x:712,y:425},{x:776,y:425},
@@ -29,11 +21,11 @@ export interface AgentBehaviorProfile { speed:number; idleSeconds:number; routeB
 function hash(value:string):number { let result=2166136261; for(const char of value){result^=char.charCodeAt(0);result=Math.imul(result,16777619);} return result>>>0; }
 export function behaviorProfile(profile:NpcProfileLike|undefined,index=0):AgentBehaviorProfile {
   const key=profile?.id||profile?.name||`npc-${index}`; const seed=hash(key); const strategy=(profile?.strategy||'').toLowerCase();
-  if(/aggress|gambler|wild/.test(strategy))return {speed:58,idleSeconds:1.1,routeBias:seed%PLAZA_WAYPOINTS.length,arenaInterest:0.8,social:false};
+  if(/aggress|gambler|wild/.test(strategy))return {speed:58,idleSeconds:1.1,routeBias:seed%NPC_WAYPOINTS.length,arenaInterest:0.8,social:false};
   if(/analyst|research/.test(strategy))return {speed:40,idleSeconds:3.5,routeBias:10,arenaInterest:0.28,social:false};
   if(/defend|guard/.test(strategy))return {speed:43,idleSeconds:3,routeBias:14,arenaInterest:0.35,social:false};
   if(/trader|social/.test(strategy))return {speed:48,idleSeconds:2,routeBias:7,arenaInterest:0.5,social:true};
-  return {speed:46,idleSeconds:1.8+(seed%10)/10,routeBias:seed%PLAZA_WAYPOINTS.length,arenaInterest:0.5,social:seed%3===0};
+  return {speed:46,idleSeconds:1.8+(seed%10)/10,routeBias:seed%NPC_WAYPOINTS.length,arenaInterest:0.5,social:seed%3===0};
 }
 export function npcSpawnPosition(index:number):Position { return {...SPAWN_POINTS[((index%SPAWN_POINTS.length)+SPAWN_POINTS.length)%SPAWN_POINTS.length]!}; }
 export function arenaExitPosition(index:number):Position { return {x:880+(index%3)*32,y:724+Math.floor(index/3)*24}; }
@@ -52,10 +44,10 @@ export class NpcController implements AgentController {
   private waypoint=0; private pause=0; private stuck=0; private lounge=0; private studying=0;
   private returningFromArena:boolean; private readonly behavior:AgentBehaviorProfile;
   constructor(index:number,returningFromArena=false,profile?:NpcProfileLike) {
-    this.behavior=behaviorProfile(profile,index); this.waypoint=(this.behavior.routeBias+index)%PLAZA_WAYPOINTS.length;
+    this.behavior=behaviorProfile(profile,index); this.waypoint=returningFromArena?ARENA_LOUNGE_WAYPOINT:(this.behavior.routeBias+index)%NPC_WAYPOINTS.length;
     this.pause=returningFromArena?0:index*.2; this.returningFromArena=returningFromArena;
   }
-  returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=10; this.pause=0; this.stuck=0; }
+  returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=ARENA_LOUNGE_WAYPOINT; this.pause=0; this.stuck=0; }
   private setState(actor:WorldActor,state:WorldActivityState):void { actor.activityState=state; actor.activity=activityLabel(state); }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
     if(this.returningFromArena&&this.lounge>0){
@@ -67,13 +59,13 @@ export class NpcController implements AgentController {
       if(this.studying<=0){this.returningFromArena=false;this.pause=this.behavior.idleSeconds;} return;
     }
     if(this.pause>0){this.pause-=seconds;actor.movementState='idle';this.setState(actor,'idle');return;}
-    const target=PLAZA_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
+    const target=NPC_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
     const before={...actor.position}; const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
     this.setState(actor,this.returningFromArena?'exit_arena':(this.behavior.social&&nearby.length?'talking':'wander'));
     actor.movementState='walking'; moveActor(actor,{x:dx,y:dy,interact:false},seconds,this.behavior.speed,[...WALLS,...presenceObstacles(nearby,actor)]);
     const moved=Math.hypot(actor.position.x-before.x,actor.position.y-before.y); this.stuck=moved<.1?this.stuck+seconds:0;
     if(Math.hypot(dx,dy)<10||this.stuck>.5){
-      this.stuck=0; this.waypoint=(this.waypoint+1)%PLAZA_WAYPOINTS.length; this.pause=this.behavior.idleSeconds;
+      this.stuck=0; this.waypoint=(this.waypoint+1)%NPC_WAYPOINTS.length; this.pause=this.behavior.idleSeconds;
       if(this.returningFromArena){this.lounge=4;actor.movementState='idle';this.setState(actor,'cooldown');}
       else{actor.movementState='idle';this.setState(actor,'idle');}
     }

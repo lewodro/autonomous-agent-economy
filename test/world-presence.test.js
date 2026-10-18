@@ -6,15 +6,15 @@ import { MAP } from '../web/dist/world/map.js';
 
 test('server presence bounds match the walkable avatar-center bounds in the world map',()=>{
   assert.deepEqual(WORLD_PLAYABLE_BOUNDS,{
-    minX:40+12,minY:64+12,maxX:MAP.width-40-12,maxY:MAP.height-40-12,
+    minX:MAP.minX+40+12,minY:MAP.minY+64+12,maxX:MAP.minX+MAP.width-40-12,maxY:MAP.minY+MAP.height-40-12,
   });
   const service=new WorldPresenceService();
   for(const [index,position] of [
-    {x:52,y:76},{x:1740,y:76},{x:52,y:1100},{x:1740,y:1100},
+    {x:-844,y:-500},{x:2636,y:-500},{x:-844,y:1676},{x:2636,y:1676},
   ].entries()){
     assert.deepEqual(service.join('main',{player_id:`edge${index}`,position}).player.position,position);
   }
-  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:1741,y:1100}}),{code:'INVALID_POSITION'});
+  assert.throws(()=>service.join('main',{player_id:'outside',position:{x:2637,y:1676}}),{code:'INVALID_POSITION'});
 });
 
 test('presence joins, validates bounded movement, and removes stale players', () => {
@@ -92,6 +92,15 @@ test('movement allowance matches world speed and idle time cannot bank teleport 
   assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:143.5,y:100}}).player.position.x,143.5);
   now+=5_000;
   assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:190,y:100}}),{code:'INVALID_POSITION'});
+});
+
+test('short presence updates tolerate a delayed render frame without permitting a teleport',()=>{
+  let now=1_000;const service=new WorldPresenceService({now:()=>now,minUpdateMs:50});
+  const joined=service.join('main',{player_id:'visitor',position:{x:100,y:100}});
+  now+=60;
+  assert.equal(service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:118,y:100}}).player.position.x,118);
+  now+=60;
+  assert.throws(()=>service.move('main',{player_id:'visitor',session_token:joined.session_token,position:{x:150,y:100}}),{code:'INVALID_POSITION'});
 });
 
 test('heartbeats are rate limited and only broadcast changed activity',()=>{

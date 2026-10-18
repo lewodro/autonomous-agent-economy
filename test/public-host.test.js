@@ -82,7 +82,10 @@ test('private experiments survive restart and stay isolated while the world stay
       assert.equal(page.status, 200, `${route} is served in production`);
       const content = await page.text();
       if (route === '/' || route === '/rps') assert.match(content, /id="entry-loader"/);
-      if (route === '/post' || route === '/post/') assert.match(content, /THE PROJECT,/);
+      if (route === '/post' || route === '/post/') {
+        assert.match(content, /BUILT IN PUBLIC/);
+        assert.match(content, /id="devlog"/);
+      }
       if (route === '/entry.js') assert.match(content, /DURATION_MS = 3600/);
     }
     const capabilities = await request(running.base, '/api/capabilities');

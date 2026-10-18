@@ -144,6 +144,51 @@
       "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/23",
       "detail": "## Why\nAgent earnings need evidence. The experiment starts with machine-checkable work and simulated units so settlement behavior can be tested before any real payment rail is connected.\n\n## Economy\nJobs reserve a funded reward in mock escrow. Deliveries are bounded, assigned to one agent, checked against a SHA-256 acceptance digest and idempotently paid or rejected. Cancellation refunds unpaid work. Supply, escrow, receipts, balances, earned totals and verified-job counts are checked together.\n\n## Persistence\nThe existing append-only JSON repository saves accepted transitions. Restarting the demo resumes the same market, while replaying an accepted operation neither pays twice nor creates another revision.\n\n## Tests\nFocused Rust tests cover valid and invalid delivery, insufficient funding, unauthorized agents, attempt bounds, cancellation, duplicate operations, accounting tamper detection and restart recovery.\n\n## Limit\nThese are simulated units. The deterministic digest proves an exact output match, not the quality of open-ended work, and no wallet, customer payment, GitHub account or social publisher is connected.",
       "source": "2026-10-11-verified-service-market.md"
+    },
+    {
+      "date": "2026-10-15",
+      "title": "Make the repository easier to run and harder to misunderstand",
+      "summary": "Installation, verification and product boundaries moved into the main release path, with current screenshots and precise labels for simulated value.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/07d3b4d",
+      "pr": null,
+      "detail": "## Open source path\nThe README now leads from clone and install through the production build, test suites and local launch. Current agent sprites and a fresh Last Seat capture replaced older visuals, and the world entry action uses the same clear interaction treatment as the main remix action.\n\n## Honest boundaries\nShort-lived ecosystem promotion experiments were removed from the product surface. The repository keeps future integration architecture in documentation while the website describes only working public features. Simulated units, Devnet TEST SOL and disabled mainnet value remain visibly separate.\n\n## Commit sequence\nCommits 401–406 documented and tested an ecosystem direction. Commits 417–431 deliberately narrowed that presentation, improved the open-source guide, refreshed visuals, strengthened browser smoke coverage and standardized plaza entry behavior.",
+      "source": "2026-10-15-open-source-release-surface.md"
+    },
+    {
+      "date": "2026-10-15",
+      "title": "Give every visitor a private Arena without splitting the public world",
+      "summary": "The shared plaza remained one multiplayer place while owner-scoped RPS, Tic-Tac-Toe and Survival experiments gained their own clean state, history and return path.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/4177177",
+      "pr": null,
+      "detail": "## Public and private worlds\nCanonical agents, public matches and Watcher presence continue in one shared world. A visitor can separately create a private multi-mode Arena that starts clean, remains bound to its anonymous session and does not affect public rankings or NPC spawning.\n\n## Lobby behavior\nEliminated canonical agents now return to the plaza, pause outside the Arena and move again before the next public match. Human visitors receive stable Watcher names, while returning from a game starts the visitor at the central plaza entrance.\n\n## Commit sequence\nCommits 407–412 established Arena return behavior, Watcher identities, owner-scoped private modes, world navigation and the Survival browser regression. Commits 413–431 then made the service-market CLI reproducible, tightened browser checks and refined the open-source release surface.",
+      "source": "2026-10-15-private-world-and-release-loop.md"
+    },
+    {
+      "date": "2026-10-16",
+      "title": "Make canonical agents feel present without giving controllers authority",
+      "summary": "Plaza agents gained typed activity, movement personalities, post-match returns and research-backed speech while MCP remained an optional validated intent adapter.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/97a5f85",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/27",
+      "detail": "## Living plaza\nCanonical identities now move through idle, wandering, Arena, return and study states. Public match participation drives the important transitions; seeded presentation behavior fills the quiet periods. Nearby messages use public research and bounded synthetic debug flavor rather than private logs or hidden reasoning.\n\n## Controller boundary\nBuiltin strategies remain the default. The MCP prototype receives an approved observation and may return a validated intent, but it cannot set health, winners, balances, rankings or another user's state. Timeouts and invalid actions fall back safely.\n\n## Commit sequence\nCommits 432–441 added typed plaza behavior, speech, arrival and post-match notifications plus stable browser coverage. Commits 442–444 added private-agent MCP profiles, CodeQL checks, local launch documentation and stricter validation.",
+      "source": "2026-10-16-living-agents-and-bounded-mcp.md"
+    },
+    {
+      "date": "2026-10-17",
+      "title": "Share one agent architecture across system and user experiments",
+      "summary": "Identity, structured mind and controller became explicit layers so visitors can create private agents without copying or weakening the canonical simulation.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/cac2ddd",
+      "pr": null,
+      "detail": "## AgentMind\nStable identity, bounded lessons, opponent notes, goals and research summaries now form a structured mind layer. Existing canonical profiles migrate into it, builtin strategies can consume safe summaries and exports omit hidden chain-of-thought.\n\n## Private creation\nInside an owner-scoped experiment, a visitor can choose an approved sprite, name and builtin controller for a user agent. Its research and results remain private to that experiment and do not enter the public Arena or rankings.\n\n## Commit sequence\nThe agent_mind_001–003 commits introduced structured memory, safe controller context and legacy research projection. private_agent_001–002 added creation, persistence and browser export coverage. The accompanying architecture commit documented public, private and external-agent boundaries.",
+      "source": "2026-10-17-agent-minds-and-private-creators.md"
+    },
+    {
+      "date": "2026-10-17",
+      "title": "Expand the same shared world in every direction",
+      "summary": "The existing plaza became the center of a map with four times the area, wider NPC routes, a botanical district, village homes and a south market built from the current lightweight renderer.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/f3126be",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/32",
+      "detail": "## Scale without a new engine\nThe world grew from 1792 × 1152 to 3584 × 2304 while the Arena, Research House, tables and existing interactions stayed at their established coordinates. Camera, collision, multiplayer presence and server validation now share the expanded bounds.\n\nThe visual polish pass replaced long diagonal terrain wedges with stepped pixel regions, joined path pieces into roads with one outer edge, added stable sparse ground texture, and placed eleven varied homes around useful routes. A five-stall south bazaar gives the lower district food, fictional exchange, data, tools and general-goods vendors without claiming real financial execution.\n\n## Botanical district\nIrregular paths lead through varied trees, bushes, flowers, rocks, open clearings and inexpensive animated campfires. Canonical NPC routes reach the west, east, north, south and garden districts without using another movement system.\n\n## Commit sequence\nworld_expand_001–003 enlarged the map, added botanical rendering and exercised every direction with a second visitor. world_expand_004 fixed a real CI timing edge in presence synchronization while preserving the anti-teleport boundary.",
+      "source": "2026-10-17-fourfold-shared-world.md"
     }
   ]
 }
