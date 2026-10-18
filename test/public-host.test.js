@@ -90,7 +90,7 @@ test('private experiments survive restart and stay isolated while the world stay
     }
     const capabilities = await request(running.base, '/api/capabilities');
     assert.deepEqual(capabilities.body.funded_modes, []);
-    assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'survival', 'rps', 'tictactoe']);
+    assert.deepEqual(capabilities.body.game_modes, ['last-seat', 'survival', 'rps', 'tictactoe', 'compound']);
     const config = (await request(running.base, '/api/config?agents=2')).body;
     assert.equal((await request(running.base, '/api/matches', {config})).status,404);
     const created = await request(running.base, '/api/experiments', { config });
