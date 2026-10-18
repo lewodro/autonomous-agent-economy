@@ -30,7 +30,8 @@ try{
  assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).avatar'),'visitor_ember','avatar choice must persist immediately');
  await evaluate("window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
- await wait('!document.getElementById("world-speech").hidden&&document.getElementById("world-speech").textContent.includes(":")');
+ await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
+ assert.equal(await evaluate("document.getElementById('world-speech').hidden"),true,'NPC thoughts wait for interaction instead of covering the world on entry');
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
  let localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
@@ -123,6 +124,21 @@ try{
  assert.equal(await evaluate("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.agents.some(a=>a.name==='Browser Agent'))"),false,'private agents must not enter canonical rankings');
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ await wait("(()=>{const value=document.querySelector('#world-lab pre').textContent;return value&&JSON.parse(value).npcs.length>=3})()");
+ await evaluate("window.__npcBefore=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs");await delay(4200);
+ const npcMovement=await evaluate("(()=>{const after=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs,before=new Map(window.__npcBefore.map(n=>[n.id,n.position]));return after.map(n=>{const old=before.get(n.id);return {id:n.id,distance:old?Math.hypot(n.position.x-old.x,n.position.y-old.y):-1,state:n.activityState}})})()");
+ assert.ok(npcMovement.filter(value=>value.distance>8).length>=2,`several canonical NPCs must change world coordinates: ${JSON.stringify(npcMovement)}`);
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(button=>button.textContent==='Offer nearest NPC thought').click()");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.attention)");
+ const talkingAgent=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.attention).name");
+ await screenshot('npc-attention');
+ await wait("!document.getElementById('interact').disabled&&document.getElementById('world-hint').textContent.includes('Talk to')");
+ await evaluate("document.getElementById('interact').click()");
+ await wait(`!document.getElementById('world-speech').hidden&&document.getElementById('world-speech').textContent.startsWith(${JSON.stringify(talkingAgent+':')})`);
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
+ await screenshot('npc-dialogue');
+ await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
+ await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return n&&!['attention','talking','cooldown'].includes(n.activityState)&&Math.hypot(n.position.x-window.__talkPosition.x,n.position.y-window.__talkPosition.y)>4})()",15000);
  // Developer probes start just inside each former edge. Walking through those
  // coordinates exercises the real input, collision, camera and canvas paths.
  const walkProbe=async(label,key,axis,threshold,screenshotName)=>{
@@ -151,6 +167,8 @@ try{
   await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
   await screenshot(screenshotName);
  };
+ await teleportProbe('eastRoad',1300,460,'east-road');
+ assert.equal(await evaluate("document.getElementById('world-canvas').getAttribute('aria-label').includes('Agent town')"),true);
  await teleportProbe('agency',1568,340,'agency');
  await teleportProbe('market',820,1320,'south-market');
  const westGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
