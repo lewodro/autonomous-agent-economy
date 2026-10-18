@@ -198,6 +198,17 @@ try{
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
+ await send('Page.navigate',{url:base+'/compound'});await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
+ await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='lobby')");
+ await evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Browser Compound'})}).then(r=>r.json())");
+ await wait("document.getElementById('compound-lobby').textContent.includes('Start round')");
+ await evaluate("[...document.querySelectorAll('#compound-lobby button')].find(b=>b.textContent==='Start round').click()");
+ await wait("document.getElementById('compound-status').textContent.includes('ROUND')&&document.querySelectorAll('.compound-actor').length===8");
+ assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('Objective:')"),'compound owner should see its private objective');
+ assert.equal(await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'other compound participants must not expose secret roles');
+ await evaluate("[...document.querySelectorAll('#compound-you button')].find(b=>b.textContent==='Work').click()");
+ await wait("document.getElementById('compound-you').textContent.includes('Working')");
+ await screenshot('compound-round');
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
  console.log('PASS world: character, NPC profile, live render loop, Survival combat/inspection, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
 }catch(error){failed=true;console.error(error);}
