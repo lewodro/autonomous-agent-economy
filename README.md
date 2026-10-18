@@ -60,7 +60,7 @@ Open these pages in your browser:
 
 - `http://localhost:3000/world` — shared walkable world and presence
 - `http://localhost:3000/arena` — shared Survival, RPS, Tic-Tac-Toe, and research
-- `http://localhost:3000/compound` — the shared Compound Run prison-role prototype
+- `http://localhost:3000/compound` — the shared playable Compound Run pixel sandbox
 - `http://localhost:3000/private-arena` — this browser's isolated multi-mode arena
 - `http://localhost:3000/` — private Last Seat experiments
 - `http://localhost:3000/post` — readable project history
@@ -145,7 +145,7 @@ flowchart TB
 | RPS | **WORKING** | Deterministic commit-reveal rules and shared hosted rooms |
 | Tic-Tac-Toe | **WORKING** | Turn legality, authoritative outcomes, shared rooms and a free plaza table |
 | Survival | **WORKING** | Rust-authoritative 20-agent melee, continuous host, tactical frontend and durable research |
-| Compound Run | **WORKING PROTOTYPE** | One public eight-seat round with humans plus built-in agents, balanced roles, inventory, heat, jobs, escape attempts, and server validation |
+| Compound Run | **PLAYABLE PROTOTYPE** | One public eight-seat pixel compound with humans plus moving built-in agents, balanced roles, physical items, jobs, heat, guards, two escape routes, and server authority |
 | Last Seat | **WORKING** | Seeded 2–20-agent Rust simulation with versioned replay verification |
 | Research memory | **WORKING** | Structured events, retained summaries and cumulative public statistics |
 | Private experiments | **WORKING** | Signed anonymous ownership, resume, isolation, deletion and bounded retention |
