@@ -44,13 +44,19 @@ test('compound validates movement, inventory actions, and records a durable resu
 
 test('agent-only compound round advances without a human action', async () => {
   let now = 1_000;
-  const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 15 });
+  const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 120 });
   const started = game.startAgentRound();
   assert.equal(started.participants.every(value => value.type === 'agent'), true);
   const before = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   now += 1_100; await game.tick();
   const after = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   assert.notDeepEqual(after, before);
+  for(let second=2;second<=121;second++){now+=1_000;await game.tick();}
+  const finished=game.snapshot();
+  assert.equal(finished.phase,'finished');
+  assert.ok(finished.events.some(event=>event.type==='job'),'an autonomous participant should complete a real room job');
+  assert.ok(finished.results.at(-1).participants.every(value=>value.type==='agent'));
+  await game.close();
 });
 
 test('compound walls, props, inventory, jobs and escape routes are authoritative', async () => {
