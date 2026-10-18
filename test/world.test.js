@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUSHES, CAMPFIRES, FLOWER_BEDS, NPC_WAYPOINTS, safePosition, collides, LANDMARKS, TREES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -41,6 +41,22 @@ test('garden planting and campfire collision leave flower beds walkable',()=>{
   for(const bush of BUSHES.filter(item=>item.solid))assert.equal(collides({x:bush.x,y:bush.y}),true);
   for(const fire of CAMPFIRES)assert.equal(collides(fire),true);
   for(const bed of FLOWER_BEDS)assert.equal(collides({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),false,'flowers should never seal a garden path');
+});
+test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
+  assert.equal(GROUND_DETAILS.length,170);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
+    {x:544,y:725,kind:'stone',tone:0},{x:-425,y:454,kind:'crack',tone:1},
+  ]);
+  assert.ok(PATHS.length>=20,'the west and south districts need connected streets');
+  assert.equal(BUILDINGS.filter(building=>building.kind==='house').length,11);
+  assert.equal(BUILDINGS.filter(building=>building.kind==='stall').length,5);
+  assert.ok(new Set(BUILDINGS.filter(building=>building.kind==='stall').map(building=>building.roof)).size>=4);
+  assert.ok(MARKET_PROPS.some(prop=>prop.kind==='well'));assert.ok(ZONES.market.height>=500);
+  for(const detail of GROUND_DETAILS)assert.equal(Number.isFinite(detail.x)&&Number.isFinite(detail.y),true);
+});
+test('Agency and market landmarks are real reachable map locations',()=>{
+  assert.deepEqual(LANDMARKS.filter(item=>['agent-agency','south-market'].includes(item.id)).map(item=>item.id),['agent-agency','south-market']);
+  for(const building of BUILDINGS)assert.equal(collides({x:building.x+building.width/2,y:building.y+building.height/2}),true,`${building.name} should block movement`);
+  for(const well of MARKET_PROPS.filter(prop=>prop.kind==='well'))assert.equal(collides(well),true);
 });
 test('all plaza interactions remain reachable from the visitor spawn',()=>{
  const step=8,start={x:Math.round(MAP.spawn.x/step),y:Math.round(MAP.spawn.y/step)};

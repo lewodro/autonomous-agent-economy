@@ -9,11 +9,11 @@ The original plaza stays at its existing coordinates. The canvas now spans `3584
 ```text
                   North meadow and path
                            |
-West grove -- Agent House -- PLAZA -- Arena -- Forest edge
-    |             |             |             |       |
-Social fire   Free table   Research/Archive   Garden  East woods
-                           |
-                     South meadow
+West village -- Agent House -- PLAZA -- Arena -- Forest edge
+    |               |             |             |       |
+Social fire     Free table   Research/Archive  Garden  East woods
+                                  |
+                        South market and homes
 ```
 
 The existing left-side table and training/public space, Arena, Research House, Archive, agency, and entrances keep their coordinates. Ground tiles and broad floor treatments extend beyond the former edges in every direction. The renderer paints one static map canvas, then draws only its visible crop each frame; it does not create a new scene or zoom out.
@@ -21,6 +21,12 @@ The existing left-side table and training/public space, Arena, Research House, A
 ## Nature areas
 
 The botanical garden connects to the original forest trail within the same map. Irregular ground patches, several flower beds, bushes, differently sized trees, and four campfire clearings use the existing canvas primitives. Tree trunks, larger bushes, rocks, buildings, and fire pits share the normal collision rectangles. Flowers and smaller bushes remain walkable. Flame animation uses four tiny pixel frames and pauses with reduced-motion settings.
+
+## Village and market
+
+The expanded ground is organized as a small settlement rather than a set of disconnected decorative strips. A centralized path list joins the original plaza to west cottages, northern homes, the Agency, botanical garden and south market. The renderer computes the visible edge of the combined road network, so overlapping path rectangles form one road and never draw seams through the plaza. Eleven compact houses sit near road endpoints while preserving open multiplayer space.
+
+The south market contains five decorative stalls for food, exchange, data, tools and general goods, plus a shared well and small props. These stalls are visual world building. The fictional exchange sign does not display balances, execute transactions or claim an external integration. `GROUND_DETAILS` supplies stable seeded stones, cracks and gravel; two visitors always see the same geometry and texture.
 
 `map.ts` holds map bounds, zones, props, collision, landmarks, and NPC route targets. `renderer.ts` paints the static world and campfire flames. `movement.ts` clamps the camera to the new origin and bounds. The server presence rectangle matches the client avatar-center bounds; tests check the agreement. Canonical NPCs use the same movement and collision controller across the west, north, south, garden, and east routes. Human visitors remain separate from NPC activity and keep the reconnectable multiplayer presence transport.
 

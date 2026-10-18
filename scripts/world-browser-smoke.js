@@ -144,6 +144,15 @@ try{
  await wait('document.activeElement?.id==="world-canvas"&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  await wait("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return p.x===1760&&p.y===680})()");
  await screenshot('campfire');
+ assert.ok(await evaluate("document.querySelector('.world-legend').textContent.includes('AGENCY')&&document.querySelector('.world-legend').textContent.includes('MARKET')"),'compact world legend must name Agency and Market');
+ const teleportProbe=async(label,x,y,screenshotName)=>{
+  await evaluate(`[...document.querySelectorAll('#world-lab button')].find(value=>value.textContent===${JSON.stringify(`Walk probe: ${label}`)}).click()`);
+  await wait(`(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return p.x===${x}&&p.y===${y}})()`);
+  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+  await screenshot(screenshotName);
+ };
+ await teleportProbe('agency',1568,340,'agency');
+ await teleportProbe('market',820,1320,'south-market');
  const westGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(westGuest.status,201,'a second visitor can enter the west extension');
  await wait("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id==='browser-smoke-west'&&p.position.x===-120))");

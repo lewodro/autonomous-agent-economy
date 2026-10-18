@@ -1,12 +1,14 @@
 ---
 date: 2026-10-17
 title: Expand the same shared world in every direction
-summary: The existing plaza became the center of a map with four times the area, wider NPC routes and a botanical district built from the current lightweight renderer.
+summary: The existing plaza became the center of a map with four times the area, wider NPC routes, a botanical district, village homes and a south market built from the current lightweight renderer.
 commit: https://github.com/lewodro/autonomous-agent-economy/commit/f3126be
 pr: https://github.com/lewodro/autonomous-agent-economy/pull/32
 ---
 ## Scale without a new engine
 The world grew from 1792 × 1152 to 3584 × 2304 while the Arena, Research House, tables and existing interactions stayed at their established coordinates. Camera, collision, multiplayer presence and server validation now share the expanded bounds.
+
+The visual polish pass replaced long diagonal terrain wedges with stepped pixel regions, joined path pieces into roads with one outer edge, added stable sparse ground texture, and placed eleven varied homes around useful routes. A five-stall south bazaar gives the lower district food, fictional exchange, data, tools and general-goods vendors without claiming real financial execution.
 
 ## Botanical district
 Irregular paths lead through varied trees, bushes, flowers, rocks, open clearings and inexpensive animated campfires. Canonical NPC routes reach the west, east, north, south and garden districts without using another movement system.
