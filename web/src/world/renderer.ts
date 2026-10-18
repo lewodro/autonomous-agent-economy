@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, ROCKS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import type { Position, WorldActor, Interactable } from './model.js';
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number }
@@ -41,40 +41,68 @@ export class CanvasWorldRenderer implements WorldRenderer {
   private paintMap():void {
     const c=this.map.getContext('2d')!;c.imageSmoothingEnabled=false;
     const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
-    const patch=(points:[number,number][],color:string)=>{c.fillStyle=color;c.beginPath();c.moveTo(points[0]![0],points[0]![1]);for(const [x,y] of points.slice(1))c.lineTo(x,y);c.closePath();c.fill();};
     c.translate(-MAP.minX,-MAP.minY);
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
       rect(x,y,32,32,(x*7+y*13)%5===0?'#344b3e':'#30483c');
       if((x+y)%96===0)rect(x+8,y+20,4,3,'#4b6146');
     }
-    // Broad landscape patches leave generous open ground between landmarks.
-    patch([[-830,-490],[-420,-470],[-260,-280],[-340,60],[-820,160]],'#34513f');
-    patch([[-820,840],[-520,740],[-290,1040],[-360,1600],[-820,1620]],'#355240');
-    patch([[-100,-500],[410,-500],[560,-330],[460,-120],[-90,-160]],'#35513e');
-    patch([[1900,-490],[2560,-490],[2580,1090],[2230,1170],[1930,860],[1810,240]],'#2d4c39');
-    patch([[1460,470],[1770,420],[2100,480],[2220,710],[2150,1090],[1880,1160],[1510,1040],[1410,740]],'#3d6047');
-    // Extend the existing plaza floor treatment into the new open space. The
-    // left public/training side keeps its original footprint and landmarks.
-    rect(392,300,760,560,'#6b6150');rect(72,420,1024,84,'#6b6150');rect(860,300,112,400,'#6b6150');
-    rect(140,494,148,152,'#6b6150');rect(480,688,160,140,'#6b6150');
-    // These wide floor connectors follow the original treatment; no markings.
-    rect(-730,420,802,84,'#6b6150');rect(392,-420,364,720,'#6b6150');rect(392,860,364,620,'#6b6150');
-    // The east connector opens into a low-cost forest and garden zone. These
-    // are copied ground treatments, with no repeated road markings.
-    patch([[1088,128],[1450,128],[1580,310],[1510,660],[1540,960],[1200,1030],[1088,900]],'#294b3a');
-    rect(1040,500,600,56,'#6b6150');
-    patch([[1520,520],[1590,520],[1760,670],[1890,670],[1890,730],[1735,730],[1580,580],[1520,580]],'#786b55');
-    patch([[1790,700],[1850,700],[1990,920],[2050,920],[2050,975],[1960,975]],'#786b55');
+    // Large vegetation regions use stepped, overlapping pixel blocks. This
+    // avoids the vector-like diagonal wedges created by arbitrary polygons.
+    for(const area of TERRAIN_AREAS)rect(area.x,area.y,area.width,area.height,area.color);
+    rect(1088,128,360,780,'#294b3a');rect(1160,220,350,780,'#294b3a');rect(1260,340,290,620,'#294b3a');
+    for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
+    // Draw depth only on the exposed boundary of the combined road network.
+    // Outlining each overlapping rectangle separately created chaotic seams
+    // through the middle of the plaza and market.
+    const onPath=(x:number,y:number)=>PATHS.some(path=>x>=path.x&&x<path.x+path.width&&y>=path.y&&y<path.y+path.height);
+    const edgeStep=4;
+    for(const path of PATHS){
+      for(let x=path.x;x<path.x+path.width;x+=edgeStep){
+        if(!onPath(x+2,path.y-2))rect(x,path.y,Math.min(edgeStep,path.x+path.width-x),3,'#81745c');
+        if(!onPath(x+2,path.y+path.height+1))rect(x,path.y+path.height-4,Math.min(edgeStep,path.x+path.width-x),4,'#504a40');
+      }
+      for(let y=path.y;y<path.y+path.height;y+=edgeStep){
+        if(!onPath(path.x-2,y+2))rect(path.x,y,3,Math.min(edgeStep,path.y+path.height-y),'#81745c');
+        if(!onPath(path.x+path.width+1,y+2))rect(path.x+path.width-4,y,4,Math.min(edgeStep,path.y+path.height-y),'#504a40');
+      }
+    }
+    // Stable, visual-only texture. Coordinates are generated once from the
+    // central map data rather than changing on every frame or browser.
+    const groundTones=['#5f574a','#807361','#91816a'];
+    for(const detail of GROUND_DETAILS){
+      const color=groundTones[detail.tone]!;
+      if(detail.kind==='stone'){rect(detail.x,detail.y,3,2,color);rect(detail.x+3,detail.y+1,2,2,'#514c42');}
+      else if(detail.kind==='crack'){rect(detail.x,detail.y,5,1,color);rect(detail.x+3,detail.y+1,1,3,color);}
+      else{rect(detail.x,detail.y,2,2,color);rect(detail.x+5,detail.y+2,2,1,color);rect(detail.x+9,detail.y-1,1,2,color);}
+    }
     for(const b of BUILDINGS){
-      rect(b.x+8,b.y+8,b.width,b.height,'#1c2b28');rect(b.x,b.y,b.width,b.height,b.color);
-      rect(b.x+8,b.y+8,b.width-16,80,'#403838');
-      for(let line=12;line<80;line+=12)rect(b.x+8,b.y+line,b.width-16,3,'#65524a');
-      rect(b.x-8,b.y+80,b.width+16,10,'#281f26');
-      rect(b.x+b.width/2-20,b.y+b.height-42,40,42,'#282d2b');
-      rect(b.x+28,b.y+110,32,24,'#243c3a');rect(b.x+b.width-60,b.y+110,32,24,'#243c3a');
-      rect(b.x+32,b.y+114,24,3,'#b2c28b');rect(b.x+b.width-56,b.y+114,24,3,'#b2c28b');
-      c.font='bold 14px monospace';c.textAlign='center';c.fillStyle='#f4dfaf';c.fillText(b.name,b.x+b.width/2,b.y+105);
+      rect(b.x+8,b.y+9,b.width,b.height,'#172a25');
+      if(b.kind==='stall'){
+        rect(b.x,b.y+26,b.width,b.height-26,b.color);rect(b.x+7,b.y+34,7,b.height-34,'#4d4034');rect(b.x+b.width-14,b.y+34,7,b.height-34,'#4d4034');
+        rect(b.x-5,b.y+18,b.width+10,26,b.roof||'#5d4a42');
+        for(let stripe=0;stripe<b.width+10;stripe+=24)rect(b.x-5+stripe,b.y+18,12,26,b.accent||'#d1bb7d');
+        rect(b.x+7,b.y+b.height-28,b.width-14,18,'#4c4035');rect(b.x+14,b.y+b.height-34,b.width-28,8,'#8b7457');
+        rect(b.x+b.width/2-24,b.y+48,48,18,'#252f2c');
+        c.font='bold 9px monospace';c.textAlign='center';c.fillStyle=b.accent||'#f0d394';c.fillText(b.name,b.x+b.width/2,b.y+60);
+        if(b.name==='EXCHANGE'){rect(b.x+b.width/2-5,b.y+72,10,10,b.accent||'#e1b94d');rect(b.x+b.width/2-2,b.y+75,4,4,'#343a37');}
+        if(b.name==='FOOD'){rect(b.x+24,b.y+69,7,5,'#d18445');rect(b.x+34,b.y+66,6,8,'#8ba45b');rect(b.x+44,b.y+70,8,4,'#c7654f');}
+        if(b.name==='DATA'){rect(b.x+22,b.y+68,32,15,'#243d43');rect(b.x+26,b.y+72,24,3,b.accent||'#a7d5c2');}
+      }else if(b.kind==='house'){
+        rect(b.x,b.y+34,b.width,b.height-34,b.color);rect(b.x-7,b.y+24,b.width+14,18,b.roof||'#4c5148');
+        rect(b.x+2,b.y+15,b.width-4,20,b.roof||'#4c5148');rect(b.x+11,b.y+9,b.width-22,9,b.roof||'#4c5148');
+        rect(b.x+10,b.y+42,b.width-20,4,'#ffffff18');rect(b.x+b.width/2-14,b.y+b.height-38,28,38,'#303631');
+        rect(b.x+22,b.y+58,24,19,'#294341');rect(b.x+b.width-46,b.y+58,24,19,'#294341');
+        rect(b.x+25,b.y+61,18,3,b.accent||'#c5c18f');rect(b.x+b.width-43,b.y+61,18,3,b.accent||'#c5c18f');
+        rect(b.x+b.width/2+6,b.y+b.height-20,3,3,b.accent||'#d4bc7d');
+      }else{
+        rect(b.x,b.y,b.width,b.height,b.color);rect(b.x+8,b.y+8,b.width-16,80,b.roof||'#403838');
+        for(let line=12;line<80;line+=12)rect(b.x+8,b.y+line,b.width-16,3,'#65524a');
+        rect(b.x-8,b.y+80,b.width+16,10,'#281f26');rect(b.x+b.width/2-20,b.y+b.height-42,40,42,'#282d2b');
+        rect(b.x+28,b.y+110,32,24,'#243c3a');rect(b.x+b.width-60,b.y+110,32,24,'#243c3a');
+        rect(b.x+32,b.y+114,24,3,'#b2c28b');rect(b.x+b.width-56,b.y+114,24,3,'#b2c28b');
+        c.font='bold 14px monospace';c.textAlign='center';c.fillStyle='#f4dfaf';c.fillText(b.name,b.x+b.width/2,b.y+105);
+      }
     }
     // Fountain, table and archive use the same footprint as collision rectangles.
     rect(500,340,112,64,'#8e8b6d');rect(508,348,96,48,'#416c6b');rect(542,330,28,44,'#aca37f');
@@ -82,12 +110,20 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(let n=1;n<3;n++){rect(204+n*12,542,2,24,'#493f38');rect(200,538+n*10,44,2,'#493f38');}
     rect(208,590,30,10,'#946f52');rect(208,511,30,10,'#946f52');
     rect(480,720,160,32,'#776951');rect(492,701,136,43,'#243f3e');rect(501,711,118,18,'#83a98b');
+    for(const prop of MARKET_PROPS){
+      const {x,y}=prop;
+      if(prop.kind==='well'){rect(x-24,y+8,48,8,'#172a25');rect(x-22,y-8,44,25,'#777363');rect(x-16,y-4,32,15,'#263f3c');rect(x-24,y-13,6,23,'#554838');rect(x+18,y-13,6,23,'#554838');rect(x-27,y-18,54,7,'#76594a');}
+      else if(prop.kind==='sign'){rect(x-3,y-14,6,34,'#5b4938');rect(x-24,y-23,48,18,'#796047');rect(x-18,y-18,36,3,'#d2ba7c');}
+      else if(prop.kind==='crates'){rect(x-18,y-12,22,20,'#76583d');rect(x+3,y-6,19,17,'#8b6946');rect(x-15,y-8,16,2,'#b08a5b');}
+      else{rect(x-18,y-12,14,22,'#655044');rect(x+2,y-12,14,22,'#705548');rect(x-20,y-9,18,3,'#9a795b');rect(x,y-9,18,3,'#9a795b');}
+    }
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('ARENA STATISTICS',560,770);
-    c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,445);
+    c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,415);
     // Trees share trunk collision; varied crowns keep the garden organic.
     const treePalettes=[['#496345','#56734b'],['#3e6145','#638052'],['#4d6440','#71804c']];
     for(const {x,y,scale=1,tint=0} of TREES){
       const [dark,light]=treePalettes[tint]!;
+      c.fillStyle='#172b2866';c.beginPath();c.ellipse(x+7*scale,y+50*scale,25*scale,8*scale,0,0,Math.PI*2);c.fill();
       rect(x,y+24*scale,12*scale,28*scale,'#675542');
       rect(x-18*scale,y,48*scale,34*scale,dark!);
       rect(x-10*scale,y-12*scale,32*scale,26*scale,light!);
@@ -96,6 +132,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     const bushPalettes=[['#355940','#4e744b'],['#3d6045','#608052'],['#456040','#70814e']];
     for(const {x,y,size,tint=0} of BUSHES){
       const [dark,light]=bushPalettes[tint]!;
+      c.fillStyle='#172b2855';c.beginPath();c.ellipse(x,y+size/5,size*.55,size*.18,0,0,Math.PI*2);c.fill();
       rect(x-size/2,y-size/3,size,size/2,dark!);
       rect(x-size/3,y-size/2,size*2/3,size/2,light!);
       rect(x-size/2+3,y-size/2-3,size/3,size/3,dark!);
@@ -118,7 +155,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
     }
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET · SIMULATED GOODS',900,1088);
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }

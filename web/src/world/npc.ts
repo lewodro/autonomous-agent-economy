@@ -1,5 +1,5 @@
 import { moveActor, presenceObstacles } from './movement.js';
-import { NPC_WAYPOINTS, WALLS } from './map.js';
+import { ARENA_LOUNGE_WAYPOINT, NPC_WAYPOINTS, WALLS } from './map.js';
 import type { WorldActor, Position, WorldActivityState } from './model.js';
 
 export const MAX_PLAZA_AGENTS = 6;
@@ -44,10 +44,10 @@ export class NpcController implements AgentController {
   private waypoint=0; private pause=0; private stuck=0; private lounge=0; private studying=0;
   private returningFromArena:boolean; private readonly behavior:AgentBehaviorProfile;
   constructor(index:number,returningFromArena=false,profile?:NpcProfileLike) {
-    this.behavior=behaviorProfile(profile,index); this.waypoint=(this.behavior.routeBias+index)%NPC_WAYPOINTS.length;
+    this.behavior=behaviorProfile(profile,index); this.waypoint=returningFromArena?ARENA_LOUNGE_WAYPOINT:(this.behavior.routeBias+index)%NPC_WAYPOINTS.length;
     this.pause=returningFromArena?0:index*.2; this.returningFromArena=returningFromArena;
   }
-  returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=30; this.pause=0; this.stuck=0; }
+  returnToArenaLounge():void { this.returningFromArena=true; this.lounge=0; this.studying=0; this.waypoint=ARENA_LOUNGE_WAYPOINT; this.pause=0; this.stuck=0; }
   private setState(actor:WorldActor,state:WorldActivityState):void { actor.activityState=state; actor.activity=activityLabel(state); }
   update(actor:WorldActor,seconds:number,actors:WorldActor[]=[]):void {
     if(this.returningFromArena&&this.lounge>0){
