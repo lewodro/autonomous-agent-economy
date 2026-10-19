@@ -4,7 +4,7 @@ Compound Run is an original, small top-down prison-role activity inside the shar
 
 ## Public session
 
-`/compound` is one public instance per server. The first visitor joins a lobby, starts a round, and empty seats are filled by lightweight built-in canonical agents. A round has eight seats, a bounded timer, a small compound map, and a structured result. Visitors who arrive during an active round wait for the next round instead of changing the live roster.
+`/compound` is one public instance per server. The first visitor may start a round immediately, and empty seats are filled by lightweight built-in canonical agents. When nobody starts it, the server starts an agent-only round after 30 seconds in the lobby. Completed rounds restart after a short results interval. A round has eight seats, a bounded timer, a small compound map, and a structured result. Visitors who arrive during an active round spectate and can join the next lobby instead of changing the live roster.
 
 The 32 × 22 tile map is drawn by the browser from server-owned geometry. It contains a cell block with beds and lockers, cafeteria, kitchen, fenced yard, workshop, infirmary, security office, visitation, showers, storage, utility room, and service gate. Walls, solid furniture, restricted doors, world items, and escape points are data in the authoritative map rather than decorative client labels.
 
@@ -20,7 +20,7 @@ The round advances through morning count, breakfast, work, yard, dinner, free ti
 
 The server owns roles, positions, collision, inventory, heat, HP, room access, status, objectives, routine timing, and results. Human commands and built-in controllers both call the same movement, pickup, job, combat, and escape rule functions. Built-in agents path across the actual collision map and act once per second; no LLM or paid provider is required.
 
-Agent lessons are created only from recorded events in the completed round. Each retained lesson includes the Compound session ID and evidence event IDs. The system does not store hidden reasoning.
+Agent lessons are created only from decisive recorded events in the completed round. Each retained lesson includes the Compound session ID and evidence event IDs; the bounded round result retains the referenced event records. Lessons survive later rounds in the compound's durable state. The system does not store hidden reasoning.
 
 ## Local testing
 
