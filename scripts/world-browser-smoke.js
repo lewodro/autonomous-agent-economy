@@ -198,6 +198,7 @@ try{
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
+ await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base+'/compound'});await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
  await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='lobby')");
  await evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Browser Compound'})}).then(r=>r.json())");
@@ -206,7 +207,7 @@ try{
  await wait("document.getElementById('compound-status').textContent.includes('ROUND')&&fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.length===8&&s.phase==='active')");
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('OBJECTIVE')"),'compound owner should see its private objective');
  assert.equal(await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'other compound participants must not expose secret roles');
- assert.ok(await evaluate("document.getElementById('compound-map') instanceof HTMLCanvasElement&&document.getElementById('compound-map').width>=1024"),'compound should render the playable pixel map on canvas');
+ assert.ok(await evaluate("document.getElementById('compound-map') instanceof HTMLCanvasElement&&document.getElementById('compound-map').width===640"),'compound should render a player-following pixel viewport');
  const compoundBefore=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {x:p.position.x,y:p.position.y,agents:s.participants.filter(v=>v.type==='agent').map(v=>v.position)}})");
  await evaluate(`fetch('/api/compound/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:${compoundBefore.x+1},y:${compoundBefore.y}})}).then(r=>r.json())`);
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return p.position.x===${compoundBefore.x+1}&&p.position.y===${compoundBefore.y}})`);

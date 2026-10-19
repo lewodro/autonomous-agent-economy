@@ -1,12 +1,16 @@
+import { drawActorSprite } from './renderer.js';
+import { SPRITES, loadSettings } from './sprites.js';
 interface Point{x:number;y:number}
 interface Room{id:string;label:string;x:number;y:number;w:number;h:number;terrain:string;restricted:boolean}
 interface Prop{id:string;kind:string;x:number;y:number;solid:boolean}
 interface CompoundMap{width:number;height:number;tile_size:number;rooms:Room[];walls:Point[];doors:{id:string;position:Point;room_id:string;mode:string}[];props:Prop[];escape_routes:{id:string;label:string;position:Point;requires:string[]}[]}
-interface CompoundParticipant{id:string;name:string;type:'human'|'agent';position:Point;facing:string;public_role:string;role?:string;room:string;heat:number;hp:number;activity:string;status:string;inventory_count:number;inventory?:string[];objective?:string;job_progress?:number;message?:string|null}
+interface CompoundParticipant{id:string;name:string;type:'human'|'agent';avatar?:string|null;position:Point;facing:string;public_role:string;role?:string;room:string;heat:number;hp:number;activity:string;status:string;inventory_count:number;inventory?:string[];objective?:string;job_progress?:number;message?:string|null}
 interface CompoundSnapshot{phase:'lobby'|'active'|'finished';round:number;revision:number;started_at:string|null;ends_at:number|null;routine_phase:string;map:CompoundMap;world_items:{id:string;type:string;position:Point}[];participants:CompoundParticipant[];events:{id:string;at:string;type:string;message:string}[];results:{session_id:string;winner_ids:string[];escaped_ids:string[]}[];you:string|null}
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('compound-map'),context=canvas.getContext('2d',{alpha:false})!,statusEl=$<HTMLDivElement>('compound-status'),lobby=$<HTMLDivElement>('compound-lobby'),you=$<HTMLDivElement>('compound-you'),participants=$<HTMLDivElement>('compound-participants'),events=$<HTMLOListElement>('compound-events'),hint=$<HTMLDivElement>('compound-hint');
 let state:CompoundSnapshot|null=null,busy=false,lastRevision=-1,errorText='',previousPositions=new Map<string,Point>(),renderPositions=new Map<string,Point>();
+const spriteById=new Map(SPRITES.map(sprite=>[sprite.id,sprite]));
+const spriteImages=new Map(SPRITES.map(sprite=>{const image=new Image();image.src=sprite.sheet;return[sprite.id,image] as const;}));
 const COLORS={outside:'#172b26',corridor:'#6b6453',wall:'#273d36',wallTop:'#51665a',door:'#b67d42',restricted:'#594c52',cell:'#718170',cafeteria:'#80765f',kitchen:'#766a52',security:'#574d55',visitation:'#756b5a',yard:'#526e50',workshop:'#6d6755',infirmary:'#697b73',showers:'#537174',storage:'#625d50',utility:'#525d58',service:'#4d5952'} as const;
 async function request<T>(url:string,options?:RequestInit):Promise<T>{const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options?.headers||{})},signal:AbortSignal.timeout(8000)});if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.error||'Compound request failed');}return response.json() as Promise<T>}
 function button(label:string,action:()=>void,className=''):HTMLButtonElement{const b=document.createElement('button');b.textContent=label;b.className=className;b.onclick=()=>{if(!busy)action();};return b;}
@@ -26,15 +30,26 @@ function drawProp(prop:Prop,size:number):void{
 }
 function drawActor(actor:CompoundParticipant,size:number,time:number):void{
  const target=tileCenter(actor.position,size),current=renderPositions.get(actor.id)||previousPositions.get(actor.id)||target,lerp=.16;current.x+=(target.x-current.x)*lerp;current.y+=(target.y-current.y)*lerp;renderPositions.set(actor.id,current);
- const x=Math.round(current.x),y=Math.round(current.y),youActor=actor.id===state?.you,guard=actor.public_role==='guard';context.fillStyle='rgba(12,24,20,.45)';context.fillRect(x-size*.3,y+size*.25,size*.6,size*.18);
- context.fillStyle=guard?'#385a72':actor.type==='human'?'#c06b3f':'#e68443';context.fillRect(x-size*.24,y-size*.3,size*.48,size*.48);context.fillStyle='#f1d1ae';context.fillRect(x-size*.2,y-size*.48,size*.4,size*.25);context.fillStyle=guard?'#25394a':'#4a3028';context.fillRect(x-size*.22,y-size*.54,size*.44,size*.12);context.fillStyle='#111';context.fillRect(x-size*.12,y-size*.4,3,3);context.fillRect(x+size*.07,y-size*.4,3,3);
- if(youActor){context.strokeStyle='#f2c86d';context.lineWidth=3;context.strokeRect(x-size*.34,y-size*.59,size*.68,size*.94);}if(actor.status==='escaped')context.globalAlpha=.35;
- drawPixelText(actor.name.toUpperCase(),x,y-size*.68,Math.max(8,size*.29),'center');context.globalAlpha=1;
+ const x=Math.round(current.x),y=Math.round(current.y),youActor=actor.id===state?.you;
+ context.fillStyle='rgba(12,24,20,.45)';context.fillRect(x-size*.3,y+size*.25,size*.6,size*.18);
+ const spriteId=actor.type==='human'?(actor.avatar||'visitor_ember'):actor.name.toLowerCase().replaceAll(' ','-');
+ if(actor.status==='escaped')context.globalAlpha=.35;
+ drawActorSprite(context,spriteById.get(spriteId),spriteImages.get(spriteId),{position:{x,y},facing:(['up','down','left','right'].includes(actor.facing)?actor.facing:'down') as 'up'|'down'|'left'|'right',movementState:Math.abs(target.x-x)+Math.abs(target.y-y)>2?'walking':'idle'},time,false,size);
+ context.globalAlpha=1;
+ if(youActor){context.strokeStyle='#f2c86d';context.lineWidth=2;context.beginPath();context.ellipse(x,y+size*.35,size*.36,size*.15,0,0,Math.PI*2);context.stroke();}
+ if(youActor||actor.message){context.fillStyle='#1b2b27';context.fillRect(x-size*.44,y-size*.86,size*.88,size*.28);drawPixelText(actor.name.toUpperCase().slice(0,11),x,y-size*.64,Math.max(8,size*.25),'center');}
  context.fillStyle='#301f1d';context.fillRect(x-size*.28,y+size*.42,size*.56,4);context.fillStyle=actor.hp>50?'#82ad62':'#d85c4d';context.fillRect(x-size*.28,y+size*.42,size*.56*(actor.hp/100),4);
  if(actor.message){const bob=Math.sin(time/280)*2;context.fillStyle='#f1dfb8';context.fillRect(x+size*.2,y-size*.92+bob,6,6);drawPixelText('!',x+size*.23,y-size*.76+bob,10,'center');}
 }
 function renderCanvas(time=performance.now()):void{
- if(!state){requestAnimationFrame(renderCanvas);return;}const map=state.map,size=map.tile_size;canvas.width=map.width*size;canvas.height=map.height*size;context.imageSmoothingEnabled=false;context.fillStyle=COLORS.outside;context.fillRect(0,0,canvas.width,canvas.height);
+ if(!state){requestAnimationFrame(renderCanvas);return;}const map=state.map,size=map.tile_size;
+ const viewWidth=20*size,viewHeight=14*size;
+ if(canvas.width!==viewWidth||canvas.height!==viewHeight){canvas.width=viewWidth;canvas.height=viewHeight;}
+ const focus=state.participants.find(actor=>actor.id===state!.you)||state.participants[0];
+ const cameraX=Math.max(0,Math.min(map.width*size-viewWidth,(focus?.position.x||map.width/2)*size-viewWidth/2));
+ const cameraY=Math.max(0,Math.min(map.height*size-viewHeight,(focus?.position.y||map.height/2)*size-viewHeight/2));
+ context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;context.fillStyle=COLORS.outside;context.fillRect(0,0,canvas.width,canvas.height);
+ context.translate(-Math.round(cameraX),-Math.round(cameraY));
  for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++){const room=roomAt(x,y),base=room?COLORS[room.terrain as keyof typeof COLORS]||COLORS.corridor:COLORS.corridor;context.fillStyle=base;context.fillRect(x*size,y*size,size,size);if((x*17+y*31)%13===0){context.fillStyle='rgba(20,32,28,.13)';context.fillRect(x*size+6,y*size+9,3,2);}}
  for(const wall of map.walls){context.fillStyle=COLORS.wall;context.fillRect(wall.x*size,wall.y*size,size,size);context.fillStyle=COLORS.wallTop;context.fillRect(wall.x*size,wall.y*size,size,5);context.fillStyle='#1b2b27';context.fillRect(wall.x*size,wall.y*size+size-4,size,4);}
  for(const door of map.doors){const p=door.position;context.fillStyle=door.mode==='restricted'?'#9e4e43':COLORS.door;context.fillRect(p.x*size+4,p.y*size+3,size-8,size-6);context.fillStyle='#e9c46a';context.fillRect(p.x*size+size-10,p.y*size+size*.5,3,3);}
@@ -42,7 +57,8 @@ function renderCanvas(time=performance.now()):void{
  for(const route of map.escape_routes){const p=route.position;context.fillStyle='#182b26';context.fillRect(p.x*size+3,p.y*size+3,size-6,size-6);context.strokeStyle='#dbb866';context.lineWidth=2;context.strokeRect(p.x*size+7,p.y*size+7,size-14,size-14);}
  for(const item of state.world_items){const p=tileCenter(item.position,size);context.fillStyle=item.type==='keycard'?'#e0c56b':item.type==='medkit'?'#d9685b':item.type==='food'?'#80a85c':'#aeb7aa';context.fillRect(p.x-6,p.y-6,12,12);drawPixelText(item.type.slice(0,1).toUpperCase(),p.x,p.y+4,9,'center');}
  for(const room of map.rooms)drawPixelText(room.label,(room.x+.5)*size,(room.y+.72)*size,Math.max(9,size*.3));
- for(const actor of state.participants)drawActor(actor,size,time);requestAnimationFrame(renderCanvas);
+ for(const actor of state.participants)drawActor(actor,size,time);
+ context.setTransform(1,0,0,1,0,0);requestAnimationFrame(renderCanvas);
 }
 function nearestOther(own:CompoundParticipant):CompoundParticipant|undefined{return state?.participants.filter(value=>value.id!==own.id&&value.status==='active').sort((a,b)=>Math.abs(a.position.x-own.position.x)+Math.abs(a.position.y-own.position.y)-Math.abs(b.position.x-own.position.x)-Math.abs(b.position.y-own.position.y))[0];}
 function renderPanel():void{
@@ -55,7 +71,7 @@ function renderPanel():void{
 function applySnapshot(next:CompoundSnapshot):void{if(next.revision!==lastRevision){for(const actor of state?.participants||[])previousPositions.set(actor.id,tileCenter(actor.position,next.map.tile_size));state=next;lastRevision=next.revision;renderPanel();}}
 async function refresh():Promise<void>{try{applySnapshot(await request<CompoundSnapshot>('/api/compound'));errorText='';}catch(error){errorText=error instanceof Error?error.message:'Compound unavailable';hint.textContent=errorText;}}
 async function command(url:string,data:Record<string,unknown>={}):Promise<void>{busy=true;try{applySnapshot(await request<CompoundSnapshot>(url,{method:'POST',body:JSON.stringify(data)}));errorText='';}catch(error){errorText=error instanceof Error?error.message:'Action rejected';hint.textContent=errorText;}finally{busy=false;}}
-async function join():Promise<void>{const name=window.prompt('Choose a public compound name','Visitor');if(name)await command('/api/compound/join',{name});}
+async function join():Promise<void>{const name=window.prompt('Choose a public compound name','Visitor');if(name)await command('/api/compound/join',{name,avatar:loadSettings().avatar});}
 async function move(dx:number,dy:number):Promise<void>{if(!state?.you||busy)return;const own=state.participants.find(value=>value.id===state!.you);if(!own||state.phase!=='active')return;await command('/api/compound/move',{x:own.position.x+dx,y:own.position.y+dy});}
 document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(control=>control.onclick=()=>{const direction=control.dataset.move;void move(direction==='left'?-1:direction==='right'?1:0,direction==='up'?-1:direction==='down'?1:0);});
 window.addEventListener('keydown',event=>{if(['INPUT','TEXTAREA'].includes((event.target as HTMLElement).tagName))return;const key=event.key.toLowerCase();if(key==='e'){event.preventDefault();void command('/api/compound/action',{action:'pickup'});return;}const delta=key==='w'||key==='arrowup'?[0,-1]:key==='s'||key==='arrowdown'?[0,1]:key==='a'||key==='arrowleft'?[-1,0]:key==='d'||key==='arrowright'?[1,0]:null;if(delta){event.preventDefault();void move(delta[0]||0,delta[1]||0);}});
