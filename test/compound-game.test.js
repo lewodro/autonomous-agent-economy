@@ -141,3 +141,13 @@ test('both original escape routes are reachable by a prepared prisoner',async()=
   }
   await game.close();
 });
+
+test('a guard cannot turn an escape route into a guard victory',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-')),{now:()=>10_000});
+  game.join('owner',{name:'Gate Guard'});game.startRound('owner');
+  const human=game.participant('owner');human.role='guard';human.position={x:20,y:19};human.inventory=['scrap','wire'];
+  assert.throws(()=>game.action('owner',{action:'escape',route_id:'utility-route'}),{code:'COMPOUND_ROLE_FORBIDDEN'});
+  assert.equal(human.status,'active');
+  assert.equal(game.snapshot().events.some(event=>event.type==='escape'),false);
+  await game.close();
+});
