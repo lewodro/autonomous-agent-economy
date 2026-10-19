@@ -90,8 +90,8 @@ export class NpcController implements AgentController {
     }
     if(this.pause>0){this.pause-=seconds;actor.movementState='idle';this.setState(actor,'idle');return;}
     const target=NPC_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
-    const before={...actor.position}; const nearby=actors.filter(other=>other!==actor&&Math.hypot(other.position.x-actor.position.x,other.position.y-actor.position.y)<64);
-    this.setState(actor,this.returningFromArena?'exit_arena':(this.behavior.social&&nearby.length?'talking':'wander'));
+    const before={...actor.position};
+    this.setState(actor,this.returningFromArena?'exit_arena':'wander');
     // NPCs use the shared wall/building collision, but do not block one
     // another. Finished agents can return from the Arena as a group; treating
     // their presentation sprites as solid would deadlock the whole cluster.
