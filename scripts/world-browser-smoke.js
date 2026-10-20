@@ -12,7 +12,7 @@ socket.addEventListener('message',event=>{const message=JSON.parse(event.data);i
 const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Browser command timed out: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const wait=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
+const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
 let failed=false;
 try{
@@ -139,7 +139,9 @@ try{
  await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
  await screenshot('npc-dialogue');
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
- await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return n&&!['attention','talking','cooldown'].includes(n.activityState)})()",15000);
+ // The canonical Arena may claim this NPC while the browser waits. That is a
+ // valid roster transition; otherwise the actor must resume a normal state.
+ await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return !n||!['attention','talking','cooldown'].includes(n.activityState)})()",15000);
  // Developer probes start just inside each former edge. Walking through those
  // coordinates exercises the real input, collision, camera and canvas paths.
  const walkProbe=async(label,key,axis,threshold,screenshotName)=>{
@@ -214,6 +216,10 @@ try{
  await delay(2200);
  assert.ok(await evaluate(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(v=>v.type==='agent').some((v,i)=>v.position.x!==${JSON.stringify(compoundBefore.agents)}[i].x||v.position.y!==${JSON.stringify(compoundBefore.agents)}[i].y))`),'autonomous compound participants should physically move');
  await screenshot('compound-round');
+ await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='finished'&&s.results.at(-1)?.participants.length===8)",25000);
+ await wait("!document.getElementById('compound-results').hidden&&document.getElementById('compound-results').textContent.includes('Winners:')");
+ assert.equal(await evaluate("!!document.querySelector('#compound-you .compound-action-row')"),false,'finished round must not offer live actions');
+ await screenshot('compound-result');
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
  console.log('PASS world: character, NPC profile, live render loop, Survival combat/inspection, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
 }catch(error){failed=true;console.error(error);}
