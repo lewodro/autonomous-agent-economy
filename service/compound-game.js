@@ -1,0 +1,153 @@
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+const PUBLIC_ROLES=new Set(['guard','prisoner','medic','worker']);
+const HUMAN_AVATARS=new Set(['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
+const WIDTH=32,HEIGHT=22,CAPACITY=8,MAX_INVENTORY=6;
+const ROUTINE=['morning_count','breakfast','work','yard','dinner','free_time','lockdown'];
+const SPAWNS=[{x:2,y:3},{x:4,y:3},{x:6,y:3},{x:8,y:3},{x:10,y:9},{x:12,y:9},{x:14,y:9},{x:16,y:9}];
+const AGENT_NAMES=['Founder','Analyst','Trader','Defender','Strategist','Gambler','Explorer','Wildcard'];
+const PERSONALITIES=['systems','observant','social','cautious','planning','risk','curious','chaotic'];
+function fail(code,message,status=400){return Object.assign(new Error(message),{code,status});}
+function clone(value){return structuredClone(value);}
+function key(position){return `${position.x},${position.y}`;}
+function validName(value){return typeof value==='string'&&/^[a-zA-Z0-9 _-]{2,24}$/.test(value);}
+function publicRole(role){return PUBLIC_ROLES.has(role)?role:'prisoner';}
+function distance(a,b){return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);}
+
+const rooms=[
+  {id:'cell-block',label:'CELL BLOCK',x:1,y:1,w:9,h:7,terrain:'cell',restricted:false,door:{x:9,y:5}},
+  {id:'cafeteria',label:'CAFETERIA',x:11,y:1,w:9,h:6,terrain:'cafeteria',restricted:false,door:{x:15,y:6}},
+  {id:'kitchen',label:'KITCHEN',x:21,y:1,w:5,h:6,terrain:'kitchen',restricted:true,door:{x:21,y:4}},
+  {id:'security',label:'SECURITY',x:27,y:1,w:4,h:6,terrain:'security',restricted:true,door:{x:27,y:4}},
+  {id:'visitation',label:'VISITATION',x:1,y:10,w:7,h:5,terrain:'visitation',restricted:false,door:{x:7,y:12}},
+  {id:'yard',label:'YARD',x:9,y:8,w:11,h:7,terrain:'yard',restricted:false,door:{x:14,y:14}},
+  {id:'workshop',label:'WORKSHOP',x:21,y:8,w:6,h:7,terrain:'workshop',restricted:false,door:{x:21,y:11}},
+  {id:'infirmary',label:'INFIRMARY',x:28,y:8,w:3,h:7,terrain:'infirmary',restricted:false,door:{x:28,y:11}},
+  {id:'showers',label:'SHOWERS',x:1,y:17,w:7,h:4,terrain:'showers',restricted:false,door:{x:7,y:18}},
+  {id:'storage',label:'STORAGE',x:9,y:17,w:6,h:4,terrain:'storage',restricted:true,door:{x:12,y:17}},
+  {id:'utility',label:'UTILITY',x:16,y:17,w:7,h:4,terrain:'utility',restricted:true,door:{x:19,y:17}},
+  {id:'service-gate',label:'SERVICE GATE',x:24,y:17,w:7,h:4,terrain:'service',restricted:true,door:{x:27,y:17}},
+];
+const doors=rooms.map(room=>({id:`door-${room.id}`,position:room.door,room_id:room.id,mode:room.restricted?'restricted':'open'}));
+const props=[
+  ...[2,4,6,8].flatMap(x=>[{id:`bed-${x}`,kind:'bed',x,y:2,solid:true},{id:`locker-${x}`,kind:'locker',x,y:4,solid:true}]),
+  ...[12,15,18].flatMap(x=>[{id:`table-${x}`,kind:'table',x,y:3,solid:true},{id:`bench-${x}`,kind:'bench',x,y:4,solid:true}]),
+  {id:'food-counter',kind:'counter',x:22,y:2,solid:true},{id:'stove',kind:'stove',x:24,y:2,solid:true},
+  {id:'guard-desk',kind:'guard_desk',x:29,y:3,solid:true},{id:'security-panel',kind:'panel',x:29,y:5,solid:true},
+  {id:'visit-table',kind:'table',x:4,y:12,solid:true},{id:'yard-bench',kind:'bench',x:11,y:11,solid:true},
+  {id:'exercise',kind:'exercise',x:17,y:10,solid:true},{id:'workbench-a',kind:'workbench',x:23,y:10,solid:true},
+  {id:'workbench-b',kind:'workbench',x:25,y:12,solid:true},{id:'medical-bed',kind:'medical_bed',x:29,y:10,solid:true},
+  {id:'medical-cabinet',kind:'cabinet',x:29,y:13,solid:true},{id:'shower-a',kind:'shower',x:3,y:18,solid:true},
+  {id:'shower-b',kind:'shower',x:5,y:18,solid:true},{id:'storage-crate',kind:'crate',x:11,y:19,solid:true},
+  {id:'utility-panel',kind:'panel',x:18,y:19,solid:true},{id:'service-console',kind:'panel',x:26,y:19,solid:true},
+];
+function roomAt(position){return rooms.find(room=>position.x>=room.x&&position.x<room.x+room.w&&position.y>=room.y&&position.y<room.y+room.h);}
+function buildWalls(){const result=new Set();for(let x=0;x<WIDTH;x++){result.add(`${x},0`);result.add(`${x},${HEIGHT-1}`);}for(let y=0;y<HEIGHT;y++){result.add(`0,${y}`);result.add(`${WIDTH-1},${y}`);}for(const room of rooms){for(let x=room.x;x<room.x+room.w;x++){result.add(`${x},${room.y}`);result.add(`${x},${room.y+room.h-1}`);}for(let y=room.y;y<room.y+room.h;y++){result.add(`${room.x},${y}`);result.add(`${room.x+room.w-1},${y}`);}result.delete(key(room.door));}return result;}
+const WALL_SET=buildWalls(),PROP_SET=new Set(props.filter(prop=>prop.solid).map(prop=>`${prop.x},${prop.y}`));
+export const COMPOUND_MAP=Object.freeze({width:WIDTH,height:HEIGHT,tile_size:32,rooms,doors,props,walls:[...WALL_SET].map(value=>{const [x,y]=value.split(',').map(Number);return{x,y};}),escape_routes:[{id:'utility-route',label:'UTILITY ROUTE',position:{x:21,y:19},requires:['scrap','wire']},{id:'service-access',label:'SERVICE ACCESS',position:{x:29,y:19},requires:['keycard','food']}]});
+function freshItems(){return[{id:'item-food-a',type:'food',position:{x:13,y:5},status:'ground'},{id:'item-food-b',type:'food',position:{x:23,y:5},status:'ground'},{id:'item-scrap-a',type:'scrap',position:{x:24,y:13},status:'ground'},{id:'item-scrap-b',type:'scrap',position:{x:10,y:19},status:'ground'},{id:'item-wire',type:'wire',position:{x:24,y:11},status:'ground'},{id:'item-medkit',type:'medkit',position:{x:29,y:12},status:'ground'},{id:'item-keycard',type:'keycard',position:{x:5,y:13},status:'ground'},{id:'item-contraband',type:'contraband',position:{x:5,y:5},status:'ground'}];}
+function emptyState(roundSeconds){return{version:2,id:'public-compound',phase:'lobby',round:0,revision:0,startedAt:null,endsAt:null,roundSeconds,participants:[],worldItems:freshItems(),events:[],results:[],agentMemories:{},updatedAt:Date.now()};}
+function roleDeck(count,seed){const guards=Math.min(2,Math.max(1,Math.floor(count/4))),roles=[...Array(guards).fill('guard')];while(roles.length<count)roles.push(['prisoner','smuggler','informant','medic','worker','escape_planner'][(roles.length-guards)%6]);let state=(seed>>>0)||1;for(let index=roles.length-1;index>0;index--){state=(state*1664525+1013904223)>>>0;const swap=state%(index+1);[roles[index],roles[swap]]=[roles[swap],roles[index]];}return roles;}
+function objectiveFor(role){return({guard:'Keep the compound secure until lockdown.',smuggler:'Deliver contraband and reach an exit.',informant:'Observe suspicious behavior and report it.',medic:'Treat a participant in the infirmary.',worker:'Complete three workshop tasks.',escape_planner:'Collect tools and open an escape route.',prisoner:'Find allies, tools, and a safe way out.'})[role]||'Survive the routine.';}
+
+export class CompoundGame{
+  constructor(directory,{profiles=()=>[],roundSeconds=Number(process.env.COMPOUND_ROUND_SECONDS||300),lobbySeconds=Number(process.env.COMPOUND_LOBBY_SECONDS||30),now=()=>Date.now()}={}){this.directory=directory;this.file=path.join(directory,'compound.json');this.roundSeconds=Math.max(15,Math.min(1800,Number(roundSeconds)||300));this.lobbySeconds=Math.max(5,Math.min(600,Number(lobbySeconds)||30));this.now=now;this.state=emptyState(this.roundSeconds);this.state.phaseAt=this.now();this.persistTail=Promise.resolve();this.timer=null;this.profiles=profiles;}
+  async restore(){await mkdir(this.directory,{recursive:true});try{const saved=JSON.parse(await readFile(this.file,'utf8'));if(saved?.version===2&&Array.isArray(saved.participants))this.state=saved;else if(saved?.version===1){this.state={...emptyState(this.roundSeconds),round:Number(saved.round)||0,results:Array.isArray(saved.results)?saved.results:[]};}}catch(error){if(error.code!=='ENOENT')throw error;}this.state.agentMemories??={};this.state.phaseAt=Number.isFinite(this.state.phaseAt)?this.state.phaseAt:this.now();if(this.state.phase==='active'&&this.state.endsAt<=this.now())this.finish('timer');}
+  async save(){const task=this.persistTail.then(async()=>{const tmp=`${this.file}.${randomUUID()}.tmp`;await writeFile(tmp,JSON.stringify(this.state),{mode:0o600});await rename(tmp,this.file);});this.persistTail=task.catch(()=>{});return task;}
+  start(){if(!this.timer){this.timer=setInterval(()=>{void this.tick();},1000);this.timer.unref?.();}}
+  async close(){if(this.timer)clearInterval(this.timer);this.timer=null;await this.save();}
+  participant(owner){return this.state.participants.find(value=>value.owner===owner);}
+  routinePhase(){if(this.state.phase!=='active'||!this.state.startedAt)return'free_time';const elapsed=this.now()-Date.parse(this.state.startedAt),duration=Math.max(1,this.state.endsAt-Date.parse(this.state.startedAt));return ROUTINE[Math.min(ROUTINE.length-1,Math.floor(elapsed/duration*ROUTINE.length))];}
+  safeParticipant(value,owner){const result={id:value.id,name:value.name,type:value.type,avatar:value.avatar||null,position:value.position,facing:value.facing,public_role:publicRole(value.role),room:roomAt(value.position)?.id||'corridor',heat:value.heat,hp:value.hp,activity:value.activity,status:value.status,inventory_count:value.inventory.length,message:value.message||null};if(value.owner===owner)Object.assign(result,{role:value.role,inventory:value.inventory,objective:value.objective,memories:value.memories,job_progress:value.jobProgress});return result;}
+  snapshot(owner=null){const state=this.state;return{id:state.id,phase:state.phase,round:state.round,revision:state.revision,started_at:state.startedAt,ends_at:state.endsAt,routine_phase:this.routinePhase(),map:COMPOUND_MAP,world_items:state.worldItems.filter(item=>item.status==='ground'),participants:state.participants.map(value=>this.safeParticipant(value,owner)),events:state.events.slice(-40),results:state.results.slice(-10),you:owner?this.participant(owner)?.id||null:null};}
+  makeParticipant(base,index){return{...base,role:'prisoner',position:clone(SPAWNS[index]||SPAWNS[0]),facing:'down',heat:0,hp:100,inventory:['food'],objective:'Wait for role assignment.',activity:'Waiting in the lobby',status:'ready',memories:[],jobProgress:0,lastActionAt:0,lastMoveAt:0,message:null,seed:(index+1)*7919};}
+  join(owner,input={}){if(!owner)throw fail('COMPOUND_OWNER_REQUIRED','A visitor session is required',401);const existing=this.participant(owner);if(existing)return this.snapshot(owner);if(this.state.phase==='active')throw fail('COMPOUND_ROUND_ACTIVE','Join the next round; the current round is already running',409);if(this.state.phase==='finished')this.resetLobby();if(!validName(input.name||'Visitor'))throw fail('INVALID_COMPOUND_NAME','Name must be 2-24 letters, numbers, spaces, _ or -');if(input.avatar!==undefined&&!HUMAN_AVATARS.has(input.avatar))throw fail('INVALID_COMPOUND_AVATAR','Choose an approved world avatar');if(this.state.participants.length>=CAPACITY)throw fail('COMPOUND_FULL','The compound lobby is full',409);this.state.participants.push(this.makeParticipant({id:`human-${randomUUID()}`,owner,name:input.name||'Visitor',type:'human',avatar:input.avatar||'visitor_ember'},this.state.participants.length));this.record(`${input.name||'Visitor'} joined the compound.`);this.bump();return this.snapshot(owner);}
+  fillAgents(){const profiles=this.profiles()||[];let index=0;while(this.state.participants.length<CAPACITY){const profile=profiles[index%Math.max(1,profiles.length)]||{id:`agent-${index}`,name:AGENT_NAMES[index%8],strategy:PERSONALITIES[index%8]};this.state.participants.push(this.makeParticipant({id:`agent-${profile.id||index}`,owner:null,name:profile.name||AGENT_NAMES[index%8],type:'agent',personality:profile.strategy||PERSONALITIES[index%8]},this.state.participants.length));index++;}}
+  resetLobby(){this.state.participants=this.state.participants.filter(value=>value.type==='human').map((value,index)=>this.makeParticipant({id:value.id,owner:value.owner,name:value.name,type:'human',avatar:value.avatar},index));this.state.phase='lobby';this.state.phaseAt=this.now();this.state.startedAt=null;this.state.endsAt=null;this.state.worldItems=freshItems();}
+  startRound(owner,{allowNoOwner=false}={}){
+    if(this.state.phase==='finished')this.resetLobby();
+    if(!this.participant(owner)&&!allowNoOwner)throw fail('COMPOUND_NOT_JOINED','Join the compound lobby first',403);
+    if(this.state.phase==='active')return this.snapshot(owner);
+    this.fillAgents();this.state.worldItems=freshItems();
+    const now=this.now(),roles=roleDeck(this.state.participants.length,now+this.state.round);
+    this.state.participants.forEach((value,index)=>{
+      const identity={id:value.id,owner:value.owner,name:value.name,type:value.type,personality:value.personality,avatar:value.avatar};
+      Object.assign(value,this.makeParticipant(identity,index));
+      value.role=roles[index];value.objective=objectiveFor(value.role);value.status='active';
+      value.activity=value.role==='guard'?'Beginning patrol':'Reporting for morning count';
+      if(value.type==='agent')value.memories=clone(this.state.agentMemories[value.id]||[]);
+    });
+    this.state.phase='active';this.state.phaseAt=now;this.state.round++;
+    this.state.startedAt=new Date(now).toISOString();this.state.endsAt=now+this.roundSeconds*1000;this.state.events=[];
+    this.record(`Round ${this.state.round} began with ${this.state.participants.length} participants.`,'round_start');this.bump();return this.snapshot(owner);
+  }
+  startAgentRound(){return this.startRound(null,{allowNoOwner:true});}
+  blocked(position,participant){if(position.x<1||position.y<1||position.x>=WIDTH-1||position.y>=HEIGHT-1||WALL_SET.has(key(position))||PROP_SET.has(key(position)))return true;const door=doors.find(value=>value.position.x===position.x&&value.position.y===position.y);const canTamper=door?.room_id==='utility'&&participant.inventory.includes('scrap')&&participant.inventory.includes('wire');if(door?.mode==='restricted'&&participant.role!=='guard'&&!participant.inventory.includes('keycard')&&!canTamper)return true;return false;}
+  stepParticipant(player,position){if(player.status!=='active')throw fail('COMPOUND_PARTICIPANT_INACTIVE','This participant cannot move',409);if(!Number.isInteger(position.x)||!Number.isInteger(position.y)||distance(player.position,position)!==1)throw fail('INVALID_COMPOUND_STEP','Movement must be one adjacent tile');if(this.blocked(position,player))throw fail('COMPOUND_BLOCKED','A wall, locked door, or object blocks that tile');player.facing=position.x>player.position.x?'right':position.x<player.position.x?'left':position.y>player.position.y?'down':'up';player.position=position;const room=roomAt(position);if(room?.restricted&&player.role!=='guard'){player.heat=Math.min(100,player.heat+3);player.activity=`Trespassing in ${room.label}`;}else player.activity=room?`Walking through ${room.label}`:'Walking the corridor';}
+  move(owner,input={}){const player=this.requireActive(owner);if(this.now()-player.lastMoveAt<80)throw fail('COMPOUND_MOVE_COOLDOWN','Movement is too fast',429);this.stepParticipant(player,{x:Number(input.x),y:Number(input.y)});player.lastMoveAt=this.now();this.bump();return this.snapshot(owner);}
+  requireActive(owner){const player=this.participant(owner);if(!player)throw fail('COMPOUND_NOT_JOINED','Join the compound first',403);if(this.state.phase!=='active')throw fail('COMPOUND_NOT_ACTIVE','The compound round is not active',409);if(player.status!=='active')throw fail('COMPOUND_PARTICIPANT_INACTIVE','Wait for the next round',409);return player;}
+  nearbyParticipant(player,targetId,range=2){const target=this.state.participants.find(value=>value.id===targetId&&value.status==='active');if(!target||distance(player.position,target.position)>range)throw fail('COMPOUND_TOO_FAR','That participant is not nearby');return target;}
+  collectNearby(player,record=true,allowedType=null){const item=this.state.worldItems.find(value=>value.status==='ground'&&distance(value.position,player.position)<=1&&(!allowedType||value.type===allowedType));if(!item||player.inventory.length>=MAX_INVENTORY)return false;item.status='held';item.holder=player.id;player.inventory.push(item.type);player.activity=`Picked up ${item.type}`;if(record)this.record(`${player.name} picked up ${item.type}.`,'item_pickup',{actor_id:player.id,item:item.type});return true;}
+  action(owner,input={}){const player=this.requireActive(owner),action=String(input.action||'');if(action==='pickup'){if(!this.collectNearby(player))throw fail('COMPOUND_ITEM_MISSING','No reachable item is available');}else if(action==='work')this.performJob(player);else if(action==='talk'){const target=this.nearbyParticipant(player,input.target_id,3);player.message=String(input.message||this.agentMessage(player,target)).slice(0,80);player.activity=`Talking with ${target.name}`;this.record(`${player.name}: ${player.message}`,'talk',{actor_id:player.id,target_id:target.id});}else if(action==='trade'){const target=this.nearbyParticipant(player,input.target_id);const item=String(input.item||player.inventory[0]||'');const index=player.inventory.indexOf(item);if(index<0||target.inventory.length>=MAX_INVENTORY)throw fail('COMPOUND_TRADE_INVALID','The proposed item cannot be traded');player.inventory.splice(index,1);target.inventory.push(item);this.record(`${player.name} traded ${item} to ${target.name}.`,'trade',{actor_id:player.id,target_id:target.id,item});}else if(action==='drop'){const item=String(input.item||'');const index=player.inventory.indexOf(item);if(index<0)throw fail('COMPOUND_ITEM_MISSING','That item is not in your inventory');if(this.state.worldItems.length>=64)throw fail('COMPOUND_WORLD_FULL','Too many items are on the ground');player.inventory.splice(index,1);this.state.worldItems.push({id:`item-${randomUUID()}`,type:item,position:clone(player.position),status:'ground'});this.record(`${player.name} dropped ${item}.`,'item_drop',{actor_id:player.id,item});}else if(action==='report'){const target=this.nearbyParticipant(player,input.target_id,4);if(!['guard','informant'].includes(player.role))throw fail('COMPOUND_ROLE_FORBIDDEN','Only guards and informants can report');target.heat=Math.min(100,target.heat+18);this.record(`${player.name} reported suspicious activity.`,'report',{actor_id:player.id,target_id:target.id});}else if(action==='attack')this.attack(player,this.nearbyParticipant(player,input.target_id,1));else if(action==='escape')this.attemptEscape(player,String(input.route_id||''));else throw fail('COMPOUND_ACTION_INVALID','Unsupported compound action');this.evaluateRound();this.bump();return this.snapshot(owner);}
+  performJob(player){const room=roomAt(player.position);const allowed=player.role==='medic'?'infirmary':player.role==='guard'?'security':player.role==='worker'?'workshop':this.routinePhase()==='work'?'workshop':null;if(!allowed||room?.id!==allowed)throw fail('COMPOUND_JOB_LOCATION',`This job requires ${allowed||'the work phase'}`);player.jobProgress++;player.activity=`Working in ${room.label}`;if(player.jobProgress%3===0&&player.inventory.length<MAX_INVENTORY)player.inventory.push('credits');this.record(`${player.name} completed work in ${room.label}.`,'job',{actor_id:player.id,room_id:room.id,progress:player.jobProgress});}
+  attack(player,target){if(this.now()-player.lastActionAt<1800)throw fail('COMPOUND_ATTACK_COOLDOWN','Attack is cooling down');player.lastActionAt=this.now();target.hp=Math.max(0,target.hp-34);player.heat=Math.min(100,player.heat+25);if(target.hp===0){target.status='recovering';target.position={x:29,y:12};target.inventory=target.inventory.filter(item=>!['contraband','keycard'].includes(item));target.activity='Recovering in the infirmary';this.record(`${target.name} was knocked out and taken to the infirmary.`,'knockout',{actor_id:player.id,target_id:target.id});}}
+  attemptEscape(player,routeId){if(player.role==='guard')throw fail('COMPOUND_ROLE_FORBIDDEN','Guards protect the compound; they cannot escape it');const route=COMPOUND_MAP.escape_routes.find(value=>value.id===routeId)||COMPOUND_MAP.escape_routes.find(value=>distance(value.position,player.position)<=1);if(!route||distance(route.position,player.position)>1)throw fail('COMPOUND_ESCAPE_LOCATION','Reach an escape route first');if(!route.requires.every(item=>player.inventory.includes(item)))throw fail('COMPOUND_ESCAPE_NEEDS_ITEMS',`This route requires ${route.requires.join(' + ')}`);player.status='escaped';player.activity=`Escaped through ${route.label}`;this.record(`${player.name} escaped through ${route.label}.`,'escape',{actor_id:player.id,route_id:route.id});}
+  leave(owner){const index=this.state.participants.findIndex(value=>value.owner===owner);if(index<0)return this.snapshot(owner);this.state.participants.splice(index,1);this.record('A visitor left the compound.','leave');this.bump();return this.snapshot(owner);}
+  record(message,type='activity',detail={}){this.state.events.push({id:randomUUID(),at:new Date(this.now()).toISOString(),type,message,...detail});if(this.state.events.length>120)this.state.events.shift();}
+  bump(){this.state.revision++;this.state.updatedAt=this.now();void this.save();}
+  passableNeighbors(player){return[{x:player.position.x+1,y:player.position.y},{x:player.position.x-1,y:player.position.y},{x:player.position.x,y:player.position.y+1},{x:player.position.x,y:player.position.y-1}].filter(position=>!this.blocked(position,player));}
+  pathStep(player,target){const queue=[player.position],visited=new Set([key(player.position)]),previous=new Map();while(queue.length){const current=queue.shift();if(key(current)===key(target))break;for(const next of[{x:current.x+1,y:current.y},{x:current.x-1,y:current.y},{x:current.x,y:current.y+1},{x:current.x,y:current.y-1}]){if(visited.has(key(next))||this.blocked(next,player))continue;visited.add(key(next));previous.set(key(next),current);queue.push(next);}}if(!visited.has(key(target))){const options=this.passableNeighbors(player);return options[player.seed%Math.max(1,options.length)];}let cursor=target,parent=previous.get(key(cursor));while(parent&&key(parent)!==key(player.position)){cursor=parent;parent=previous.get(key(cursor));}return cursor;}
+  agentTarget(agent){
+    if(agent.role==='worker'&&this.routinePhase()==='work')return{x:24,y:13};
+    if(agent.role==='medic')return{x:29,y:12};
+    const ground=this.state.worldItems.filter(item=>item.status==='ground');
+    if(['smuggler','escape_planner'].includes(agent.role)){
+      for(const itemType of ['scrap','wire']){
+        if(agent.inventory.includes(itemType))continue;
+        const needed=ground.find(item=>item.type===itemType);
+        if(needed)return needed.position;
+      }
+      if(agent.inventory.includes('scrap')&&agent.inventory.includes('wire'))return{x:21,y:19};
+    }
+    if(agent.role!=='guard'&&agent.inventory.length<3&&ground.length)return ground[(agent.seed+this.state.revision)%ground.length].position;
+    if(agent.role==='guard'){
+      const suspect=this.state.participants.filter(value=>value.role!=='guard'&&value.status==='active').sort((a,b)=>b.heat-a.heat)[0];
+      if(suspect?.heat>12)return suspect.position;
+      return this.routinePhase()==='yard'?{x:16,y:11}:{x:28,y:4};
+    }
+    return({morning_count:{x:8,y:8},breakfast:{x:15,y:5},work:{x:24,y:13},yard:{x:16,y:12},dinner:{x:15,y:5},free_time:{x:5,y:12},lockdown:{x:8,y:5}})[this.routinePhase()];
+  }
+  agentAct(agent){if(agent.status==='recovering'){agent.hp=Math.min(100,agent.hp+25);if(agent.hp===100)agent.status='active';return;}if(agent.status!=='active')return;agent.seed=(agent.seed*1664525+1013904223)>>>0;const nearby=this.state.participants.find(value=>value!==agent&&value.status==='active'&&distance(value.position,agent.position)<=1);if(agent.role==='guard'&&nearby&&nearby.heat>20){nearby.inventory=nearby.inventory.filter(item=>!['contraband','keycard'].includes(item));nearby.heat=Math.max(0,nearby.heat-20);this.record(`${agent.name} confiscated contraband during an inspection.`,'confiscate',{actor_id:agent.id,target_id:nearby.id});return;}if(['worker','medic'].includes(agent.role)&&['workshop','infirmary'].includes(roomAt(agent.position)?.id)&&agent.seed%4===0){try{this.performJob(agent);return;}catch{}}if(['smuggler','escape_planner','prisoner'].includes(agent.role)){for(const route of COMPOUND_MAP.escape_routes)if(distance(route.position,agent.position)<=1&&route.requires.every(item=>agent.inventory.includes(item))){this.attemptEscape(agent,route.id);return;}}const desired=['smuggler','escape_planner'].includes(agent.role)?['scrap','wire'].find(item=>!agent.inventory.includes(item)):null;this.collectNearby(agent,true,desired||null);const step=this.pathStep(agent,this.agentTarget(agent));if(step)try{this.stepParticipant(agent,step);}catch{const options=this.passableNeighbors(agent);if(options.length)this.stepParticipant(agent,options[agent.seed%options.length]);}if(nearby&&agent.seed%9===0){agent.message=this.agentMessage(agent,nearby);this.record(`${agent.name}: ${agent.message}`,'talk',{actor_id:agent.id,target_id:nearby.id});}}
+  agentMessage(agent,target){if(agent.role==='guard')return`${target.name}, routine check.`;if(agent.role==='smuggler')return'meet me by the workshop.';if(/analyst|observ/i.test(agent.personality||''))return`${target.name}, guard traffic is lower west.`;if(/gambler|risk|chaos/i.test(agent.personality||''))return'one bad route, one good story.';return['trade?','guard heading east.','meet me after count.','keep moving.'][agent.seed%4];}
+  evaluateRound(){const active=this.state.participants.filter(value=>value.role!=='guard'&&value.status==='active');if(this.state.phase==='active'&&active.length===0)this.finish('all_resolved');}
+  async tick(){if(this.state.phase!=='active'){const wait=this.state.phase==='finished'?12_000:this.lobbySeconds*1000;if(this.now()-this.state.phaseAt>=wait){this.startAgentRound();await this.save();}return;}if(this.now()>=this.state.endsAt){this.finish('timer');await this.save();return;}for(const agent of this.state.participants.filter(value=>value.type==='agent'))this.agentAct(agent);this.evaluateRound();this.bump();}
+  finish(reason){
+    if(this.state.phase!=='active')return;
+    this.state.phase='finished';this.state.phaseAt=this.now();
+    const escaped=this.state.participants.filter(value=>value.status==='escaped');
+    const guards=this.state.participants.filter(value=>value.role==='guard');
+    const winningIds=escaped.length?escaped.map(value=>value.id):guards.map(value=>value.id);
+    for(const agent of this.state.participants.filter(value=>value.type==='agent')){
+      const evidence=this.state.events.filter(event=>event.actor_id===agent.id||event.target_id===agent.id);
+      const decisive=evidence.findLast(event=>['escape','job','confiscate','knockout','trade','item_pickup'].includes(event.type));
+      if(decisive){
+        const summary={escape:'Used a tool route to escape.',job:'Completed a room job.',confiscate:'Observed a guard inspection.',knockout:'Observed a knockout.',trade:'Exchanged an item nearby.',item_pickup:'Collected a world item.'}[decisive.type];
+        agent.memories.push({session_id:`compound-${this.state.round}`,summary,evidence_event_ids:[decisive.id]});
+      }
+      agent.memories=agent.memories.slice(-12);
+      this.state.agentMemories[agent.id]=clone(agent.memories);
+    }
+    this.state.results.push({
+      session_id:`compound-${this.state.round}`,reason,started_at:this.state.startedAt,
+      completed_at:new Date(this.now()).toISOString(),duration_ms:this.now()-Date.parse(this.state.startedAt),
+      winner_ids:winningIds,escaped_ids:escaped.map(value=>value.id),
+      participants:this.state.participants.map(value=>({id:value.id,name:value.name,type:value.type,role:value.role,status:value.status,jobs:value.jobProgress})),
+      events:clone(this.state.events),
+    });
+    if(this.state.results.length>30)this.state.results.shift();
+    this.record(`Round ${this.state.round} finished: ${escaped.length} escaped.`,'round_end');this.bump();
+  }
+  health(){return{status:'ok',phase:this.state.phase,round:this.state.round,participants:this.state.participants.length,routine_phase:this.routinePhase(),storage:'persistent_file'};}
+}

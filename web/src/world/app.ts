@@ -18,7 +18,9 @@ const settings=loadSettings(),gateway=new HttpArenaGateway();
 const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming|undefined;
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
-if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
+const returnTarget=new URLSearchParams(location.search).get('return');
+if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(settings);}
+else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
@@ -31,6 +33,7 @@ let arenaOnline=false;
 let camera=followCamera({...MAP.spawn},player.position,renderer.viewport().width,renderer.viewport().height,100);
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
+let spokenUntil=0;
 let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
@@ -158,7 +161,14 @@ function portal():void {
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
-  if(target.type==='arena')portal();else if(target.type==='agent')showProfile(target.id);else if(target.type==='research')await showResearch();else if(target.type==='zone'){
+  if(target.type==='arena')portal();else if(target.type==='agent'){
+    const actor=npcs.find(npc=>npc.agentId===target.id);
+    if(actor?.speech&&actor.speech.expiresAt>performance.now()){
+      speechNotice.textContent=`${actor.name}: ${actor.speech.text}`;speechNotice.hidden=false;spokenUntil=performance.now()+7000;
+      actor.speech=undefined;controllers.get(actor.id)?.beginTalking();
+    }else showProfile(target.id);
+  }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
+    if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     const zones:Record<string,[string,string]>={
       'forest-clearing':['Forest clearing','A quiet trail and wooded rest point beyond the plaza.'],
       'botanical-garden':['Botanical garden','Walk among planted beds, varied trees and the garden campfire.'],
@@ -245,8 +255,6 @@ canvas.addEventListener('pointerdown',event=>{
 function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
   const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
   const actor:WorldActor={id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner};
-  const initial=publicSpeech(profile,'idle',index); actor.speech={text:initial.text,expiresAt:performance.now()+300000,synthetic:initial.synthetic};
-  speechNotice.textContent=`${profile.name}: ${initial.text}`; speechNotice.hidden=false;
   npcs.push(actor);
   controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena,profile));
   updateWorldLabel();
@@ -285,16 +293,16 @@ function frame(time:number):void {
     // Ambient agents remain inspectable, but cannot form a moving wall across the visitor's route.
     moveActor(player,input,dt,150,WALLS);
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
-    const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<150);
-    const eventNpc=closeNpc||npcs.find(npc=>npc.speech&&npc.speech.expiresAt>time);
+    for(const npc of npcs)if(npc.speech&&npc.speech.expiresAt<=time){npc.speech=undefined;controllers.get(npc.id)?.dismissThought();}
+    const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<170);
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
-    if(eventNpc&&eventNpc.speech&&eventNpc.speech.expiresAt>time){speechNotice.textContent=`${eventNpc.name}: ${eventNpc.speech.text}`;speechNotice.hidden=false;}
-    else if(closeNpc&&closeProfile&&speechLimiter.allow(closeNpc.id,Date.now())){
+    const activeThoughts=npcs.filter(npc=>npc.speech&&npc.speech.expiresAt>time).length;
+    if(closeNpc&&closeProfile&&!closeNpc.speech&&activeThoughts<3&&speechLimiter.allow(closeNpc.id,Date.now())&&controllers.get(closeNpc.id)?.offerThought()){
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
-      closeNpc.speech={text:speech.text,expiresAt:time+7000,synthetic:speech.synthetic}; speechNotice.textContent=`${closeNpc.name}: ${speech.text}`; speechNotice.hidden=false;
+      closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
-    if(!eventNpc&&speechNotice.textContent==='')speechNotice.hidden=true;
-    const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`Inspect ${a.name}`}))];
+    if(spokenUntil&&time>=spokenUntil){spokenUntil=0;speechNotice.textContent='';speechNotice.hidden=true;}
+    const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
@@ -328,7 +336,12 @@ if(location.pathname==='/labs/world'){
   for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{void teleport(position);};lab.append(b);}
   const spawn=document.createElement('button');spawn.textContent='Spawn next NPC';spawn.onclick=()=>{const profile=profiles.find(p=>!npcs.some(n=>n.agentId===p.id));if(profile)addNpc(profile,npcs.length);};lab.append(spawn);
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
-  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,position:{...actor.position},movementState:actor.movementState})),events},null,2),1000);
+  const thought=document.createElement('button');thought.textContent='Offer nearest NPC thought';thought.onclick=()=>{
+    const actor=[...npcs].sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)-Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y))[0];
+    const profile=actor?.agentId?profiles.find(value=>value.id===actor.agentId):undefined;
+    if(actor&&profile){actor.position={x:player.position.x+42,y:player.position.y};controllers.get(actor.id)?.relocate(actor.position);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};controllers.get(actor.id)?.offerThought();}
+  };lab.append(thought);
+  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 void presetButtons().then(()=>{if(!entered)character.showModal();else{canvas.focus();startPresence();}void refreshProfiles();raf=requestAnimationFrame(frame);});

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -41,6 +41,17 @@ test('garden planting and campfire collision leave flower beds walkable',()=>{
   for(const bush of BUSHES.filter(item=>item.solid))assert.equal(collides({x:bush.x,y:bush.y}),true);
   for(const fire of CAMPFIRES)assert.equal(collides(fire),true);
   for(const bed of FLOWER_BEDS)assert.equal(collides({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),false,'flowers should never seal a garden path');
+});
+test('terrain-aware decoration keeps trees and planting off every road surface',()=>{
+  for(const tree of TREES)assert.equal(canPlaceTree({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)}),true);
+  for(const bush of BUSHES)assert.equal(canPlaceBush(bush),true);
+  for(const bed of FLOWER_BEDS)assert.equal(canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),true);
+  for(const rock of ROCKS)assert.equal(canPlaceRock(rock),true);
+  assert.equal(VEGETATION_GROUPS.length,12);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
+});
+test('east road matches the town road width and turns toward the east district',()=>{
+  assert.ok(PATHS.some(path=>path.x===1056&&path.y===420&&path.width===704&&path.height===84));
+  assert.ok(PATHS.some(path=>path.x===1696&&path.y===420&&path.width===64&&path.height===280));
 });
 test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
   assert.equal(GROUND_DETAILS.length,170);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
@@ -98,6 +109,30 @@ test('NPC controller moves presence without changing strategy or economic fields
   const control=new NpcController(0);for(let i=0;i<600;i++)control.update(npc,1/60);
   assert.equal(npc.balance,123);assert.equal(npc.strategy,'test');assert.ok(!collides(npc.position));
   assert.notDeepEqual(npc.position,{x:430,y:470});
+});
+test('NPC attention pauses movement, talks once, cools down and resumes wandering',()=>{
+  const npc={...actor(npcSpawnPosition(0)),type:'npc'},control=new NpcController(0);
+  assert.equal(control.offerThought(1),true);control.update(npc,.1);assert.equal(npc.activityState,'attention');assert.equal(npc.movementState,'idle');
+  control.beginTalking();control.update(npc,.1);assert.equal(npc.activityState,'talking');
+  for(let step=0;step<100;step++)control.update(npc,.1);
+  assert.ok(['idle','wander'].includes(npc.activityState));
+  for(let step=0;step<300&&npc.position.x===npcSpawnPosition(0).x&&npc.position.y===npcSpawnPosition(0).y;step++)control.update(npc,.1);
+  assert.notDeepEqual(npc.position,npcSpawnPosition(0),'the NPC should resume a randomized route after its bounded cooldown');
+});
+
+test('canonical NPC identities choose independent seeded routes and pauses',()=>{
+ const first={...actor(npcSpawnPosition(0)),id:'npc-founder',type:'npc'};
+ const second={...actor(npcSpawnPosition(1)),id:'npc-analyst',type:'npc'};
+ const founder=new NpcController(0,false,{id:'founder',strategy:'aggressive'});
+ const analyst=new NpcController(1,false,{id:'analyst',strategy:'analyst'});
+ const samples=[];
+ for(let step=0;step<1200;step++){
+  founder.update(first,1/30,[first,second]);analyst.update(second,1/30,[first,second]);
+  if(step%120===0)samples.push(`${Math.round(first.position.x)},${Math.round(first.position.y)}:${Math.round(second.position.x)},${Math.round(second.position.y)}`);
+ }
+ assert.ok(new Set(samples).size>3,'agents should continue choosing new destinations');
+ assert.notDeepEqual(first.position,second.position,'different identities should not converge on one patrol line');
+ assert.ok(Math.hypot(first.position.x-second.position.x,first.position.y-second.position.y)>32,'independent routes should remain visibly separated');
 });
 test('canonical NPC route reaches all new districts without crossing collision',()=>{
   assert.ok(NPC_WAYPOINTS.every(point=>!collides(point)),'every route destination must be walkable');

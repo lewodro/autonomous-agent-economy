@@ -102,6 +102,14 @@ export class CanvasWorldRenderer implements WorldRenderer {
         rect(b.x+28,b.y+110,32,24,'#243c3a');rect(b.x+b.width-60,b.y+110,32,24,'#243c3a');
         rect(b.x+32,b.y+114,24,3,'#b2c28b');rect(b.x+b.width-56,b.y+114,24,3,'#b2c28b');
         c.font='bold 14px monospace';c.textAlign='center';c.fillStyle='#f4dfaf';c.fillText(b.name,b.x+b.width/2,b.y+105);
+        if(b.name==='DETENTION COMPOUND'){
+          // Original industrial gate language makes this public activity read
+          // as a destination rather than another house in the west district.
+          rect(b.x+b.width/2-34,b.y-12,68,20,'#25332f');rect(b.x+b.width/2-28,b.y-8,56,4,'#d0a65f');
+          for(let fence=b.x-34;fence<b.x+b.width+34;fence+=14)rect(fence,b.y-24,3,24,'#839084');
+          rect(b.x-36,b.y-26,b.width+72,3,'#839084');rect(b.x+b.width/2-22,b.y-18,44,20,'#1d2926');
+          c.font='bold 9px monospace';c.fillStyle='#f0d79c';c.fillText('PUBLIC GATE',b.x+b.width/2,b.y-5);
+        }
       }
     }
     // Fountain, table and archive use the same footprint as collision rectangles.
@@ -155,7 +163,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
     }
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET · SIMULATED GOODS',900,1088);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET',900,1088);
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }
@@ -202,6 +210,10 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);
       c.fillStyle=actor.type==='human'?'#cce4bf':'#e8d3a6';c.fillText(name,x,y-47-bob);}
     if(actor.recentWinner){c.fillStyle='#edbe66';c.fillRect(x-6,y-68,12,5);c.fillRect(x-6,y-73,3,5);c.fillRect(x-1,y-75,3,7);c.fillRect(x+4,y-73,3,5);}
+    if(actor.type==='npc'&&actor.speech&&actor.speech.expiresAt>time){
+      const lift=reduced?0:Math.floor(time/320)%2;c.fillStyle='#1a2928e8';c.fillRect(x-7,y-82-lift,14,16);
+      c.fillStyle='#f1cf78';c.fillRect(x-1,y-79-lift,3,8);c.fillRect(x-1,y-68-lift,3,3);
+    }
   }
   destroy():void {this.images.clear();}
 }
