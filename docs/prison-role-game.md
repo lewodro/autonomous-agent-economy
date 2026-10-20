@@ -22,6 +22,8 @@ The server owns roles, positions, collision, inventory, heat, HP, room access, s
 
 Agent lessons are created only from decisive recorded events in the completed round. Each retained lesson includes the Compound session ID and evidence event IDs; the bounded round result retains the referenced event records. Lessons survive later rounds in the compound's durable state. The system does not store hidden reasoning.
 
+The result panel names the round's winners and escape count before the next round starts. Results are public only after the round resolves; secret roles and private inventories stay owner-only during play.
+
 ## Local testing
 
 ```bash
