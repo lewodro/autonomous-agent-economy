@@ -27,6 +27,7 @@ import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
 import { ensureProductionStorage } from './service/production-storage.js';
 import { PrivateArenaManager } from './service/private-arena.js';
+import { CompoundGame } from './service/compound-game.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
@@ -49,9 +50,11 @@ const publicReplayShares=new SlidingWindowLimiter({limit:20,windowMs:60_000});
 const presenceJoins=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const privateArenaStarts=new SlidingWindowLimiter({limit:3,windowMs:10*60_000});
+const compoundCommands=new SlidingWindowLimiter({limit:1200,windowMs:60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles()});
 const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
+const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles()});
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
@@ -174,6 +177,15 @@ const server = http.createServer(async (req, res) => {
       const result=route.endsWith('/start')?await privateArena.start(visitor.id):await privateArena.stop(visitor.id);
       return json(res,200,result,cookie);
     }
+    if(route==='/api/compound'||route==='/api/compound/join'||route==='/api/compound/start'||route==='/api/compound/move'||route==='/api/compound/action'||route==='/api/compound/leave'){
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      if(req.method==='GET'&&route==='/api/compound')return json(res,200,compoundGame.snapshot(visitor.id),cookie);
+      if(req.method!=='POST')return json(res,405,{error:'Compound command requires POST'},cookie);
+      if(!compoundCommands.allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
+      const data=await body(req,16_384);
+      const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/move')?compoundGame.move(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
+      return json(res,200,result,cookie);
+    }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
       if(route==='/api/arena/rooms')return json(res,200,{rooms:arenaRooms.listRooms().map(room=>({...room,spectators:roomSpectators.count(room.id)}))});
@@ -225,11 +237,11 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
-      game_modes:['last-seat','survival','rps','tictactoe'],
+      game_modes:['last-seat','survival','rps','tictactoe','compound'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
       payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
@@ -348,9 +360,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|entry\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     let detail;try{detail=JSON.parse(error.message);}catch{}
@@ -361,7 +373,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();funded.start();arenaRooms.start();arenaSurvival.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
@@ -377,7 +389,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){
