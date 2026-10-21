@@ -161,7 +161,7 @@ try{
  await walkProbe('garden','d','x','>1900','botanical-garden');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(value=>value.textContent==='Walk probe: campfire').click()");
  await wait('document.activeElement?.id==="world-canvas"&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
- await wait("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return p.x===1760&&p.y===680})()");
+ await wait("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return p.x===1702&&p.y===740})()");
  await screenshot('campfire');
  assert.ok(await evaluate("document.querySelector('.world-legend').textContent.includes('AGENCY')&&document.querySelector('.world-legend').textContent.includes('MARKET')"),'compact world legend must name Agency and Market');
  const teleportProbe=async(label,x,y,screenshotName)=>{
@@ -172,7 +172,25 @@ try{
  };
  await teleportProbe('eastRoad',1300,460,'east-road');
  assert.equal(await evaluate("document.getElementById('world-canvas').getAttribute('aria-label').includes('Agent town')"),true);
+ await wait('document.activeElement?.id==="world-canvas"');
+ // Walk the actual road to the Agency door.
+ // Teleport probes alone would miss a blocked turn or a path seam.
+ const holdWorldKey=async(key,ms)=>{
+  await evaluate(`document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
+  await delay(ms);
+  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
+ };
+ await holdWorldKey('d',1700);await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.x>1525");
+ await holdWorldKey('w',750);await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.y<380");
+ await wait("(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player,pid=sessionStorage.getItem('aae-world-presence-v1:main:player');return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===pid);return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()");
+ await screenshot('agency-walk-in');
  await teleportProbe('agency',1568,340,'agency');
+ const eastGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',avatar:'visitor_atlas',position:{x:1300,y:460}})}).then(async r=>({status:r.status,...await r.json()}))");
+ assert.equal(eastGuest.status,201,'a second visitor can enter the east road');
+ await delay(80);
+ assert.equal(await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',session_token:${JSON.stringify(eastGuest.session_token)},position:{x:1312,y:460},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200,'second visitor moves on the same east road');
+ await wait("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id==='browser-smoke-east'&&p.position.x===1312))");
+ assert.equal(await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',session_token:${JSON.stringify(eastGuest.session_token)}})}).then(r=>r.status)`),200);
  await teleportProbe('market',820,1320,'south-market');
  const westGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(westGuest.status,201,'a second visitor can enter the west extension');

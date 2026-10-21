@@ -60,26 +60,24 @@ export interface WorldPath extends Rect {color?:string}
 export const PATHS: WorldPath[] = [
   {x:392,y:300,width:760,height:560},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},
   {x:140,y:494,width:148,height:152},{x:480,y:688,width:160,height:140},{x:-730,y:420,width:802,height:84},
-  {x:392,y:-420,width:364,height:720},{x:392,y:860,width:364,height:620},
-  // Match the established 84 px town road at the plaza edge, then turn into
-  // the east district instead of ending as the previous narrow 56 px strip.
-  {x:1056,y:420,width:704,height:84},{x:1696,y:420,width:64,height:280},
+  {x:520,y:-420,width:112,height:720},{x:392,y:860,width:364,height:620},
+  // One 84 px road leaves the plaza. Its north spur reaches the Agency door;
+  // its south turn forms the garden junction without a separate paved block.
+  {x:1152,y:420,width:592,height:84},{x:1526,y:288,width:84,height:132},
+  {x:1660,y:420,width:84,height:280},
   // West streets form a loose loop around the table and cottage cluster.
   {x:-650,y:260,width:72,height:160},{x:-650,y:260,width:520,height:64},{x:-190,y:260,width:64,height:244},
   {x:-500,y:650,width:254,height:62},{x:-500,y:500,width:62,height:212},{x:-246,y:650,width:318,height:62},
   // The west loop now has a visible industrial approach to the Compound gate.
   {x:-246,y:712,width:64,height:298},{x:-310,y:946,width:128,height:64},
-  {x:740,y:-360,width:82,height:64},{x:1040,y:556,width:64,height:406},{x:1040,y:914,width:100,height:64},
+  {x:632,y:-210,width:373,height:84},{x:1040,y:556,width:64,height:406},{x:1040,y:914,width:100,height:64},
   // South road widens into a market loop and small cross streets.
   {x:392,y:1040,width:364,height:500},{x:300,y:1100,width:1150,height:72},{x:300,y:1172,width:72,height:390},
   {x:300,y:1490,width:1150,height:72},{x:1378,y:1100,width:72,height:462},{x:760,y:1172,width:92,height:318},
   {x:372,y:1360,width:1006,height:72},{x:980,y:1172,width:68,height:188},
   {x:836,y:1490,width:96,height:128},
-  // A consistent-width orthogonal trail crosses the botanical district. It
-  // participates in the same union outline as every other path, so internal
-  // rectangle seams never appear as stripes through the trail.
-  {x:1520,y:520,width:180,height:64,color:'#786b55'},{x:1636,y:520,width:64,height:180,color:'#786b55'},
-  {x:1636,y:636,width:260,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
+  // The narrower garden trail branches from that junction and steps east.
+  {x:1744,y:636,width:152,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
   {x:1832,y:802,width:210,height:64,color:'#786b55'},{x:1978,y:802,width:64,height:178,color:'#786b55'},
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
@@ -98,15 +96,16 @@ export const MARKET_PROPS: MarketProp[] = [
 function overlaps(rect:Rect,point:Position,radius:number):boolean {
   return point.x+radius>rect.x&&point.x-radius<rect.x+rect.width&&point.y+radius>rect.y&&point.y-radius<rect.y+rect.height;
 }
-function decorationAllowed(point:Position,radius:number):boolean {
+/** All unpaved map ground is natural terrain; path and building footprints are not. */
+export function isNaturalGround(point:Position,radius=0):boolean {
   if(point.x-radius<MAP.minX+48||point.y-radius<MAP.minY+72||point.x+radius>MAP.minX+MAP.width-48||point.y+radius>MAP.minY+MAP.height-48)return false;
   return !PATHS.some(path=>overlaps(path,point,radius))&&!BUILDINGS.some(building=>overlaps(building,point,radius));
 }
 /** Natural-ground placement rules keep future decoration off roads and plazas. */
-export function canPlaceTree(point:Position):boolean { return decorationAllowed(point,28); }
-export function canPlaceBush(point:Position):boolean { return decorationAllowed(point,12); }
-export function canPlaceFlower(point:Position):boolean { return decorationAllowed(point,6); }
-export function canPlaceRock(point:Position):boolean { return decorationAllowed(point,10); }
+export function canPlaceTree(point:Position):boolean { return isNaturalGround(point,28); }
+export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12); }
+export function canPlaceFlower(point:Position):boolean { return isNaturalGround(point,6); }
+export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10); }
 
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
 export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
@@ -115,6 +114,12 @@ export const VEGETATION_GROUPS: VegetationGroup[] = [
   {district:'north',trees:[{x:-520,y:-360,scale:.9,tint:1}],bushes:[{x:-475,y:-325,size:22,tint:2},{x:-555,y:-305,size:18}],flowers:[{x:-480,y:-285,width:54,height:24}],rocks:[]},
   {district:'north',trees:[{x:120,y:-350,scale:1.05,tint:2}],bushes:[{x:170,y:-315,size:24,tint:1}],flowers:[],rocks:[{x:78,y:-305}]},
   {district:'north',trees:[{x:1320,y:-330,scale:.9}],bushes:[{x:1280,y:-290,size:20,tint:2},{x:1370,y:-280,size:18,tint:1}],flowers:[{x:1288,y:-250,width:58,height:24}],rocks:[]},
+  // Sparse woodland frames the north road and Agency spur, leaving both clear.
+  {district:'north',trees:[{x:30,y:-310,scale:.9,tint:1},{x:245,y:-410,scale:1.05,tint:2}],bushes:[{x:85,y:-210,size:18,tint:2},{x:310,y:-300,size:22,tint:1}],flowers:[{x:265,y:-225,width:48,height:24}],rocks:[]},
+  {district:'north',trees:[{x:690,y:-350,scale:.85,tint:1},{x:1050,y:-440,scale:1.1,tint:2}],bushes:[{x:860,y:-75,size:20,tint:2},{x:1100,y:-170,size:18,tint:1}],flowers:[{x:990,y:-100,width:54,height:25}],rocks:[]},
+  {district:'north',trees:[{x:1460,y:-370,scale:1.05,tint:2},{x:1690,y:-240,scale:.9,tint:1},{x:1840,y:-380,scale:1}],bushes:[{x:1515,y:-320,size:22,tint:1},{x:1750,y:-160,size:19,tint:2}],flowers:[{x:1710,y:-75,width:52,height:24}],rocks:[{x:1600,y:-80}]},
+  {district:'east',trees:[{x:1320,y:35,scale:.9,tint:1},{x:1900,y:300,scale:1.05,tint:2}],bushes:[{x:1400,y:95,size:19,tint:2},{x:1770,y:355,size:18,tint:1},{x:1980,y:340,size:22,tint:1}],flowers:[{x:1940,y:400,width:48,height:24}],rocks:[]},
+  {district:'east',trees:[{x:2160,y:390,scale:.9,tint:2}],bushes:[{x:2110,y:455,size:19,tint:1},{x:2210,y:480,size:22,tint:2}],flowers:[{x:2160,y:530,width:55,height:24}],rocks:[]},
   {district:'south',trees:[{x:-710,y:1290,scale:1.05,tint:2}],bushes:[{x:-655,y:1325,size:22,tint:1}],flowers:[{x:-650,y:1360,width:56,height:24}],rocks:[]},
   {district:'south',trees:[{x:-350,y:1480,scale:.9,tint:1}],bushes:[{x:-300,y:1510,size:20,tint:2}],flowers:[],rocks:[{x:-395,y:1530}]},
   {district:'south',trees:[{x:1660,y:1450,scale:1.1}],bushes:[{x:1715,y:1490,size:24,tint:1},{x:1620,y:1510,size:18,tint:2}],flowers:[{x:1690,y:1530,width:62,height:25}],rocks:[]},
@@ -175,19 +180,20 @@ export const NPC_WAYPOINTS: Position[] = [
   {x:700,y:1320},{x:1000,y:1320},{x:1000,y:1100},{x:1660,y:1100},{x:1660,y:1052},{x:1780,y:1052},
   {x:1780,y:820},{x:2050,y:820},{x:2300,y:820},{x:2448,y:820},{x:2448,y:608},
   {x:2450,y:600},{x:2420,y:100},{x:2100,y:100},{x:1900,y:200},{x:1900,y:400},
-  {x:1700,y:400},{x:1500,y:420},{x:1280,y:500},{x:1100,y:500},
+  {x:1702,y:460},{x:1568,y:365},{x:1568,y:320},{x:1568,y:365},{x:1702,y:460},
+  {x:1702,y:640},{x:1870,y:668},{x:1702,y:640},{x:1702,y:460},{x:1280,y:460},{x:1100,y:460},
   {x:900,y:760},{x:700,y:760},{x:430,y:730},{x:430,y:510},
-  {x:480,y:0},{x:480,y:-250},{x:700,y:-350},{x:1140,y:-300},
-  {x:1400,y:-180},{x:1200,y:0},{x:800,y:0},{x:480,y:0},
+  {x:576,y:0},{x:576,y:-250},{x:576,y:-168},{x:790,y:-168},{x:1000,y:-168},
+  {x:1140,y:-300},{x:1400,y:-180},{x:1200,y:0},{x:800,y:0},{x:576,y:0},
   {x:-580,y:350},{x:-350,y:350},{x:-210,y:780},{x:-100,y:680},{x:220,y:1120},
   {x:420,y:1390},{x:700,y:1390},{x:820,y:1280},{x:980,y:1390},{x:1160,y:1410},{x:1500,y:1230},
-  {x:1560,y:340},{x:1730,y:420},{x:1870,y:650},
+  {x:1568,y:340},{x:1702,y:460},{x:1870,y:668},
 ];
 export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===900&&point.y===760);
 /** Developer-only browser probes start just inside the former map edges. */
 export const EXPLORATION_PROBES = {
-  west:{x:90,y:430},east:{x:1720,y:430},north:{x:600,y:100},south:{x:700,y:1060},
-  garden:{x:1830,y:750},campfire:{x:1760,y:680},market:{x:820,y:1320},agency:{x:1568,y:340},eastRoad:{x:1300,y:460},
+  west:{x:90,y:430},east:{x:1702,y:460},north:{x:576,y:-250},south:{x:700,y:1060},
+  garden:{x:1870,y:668},campfire:{x:1702,y:740},market:{x:820,y:1320},agency:{x:1568,y:340},eastRoad:{x:1300,y:460},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
@@ -205,7 +211,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'plaza-table', type: 'table', position: { x: 224, y: 609 }, radius: 68, label: 'Sit · free Tic-Tac-Toe' },
   { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open arena statistics' },
   { id: 'forest-clearing', type: 'zone', position: { x: 1280, y: 500 }, radius: 86, label: 'Explore forest clearing' },
-  { id: 'botanical-garden', type: 'zone', position: { x: 1570, y: 620 }, radius: 86, label: 'Explore botanical garden' },
+  { id: 'botanical-garden', type: 'zone', position: { x: 1702, y:620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
   { id: 'south-market', type: 'zone', position: { x: 900, y: 1392 }, radius: 90, label: 'Visit south market' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -47,11 +47,18 @@ test('terrain-aware decoration keeps trees and planting off every road surface',
   for(const bush of BUSHES)assert.equal(canPlaceBush(bush),true);
   for(const bed of FLOWER_BEDS)assert.equal(canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),true);
   for(const rock of ROCKS)assert.equal(canPlaceRock(rock),true);
-  assert.equal(VEGETATION_GROUPS.length,12);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
+  assert.equal(VEGETATION_GROUPS.length,17);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
+  assert.ok(VEGETATION_GROUPS.filter(group=>group.district==='north').flatMap(group=>group.trees).filter(tree=>TREES.some(placed=>placed.x===tree.x&&placed.y===tree.y)).length>=8);
+  for(const tree of TREES)assert.equal(isNaturalGround({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)},28),true,'tree trunk needs green terrain clear of road and buildings');
 });
-test('east road matches the town road width and turns toward the east district',()=>{
-  assert.ok(PATHS.some(path=>path.x===1056&&path.y===420&&path.width===704&&path.height===84));
-  assert.ok(PATHS.some(path=>path.x===1696&&path.y===420&&path.width===64&&path.height===280));
+test('east road connects the plaza, Agency door, and botanical trail at walkable centers',()=>{
+  const paved=point=>PATHS.some(path=>point.x>=path.x&&point.x<path.x+path.width&&point.y>=path.y&&point.y<path.y+path.height);
+  const route=[{x:1100,y:460},{x:1300,y:460},{x:1568,y:460},{x:1568,y:365},{x:1568,y:320},
+    {x:1568,y:365},{x:1702,y:460},{x:1702,y:640},{x:1870,y:668},{x:1870,y:830}];
+  for(const point of route){assert.ok(paved(point),`paved route at ${JSON.stringify(point)}`);assert.equal(collides(point),false,`open route at ${JSON.stringify(point)}`);}
+  assert.ok(PATHS.some(path=>path.x===1152&&path.y===420&&path.width===592&&path.height===84));
+  assert.ok(PATHS.some(path=>path.x===1526&&path.y===288&&path.width===84&&path.height===132));
+  for(const [name,point] of Object.entries(EXPLORATION_PROBES))assert.equal(collides(point),false,`${name} browser probe must be walkable`);
 });
 test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
   assert.equal(GROUND_DETAILS.length,170);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
