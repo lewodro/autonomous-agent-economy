@@ -177,3 +177,22 @@ test('missing a required routine raises heat and records evidence',async()=>{
   assert.ok(human.heat>=9);assert.ok(game.snapshot().events.some(event=>event.type==='routine_missed'&&event.actor_id===human.id));
   await game.close();
 });
+
+test('nearby trades swap items atomically and security escalates from witnessed violations',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-social-')),{now:()=>10_000});
+  game.join('a',{name:'Alice'});game.join('b',{name:'Bob'});game.startRound('a');
+  const alice=game.participant('a'),bob=game.participant('b');alice.position={x:12,y:5};bob.position={x:13,y:5};alice.inventory=['food'];bob.inventory=['cloth'];
+  game.action('a',{action:'trade',target_id:bob.id,item:'food',swap:true});
+  assert.deepEqual(alice.inventory,['cloth']);assert.deepEqual(bob.inventory,['food']);
+  alice.heat=70;game.action('a',{action:'talk',target_id:bob.id,message:'keep moving'});
+  assert.equal(game.snapshot().security,'alert');assert.ok(game.snapshot().events.some(event=>event.type==='security_changed'));
+  await game.close();
+});
+
+test('guards pursue only locally visible heat and can confiscate contraband',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-ai-')),{now:()=>10_000});game.startAgentRound();
+  const guard=game.state.participants.find(value=>value.role==='guard'),suspect=game.state.participants.find(value=>value.role!=='guard');
+  guard.position={x:15,y:5};suspect.position={x:16,y:5};suspect.heat=50;suspect.inventory=['wire','food'];
+  game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='contraband_found'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['food']);
+  await game.close();
+});

@@ -89,7 +89,7 @@ function renderPanel():void{
   actions.append(button(`Work: ${(own.job||'job').replaceAll('_',' ')}`,()=>void command('/api/compound/action',{action:'work'})));
   if(training){const stat=training.kind==='weights'?'strength':training.kind==='treadmill'?'fitness':'intellect';actions.append(button(`Train ${stat}`,()=>void command('/api/compound/action',{action:'train',stat})));}
   for(const recipe of own.crafting?.filter(value=>value.available)||[])actions.append(button(`Craft ${recipe.label}`,()=>void command('/api/compound/action',{action:'craft',recipe_id:recipe.id})));
-  if(target){actions.append(button(`Talk: ${target.name}`,()=>void command('/api/compound/action',{action:'talk',target_id:target.id})),button(`Give item: ${target.name}`,()=>void command('/api/compound/action',{action:'trade',target_id:target.id,item:own.inventory?.[0]})),button('Attack',()=>void command('/api/compound/action',{action:'attack',target_id:target.id})));}
+  if(target){actions.append(button(`Talk: ${target.name}`,()=>void command('/api/compound/action',{action:'talk',target_id:target.id})),button(`Trade first items: ${target.name}`,()=>void command('/api/compound/action',{action:'trade',target_id:target.id,item:own.inventory?.[0],swap:true})),button('Attack',()=>void command('/api/compound/action',{action:'attack',target_id:target.id})));}
   if(own.role!=='guard'&&route){const progress=own.escape_progress?.[route.id]||0;actions.append(button(route.stages[progress]?.label||route.label,()=>void command('/api/compound/action',{action:'escape',route_id:route.id})));}
   if(state.phase==='active')you.append(actions);
  }
