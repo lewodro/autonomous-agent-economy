@@ -33,16 +33,17 @@ const rooms=[
 const doors=rooms.map(room=>({id:`door-${room.id}`,position:room.door,room_id:room.id,mode:room.restricted?'restricted':'open'}));
 const props=[
   ...[2,4,6,8].flatMap(x=>[{id:`bed-${x}`,kind:'bed',x,y:2,solid:true},{id:`locker-${x}`,kind:'locker',x,y:4,solid:true}]),
+  ...[3,5,7,9].flatMap((x,index)=>[{id:`cell-desk-${index}`,kind:'desk',x,y:2,solid:true},{id:`cell-sink-${index}`,kind:'sink',x,y:6,solid:false}]),
   ...[12,15,18].flatMap(x=>[{id:`table-${x}`,kind:'table',x,y:3,solid:true},{id:`bench-${x}`,kind:'bench',x,y:4,solid:true}]),
-  {id:'food-counter',kind:'counter',x:22,y:2,solid:true},{id:'stove',kind:'stove',x:24,y:2,solid:true},
-  {id:'guard-desk',kind:'guard_desk',x:29,y:3,solid:true},{id:'security-panel',kind:'panel',x:29,y:5,solid:true},
-  {id:'visit-table',kind:'table',x:4,y:12,solid:true},{id:'yard-bench',kind:'bench',x:11,y:11,solid:true},
+  {id:'food-counter',kind:'counter',x:22,y:2,solid:true},{id:'stove',kind:'stove',x:24,y:2,solid:true},{id:'kitchen-crate',kind:'food_crate',x:23,y:5,solid:false},
+  {id:'guard-desk',kind:'guard_desk',x:29,y:3,solid:true},{id:'security-panel',kind:'monitor',x:29,y:5,solid:true},{id:'key-cabinet',kind:'key_board',x:28,y:2,solid:false},
+  {id:'visit-table',kind:'table',x:4,y:12,solid:true},{id:'visit-divider',kind:'divider',x:4,y:11,solid:false},{id:'yard-bench',kind:'bench',x:11,y:11,solid:true},
   {id:'weights',kind:'weights',x:17,y:10,solid:true},{id:'treadmill',kind:'treadmill',x:17,y:12,solid:true},{id:'library-terminal',kind:'terminal',x:5,y:11,solid:true},
   {id:'workbench-a',kind:'workbench',x:23,y:10,solid:true},
-  {id:'workbench-b',kind:'workbench',x:25,y:12,solid:true},{id:'medical-bed',kind:'medical_bed',x:29,y:10,solid:true},
+  {id:'workbench-b',kind:'workbench',x:25,y:12,solid:true},{id:'workshop-machine',kind:'machine',x:23,y:13,solid:false},{id:'medical-bed',kind:'medical_bed',x:29,y:10,solid:true},
   {id:'medical-cabinet',kind:'cabinet',x:29,y:13,solid:true},{id:'shower-a',kind:'shower',x:3,y:18,solid:true},
-  {id:'shower-b',kind:'shower',x:5,y:18,solid:true},{id:'storage-crate',kind:'crate',x:11,y:19,solid:true},
-  {id:'utility-panel',kind:'panel',x:18,y:19,solid:true},{id:'service-console',kind:'panel',x:26,y:19,solid:true},
+  {id:'shower-b',kind:'shower',x:5,y:18,solid:true},{id:'laundry-bin',kind:'laundry',x:2,y:19,solid:false},{id:'storage-crate',kind:'crate',x:11,y:19,solid:true},{id:'storage-shelf',kind:'shelf',x:13,y:19,solid:false},
+  {id:'utility-panel',kind:'panel',x:18,y:19,solid:true},{id:'utility-pipes',kind:'pipes',x:21,y:18,solid:false},{id:'service-console',kind:'panel',x:26,y:19,solid:true},{id:'gate-light',kind:'alarm',x:29,y:18,solid:false},
 ];
 function roomAt(position){return rooms.find(room=>position.x>=room.x&&position.x<room.x+room.w&&position.y>=room.y&&position.y<room.y+room.h);}
 function buildWalls(){const result=new Set();for(let x=0;x<WIDTH;x++){result.add(`${x},0`);result.add(`${x},${HEIGHT-1}`);}for(let y=0;y<HEIGHT;y++){result.add(`0,${y}`);result.add(`${WIDTH-1},${y}`);}for(const room of rooms){for(let x=room.x;x<room.x+room.w;x++){result.add(`${x},${room.y}`);result.add(`${x},${room.y+room.h-1}`);}for(let y=room.y;y<room.y+room.h;y++){result.add(`${room.x},${y}`);result.add(`${room.x+room.w-1},${y}`);}result.delete(key(room.door));}return result;}
