@@ -104,7 +104,8 @@ try{
  await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest match results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
- assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Live totals from retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Completed record · retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ await wait("document.querySelector('#research-live')?.textContent.includes('Survival')&&!document.querySelector('#research-live')?.textContent.includes('Loading current server match state')");
  const archiveUrl=await evaluate('document.querySelector(".archive-row a:last-child")?.getAttribute("href")');
  assert.ok(archiveUrl,'Research House must keep a downloadable match record');
  const archive=await evaluate(`fetch(${JSON.stringify(archiveUrl)}).then(async r=>({status:r.status,contentType:r.headers.get('content-type'),body:await r.json()}))`);

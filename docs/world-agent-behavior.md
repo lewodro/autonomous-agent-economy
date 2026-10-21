@@ -14,11 +14,13 @@ Canonical identity, Arena participation and research are shared server data. Hum
 
 Thought opportunities are rate-limited to one opportunity per agent per minute and three globally per minute. A nearby visitor sees a small pixel `!`; dialogue appears only after interaction. The NPC pauses for attention and talking, enters a short cooldown, then resumes its route. Ignored thoughts expire after 24 seconds.
 
-Thought text uses only public profile strategy, retained public memory, current activity and public Survival research. Exact match language is shown only when it came from those records. Fixed synthetic trace lines add character flavor; they are not read from source files and never include paths, secrets, prompts, private experiments or credentials.
+The `!` dialogue draws from 84 personality-specific fictional thoughts, activity variants, and short visitor greetings. It uses the anonymous presence display name (for example, `Watcher 2`) only after validating its format. Some opportunities use the latest public retained agent observation as a short learning line. A two-win streak line appears only if the agent won its two most recent matches in the bounded public history feed; cumulative win totals are never treated as a streak. If no suitable public evidence exists, the agent uses fictional flavor instead. Synthetic trace lines are fictional, not read from source files. The generator receives only public canonical profiles, bounded public history, typed activity, and the visitor's display name; it has no private experiment, filesystem, prompt, or credential input. No model call is needed.
+
+The Research House Statistics panel has a separate live section. It refreshes current public RPS/Tic-Tac-Toe room pairings and server-authoritative Survival events every four seconds while open. Retained totals, completed match history, and agent research remain labeled and sourced from their existing persisted APIs. The live section never uses private experiments or the fictional `!` thought catalog; if feeds are unavailable, it shows an explicit empty or unavailable state. Public history for NPC streak lines is refreshed at most every twenty seconds while the world is open.
 
 ## Terrain-aware decoration
 
-Trees, bushes, flower beds and rocks pass centralized placement rules in `map.ts`. The rules reject map boundaries, buildings, roads, the paved plaza and market lanes before those decorations enter the rendered or collision arrays. Twelve stable vegetation groups distribute nature across north, south, east and west while keeping the central plaza open.
+Trees, bushes, flower beds and rocks pass centralized placement rules in `map.ts`. The rules reject map boundaries, buildings, roads, the paved plaza and market lanes before those decorations enter the rendered or collision arrays. Stable vegetation groups distribute nature across north, south, east and west while keeping the central plaza open.
 
 ## Adding a canonical profile
 

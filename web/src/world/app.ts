@@ -5,8 +5,10 @@ import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.j
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
-import { publicSpeech, SpeechLimiter } from './speech.js';
-import { HttpArenaGateway, type AgentProfile } from './gateway.js';
+import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
+import { HttpArenaGateway, type AgentProfile, type MatchRecord } from './gateway.js';
+import { liveMatchMessages } from './live-statistics.js';
+import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -26,6 +28,8 @@ const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas
 const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
 const arenaStatuses=new Map<string,AgentProfile['arenaStatus']>();
 const speechLimiter=new SpeechLimiter();
+const thoughtCounts=new Map<string,number>();
+let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
 let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,lastPresenceMoveAt=0,lastPresenceMoveState='';
@@ -37,6 +41,7 @@ let spokenUntil=0;
 let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
+let researchLiveTimer=0;
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
 function updateWorldLabel():void {
@@ -52,7 +57,7 @@ function updateConnectionLabel():void {
 function syncRemotePlayers(snapshot:PresenceSnapshot):void {
   const next=new Set<string>(),ownId=presenceClient?.player_id;
   for(const value of snapshot.players){
-    if(value.player_id===ownId)continue;
+    if(value.player_id===ownId){visitorName=value.display_name||'human';continue;}
     const id=`presence:${value.player_id}`;next.add(id);
     const facing=value.direction==='up'||value.direction==='left'||value.direction==='right'?value.direction:'down';
     const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_ember';
@@ -104,7 +109,9 @@ async function leavePresence():Promise<void> {
   try{await client.leave();}catch{client.close();}
 }
 function resetInput():void {keyboard.reset();touch.reset();}
-function show(title:string):number {resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
+function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
+dialog.addEventListener('close',stopResearchLive);
+function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
 function showProfile(id:string):void {
@@ -130,7 +137,23 @@ async function showResearch():Promise<void> {
   try{
     const [stats,matches]=await Promise.all([gateway.statistics(),gateway.history()]);
     if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();
-    text('p',`Live totals from ${stats.scope}. ${stats.updated_at?`Last completed match: ${new Date(stats.updated_at).toLocaleString()}.`:'No completed matches recorded yet.'}`);
+    const live=text('section','');live.id='research-live';text('h3','Live public matchups',live);
+    const liveBody=text('div','Loading current server match state…',live);
+    let requestNumber=0;
+    const refreshLive=async()=>{
+      const currentRequest=++requestNumber;
+      const [roomResult,survivalResult]=await Promise.allSettled([gateway.listRooms(),loadSurvivalSnapshot()]);
+      if(!dialog.open||version!==interactionVersion||currentRequest!==requestNumber)return;
+      liveBody.replaceChildren();
+      if(roomResult.status==='rejected'&&survivalResult.status==='rejected'){
+        text('p','Live match feed is temporarily unavailable.',liveBody);return;
+      }
+      const lines=liveMatchMessages(roomResult.status==='fulfilled'?roomResult.value:[],survivalResult.status==='fulfilled'?survivalResult.value:null);
+      if(!lines.length)text('p','No public match is live right now. Waiting for the next round.',liveBody);
+      for(const line of lines)text('p',line,liveBody);
+    };
+    void refreshLive();researchLiveTimer=window.setInterval(()=>void refreshLive(),4000);
+    text('p',`Completed record · ${stats.scope}. ${stats.updated_at?`Last completed match: ${new Date(stats.updated_at).toLocaleString()}.`:'No completed matches recorded yet.'}`);
     const totals=text('div','');totals.className='research-totals';
     for(const [label,value] of [['Completed matches',stats.totals.matches],['Recorded decisions',stats.totals.decisions],['Draws',stats.totals.draws]] as [string,number][]){
       const item=text('article','',totals);text('strong',String(value),item);text('span',label,item);
@@ -263,6 +286,10 @@ async function refreshProfiles():Promise<void> {
   if(stopped)return;
   try{
     profiles=await gateway.getAgentProfiles();
+    if(Date.now()>=nextHistoryRefresh){
+      nextHistoryRefresh=Date.now()+20_000;
+      try{publicHistory=await gateway.history();}catch{publicHistory=[];}
+    }
     const selected=selectPlazaAgents(profiles,npcs.map(npc=>npc.agentId||'')),selectedIds=new Set(selected.map(profile=>profile.id));
     for(let index=npcs.length-1;index>=0;index--)if(!selectedIds.has(npcs[index]!.agentId||'')){controllers.delete(npcs[index]!.id);npcs.splice(index,1);}
     selected.forEach((profile,index)=>{
@@ -298,7 +325,8 @@ function frame(time:number):void {
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
     const activeThoughts=npcs.filter(npc=>npc.speech&&npc.speech.expiresAt>time).length;
     if(closeNpc&&closeProfile&&!closeNpc.speech&&activeThoughts<3&&speechLimiter.allow(closeNpc.id,Date.now())&&controllers.get(closeNpc.id)?.offerThought()){
-      const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',Math.floor(time/10000));
+      const count=(thoughtCounts.get(closeNpc.id)||0)+1;thoughtCounts.set(closeNpc.id,count);
+      const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
     if(spokenUntil&&time>=spokenUntil){spokenUntil=0;speechNotice.textContent='';speechNotice.hidden=true;}
