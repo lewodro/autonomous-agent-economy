@@ -56,7 +56,7 @@ test('agent-only compound round advances without a human action', async () => {
   for(let second=2;second<=121;second++){now+=1_000;await game.tick();}
   const finished=game.snapshot();
   assert.equal(finished.phase,'finished');
-  assert.ok(finished.events.some(event=>event.type==='job'),'an autonomous participant should complete a real room job');
+  assert.ok(finished.events.some(event=>event.type==='job_completed'),'an autonomous participant should complete a real room job');
   assert.ok(finished.results.at(-1).participants.every(value=>value.type==='agent'));
   await game.close();
 });
@@ -67,13 +67,15 @@ test('compound walls, props, inventory, jobs and escape routes are authoritative
   const human=game.state.participants.find(value=>value.owner==='owner-a');
   human.position={x:2,y:3};
   assert.throws(()=>game.move('owner-a',{x:2,y:2}),{code:'COMPOUND_BLOCKED'},'beds are server-side collision');
-  human.role='worker';human.position={x:22,y:12};
+  human.role='worker';human.job='workshop';human.position={x:22,y:12};
   const worked=game.action('owner-a',{action:'work'});
   assert.equal(worked.participants.find(value=>value.id===worked.you).job_progress,1);
-  human.position={x:20,y:19};human.inventory=['food','scrap','wire'];
-  const escaped=game.action('owner-a',{action:'escape',route_id:'utility-route'});
+  human.position={x:20,y:19};human.inventory=['improvised_tool','panel_bypass'];
+  game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
+  game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
+  const escaped=game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
   assert.equal(escaped.participants.find(value=>value.id===escaped.you).status,'escaped');
-  assert.ok(escaped.events.some(event=>event.type==='escape'&&event.actor_id===human.id));
+  assert.ok(escaped.events.some(event=>event.type==='escape_success'&&event.actor_id===human.id));
   await game.close();
 });
 
@@ -85,10 +87,10 @@ test('balanced roles, secret state and evidence-backed agent lessons survive rou
   assert.ok(roles.filter(role=>role==='guard').length>=1);
   assert.ok(roles.some(role=>role!=='guard'));
   const worker=game.state.participants.find(value=>value.role==='worker');
-  worker.position={x:22,y:12};game.performJob(worker);
+  worker.job='workshop';worker.position={x:22,y:12};game.performJob(worker);
   now+=16_000;await game.tick();
   const result=game.snapshot().results.at(-1);
-  assert.ok(result.events.some(event=>event.type==='job'));
+  assert.ok(result.events.some(event=>event.type==='job_completed'));
   assert.ok(game.state.participants.some(value=>value.type==='agent'&&value.memories.some(memory=>memory.evidence_event_ids.length>0)));
   await game.close();
 });
@@ -125,19 +127,20 @@ test('two human owners share positions and items without seeing each others secr
   await game.close();
 });
 
-test('both original escape routes are reachable by a prepared prisoner',async()=>{
+test('all three original staged escape routes are reachable by a prepared prisoner',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-route-')),{now:()=>10_000});
   game.join('owner',{name:'Pathfinder'});game.startRound('owner');
   const human=game.participant('owner');human.role='prisoner';
-  for(const [route,items] of [['utility-route',['scrap','wire']],['service-access',['keycard','food']]]){
-    human.status='active';human.position={x:2,y:3};human.inventory=items;
-    const target=game.snapshot().map.escape_routes.find(value=>value.id===route).position;
+  for(const route of game.snapshot().map.escape_routes){
+    human.status='active';human.position={x:2,y:3};human.inventory=route.stages.flatMap(stage=>stage.requires);
+    const target=route.position;
     let steps=0;
     while(Math.abs(human.position.x-target.x)+Math.abs(human.position.y-target.y)>1&&steps++<100){
-      const next=game.pathStep(human,target);assert.ok(next,`${route} must have a route`);game.stepParticipant(human,next);
+      const next=game.pathStep(human,target);assert.ok(next,`${route.id} must have a route`);game.stepParticipant(human,next);
     }
-    assert.ok(steps<100,`${route} must be reachable`);
-    game.attemptEscape(human,route);assert.equal(human.status,'escaped');
+    assert.ok(steps<100,`${route.id} must be reachable`);
+    for(const _stage of route.stages)game.attemptEscape(human,route.id);
+    assert.equal(human.status,'escaped');
   }
   await game.close();
 });
@@ -145,9 +148,32 @@ test('both original escape routes are reachable by a prepared prisoner',async()=
 test('a guard cannot turn an escape route into a guard victory',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-')),{now:()=>10_000});
   game.join('owner',{name:'Gate Guard'});game.startRound('owner');
-  const human=game.participant('owner');human.role='guard';human.position={x:20,y:19};human.inventory=['scrap','wire'];
-  assert.throws(()=>game.action('owner',{action:'escape',route_id:'utility-route'}),{code:'COMPOUND_ROLE_FORBIDDEN'});
+  const human=game.participant('owner');human.role='guard';human.position={x:20,y:19};human.inventory=['improvised_tool','panel_bypass'];
+  assert.throws(()=>game.action('owner',{action:'escape',route_id:'maintenance-route'}),{code:'COMPOUND_ROLE_FORBIDDEN'});
   assert.equal(human.status,'active');
-  assert.equal(game.snapshot().events.some(event=>event.type==='escape'),false);
+  assert.equal(game.snapshot().events.some(event=>event.type==='escape_success'),false);
+  await game.close();
+});
+
+test('containers, crafting, training, stamina and assigned jobs are authoritative',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-systems-')),{now:()=>10_000});
+  game.join('owner',{name:'Builder'});game.startRound('owner');
+  const human=game.participant('owner');human.position={x:3,y:4};human.inventory=[];
+  game.action('owner',{action:'search',container_id:'locker-2'});
+  assert.equal(human.inventory.length,1);
+  human.inventory=['scrap','cloth'];game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
+  assert.deepEqual(human.inventory,['improvised_tool']);
+  human.position={x:16,y:10};const stamina=human.stamina;game.action('owner',{action:'train',stat:'strength'});
+  assert.equal(human.stats.strength,2);assert.ok(human.stamina<stamina);
+  human.job='workshop';human.position={x:22,y:12};game.action('owner',{action:'work'});
+  assert.equal(human.jobProgress,1);assert.equal(human.credits,4);
+  await game.close();
+});
+
+test('missing a required routine raises heat and records evidence',async()=>{
+  let now=10_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-routine-')),{now:()=>now,roundSeconds:80});
+  game.join('owner',{name:'Late Visitor'});game.startRound('owner');const human=game.participant('owner');human.role='prisoner';human.position={x:16,y:12};
+  now+=11_000;await game.tick();
+  assert.ok(human.heat>=9);assert.ok(game.snapshot().events.some(event=>event.type==='routine_missed'&&event.actor_id===human.id));
   await game.close();
 });
