@@ -46,17 +46,20 @@ test('compound validates movement, inventory actions, and records a durable resu
 
 test('agent-only compound round advances without a human action', async () => {
   let now = 1_000;
-  const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 120 });
+  const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 300 });
   const started = game.startAgentRound();
   assert.equal(started.participants.every(value => value.type === 'agent'), true);
   const before = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   now += 1_100; await game.tick();
   const after = game.snapshot().participants.filter(value => value.type === 'agent').map(value => `${value.position.x},${value.position.y}`);
   assert.notDeepEqual(after, before);
-  for(let second=2;second<=121;second++){now+=1_000;await game.tick();}
+  for(let second=2;second<=301;second++){now+=1_000;await game.tick();}
   const finished=game.snapshot();
   assert.equal(finished.phase,'finished');
-  assert.ok(finished.events.some(event=>event.type==='job_completed'),'an autonomous participant should complete a real room job');
+  const evidence=finished.results.at(-1).events;
+  assert.ok(evidence.some(event=>event.type==='job_completed'),'an autonomous participant should complete a real room job');
+  assert.ok(evidence.some(event=>event.type==='item_found')&&evidence.some(event=>event.type==='item_crafted'),'agents should search and craft');
+  assert.ok(evidence.some(event=>event.type==='escape_stage'),'agents should advance a real escape stage');
   assert.ok(finished.results.at(-1).participants.every(value=>value.type==='agent'));
   await game.close();
 });
@@ -163,8 +166,8 @@ test('containers, crafting, training, stamina and assigned jobs are authoritativ
   assert.equal(human.inventory.length,1);
   human.inventory=['scrap','cloth'];game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
   assert.deepEqual(human.inventory,['improvised_tool']);
-  human.position={x:16,y:10};const stamina=human.stamina;game.action('owner',{action:'train',stat:'strength'});
-  assert.equal(human.stats.strength,2);assert.ok(human.stamina<stamina);
+  human.position={x:16,y:10};const stamina=human.stamina,strength=human.stats.strength;game.action('owner',{action:'train',stat:'strength'});
+  assert.equal(human.stats.strength,strength+1);assert.ok(human.stamina<stamina);
   human.job='workshop';human.position={x:22,y:12};game.action('owner',{action:'work'});
   assert.equal(human.jobProgress,1);assert.equal(human.credits,4);
   await game.close();
