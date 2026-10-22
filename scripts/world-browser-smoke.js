@@ -227,8 +227,12 @@ try{
  await evaluate("[...document.querySelectorAll('#compound-lobby button')].find(b=>b.textContent==='Start round').click()");
  await wait("document.getElementById('compound-status').textContent.includes('ROUND')&&fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.length===8&&s.phase==='active')");
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('OBJECTIVE')"),'compound owner should see its private objective');
+ assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('STAMINA')&&document.getElementById('compound-you').textContent.includes('STR')"),'compound HUD should expose runtime stats');
  assert.equal(await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'other compound participants must not expose secret roles');
  assert.ok(await evaluate("document.getElementById('compound-map') instanceof HTMLCanvasElement&&document.getElementById('compound-map').width===640"),'compound should render a player-following pixel viewport');
+ assert.ok(await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.map.rooms.some(room=>room.id==='gym')&&s.map.escape_routes.length===3&&s.security==='normal')"),'compound map should expose the Gym, three staged escape routes, and security state');
+ const searched=await evaluate("fetch('/api/compound/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'search',container_id:'locker-2'})}).then(r=>r.json())");
+ assert.ok(searched.participants.find(value=>value.id===searched.you).inventory_count>1,'human should search a physical cell locker');
  const compoundBefore=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {x:p.position.x,y:p.position.y,agents:s.participants.filter(v=>v.type==='agent').map(v=>v.position)}})");
  await evaluate(`fetch('/api/compound/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:${compoundBefore.x+1},y:${compoundBefore.y}})}).then(r=>r.json())`);
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return p.position.x===${compoundBefore.x+1}&&p.position.y===${compoundBefore.y}})`);

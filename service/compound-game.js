@@ -23,7 +23,8 @@ const rooms=[
   {id:'kitchen',label:'KITCHEN',x:21,y:1,w:5,h:6,terrain:'kitchen',restricted:true,door:{x:21,y:4}},
   {id:'security',label:'SECURITY',x:27,y:1,w:4,h:6,terrain:'security',restricted:true,door:{x:27,y:4}},
   {id:'visitation',label:'VISITATION',x:1,y:10,w:7,h:5,terrain:'visitation',restricted:false,door:{x:7,y:12}},
-  {id:'yard',label:'YARD',x:9,y:8,w:11,h:7,terrain:'yard',restricted:false,door:{x:14,y:14}},
+  {id:'yard',label:'YARD',x:9,y:8,w:7,h:7,terrain:'yard',restricted:false,door:{x:13,y:14}},
+  {id:'gym',label:'GYM',x:16,y:8,w:4,h:7,terrain:'gym',restricted:false,door:{x:18,y:14}},
   {id:'workshop',label:'WORKSHOP',x:21,y:8,w:6,h:7,terrain:'workshop',restricted:false,door:{x:21,y:11}},
   {id:'infirmary',label:'INFIRMARY',x:28,y:8,w:3,h:7,terrain:'infirmary',restricted:false,door:{x:28,y:11}},
   {id:'showers',label:'SHOWERS',x:1,y:17,w:7,h:4,terrain:'showers',restricted:false,door:{x:7,y:18}},
@@ -136,7 +137,7 @@ export class CompoundGame{
       if(suspect?.heat>12){if(agent.lastPursuitTarget!==suspect.id){agent.lastPursuitTarget=suspect.id;this.record(`${agent.name} began pursuing ${suspect.name}.`,'pursuit_started',{actor_id:agent.id,target_id:suspect.id});}return suspect.position;}
       return this.routinePhase()==='yard'?{x:16,y:11}:{x:28,y:4};
     }
-    return({morning_count:{x:8,y:5},breakfast:{x:15,y:5},work:jobTargets[agent.job]||{x:24,y:13},exercise:{x:16,y:12},lunch:{x:15,y:5},free_time:{x:5,y:12},evening_count:{x:8,y:5},lockdown:{x:8,y:5}})[this.routinePhase()];
+    return({morning_count:{x:8,y:5},breakfast:{x:15,y:5},work:jobTargets[agent.job]||{x:24,y:13},exercise:{x:18,y:12},lunch:{x:15,y:5},free_time:{x:5,y:12},evening_count:{x:8,y:5},lockdown:{x:8,y:5}})[this.routinePhase()];
   }
   agentAct(agent){
     if(agent.status==='recovering'){agent.hp=Math.min(100,agent.hp+25);agent.stamina=Math.min(100,agent.stamina+25);if(agent.hp===100)agent.status='active';return;}
