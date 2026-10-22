@@ -18,9 +18,11 @@ test('compound lobby fills with agents and hides secret roles from other viewers
   assert.equal(active.you, active.participants.find(value => value.name === 'Alice')?.id);
   const own = active.participants.find(value => value.id === active.you);
   assert.ok(own?.role, 'owner sees its assigned role');
+  assert.ok(own?.personal_objective, 'owner sees its private personal objective');
   assert.ok(active.participants.every(value => ['inmate','guard'].includes(value.base_role)));
   assert.ok(active.participants.some(value => value.public_role === 'guard'));
   assert.ok(active.participants.every(value => !('role' in value) || value.id === active.you));
+  assert.ok(active.participants.every(value => !('personal_objective' in value) || value.id === active.you));
   await game.close();
 });
 
