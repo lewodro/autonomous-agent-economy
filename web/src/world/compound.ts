@@ -1,5 +1,6 @@
 import { drawActorSprite } from './renderer.js';
 import { SPRITES, loadSettings } from './sprites.js';
+import { drawCompoundDoor, drawCompoundFloor, drawCompoundItem, drawCompoundProp, drawCompoundWall, drawEscapeMarker } from './compound-art.js';
 interface Point{x:number;y:number}
 interface Room{id:string;label:string;x:number;y:number;w:number;h:number;terrain:string;restricted:boolean}
 interface Prop{id:string;kind:string;x:number;y:number;solid:boolean}
@@ -13,28 +14,11 @@ const canvas=$<HTMLCanvasElement>('compound-map'),context=canvas.getContext('2d'
 let state:CompoundSnapshot|null=null,busy=false,lastRevision=-1,errorText='',previousPositions=new Map<string,Point>(),renderPositions=new Map<string,Point>();
 const spriteById=new Map(SPRITES.map(sprite=>[sprite.id,sprite]));
 const spriteImages=new Map(SPRITES.map(sprite=>{const image=new Image();image.src=sprite.sheet;return[sprite.id,image] as const;}));
-const COLORS={outside:'#172b26',corridor:'#6b6453',wall:'#273d36',wallTop:'#51665a',door:'#b67d42',restricted:'#594c52',cell:'#718170',cafeteria:'#80765f',kitchen:'#766a52',security:'#574d55',visitation:'#756b5a',yard:'#526e50',gym:'#5f6858',workshop:'#6d6755',infirmary:'#697b73',showers:'#537174',storage:'#625d50',utility:'#525d58',service:'#4d5952'} as const;
 async function request<T>(url:string,options?:RequestInit):Promise<T>{const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options?.headers||{})},signal:AbortSignal.timeout(8000)});if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.error||'Compound request failed');}return response.json() as Promise<T>}
 function button(label:string,action:()=>void,className=''):HTMLButtonElement{const b=document.createElement('button');b.textContent=label;b.className=className;b.onclick=()=>{if(!busy)action();};return b;}
 function roomAt(x:number,y:number):Room|undefined{return state?.map.rooms.find(room=>x>=room.x&&x<room.x+room.w&&y>=room.y&&y<room.y+room.h);}
 function tileCenter(point:Point,size:number):Point{return{x:(point.x+.5)*size,y:(point.y+.5)*size};}
 function drawPixelText(text:string,x:number,y:number,size=11,align:CanvasTextAlign='left'):void{context.font=`700 ${size}px ui-monospace, SFMono-Regular, Menlo, monospace`;context.textAlign=align;context.fillStyle='#f1dfb8';context.fillText(text,x,y);}
-function drawProp(prop:Prop,size:number):void{
- const x=prop.x*size,y=prop.y*size,pad=Math.max(3,size*.16);context.fillStyle='#182b26';context.fillRect(x+3,y+size-6,size-6,4);
- if(prop.kind==='bed'||prop.kind==='medical_bed'){context.fillStyle=prop.kind==='medical_bed'?'#d7e2d7':'#6a4b3b';context.fillRect(x+pad,y+pad,size-pad*2,size-pad*2);context.fillStyle='#e8dec8';context.fillRect(x+pad,y+pad,size-pad*2,Math.max(5,size*.24));}
- else if(prop.kind==='locker'||prop.kind==='cabinet'){context.fillStyle='#84908a';context.fillRect(x+pad,y+2,size-pad*2,size-5);context.fillStyle='#273d36';context.fillRect(x+size*.68,y+size*.5,2,2);}
- else if(prop.kind==='table'||prop.kind==='bench'||prop.kind==='workbench'||prop.kind==='counter'||prop.kind==='guard_desk'){context.fillStyle=prop.kind==='workbench'?'#8b633d':'#76583e';context.fillRect(x+3,y+7,size-6,size-13);context.fillStyle='#b18a58';context.fillRect(x+2,y+5,size-4,5);}
- else if(prop.kind==='stove'){context.fillStyle='#2c3331';context.fillRect(x+4,y+4,size-8,size-8);context.fillStyle='#d46b3b';context.fillRect(x+8,y+8,5,5);context.fillRect(x+size-13,y+8,5,5);}
- else if(prop.kind==='weights'){context.strokeStyle='#c2c8b5';context.lineWidth=3;context.beginPath();context.moveTo(x+5,y+size*.55);context.lineTo(x+size-5,y+size*.55);context.stroke();context.fillStyle='#263630';context.fillRect(x+3,y+size*.42,6,10);context.fillRect(x+size-9,y+size*.42,6,10);}
- else if(prop.kind==='treadmill'){context.fillStyle='#303b38';context.fillRect(x+4,y+size-10,size-8,7);context.fillStyle='#8a9d8f';context.fillRect(x+size-9,y+5,4,size-12);}
- else if(prop.kind==='shower'){context.fillStyle='#9ac0bf';context.fillRect(x+size*.45,y+3,4,size-7);context.fillRect(x+size*.45,y+3,size*.3,4);context.fillStyle='#6ca4aa';context.fillRect(x+size*.68,y+7,5,5);}
- else if(prop.kind==='crate'||prop.kind==='food_crate'){context.fillStyle=prop.kind==='food_crate'?'#748348':'#7b5c3d';context.fillRect(x+4,y+4,size-8,size-8);context.strokeStyle='#b08a56';context.strokeRect(x+6,y+6,size-12,size-12);}
- else if(prop.kind==='sink'){context.fillStyle='#a9beb6';context.fillRect(x+7,y+8,size-14,size-13);context.fillStyle='#547a76';context.fillRect(x+11,y+11,size-22,size-19);}
- else if(['monitor','terminal','machine'].includes(prop.kind)){context.fillStyle='#26332f';context.fillRect(x+4,y+4,size-8,size-8);context.fillStyle='#7fc0a4';context.fillRect(x+8,y+7,size-16,size-15);context.fillStyle='#d8c46c';context.fillRect(x+9,y+size-7,4,2);}
- else if(prop.kind==='alarm'){context.fillStyle='#4b2626';context.fillRect(x+8,y+6,size-16,size-12);context.fillStyle='#e26952';context.fillRect(x+11,y+8,size-22,size-20);}
- else if(['shelf','pipes','divider','laundry','key_board'].includes(prop.kind)){context.fillStyle='#42564e';context.fillRect(x+5,y+4,size-10,size-8);context.fillStyle='#9a8b68';context.fillRect(x+8,y+8,size-16,3);context.fillRect(x+8,y+size-11,size-16,3);}
- else{context.fillStyle='#314b45';context.fillRect(x+4,y+4,size-8,size-8);context.fillStyle='#e1bd66';context.fillRect(x+8,y+8,size-16,4);}
-}
 function drawActor(actor:CompoundParticipant,size:number,time:number):void{
  const target=tileCenter(actor.position,size),current=renderPositions.get(actor.id)||previousPositions.get(actor.id)||target,lerp=.16;current.x+=(target.x-current.x)*lerp;current.y+=(target.y-current.y)*lerp;renderPositions.set(actor.id,current);
  const x=Math.round(current.x),y=Math.round(current.y),youActor=actor.id===state?.you;
@@ -55,15 +39,16 @@ function renderCanvas(time=performance.now()):void{
  const focus=state.participants.find(actor=>actor.id===state!.you)||state.participants[0];
  const cameraX=Math.max(0,Math.min(map.width*size-viewWidth,(focus?.position.x||map.width/2)*size-viewWidth/2));
  const cameraY=Math.max(0,Math.min(map.height*size-viewHeight,(focus?.position.y||map.height/2)*size-viewHeight/2));
- context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;context.fillStyle=COLORS.outside;context.fillRect(0,0,canvas.width,canvas.height);
+ context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;context.fillStyle='#14261f';context.fillRect(0,0,canvas.width,canvas.height);
  context.translate(-Math.round(cameraX),-Math.round(cameraY));
- for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++){const room=roomAt(x,y),base=room?COLORS[room.terrain as keyof typeof COLORS]||COLORS.corridor:COLORS.corridor;context.fillStyle=base;context.fillRect(x*size,y*size,size,size);if((x*17+y*31)%13===0){context.fillStyle='rgba(20,32,28,.13)';context.fillRect(x*size+6,y*size+9,3,2);}}
- for(const wall of map.walls){context.fillStyle=COLORS.wall;context.fillRect(wall.x*size,wall.y*size,size,size);context.fillStyle=COLORS.wallTop;context.fillRect(wall.x*size,wall.y*size,size,5);context.fillStyle='#1b2b27';context.fillRect(wall.x*size,wall.y*size+size-4,size,4);}
- for(const door of map.doors){const p=door.position;context.fillStyle=door.mode==='restricted'?'#9e4e43':COLORS.door;context.fillRect(p.x*size+4,p.y*size+3,size-8,size-6);context.fillStyle='#e9c46a';context.fillRect(p.x*size+size-10,p.y*size+size*.5,3,3);}
- for(const prop of map.props)drawProp(prop,size);
- for(const route of map.escape_routes){const p=route.position;context.fillStyle='#182b26';context.fillRect(p.x*size+3,p.y*size+3,size-6,size-6);context.strokeStyle='#dbb866';context.lineWidth=2;context.strokeRect(p.x*size+7,p.y*size+7,size-14,size-14);}
- for(const item of state.world_items){const p=tileCenter(item.position,size);context.fillStyle=item.type==='keycard'?'#e0c56b':item.type==='medkit'?'#d9685b':item.type==='food'?'#80a85c':'#aeb7aa';context.fillRect(p.x-6,p.y-6,12,12);drawPixelText(item.type.slice(0,1).toUpperCase(),p.x,p.y+4,9,'center');}
- for(const room of map.rooms){const door=map.doors.find(value=>value.room_id===room.id);if(door)drawPixelText(room.label,(door.position.x+.5)*size,(door.position.y-.18)*size,Math.max(8,size*.25),'center');}
+ for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)drawCompoundFloor(context,roomAt(x,y),x,y,size);
+ for(const wall of map.walls)drawCompoundWall(context,wall,size,map.width,map.height);
+ const alarmed=state.security==='alert'||state.security==='lockdown'||state.routine_phase==='lockdown';
+ for(const door of map.doors)drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted');
+ for(const prop of map.props)drawCompoundProp(context,prop,size);
+ for(const route of map.escape_routes)drawEscapeMarker(context,route.position,size,alarmed);
+ for(const item of state.world_items)drawCompoundItem(context,item.type,tileCenter(item.position,size),size);
+ for(const room of map.rooms){const door=map.doors.find(value=>value.room_id===room.id);if(door)drawPixelText(room.label,(door.position.x+.5)*size,(door.position.y-.18)*size,Math.max(7,size*.22),'center');}
  for(const actor of state.participants)drawActor(actor,size,time);
  context.setTransform(1,0,0,1,0,0);requestAnimationFrame(renderCanvas);
 }
