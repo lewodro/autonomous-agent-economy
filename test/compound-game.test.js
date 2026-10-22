@@ -18,6 +18,7 @@ test('compound lobby fills with agents and hides secret roles from other viewers
   assert.equal(active.you, active.participants.find(value => value.name === 'Alice')?.id);
   const own = active.participants.find(value => value.id === active.you);
   assert.ok(own?.role, 'owner sees its assigned role');
+  assert.ok(active.participants.every(value => ['inmate','guard'].includes(value.base_role)));
   assert.ok(active.participants.some(value => value.public_role === 'guard'));
   assert.ok(active.participants.every(value => !('role' in value) || value.id === active.you));
   await game.close();
@@ -164,7 +165,8 @@ test('containers, crafting, training, stamina and assigned jobs are authoritativ
   const human=game.participant('owner');human.position={x:3,y:4};human.inventory=[];
   game.action('owner',{action:'search',container_id:'locker-2'});
   assert.equal(human.inventory.length,1);
-  human.inventory=['scrap','cloth'];game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
+  human.inventory=['scrap','cloth'];assert.throws(()=>game.action('owner',{action:'craft',recipe_id:'improvised-tool'}),{code:'COMPOUND_CRAFT_LOCATION'});
+  human.position={x:22,y:10};game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
   assert.deepEqual(human.inventory,['improvised_tool']);
   human.position={x:16,y:10};const stamina=human.stamina,strength=human.stats.strength;game.action('owner',{action:'train',stat:'strength'});
   assert.equal(human.stats.strength,strength+1);assert.ok(human.stamina<stamina);
