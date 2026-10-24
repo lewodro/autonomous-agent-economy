@@ -238,6 +238,9 @@ try{
  const compoundBefore=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {x:p.position.x,y:p.position.y,agents:s.participants.filter(v=>v.type==='agent').map(v=>v.position)}})");
  await evaluate(`fetch('/api/compound/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:${compoundBefore.x+1},y:${compoundBefore.y}})}).then(r=>r.json())`);
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return p.position.x===${compoundBefore.x+1}&&p.position.y===${compoundBefore.y}})`);
+ const holdStart=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x)");
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD'});await delay(520);await send('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD'});
+ await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x>=${holdStart+2})`);
  await delay(2200);
  assert.ok(await evaluate(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(v=>v.type==='agent').some((v,i)=>v.position.x!==${JSON.stringify(compoundBefore.agents)}[i].x||v.position.y!==${JSON.stringify(compoundBefore.agents)}[i].y))`),'autonomous compound participants should physically move');
  await screenshot('compound-round');
