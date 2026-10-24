@@ -20,6 +20,7 @@ function roomAt(x:number,y:number):Room|undefined{return state?.map.rooms.find(r
 function tileCenter(point:Point,size:number):Point{return{x:(point.x+.5)*size,y:(point.y+.5)*size};}
 function drawPixelText(text:string,x:number,y:number,size=11,align:CanvasTextAlign='left'):void{context.font=`700 ${size}px ui-monospace, SFMono-Regular, Menlo, monospace`;context.textAlign=align;context.fillStyle='#f1dfb8';context.fillText(text,x,y);}
 function activityGlyph(actor:CompoundParticipant):string{const activity=actor.activity.toLowerCase();if(activity.includes('pursu')||activity.includes('patrol'))return'!';if(activity.includes('craft'))return'C';if(activity.includes('search')||activity.includes('found'))return'?';if(activity.includes('training'))return'+';if(activity.includes('work')||activity.includes('clean')||activity.includes('repair'))return'W';if(activity.includes('talk')||activity.includes('trad'))return'…';if(activity.includes('escape')||activity.includes('prepar'))return'↑';return'';}
+function drawGuardAwareness(actor:CompoundParticipant,size:number):void{if(actor.base_role!=='guard'||actor.status!=='active')return;const center=tileCenter(actor.position,size),vectors={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]} as const,[dx,dy]=vectors[actor.facing as keyof typeof vectors]||vectors.down,sideX=-dy,sideY=dx,length=size*2.2,width=size*.72;context.fillStyle='rgba(218,184,102,.10)';context.beginPath();context.moveTo(center.x+sideX*size*.25,center.y+sideY*size*.25);context.lineTo(center.x+dx*length+sideX*width,center.y+dy*length+sideY*width);context.lineTo(center.x+dx*length-sideX*width,center.y+dy*length-sideY*width);context.lineTo(center.x-sideX*size*.25,center.y-sideY*size*.25);context.closePath();context.fill();}
 function drawActor(actor:CompoundParticipant,size:number,time:number):void{
  const target=tileCenter(actor.position,size),current=renderPositions.get(actor.id)||previousPositions.get(actor.id)||target,lerp=.16;current.x+=(target.x-current.x)*lerp;current.y+=(target.y-current.y)*lerp;renderPositions.set(actor.id,current);
  const x=Math.round(current.x),y=Math.round(current.y),youActor=actor.id===state?.you;
@@ -44,6 +45,7 @@ function renderCanvas(time=performance.now()):void{
  context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;context.fillStyle='#14261f';context.fillRect(0,0,canvas.width,canvas.height);
  context.translate(-Math.round(cameraX),-Math.round(cameraY));
  for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)drawCompoundFloor(context,roomAt(x,y),x,y,size);
+ for(const actor of state.participants)drawGuardAwareness(actor,size);
  for(const wall of map.walls)drawCompoundWall(context,wall,size,map.width,map.height);
  const alarmed=state.security==='alert'||state.security==='lockdown'||state.routine_phase==='lockdown';
  for(const door of map.doors){const open=state.participants.some(actor=>actor.status==='active'&&tileDistance(actor.position,door.position)<=1);drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted',open);}
@@ -52,7 +54,7 @@ function renderCanvas(time=performance.now()):void{
  for(const item of state.world_items)drawCompoundItem(context,item.type,tileCenter(item.position,size),size);
  for(const room of map.rooms){const door=map.doors.find(value=>value.room_id===room.id);if(door)drawPixelText(room.label,(door.position.x+.5)*size,(door.position.y-.18)*size,Math.max(7,size*.22),'center');}
  for(const actor of state.participants)drawActor(actor,size,time);
- context.setTransform(1,0,0,1,0,0);requestAnimationFrame(renderCanvas);
+ context.setTransform(1,0,0,1,0,0);if(alarmed){context.strokeStyle=state.security==='lockdown'?'rgba(222,75,61,.72)':'rgba(222,123,69,.5)';context.lineWidth=6;context.strokeRect(3,3,canvas.width-6,canvas.height-6);drawPixelText(state.security.toUpperCase(),canvas.width-14,canvas.height-13,10,'right');}requestAnimationFrame(renderCanvas);
 }
 function nearestOther(own:CompoundParticipant):CompoundParticipant|undefined{return state?.participants.filter(value=>value.id!==own.id&&value.status==='active'&&Math.abs(value.position.x-own.position.x)+Math.abs(value.position.y-own.position.y)<=2).sort((a,b)=>Math.abs(a.position.x-own.position.x)+Math.abs(a.position.y-own.position.y)-Math.abs(b.position.x-own.position.x)-Math.abs(b.position.y-own.position.y))[0];}
 function tileDistance(a:Point,b:Point):number{return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);}
