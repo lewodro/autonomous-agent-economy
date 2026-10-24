@@ -31,7 +31,7 @@ try{
  await evaluate("window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
- assert.equal(await evaluate("document.getElementById('world-speech').hidden"),true,'NPC thoughts wait for interaction instead of covering the world on entry');
+ await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
  let localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
@@ -136,7 +136,7 @@ try{
  await screenshot('npc-attention');
  await wait("!document.getElementById('interact').disabled&&document.getElementById('world-hint').textContent.includes('Talk to')");
  await evaluate("document.getElementById('interact').click()");
- await wait(`!document.getElementById('world-speech').hidden&&document.getElementById('world-speech').textContent.startsWith(${JSON.stringify(talkingAgent+':')})`);
+ await wait(`document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent===${JSON.stringify(talkingAgent)}&&document.querySelector('.agent-shared-thought')?.textContent.includes('SHARED WITH YOU')`);
  await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
  await screenshot('npc-dialogue');
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
