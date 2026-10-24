@@ -80,10 +80,16 @@ export function drawCompoundWall(context: PixelContext, point: CompoundPoint, si
   }
 }
 
-export function drawCompoundDoor(context: PixelContext, point: CompoundPoint, size: number, restricted: boolean, alarmed: boolean): void {
+export function drawCompoundDoor(context: PixelContext, point: CompoundPoint, size: number, restricted: boolean, alarmed: boolean, open = false): void {
   const x = point.x * size;
   const y = point.y * size;
   rect(context, '#172821', x, y + 2, size, size - 2);
+  if (open) {
+    rect(context, restricted ? '#81483f' : '#996b3f', x + 3, y + 4, 5, size - 7);
+    rect(context, restricted ? '#81483f' : '#996b3f', x + size - 8, y + 4, 5, size - 7);
+    line(context, alarmed ? '#ef654e' : '#d8b765', x + 4, y + 6, size - 8, 2);
+    return;
+  }
   rect(context, restricted ? '#81483f' : '#996b3f', x + 5, y + 4, size - 10, size - 7);
   line(context, restricted ? '#b15b4c' : '#bd8952', x + 8, y + 7, size - 16, 3);
   line(context, '#4b3628', x + 8, y + 12, 3, size - 19);

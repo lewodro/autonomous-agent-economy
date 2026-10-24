@@ -26,7 +26,7 @@ function drawActor(actor:CompoundParticipant,size:number,time:number):void{
  context.fillStyle='rgba(12,24,20,.45)';context.fillRect(x-size*.3,y+size*.25,size*.6,size*.18);
  const spriteId=actor.type==='human'?(actor.avatar||'visitor_ember'):actor.name.toLowerCase().replaceAll(' ','-');
  if(actor.status==='escaped')context.globalAlpha=.35;
- drawActorSprite(context,spriteById.get(spriteId),spriteImages.get(spriteId),{position:{x,y},facing:(['up','down','left','right'].includes(actor.facing)?actor.facing:'down') as 'up'|'down'|'left'|'right',movementState:Math.abs(target.x-x)+Math.abs(target.y-y)>2?'walking':'idle'},time,false,size);
+ drawActorSprite(context,spriteById.get(spriteId),spriteImages.get(spriteId),{position:{x,y},facing:(['up','down','left','right'].includes(actor.facing)?actor.facing:'down') as 'up'|'down'|'left'|'right',movementState:Math.abs(target.x-x)+Math.abs(target.y-y)>2?'walking':'idle'},time,false,Math.round(size*.72));
  context.globalAlpha=1;
  if(youActor){context.strokeStyle='#f2c86d';context.lineWidth=2;context.beginPath();context.ellipse(x,y+size*.35,size*.36,size*.15,0,0,Math.PI*2);context.stroke();}
  if(youActor||actor.message){context.fillStyle='#1b2b27';context.fillRect(x-size*.44,y-size*.86,size*.88,size*.28);drawPixelText(actor.name.toUpperCase().slice(0,11),x,y-size*.64,Math.max(8,size*.25),'center');}
@@ -46,7 +46,7 @@ function renderCanvas(time=performance.now()):void{
  for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)drawCompoundFloor(context,roomAt(x,y),x,y,size);
  for(const wall of map.walls)drawCompoundWall(context,wall,size,map.width,map.height);
  const alarmed=state.security==='alert'||state.security==='lockdown'||state.routine_phase==='lockdown';
- for(const door of map.doors)drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted');
+ for(const door of map.doors){const open=state.participants.some(actor=>actor.status==='active'&&tileDistance(actor.position,door.position)<=1);drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted',open);}
  for(const prop of map.props)drawCompoundProp(context,prop,size);
  for(const route of map.escape_routes)drawEscapeMarker(context,route.position,size,alarmed);
  for(const item of state.world_items)drawCompoundItem(context,item.type,tileCenter(item.position,size),size);
@@ -60,6 +60,7 @@ function nearestProp(own:CompoundParticipant,kinds:string[]):Prop|undefined{retu
 function nearbyRoute(own:CompoundParticipant):EscapeRoute|undefined{return state?.map.escape_routes.find(value=>tileDistance(own.position,value.position)<=1);}
 function roundClock():string{if(!state?.started_at||!state.ends_at)return'--:--';const duration=state.ends_at-Date.parse(state.started_at),elapsed=Math.max(0,Date.now()-Date.parse(state.started_at));const minutes=6*60+Math.floor(Math.min(1,elapsed/Math.max(1,duration))*16*60);return`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;}
 const JOB_ROOMS:Record<string,string>={janitor:'showers',kitchen:'kitchen',workshop:'workshop',delivery:'visitation',maintenance:'utility',medical:'infirmary'};
+const JOB_STATIONS:Record<string,string[]>={janitor:['dirty_spot'],kitchen:['counter','stove','food_crate'],workshop:['workbench','machine'],delivery:['table'],maintenance:['panel','pipes'],medical:['medical_bed','cabinet']};
 interface ContextAction{label:string;run:()=>Promise<void>}
 function contextAction(own:CompoundParticipant):ContextAction|undefined{
  if(!state||state.phase!=='active')return;
@@ -69,7 +70,7 @@ function contextAction(own:CompoundParticipant):ContextAction|undefined{
  const container=nearestProp(own,['locker','cabinet','crate','guard_desk','counter','workbench']);
  if(container&&(state.containers.find(value=>value.id===container.id)?.available||0)>0)return{label:`SEARCH ${container.kind.replaceAll('_',' ').toUpperCase()}`,run:()=>command('/api/compound/action',{action:'search',container_id:container.id})};
  const workbench=nearestProp(own,['workbench']),recipe=own.crafting?.find(value=>value.available);if(workbench&&recipe)return{label:`CRAFT ${recipe.label.toUpperCase()}`,run:()=>command('/api/compound/action',{action:'craft',recipe_id:recipe.id})};
- if(JOB_ROOMS[own.job||'']===own.room)return{label:`WORK · ${(own.job||'JOB').replaceAll('_',' ').toUpperCase()}`,run:()=>command('/api/compound/action',{action:'work'})};
+ if(JOB_ROOMS[own.job||'']===own.room&&nearestProp(own,JOB_STATIONS[own.job||'']||[]))return{label:`WORK · ${(own.job||'JOB').replaceAll('_',' ').toUpperCase()}`,run:()=>command('/api/compound/action',{action:'work'})};
  const target=nearestOther(own);if(target)return{label:`TALK TO ${target.name.toUpperCase()}`,run:()=>command('/api/compound/action',{action:'talk',target_id:target.id})};
 }
 function meter(label:string,value:number,className:string):HTMLDivElement{const root=document.createElement('div');root.className=`compound-meter ${className}`;const text=document.createElement('span');text.textContent=`${label} ${value}`;const track=document.createElement('i');const fill=document.createElement('b');fill.style.width=`${Math.max(0,Math.min(100,value))}%`;track.append(fill);root.append(text,track);return root;}
@@ -83,7 +84,7 @@ function renderHud(own:CompoundParticipant|undefined):void{
 }
 function renderPanel():void{
  if(!state)return;statusEl.textContent=state.phase==='active'?`${roundClock()} · ${state.routine.current.toUpperCase()} · ${state.security.toUpperCase()} · ROUND ${state.round}`:state.phase==='finished'?`ROUND ${state.round} FINISHED`:`LOBBY · ${state.participants.length}/8 READY`;
- const result=state.results.at(-1);resultsEl.hidden=!result;resultsEl.replaceChildren();
+ const result=state.phase==='finished'?state.results.at(-1):undefined;resultsEl.hidden=!result;resultsEl.replaceChildren();
  if(result){const title=document.createElement('h2');title.textContent=`${(result.session_id||'previous round').replaceAll('-',' ').toUpperCase()} · RESULT`;resultsEl.append(title);const names=new Map((result.participants||[]).map(value=>[value.id,value.name]));const winners=document.createElement('p');winners.textContent=`Winners: ${(result.winner_ids||[]).map(id=>names.get(id)||'Unknown participant').join(', ')||'None'}`;resultsEl.append(winners);const summary=document.createElement('p');summary.textContent=`${result.escaped_ids?.length||0} escaped · ${Math.max(0,Math.round((result.duration_ms||0)/1000))} seconds · ${(result.reason||'completed').replaceAll('_',' ')}`;resultsEl.append(summary);}
  lobby.replaceChildren();if(!state.you){lobby.append(document.createTextNode(state.phase==='active'?'Round in progress. Watch now and join the next one.':'Join the shared public round. Empty slots become autonomous players.'));if(state.phase!=='active')lobby.append(button('Join as human',()=>void join(),'primary'));}else if(state.phase==='lobby'){lobby.append(document.createTextNode('You are in. Start the round and agents will fill the open slots.'));lobby.append(button('Start round',()=>void command('/api/compound/start'),'primary'));}else if(state.phase==='active')lobby.append(document.createTextNode('WASD / arrows move. E picks up. Use nearby actions below.'));else{lobby.append(document.createTextNode('The round resolved. Results and evidence are retained.'));lobby.append(button('Start next round',()=>void command('/api/compound/start'),'primary'));}
  you.replaceChildren();const own=state.participants.find(value=>value.id===state!.you);renderHud(own);if(own){
@@ -102,7 +103,7 @@ function renderPanel():void{
   if(own.role!=='guard'&&route){const progress=own.escape_progress?.[route.id]||0;actions.append(button(route.stages[progress]?.label||route.label,()=>void command('/api/compound/action',{action:'escape',route_id:route.id})));}
   if(state.phase==='active')you.append(actions);
  }
- participants.replaceChildren();for(const actor of state.participants){const row=document.createElement('div');row.className='compound-participant';const name=document.createElement('span');name.textContent=`${actor.name}${actor.id===state.you?' · YOU':''}`;const info=document.createElement('small');info.textContent=`${actor.public_role.toUpperCase()} · ${actor.activity} · ${state.phase==='finished'&&actor.status==='active'?'completed':actor.status}`;row.append(name,info);participants.append(row);}
+ participants.replaceChildren();for(const actor of state.participants){const row=document.createElement('div');row.className='compound-participant';const name=document.createElement('span');name.textContent=`${actor.name}${actor.id===state.you?' · YOU':''}`;const info=document.createElement('small');info.textContent=`${actor.base_role.toUpperCase()} · ${actor.activity} · ${state.phase==='finished'&&actor.status==='active'?'completed':actor.status}`;row.append(name,info);participants.append(row);}
  events.replaceChildren();for(const event of state.events.slice(-12).reverse()){const item=document.createElement('li');item.textContent=event.message;events.append(item);}hint.textContent=errorText||`E interact · next: ${state.routine.next} · server validates every step`;
 }
 function applySnapshot(next:CompoundSnapshot):void{if(next.revision!==lastRevision){for(const actor of state?.participants||[])previousPositions.set(actor.id,tileCenter(actor.position,next.map.tile_size));state=next;lastRevision=next.revision;renderPanel();}}

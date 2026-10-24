@@ -73,7 +73,7 @@ test('compound walls, props, inventory, jobs and escape routes are authoritative
   const human=game.state.participants.find(value=>value.owner==='owner-a');
   human.position={x:2,y:3};
   assert.throws(()=>game.move('owner-a',{x:2,y:2}),{code:'COMPOUND_BLOCKED'},'beds are server-side collision');
-  human.role='worker';human.job='workshop';human.position={x:22,y:12};
+  human.role='worker';human.job='workshop';human.position={x:22,y:10};
   const worked=game.action('owner-a',{action:'work'});
   assert.equal(worked.participants.find(value=>value.id===worked.you).job_progress,1);
   human.position={x:20,y:19};human.inventory=['improvised_tool','panel_bypass'];
@@ -93,7 +93,7 @@ test('balanced roles, secret state and evidence-backed agent lessons survive rou
   assert.ok(roles.filter(role=>role==='guard').length>=1);
   assert.ok(roles.some(role=>role!=='guard'));
   const worker=game.state.participants.find(value=>value.role==='worker');
-  worker.job='workshop';worker.position={x:22,y:12};game.performJob(worker);
+  worker.job='workshop';worker.position={x:22,y:10};game.performJob(worker);
   now+=16_000;await game.tick();
   const result=game.snapshot().results.at(-1);
   assert.ok(result.events.some(event=>event.type==='job_completed'));
@@ -172,7 +172,7 @@ test('containers, crafting, training, stamina and assigned jobs are authoritativ
   assert.deepEqual(human.inventory,['improvised_tool']);
   human.position={x:16,y:10};const stamina=human.stamina,strength=human.stats.strength;game.action('owner',{action:'train',stat:'strength'});
   assert.equal(human.stats.strength,strength+1);assert.ok(human.stamina<stamina);
-  human.job='workshop';human.position={x:22,y:12};game.action('owner',{action:'work'});
+  human.job='workshop';human.position={x:22,y:10};game.action('owner',{action:'work'});
   assert.equal(human.jobProgress,1);assert.equal(human.credits,4);
   await game.close();
 });

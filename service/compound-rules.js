@@ -36,12 +36,12 @@ export const RECIPES=[
 ];
 
 export const JOBS={
-  janitor:{label:'Janitor',room:'showers',action:'Clean marked floor',quota:3,reward:3},
-  kitchen:{label:'Kitchen worker',room:'kitchen',action:'Prepare and deliver trays',quota:3,reward:4},
-  workshop:{label:'Workshop worker',room:'workshop',action:'Repair a work station',quota:3,reward:4},
-  delivery:{label:'Delivery',room:'visitation',action:'Deliver a package',quota:2,reward:5},
-  maintenance:{label:'Maintenance',room:'utility',action:'Service a utility panel',quota:2,reward:5},
-  medical:{label:'Medical assistant',room:'infirmary',action:'Prepare a treatment bed',quota:2,reward:5},
+  janitor:{label:'Janitor',room:'showers',action:'Clean marked floor',quota:3,reward:3,stations:['dirty_spot']},
+  kitchen:{label:'Kitchen worker',room:'kitchen',action:'Prepare and deliver trays',quota:3,reward:4,stations:['counter','stove','food_crate']},
+  workshop:{label:'Workshop worker',room:'workshop',action:'Repair a work station',quota:3,reward:4,stations:['workbench','machine']},
+  delivery:{label:'Delivery',room:'visitation',action:'Deliver a package',quota:2,reward:5,stations:['table']},
+  maintenance:{label:'Maintenance',room:'utility',action:'Service a utility panel',quota:2,reward:5,stations:['panel','pipes']},
+  medical:{label:'Medical assistant',room:'infirmary',action:'Prepare a treatment bed',quota:2,reward:5,stations:['medical_bed','cabinet']},
 };
 
 export const ESCAPE_PLANS=[
