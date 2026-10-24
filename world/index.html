@@ -13,7 +13,7 @@
       <canvas id="world-canvas" tabindex="0" aria-label="Agent town. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; Agency northeast; archive and market south."></canvas>
       <div class="world-legend" aria-hidden="true"><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span></div>
       <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>
-      <div id="world-live" class="world-speech world-live" aria-live="polite" hidden></div>
+      <div id="world-live" class="world-live" role="status" aria-label="Live public games" aria-live="polite" hidden></div>
       <div class="touch-controls"><div id="joystick" class="joystick" aria-label="Touch movement joystick"><span id="joystick-knob"></span></div><button id="interact" class="interact-button" disabled>Interact</button></div>
     </section>
     <div class="world-footer"><p>Click the world to focus controls. Crown = this agent’s latest retained match was a win. No wallet or real funds.</p><details><summary>Agent directory · keyboard accessible</summary><div id="agent-directory" class="agent-directory"></div></details></div>

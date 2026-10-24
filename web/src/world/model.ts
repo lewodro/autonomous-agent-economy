@@ -35,5 +35,5 @@ export function normalizeInput(x: number, y: number, interact = false): WorldInp
 export function nearestInteraction(position: Position, targets: Interactable[]): Interactable | undefined {
   return targets.filter(t => Math.hypot(t.position.x - position.x, t.position.y - position.y) <= t.radius)
     .sort((a, b) => Math.hypot(a.position.x - position.x, a.position.y - position.y)
-      - Math.hypot(b.position.x - position.x, b.position.y - position.y))[0];
+      - Math.hypot(b.position.x - position.x, b.position.y - position.y) || a.id.localeCompare(b.id))[0];
 }
