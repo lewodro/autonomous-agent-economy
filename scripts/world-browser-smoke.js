@@ -137,8 +137,10 @@ try{
  await wait("!document.getElementById('interact').disabled&&document.getElementById('world-hint').textContent.includes('Talk to')");
  await evaluate("document.getElementById('interact').click()");
  await wait(`document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent===${JSON.stringify(talkingAgent)}&&document.querySelector('.agent-shared-thought')?.textContent.includes('SHARED WITH YOU')`);
- await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention)");
  await screenshot('npc-dialogue');
+ await evaluate("document.getElementById('interaction-close').click()");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&n.activityState==='talking')");
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
  // The canonical Arena may claim this NPC while the browser waits. That is a
  // valid roster transition; otherwise the actor must resume a normal state.
