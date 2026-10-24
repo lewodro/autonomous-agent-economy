@@ -73,11 +73,13 @@ try{
   const base=await serverUrl(server);
   const profile=path.join(directory,'chrome');
   const chrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--disable-background-networking','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${profile}`,'about:blank']);
+  const secondProfile=path.join(directory,'chrome-second');
+  const secondChrome=launch(chromePath,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--disable-background-networking','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--remote-allow-origins=*',`--user-data-dir=${secondProfile}`,'about:blank']);
   await waitFor(`${base}/api/health`,'Axile server',[server]);
   const [servedApp,builtApp]=await Promise.all([fetch(`${base}/web/dist/world/app.js`).then(response=>response.text()),readFile(path.join(root,'web/dist/world/app.js'),'utf8')]);
   if(servedApp!==builtApp)throw new Error(`Browser test server is not serving this worktree's built app (response ${servedApp.length} bytes, local bundle ${builtApp.length} bytes). Server output: ${server.output()}`);
-  const debug=await waitForDevTools(profile,chrome);
-  const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:{...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug}});
+  const [debug,secondDebug]=await Promise.all([waitForDevTools(profile,chrome),waitForDevTools(secondProfile,secondChrome)]);
+  const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:{...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug,CHROME_DEBUG_URL_2:secondDebug}});
   const [code,signal]=await once(smoke,'exit');
   if(code!==0)throw new Error(`World browser journey failed (${signal||code}):\n${smoke.output()}`);
 }catch(error){failed=true;console.error(error);}

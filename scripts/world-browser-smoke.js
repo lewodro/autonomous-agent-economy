@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { listChromeTargets } from './chrome-debug.js';
 const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
+const secondDebug=process.env.CHROME_DEBUG_URL_2;
 const targets=await listChromeTargets(debug);
 const target=targets.find(t=>t.type==='page')||await(await fetch(debug+'/json/new?'+encodeURIComponent(base),{method:'PUT'})).json();
 const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolve=>socket.addEventListener('open',resolve,{once:true}));
@@ -14,6 +15,17 @@ const evaluate=async expression=>{const r=await send('Runtime.evaluate',{express
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
+async function connectSecondBrowser(){
+ if(!secondDebug)throw new Error('Second Chrome session is required for Compound multiplayer smoke');
+ const secondTargets=await listChromeTargets(secondDebug),secondTarget=secondTargets.find(value=>value.type==='page');if(!secondTarget)throw new Error('Second Chrome page target unavailable');
+ const secondSocket=new WebSocket(secondTarget.webSocketDebuggerUrl);await new Promise(resolve=>secondSocket.addEventListener('open',resolve,{once:true}));let id=0;const requests=new Map();
+ secondSocket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(!message.id)return;const request=requests.get(message.id);if(request){clearTimeout(request.timer);requests.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}});
+ const secondSend=(method,params={})=>new Promise((resolve,reject)=>{const requestId=++id,timer=setTimeout(()=>{requests.delete(requestId);reject(new Error('Second browser command timed out: '+method));},20000);requests.set(requestId,{resolve,reject,timer});secondSocket.send(JSON.stringify({id:requestId,method,params}));});
+ const secondEvaluate=async expression=>{const result=await secondSend('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
+ const secondWait=async(expression,timeoutMs=15000)=>{for(let attempt=0;attempt<Math.ceil(timeoutMs/100);attempt++){if(await secondEvaluate(expression))return;await delay(100);}throw new Error('Second browser condition timed out: '+expression);};
+ return{send:secondSend,evaluate:secondEvaluate,wait:secondWait,close:()=>{for(const request of requests.values())clearTimeout(request.timer);secondSocket.close();}};
+}
+let secondBrowser;
 let failed=false;
 try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
@@ -31,7 +43,7 @@ try{
  await evaluate("window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
- assert.equal(await evaluate("document.getElementById('world-speech').hidden"),true,'NPC thoughts wait for interaction instead of covering the world on entry');
+ await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
  let localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
@@ -136,9 +148,11 @@ try{
  await screenshot('npc-attention');
  await wait("!document.getElementById('interact').disabled&&document.getElementById('world-hint').textContent.includes('Talk to')");
  await evaluate("document.getElementById('interact').click()");
- await wait(`!document.getElementById('world-speech').hidden&&document.getElementById('world-speech').textContent.startsWith(${JSON.stringify(talkingAgent+':')})`);
- await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention&&n.activityState==='talking')");
+ await wait(`document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent===${JSON.stringify(talkingAgent)}&&document.querySelector('.agent-shared-thought')?.textContent.includes('SHARED WITH YOU')`);
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&!n.attention)");
  await screenshot('npc-dialogue');
+ await evaluate("document.getElementById('interaction-close').click()");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&n.activityState==='talking')");
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
  // The canonical Arena may claim this NPC while the browser waits. That is a
  // valid roster transition; otherwise the actor must resume a normal state.
@@ -223,9 +237,17 @@ try{
  await send('Page.navigate',{url:base+'/compound'});await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
  await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='lobby')");
  await evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Browser Compound'})}).then(r=>r.json())");
+ secondBrowser=await connectSecondBrowser();await secondBrowser.send('Runtime.enable');await secondBrowser.send('Page.enable');await secondBrowser.send('Page.navigate',{url:base+'/compound'});await secondBrowser.wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
+ await secondBrowser.evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Second Browser'})}).then(r=>r.json())");
+ await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(p=>p.type==='human').length===2)");
  await wait("document.getElementById('compound-lobby').textContent.includes('Start round')");
  await evaluate("[...document.querySelectorAll('#compound-lobby button')].find(b=>b.textContent==='Start round').click()");
  await wait("document.getElementById('compound-status').textContent.includes('ROUND')&&fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.length===8&&s.phase==='active')");
+ await secondBrowser.wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='active'&&s.participants.length===8&&!!s.you)");
+ assert.equal(await secondBrowser.evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'second browser must not see another participant secret role');
+ const secondPosition=await secondBrowser.evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {id:p.id,x:p.position.x,y:p.position.y}})");
+ await secondBrowser.evaluate(`fetch('/api/compound/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:${secondPosition.x+1},y:${secondPosition.y}})}).then(r=>r.json())`);
+ await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(p=>p.id===${JSON.stringify(secondPosition.id)})?.position.x===${secondPosition.x+1})`);
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('OBJECTIVE')"),'compound owner should see its private objective');
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('STAMINA')&&document.getElementById('compound-you').textContent.includes('STR')"),'compound HUD should expose runtime stats');
  assert.equal(await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'other compound participants must not expose secret roles');
@@ -236,6 +258,9 @@ try{
  const compoundBefore=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {x:p.position.x,y:p.position.y,agents:s.participants.filter(v=>v.type==='agent').map(v=>v.position)}})");
  await evaluate(`fetch('/api/compound/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:${compoundBefore.x+1},y:${compoundBefore.y}})}).then(r=>r.json())`);
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return p.position.x===${compoundBefore.x+1}&&p.position.y===${compoundBefore.y}})`);
+ const holdStart=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x)");
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});await delay(750);await send('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});
+ await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x>=${holdStart+2})`);
  await delay(2200);
  assert.ok(await evaluate(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(v=>v.type==='agent').some((v,i)=>v.position.x!==${JSON.stringify(compoundBefore.agents)}[i].x||v.position.y!==${JSON.stringify(compoundBefore.agents)}[i].y))`),'autonomous compound participants should physically move');
  await screenshot('compound-round');
@@ -246,4 +271,4 @@ try{
  await screenshot('landing-mobile');assert.deepEqual(errors,[]);
  console.log('PASS world: character, NPC profile, live render loop, Survival combat/inspection, shared RPS/TTT, return navigation, mobile joystick/release, responsive layouts');
 }catch(error){failed=true;console.error(error);}
-finally{for(const request of pending.values())clearTimeout(request.timer);socket.close();process.exit(failed?1:0);}
+finally{secondBrowser?.close();for(const request of pending.values())clearTimeout(request.timer);socket.close();process.exit(failed?1:0);}

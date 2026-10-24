@@ -145,7 +145,7 @@ flowchart TB
 | RPS | **WORKING** | Deterministic commit-reveal rules and shared hosted rooms |
 | Tic-Tac-Toe | **WORKING** | Turn legality, authoritative outcomes, shared rooms and a free plaza table |
 | Survival | **WORKING** | Rust-authoritative 20-agent melee, continuous host, tactical frontend and durable research |
-| Compound Run | **PLAYABLE PUBLIC ALPHA** | One authoritative eight-seat pixel compound with humans and agents, routines, stats, searchable containers, crafting, jobs, Heat/security, local guard AI, trading, combat, and three staged escape routes |
+| Compound Run | **PLAYABLE PUBLIC ALPHA** | One authoritative eight-seat top-down pixel game with human controls, visible autonomous agents, base roles/jobs/private objectives, routines, searchable containers, crafting, Heat/security, local guard AI, trading, combat, and three physical staged escape routes |
 | Last Seat | **WORKING** | Seeded 2–20-agent Rust simulation with versioned replay verification |
 | Research memory | **WORKING** | Structured events, retained summaries and cumulative public statistics |
 | Private experiments | **WORKING** | Signed anonymous ownership, resume, isolation, deletion and bounded retention |

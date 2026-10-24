@@ -36,29 +36,29 @@ export const RECIPES=[
 ];
 
 export const JOBS={
-  janitor:{label:'Janitor',room:'showers',action:'Clean marked floor',quota:3,reward:3},
-  kitchen:{label:'Kitchen worker',room:'kitchen',action:'Prepare and deliver trays',quota:3,reward:4},
-  workshop:{label:'Workshop worker',room:'workshop',action:'Repair a work station',quota:3,reward:4},
-  delivery:{label:'Delivery',room:'visitation',action:'Deliver a package',quota:2,reward:5},
-  maintenance:{label:'Maintenance',room:'utility',action:'Service a utility panel',quota:2,reward:5},
-  medical:{label:'Medical assistant',room:'infirmary',action:'Prepare a treatment bed',quota:2,reward:5},
+  janitor:{label:'Janitor',room:'showers',action:'Clean marked floor',quota:3,reward:3,stations:['dirty_spot']},
+  kitchen:{label:'Kitchen worker',room:'kitchen',action:'Prepare and deliver trays',quota:3,reward:4,stations:['counter','stove','food_crate']},
+  workshop:{label:'Workshop worker',room:'workshop',action:'Repair a work station',quota:3,reward:4,stations:['workbench','machine']},
+  delivery:{label:'Delivery',room:'visitation',action:'Deliver a package',quota:2,reward:5,stations:['table']},
+  maintenance:{label:'Maintenance',room:'utility',action:'Service a utility panel',quota:2,reward:5,stations:['panel','pipes']},
+  medical:{label:'Medical assistant',room:'infirmary',action:'Prepare a treatment bed',quota:2,reward:5,stations:['medical_bed','cabinet']},
 };
 
 export const ESCAPE_PLANS=[
   {id:'service-gate',label:'Service Gate',position:{x:29,y:19},stages:[
-    {id:'disguise',label:'Prepare service cover',requires:['service_uniform']},
-    {id:'access',label:'Spoof gate access',requires:['access_card','distraction_kit']},
-    {id:'breach',label:'Cross the service gate',requires:[]},
+    {id:'disguise',label:'Prepare service cover',position:{x:22,y:10},requires:['service_uniform']},
+    {id:'access',label:'Spoof gate access',position:{x:26,y:19},requires:['access_card','distraction_kit']},
+    {id:'breach',label:'Cross the service gate',position:{x:29,y:19},requires:[]},
   ]},
   {id:'maintenance-route',label:'Maintenance Route',position:{x:21,y:19},stages:[
-    {id:'open-panel',label:'Open utility panel',requires:['improvised_tool']},
-    {id:'bypass',label:'Bypass the alarm',requires:['panel_bypass']},
-    {id:'crawl-out',label:'Use the service duct',requires:[]},
+    {id:'open-panel',label:'Open utility panel',position:{x:19,y:19},requires:['improvised_tool']},
+    {id:'bypass',label:'Bypass the alarm',position:{x:20,y:18},requires:['panel_bypass']},
+    {id:'crawl-out',label:'Use the service duct',position:{x:21,y:19},requires:[]},
   ]},
-  {id:'perimeter-plan',label:'Perimeter Plan',position:{x:15,y:20},stages:[
-    {id:'cut-inner',label:'Cut the inner fence',requires:['wire_cutter']},
-    {id:'anchor-line',label:'Anchor the crossing line',requires:['rope_line']},
-    {id:'cross',label:'Cross during a security gap',requires:[]},
+  {id:'perimeter-plan',label:'Perimeter Plan',position:{x:31,y:16},stages:[
+    {id:'cut-inner',label:'Cut the inner fence',position:{x:15,y:20},requires:['wire_cutter']},
+    {id:'anchor-line',label:'Anchor the crossing line',position:{x:24,y:16},requires:['rope_line']},
+    {id:'cross',label:'Cross during a security gap',position:{x:31,y:16},requires:[]},
   ]},
 ];
 

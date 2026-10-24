@@ -13,7 +13,7 @@ import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
-const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),speechNotice=$<HTMLDivElement>('world-speech');
+const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
 const settings=loadSettings(),gateway=new HttpArenaGateway();
 // A world visit from Last Seat, Arena, or an external link starts in the
 // plaza again. Reloading the world itself keeps the visitor's saved position.
@@ -37,11 +37,10 @@ let arenaOnline=false;
 let camera=followCamera({...MAP.spawn},player.position,renderer.viewport().width,renderer.viewport().height,100);
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
-let spokenUntil=0;
 let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
-let researchLiveTimer=0;
+let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
 function updateWorldLabel():void {
@@ -114,10 +113,11 @@ dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
-function showProfile(id:string):void {
+function showProfile(id:string,sharedThought?:string):void {
   const profile=profiles.find(a=>a.id===id);if(!profile)return;
   show(profile.name);const head=text('div','');head.className='agent-profile-head';
   const image=document.createElement('img');image.src='/'+profile.sprite;image.alt=profile.name;head.append(image);text('p',profile.strategy,head);
+  if(sharedThought){const thought=text('section','');thought.className='agent-shared-thought';text('span','SHARED WITH YOU',thought);text('p',`“${sharedThought}”`,thought);}
   const stats=text('div','');stats.className='profile-stats';
   for(const [label,value] of [['Matches',profile.matches],['Wins',profile.wins],['Draws',profile.draws]]){const box=text('div','',stats);text('strong',String(value),box);text('span',String(label),box);}
   text('p',`Statistics from ${profile.scope}. ${profile.recentWinner?'Crown: latest retained match was a win.':''}`);
@@ -187,8 +187,9 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(target.type==='arena')portal();else if(target.type==='agent'){
     const actor=npcs.find(npc=>npc.agentId===target.id);
     if(actor?.speech&&actor.speech.expiresAt>performance.now()){
-      speechNotice.textContent=`${actor.name}: ${actor.speech.text}`;speechNotice.hidden=false;spokenUntil=performance.now()+7000;
+      const thought=actor.speech.text;
       actor.speech=undefined;controllers.get(actor.id)?.beginTalking();
+      showProfile(target.id,thought);
     }else showProfile(target.id);
   }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
@@ -312,6 +313,13 @@ async function refreshProfiles():Promise<void> {
   }catch{arenaOnline=false;updateConnectionLabel();}
   if(!stopped)setTimeout(refreshProfiles,5000);
 }
+async function refreshWorldLive():Promise<void>{
+  if(stopped)return;
+  const [roomResult,survivalResult]=await Promise.allSettled([gateway.listRooms(),loadSurvivalSnapshot()]);
+  const lines=liveMatchMessages(roomResult.status==='fulfilled'?roomResult.value:[],survivalResult.status==='fulfilled'?survivalResult.value:null);
+  liveNotice.textContent=lines.length?`LIVE · ${lines[worldLiveIndex++%lines.length]}`:'LIVE · waiting for the next public match update';
+  liveNotice.hidden=false;
+}
 function frame(time:number):void {
   const dt=Math.min(.1,(time-previous)/1000);previous=time;
   const k=keyboard.read(),t=touch.read();
@@ -329,7 +337,6 @@ function frame(time:number):void {
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
-    if(spokenUntil&&time>=spokenUntil){spokenUntil=0;speechNotice.textContent='';speechNotice.hidden=true;}
     const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
@@ -355,7 +362,7 @@ function frame(time:number):void {
   renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
-  if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);presenceClient?.close();presenceClient=undefined;});
+  if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
 // The lab uses the production state and controller; no second renderer or game engine.
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
@@ -372,4 +379,4 @@ if(location.pathname==='/labs/world'){
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-void presetButtons().then(()=>{if(!entered)character.showModal();else{canvas.focus();startPresence();}void refreshProfiles();raf=requestAnimationFrame(frame);});
+void presetButtons().then(()=>{if(!entered)character.showModal();else{canvas.focus();startPresence();}void refreshProfiles();void refreshWorldLive();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});

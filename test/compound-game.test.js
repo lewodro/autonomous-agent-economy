@@ -18,8 +18,11 @@ test('compound lobby fills with agents and hides secret roles from other viewers
   assert.equal(active.you, active.participants.find(value => value.name === 'Alice')?.id);
   const own = active.participants.find(value => value.id === active.you);
   assert.ok(own?.role, 'owner sees its assigned role');
+  assert.ok(own?.personal_objective, 'owner sees its private personal objective');
+  assert.ok(active.participants.every(value => ['inmate','guard'].includes(value.base_role)));
   assert.ok(active.participants.some(value => value.public_role === 'guard'));
   assert.ok(active.participants.every(value => !('role' in value) || value.id === active.you));
+  assert.ok(active.participants.every(value => !('personal_objective' in value) || value.id === active.you));
   await game.close();
 });
 
@@ -70,7 +73,7 @@ test('compound walls, props, inventory, jobs and escape routes are authoritative
   const human=game.state.participants.find(value=>value.owner==='owner-a');
   human.position={x:2,y:3};
   assert.throws(()=>game.move('owner-a',{x:2,y:2}),{code:'COMPOUND_BLOCKED'},'beds are server-side collision');
-  human.role='worker';human.job='workshop';human.position={x:22,y:12};
+  human.role='worker';human.job='workshop';human.position={x:22,y:10};
   const worked=game.action('owner-a',{action:'work'});
   assert.equal(worked.participants.find(value=>value.id===worked.you).job_progress,1);
   human.position={x:20,y:19};human.inventory=['improvised_tool','panel_bypass'];
@@ -90,7 +93,7 @@ test('balanced roles, secret state and evidence-backed agent lessons survive rou
   assert.ok(roles.filter(role=>role==='guard').length>=1);
   assert.ok(roles.some(role=>role!=='guard'));
   const worker=game.state.participants.find(value=>value.role==='worker');
-  worker.job='workshop';worker.position={x:22,y:12};game.performJob(worker);
+  worker.job='workshop';worker.position={x:22,y:10};game.performJob(worker);
   now+=16_000;await game.tick();
   const result=game.snapshot().results.at(-1);
   assert.ok(result.events.some(event=>event.type==='job_completed'));
@@ -136,13 +139,15 @@ test('all three original staged escape routes are reachable by a prepared prison
   const human=game.participant('owner');human.role='prisoner';
   for(const route of game.snapshot().map.escape_routes){
     human.status='active';human.position={x:2,y:3};human.inventory=route.stages.flatMap(stage=>stage.requires);
-    const target=route.position;
     let steps=0;
-    while(Math.abs(human.position.x-target.x)+Math.abs(human.position.y-target.y)>1&&steps++<100){
-      const next=game.pathStep(human,target);assert.ok(next,`${route.id} must have a route`);game.stepParticipant(human,next);
+    for(const stage of route.stages){
+      const target=game.adjacentTarget(human,stage.position);
+      while(Math.abs(human.position.x-stage.position.x)+Math.abs(human.position.y-stage.position.y)>1&&steps++<180){
+        const next=game.pathStep(human,target);assert.ok(next,`${route.id}/${stage.id} must have a route`);game.stepParticipant(human,next);
+      }
+      game.attemptEscape(human,route.id);
     }
-    assert.ok(steps<100,`${route.id} must be reachable`);
-    for(const _stage of route.stages)game.attemptEscape(human,route.id);
+    assert.ok(steps<180,`${route.id} must be reachable`);
     assert.equal(human.status,'escaped');
   }
   await game.close();
@@ -164,11 +169,12 @@ test('containers, crafting, training, stamina and assigned jobs are authoritativ
   const human=game.participant('owner');human.position={x:3,y:4};human.inventory=[];
   game.action('owner',{action:'search',container_id:'locker-2'});
   assert.equal(human.inventory.length,1);
-  human.inventory=['scrap','cloth'];game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
+  human.inventory=['scrap','cloth'];assert.throws(()=>game.action('owner',{action:'craft',recipe_id:'improvised-tool'}),{code:'COMPOUND_CRAFT_LOCATION'});
+  human.position={x:22,y:10};game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
   assert.deepEqual(human.inventory,['improvised_tool']);
   human.position={x:16,y:10};const stamina=human.stamina,strength=human.stats.strength;game.action('owner',{action:'train',stat:'strength'});
   assert.equal(human.stats.strength,strength+1);assert.ok(human.stamina<stamina);
-  human.job='workshop';human.position={x:22,y:12};game.action('owner',{action:'work'});
+  human.job='workshop';human.position={x:22,y:10};game.action('owner',{action:'work'});
   assert.equal(human.jobProgress,1);assert.equal(human.credits,4);
   await game.close();
 });
