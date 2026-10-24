@@ -215,7 +215,7 @@ export function drawCompoundItem(context: PixelContext, type: string, center: Co
   void size;
 }
 
-export function drawEscapeMarker(context: PixelContext, point: CompoundPoint, size: number, alarmed: boolean): void {
+export function drawEscapeMarker(context: PixelContext, point: CompoundPoint, size: number, alarmed: boolean, stage = 0): void {
   const x = point.x * size;
   const y = point.y * size;
   rect(context, '#172821', x + 3, y + 3, size - 6, size - 6);
@@ -223,4 +223,6 @@ export function drawEscapeMarker(context: PixelContext, point: CompoundPoint, si
   context.lineWidth = 2;
   context.strokeRect(x + 7, y + 7, size - 14, size - 14);
   line(context, alarmed ? '#ef654e' : '#d8b765', x + 11, y + size / 2 - 1, size - 22, 3);
+  rect(context, '#172821', x + size - 10, y + 5, 6, 7);
+  rect(context, alarmed ? '#ef654e' : '#d8b765', x + size - 8, y + 7, 2 + Math.min(2, stage), 3);
 }

@@ -139,13 +139,15 @@ test('all three original staged escape routes are reachable by a prepared prison
   const human=game.participant('owner');human.role='prisoner';
   for(const route of game.snapshot().map.escape_routes){
     human.status='active';human.position={x:2,y:3};human.inventory=route.stages.flatMap(stage=>stage.requires);
-    const target=route.position;
     let steps=0;
-    while(Math.abs(human.position.x-target.x)+Math.abs(human.position.y-target.y)>1&&steps++<100){
-      const next=game.pathStep(human,target);assert.ok(next,`${route.id} must have a route`);game.stepParticipant(human,next);
+    for(const stage of route.stages){
+      const target=game.adjacentTarget(human,stage.position);
+      while(Math.abs(human.position.x-stage.position.x)+Math.abs(human.position.y-stage.position.y)>1&&steps++<180){
+        const next=game.pathStep(human,target);assert.ok(next,`${route.id}/${stage.id} must have a route`);game.stepParticipant(human,next);
+      }
+      game.attemptEscape(human,route.id);
     }
-    assert.ok(steps<100,`${route.id} must be reachable`);
-    for(const _stage of route.stages)game.attemptEscape(human,route.id);
+    assert.ok(steps<180,`${route.id} must be reachable`);
     assert.equal(human.status,'escaped');
   }
   await game.close();

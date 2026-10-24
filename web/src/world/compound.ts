@@ -4,7 +4,7 @@ import { drawCompoundDoor, drawCompoundFloor, drawCompoundItem, drawCompoundProp
 interface Point{x:number;y:number}
 interface Room{id:string;label:string;x:number;y:number;w:number;h:number;terrain:string;restricted:boolean}
 interface Prop{id:string;kind:string;x:number;y:number;solid:boolean}
-interface EscapeRoute{id:string;label:string;position:Point;requires:string[];stages:{id:string;label:string;requires:string[]}[]}
+interface EscapeRoute{id:string;label:string;position:Point;requires:string[];stages:{id:string;label:string;position:Point;requires:string[]}[]}
 interface CompoundMap{width:number;height:number;tile_size:number;rooms:Room[];walls:Point[];doors:{id:string;position:Point;room_id:string;mode:string}[];props:Prop[];escape_routes:EscapeRoute[]}
 interface CompoundParticipant{id:string;name:string;type:'human'|'agent';avatar?:string|null;position:Point;facing:string;base_role:'inmate'|'guard';public_role:string;role?:string;personal_objective?:string;room:string;heat:number;hp:number;stamina:number;activity:string;status:string;inventory_count:number;inventory?:string[];objective?:string;job_progress?:number;job?:string;credits?:number;stats?:{strength:number;fitness:number;intellect:number};escape_progress?:Record<string,number>;crafting?:{id:string;label:string;available:boolean}[];message?:string|null}
 interface CompoundResult{session_id:string;reason:string;duration_ms:number;winner_ids:string[];escaped_ids:string[];participants:{id:string;name:string;status:string}[]}
@@ -48,7 +48,7 @@ function renderCanvas(time=performance.now()):void{
  const alarmed=state.security==='alert'||state.security==='lockdown'||state.routine_phase==='lockdown';
  for(const door of map.doors){const open=state.participants.some(actor=>actor.status==='active'&&tileDistance(actor.position,door.position)<=1);drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted',open);}
  for(const prop of map.props)drawCompoundProp(context,prop,size);
- for(const route of map.escape_routes)drawEscapeMarker(context,route.position,size,alarmed);
+ for(const route of map.escape_routes)for(const [index,stage] of route.stages.entries())drawEscapeMarker(context,stage.position,size,alarmed&&index===route.stages.length-1,index);
  for(const item of state.world_items)drawCompoundItem(context,item.type,tileCenter(item.position,size),size);
  for(const room of map.rooms){const door=map.doors.find(value=>value.room_id===room.id);if(door)drawPixelText(room.label,(door.position.x+.5)*size,(door.position.y-.18)*size,Math.max(7,size*.22),'center');}
  for(const actor of state.participants)drawActor(actor,size,time);
@@ -57,7 +57,7 @@ function renderCanvas(time=performance.now()):void{
 function nearestOther(own:CompoundParticipant):CompoundParticipant|undefined{return state?.participants.filter(value=>value.id!==own.id&&value.status==='active'&&Math.abs(value.position.x-own.position.x)+Math.abs(value.position.y-own.position.y)<=2).sort((a,b)=>Math.abs(a.position.x-own.position.x)+Math.abs(a.position.y-own.position.y)-Math.abs(b.position.x-own.position.x)-Math.abs(b.position.y-own.position.y))[0];}
 function tileDistance(a:Point,b:Point):number{return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);}
 function nearestProp(own:CompoundParticipant,kinds:string[]):Prop|undefined{return state?.map.props.filter(value=>kinds.includes(value.kind)&&tileDistance(own.position,value)<=1).sort((a,b)=>tileDistance(own.position,a)-tileDistance(own.position,b))[0];}
-function nearbyRoute(own:CompoundParticipant):EscapeRoute|undefined{return state?.map.escape_routes.find(value=>tileDistance(own.position,value.position)<=1);}
+function nearbyRoute(own:CompoundParticipant):EscapeRoute|undefined{return state?.map.escape_routes.find(value=>{const stage=value.stages[own.escape_progress?.[value.id]||0];return stage&&tileDistance(own.position,stage.position)<=1;});}
 function roundClock():string{if(!state?.started_at||!state.ends_at)return'--:--';const duration=state.ends_at-Date.parse(state.started_at),elapsed=Math.max(0,Date.now()-Date.parse(state.started_at));const minutes=6*60+Math.floor(Math.min(1,elapsed/Math.max(1,duration))*16*60);return`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;}
 const JOB_ROOMS:Record<string,string>={janitor:'showers',kitchen:'kitchen',workshop:'workshop',delivery:'visitation',maintenance:'utility',medical:'infirmary'};
 const JOB_STATIONS:Record<string,string[]>={janitor:['dirty_spot'],kitchen:['counter','stove','food_crate'],workshop:['workbench','machine'],delivery:['table'],maintenance:['panel','pipes'],medical:['medical_bed','cabinet']};
