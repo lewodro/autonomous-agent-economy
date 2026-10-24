@@ -31,6 +31,16 @@ test('invalid saved positions reset; interactions require spatial proximity', ()
   assert.equal(nearestInteraction(MAP.spawn,LANDMARKS),undefined);
   assert.equal(nearestInteraction({x:928,y:660},LANDMARKS)?.id,'arena-door');
 });
+test('crowded interactions select the nearest actor deterministically',()=>{
+  const targets=[
+    {id:'far-agent',position:{x:149,y:100},radius:72,type:'agent',label:'Far'},
+    {id:'near-agent',position:{x:118,y:100},radius:72,type:'agent',label:'Near'},
+    {id:'same-b',position:{x:100,y:118},radius:72,type:'agent',label:'Same B'},
+    {id:'same-a',position:{x:100,y:118},radius:72,type:'agent',label:'Same A'},
+  ];
+  assert.equal(nearestInteraction({x:100,y:100},targets)?.id,'near-agent');
+  assert.equal(nearestInteraction({x:100,y:136},targets.slice(2))?.id,'same-a');
+});
 test('tree trunks are shared map obstacles rather than walk-through decoration',()=>{
  for(const tree of TREES)assert.equal(collides({x:tree.x+6,y:tree.y+38}),true,`tree at ${tree.x},${tree.y} should block its trunk`);
  const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);

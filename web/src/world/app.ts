@@ -2,7 +2,7 @@ import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.js';
-import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable } from './model.js';
+import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
@@ -113,16 +113,19 @@ dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
-function showProfile(id:string,sharedThought?:string):void {
+function showProfile(id:string,sharedThought?:WorldSpeech):void {
   const profile=profiles.find(a=>a.id===id);if(!profile)return;
   show(profile.name);const head=text('div','');head.className='agent-profile-head';
   const image=document.createElement('img');image.src='/'+profile.sprite;image.alt=profile.name;head.append(image);text('p',profile.strategy,head);
-  if(sharedThought){const thought=text('section','');thought.className='agent-shared-thought';text('span','SHARED WITH YOU',thought);text('p',`“${sharedThought}”`,thought);}
+  if(sharedThought){const thought=text('section','');thought.className='agent-shared-thought';text('span',sharedThought.synthetic?'CURRENT THOUGHT · WANTS TO SHARE':'CURRENT THOUGHT · PUBLIC RESEARCH',thought);text('p',`“${sharedThought.text}”`,thought);
+    if(sharedThought.text.includes('?')){const responses=text('div','',thought);responses.className='agent-thought-responses';for(const label of ['PLAY SAFER','KEEP PRESSURE','YOUR CALL']){const choice=document.createElement('button');choice.textContent=label;choice.onclick=()=>{responses.replaceChildren();const note=text('p',`${profile.name} heard you. This only affects this conversation.`,responses);note.className='agent-thought-response';};responses.append(choice);}}
+  }
   const stats=text('div','');stats.className='profile-stats';
   for(const [label,value] of [['Matches',profile.matches],['Wins',profile.wins],['Draws',profile.draws]]){const box=text('div','',stats);text('strong',String(value),box);text('span',String(label),box);}
   text('p',`Statistics from ${profile.scope}. ${profile.recentWinner?'Crown: latest retained match was a win.':''}`);
   text('p',`World activity: ${npcs.find(a=>a.agentId===id)?.activity||'At the plaza'}.`);
-  text('h3','Recorded observations');
+  if(profile.latestMatch)text('p',`Recent public match: ${profile.latestMatch.game.toUpperCase()} · ${profile.latestMatch.matchId}.`);
+  text('h3','Recent public research');
   for(const memory of profile.memory.slice().reverse()){
     const row=text('div',`${memory.game.toUpperCase()} · ${memory.matchId}`);row.className='memory-row';
     text('p',`${profiles.find(a=>a.id===memory.opponent)?.name||memory.opponent}: ${memory.observed}. Played ${memory.move}.`,row);
@@ -187,7 +190,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(target.type==='arena')portal();else if(target.type==='agent'){
     const actor=npcs.find(npc=>npc.agentId===target.id);
     if(actor?.speech&&actor.speech.expiresAt>performance.now()){
-      const thought=actor.speech.text;
+      const thought=actor.speech;
       actor.speech=undefined;controllers.get(actor.id)?.beginTalking();
       showProfile(target.id,thought);
     }else showProfile(target.id);
@@ -329,7 +332,8 @@ function frame(time:number):void {
     moveActor(player,input,dt,150,WALLS);
     for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
     for(const npc of npcs)if(npc.speech&&npc.speech.expiresAt<=time){npc.speech=undefined;controllers.get(npc.id)?.dismissThought();}
-    const closeNpc=npcs.find(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<170);
+    const closeNpc=npcs.filter(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<170)
+      .sort((a,b)=>Math.hypot(player.position.x-a.position.x,player.position.y-a.position.y)-Math.hypot(player.position.x-b.position.x,player.position.y-b.position.y)||a.id.localeCompare(b.id))[0];
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
     const activeThoughts=npcs.filter(npc=>npc.speech&&npc.speech.expiresAt>time).length;
     if(closeNpc&&closeProfile&&!closeNpc.speech&&activeThoughts<3&&speechLimiter.allow(closeNpc.id,Date.now())&&controllers.get(closeNpc.id)?.offerThought()){
