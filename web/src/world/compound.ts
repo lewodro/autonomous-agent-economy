@@ -11,7 +11,7 @@ interface CompoundResult{session_id:string;reason:string;duration_ms:number;winn
 interface CompoundSnapshot{phase:'lobby'|'active'|'finished';round:number;revision:number;started_at:string|null;ends_at:number|null;routine_phase:string;routine:{current:string;next:string;required_room:string|null};security:string;map:CompoundMap;world_items:{id:string;type:string;position:Point}[];containers:{id:string;available:number}[];participants:CompoundParticipant[];events:{id:string;at:string;type:string;message:string}[];results:CompoundResult[];you:string|null}
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('compound-map'),context=canvas.getContext('2d',{alpha:false})!,statusEl=$<HTMLDivElement>('compound-status'),lobby=$<HTMLDivElement>('compound-lobby'),you=$<HTMLDivElement>('compound-you'),resultsEl=$<HTMLDivElement>('compound-results'),participants=$<HTMLDivElement>('compound-participants'),events=$<HTMLOListElement>('compound-events'),hint=$<HTMLDivElement>('compound-hint'),hud=$<HTMLDivElement>('compound-hud'),interactPrompt=$<HTMLDivElement>('compound-interact');
-let state:CompoundSnapshot|null=null,busy=false,lastRevision=-1,errorText='',previousPositions=new Map<string,Point>(),renderPositions=new Map<string,Point>();
+let state:CompoundSnapshot|null=null,busy=false,lastRevision=-1,errorText='',previousPositions=new Map<string,Point>(),renderPositions=new Map<string,Point>(),cameraPosition:Point|null=null;
 const spriteById=new Map(SPRITES.map(sprite=>[sprite.id,sprite]));
 const spriteImages=new Map(SPRITES.map(sprite=>{const image=new Image();image.src=sprite.sheet;return[sprite.id,image] as const;}));
 async function request<T>(url:string,options?:RequestInit):Promise<T>{const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options?.headers||{})},signal:AbortSignal.timeout(8000)});if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.error||'Compound request failed');}return response.json() as Promise<T>}
@@ -41,9 +41,10 @@ function renderCanvas(time=performance.now()):void{
  if(!state){requestAnimationFrame(renderCanvas);return;}const map=state.map,size=map.tile_size;
  const viewWidth=20*size,viewHeight=14*size;
  if(canvas.width!==viewWidth||canvas.height!==viewHeight){canvas.width=viewWidth;canvas.height=viewHeight;}
- const focus=state.participants.find(actor=>actor.id===state!.you)||state.participants[0];
- const cameraX=Math.max(0,Math.min(map.width*size-viewWidth,(focus?.position.x||map.width/2)*size-viewWidth/2));
- const cameraY=Math.max(0,Math.min(map.height*size-viewHeight,(focus?.position.y||map.height/2)*size-viewHeight/2));
+ const focus=state.participants.find(actor=>actor.id===state!.you)||state.participants[0],focusPoint=focus?renderPositions.get(focus.id)||tileCenter(focus.position,size):{x:map.width*size/2,y:map.height*size/2};
+ if(!cameraPosition)cameraPosition={...focusPoint};cameraPosition.x+=(focusPoint.x-cameraPosition.x)*.12;cameraPosition.y+=(focusPoint.y-cameraPosition.y)*.12;
+ const cameraX=Math.max(0,Math.min(map.width*size-viewWidth,cameraPosition.x-viewWidth/2));
+ const cameraY=Math.max(0,Math.min(map.height*size-viewHeight,cameraPosition.y-viewHeight/2));
  context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;context.fillStyle='#14261f';context.fillRect(0,0,canvas.width,canvas.height);
  context.translate(-Math.round(cameraX),-Math.round(cameraY));
  for(let y=0;y<map.height;y++)for(let x=0;x<map.width;x++)drawCompoundFloor(context,roomAt(x,y),x,y,size);
@@ -114,14 +115,14 @@ function applySnapshot(next:CompoundSnapshot):void{if(next.revision!==lastRevisi
 async function refresh():Promise<void>{try{applySnapshot(await request<CompoundSnapshot>('/api/compound'));errorText='';}catch(error){errorText=error instanceof Error?error.message:'Compound unavailable';hint.textContent=errorText;}}
 async function command(url:string,data:Record<string,unknown>={}):Promise<void>{busy=true;try{applySnapshot(await request<CompoundSnapshot>(url,{method:'POST',body:JSON.stringify(data)}));errorText='';}catch(error){errorText=error instanceof Error?error.message:'Action rejected';hint.textContent=errorText;}finally{busy=false;}}
 async function join():Promise<void>{const name=window.prompt('Choose a public compound name','Visitor');if(name)await command('/api/compound/join',{name,avatar:loadSettings().avatar});}
-async function move(dx:number,dy:number):Promise<void>{if(!state?.you||busy)return;const own=state.participants.find(value=>value.id===state!.you);if(!own||state.phase!=='active')return;await command('/api/compound/move',{x:own.position.x+dx,y:own.position.y+dy});}
 async function interact():Promise<void>{if(!state?.you||busy)return;const own=state.participants.find(value=>value.id===state!.you);if(!own)return;const action=contextAction(own);if(action)await action.run();}
-let heldMove:Point|null=null,moveRepeat=0;
-function pumpMovement():void{if(!heldMove||moveRepeat)return;moveRepeat=window.setTimeout(async()=>{moveRepeat=0;if(!heldMove)return;await move(heldMove.x,heldMove.y);pumpMovement();},90);}
-function startMoving(dx:number,dy:number):void{heldMove={x:dx,y:dy};pumpMovement();}
-function stopMoving():void{heldMove=null;if(moveRepeat)window.clearTimeout(moveRepeat);moveRepeat=0;}
-document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(control=>{const direction=control.dataset.move,dx=direction==='left'?-1:direction==='right'?1:0,dy=direction==='up'?-1:direction==='down'?1:0;control.onpointerdown=event=>{event.preventDefault();startMoving(dx,dy);};for(const type of['pointerup','pointercancel','pointerleave'] as const)control.addEventListener(type,stopMoving);});
-window.addEventListener('keydown',event=>{if(['INPUT','TEXTAREA'].includes((event.target as HTMLElement).tagName))return;const key=event.key.toLowerCase();if(key==='e'){event.preventDefault();if(!event.repeat)void interact();return;}const delta=key==='w'||key==='arrowup'?[0,-1]:key==='s'||key==='arrowdown'?[0,1]:key==='a'||key==='arrowleft'?[-1,0]:key==='d'||key==='arrowright'?[1,0]:null;if(delta){event.preventDefault();if(!event.repeat)startMoving(delta[0]||0,delta[1]||0);}});
-window.addEventListener('keyup',event=>{if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(event.key.toLowerCase()))stopMoving();});window.addEventListener('blur',stopMoving);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMoving();});
-await refresh();requestAnimationFrame(renderCanvas);setInterval(()=>void refresh(),750);
+const movementKeys=new Set<string>();let inputSequence=0,lastInputSignature='',lastInputSentAt=0,inputInFlight=false;
+function inputState(){return{up:movementKeys.has('w')||movementKeys.has('arrowup'),down:movementKeys.has('s')||movementKeys.has('arrowdown'),left:movementKeys.has('a')||movementKeys.has('arrowleft'),right:movementKeys.has('d')||movementKeys.has('arrowright')};}
+async function sendMovement(force=false):Promise<void>{if(inputInFlight||!state?.you||state.phase!=='active')return;const input=inputState(),signature=JSON.stringify(input),now=performance.now();if(!force&&signature===lastInputSignature&&now-lastInputSentAt<180)return;inputInFlight=true;lastInputSignature=signature;lastInputSentAt=now;try{await request('/api/compound/input',{method:'POST',body:JSON.stringify({...input,sequence:++inputSequence})});}catch(error){errorText=error instanceof Error?error.message:'Movement input rejected';}finally{inputInFlight=false;}}
+function setMoving(key:string,active:boolean):void{if(active)movementKeys.add(key);else movementKeys.delete(key);void sendMovement(true);}
+function stopMoving():void{movementKeys.clear();void sendMovement(true);}
+document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(control=>{const direction=control.dataset.move||'';control.onpointerdown=event=>{event.preventDefault();setMoving(direction==='up'?'w':direction==='down'?'s':direction==='left'?'a':'d',true);};for(const type of['pointerup','pointercancel','pointerleave'] as const)control.addEventListener(type,()=>stopMoving());});
+window.addEventListener('keydown',event=>{if(['INPUT','TEXTAREA'].includes((event.target as HTMLElement).tagName))return;const key=event.key.toLowerCase();if(key==='e'){event.preventDefault();if(!event.repeat)void interact();return;}if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key)){event.preventDefault();if(!event.repeat)setMoving(key,true);}});
+window.addEventListener('keyup',event=>{const key=event.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key))setMoving(key,false);});window.addEventListener('blur',stopMoving);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMoving();});
+await refresh();requestAnimationFrame(renderCanvas);setInterval(()=>void refresh(),100);setInterval(()=>void sendMovement(),100);
 export {};
