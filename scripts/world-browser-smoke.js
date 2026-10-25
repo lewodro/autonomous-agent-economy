@@ -245,10 +245,10 @@ try{
  await wait("document.getElementById('compound-lobby').textContent.includes('Start round')");
  await evaluate("[...document.querySelectorAll('#compound-lobby button')].find(b=>b.textContent==='Start round').click()");
  await wait("document.getElementById('compound-status').textContent.includes('ROUND')&&fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.length===8&&s.phase==='active')");
- await secondBrowser.wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='active'&&s.participants.length===8&&!!s.you)");
+ await secondBrowser.wait("document.body.classList.contains('compound-playing')&&document.getElementById('compound-status').textContent.includes('ROUND')&&fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='active'&&s.participants.length===8&&!!s.you)");
  assert.equal(await secondBrowser.evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.some(p=>p.id!==s.you&&p.role))"),false,'second browser must not see another participant secret role');
  const secondPosition=await secondBrowser.evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {id:p.id,x:p.position.x,y:p.position.y}})");
- await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});await delay(650);await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});
+ await secondBrowser.send('Page.bringToFront');await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});await delay(650);await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(p=>p.id===${JSON.stringify(secondPosition.id)})?.position.x>${secondPosition.x+.5})`);
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('DISCOVERED')"),'compound owner should see only its discovered objective');
  assert.ok(await evaluate("document.getElementById('compound-you').textContent.includes('STAMINA')&&document.getElementById('compound-you').textContent.includes('STR')"),'compound HUD should expose runtime stats');
@@ -259,8 +259,12 @@ try{
  assert.ok(searched.participants.find(value=>value.id===searched.you).inventory_count>1,'human should search a physical cell locker');
  const compoundBefore=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>{const p=s.participants.find(v=>v.id===s.you);return {x:p.position.x,y:p.position.y,agents:s.participants.filter(v=>v.type==='agent').map(v=>v.position)}})");
  const holdStart=await evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x)");
+ const concurrentSecondStart=await secondBrowser.evaluate("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x)");
+ await secondBrowser.send('Page.bringToFront');await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,nativeVirtualKeyCode:65});await send('Page.bringToFront');
  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});await delay(750);await send('Input.dispatchKeyEvent',{type:'keyUp',key:'d',code:'KeyD',windowsVirtualKeyCode:68,nativeVirtualKeyCode:68});
+ await secondBrowser.send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65,nativeVirtualKeyCode:65});
  await wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x>=${holdStart+2})`);
+ await secondBrowser.wait(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.find(v=>v.id===s.you).position.x<${concurrentSecondStart-.5})`);
  await delay(2200);
  assert.ok(await evaluate(`fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(v=>v.type==='agent').some((v,i)=>v.position.x!==${JSON.stringify(compoundBefore.agents)}[i].x||v.position.y!==${JSON.stringify(compoundBefore.agents)}[i].y))`),'autonomous compound participants should physically move');
  await screenshot('compound-round');
