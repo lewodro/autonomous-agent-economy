@@ -51,6 +51,7 @@ const presenceJoins=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000});
 const privateArenaStarts=new SlidingWindowLimiter({limit:3,windowMs:10*60_000});
 const compoundCommands=new SlidingWindowLimiter({limit:1200,windowMs:60_000});
+const compoundInputs=new SlidingWindowLimiter({limit:12_000,windowMs:60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles()});
 const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
@@ -181,7 +182,7 @@ const server = http.createServer(async (req, res) => {
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(req.method==='GET'&&route==='/api/compound')return json(res,200,compoundGame.snapshot(visitor.id),cookie);
       if(req.method!=='POST')return json(res,405,{error:'Compound command requires POST'},cookie);
-      if(!compoundCommands.allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
+      if(!(route.endsWith('/input')?compoundInputs:compoundCommands).allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
       const data=await body(req,16_384);
       const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
       return json(res,200,result,cookie);

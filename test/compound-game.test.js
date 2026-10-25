@@ -162,6 +162,18 @@ test('round keys and clues are deterministic, exclusive, and privately discovere
   assert.deepEqual(game.snapshot('bob').map.escape_routes,[],'another player does not inherit Alice knowledge');
   assert.equal(game.snapshot('bob').participants.find(value=>value.id===alice.id).inventory,undefined);
   assert.equal(game.state.containers.flatMap(value=>value.items).filter(item=>item==='utility_key').length+game.state.participants.flatMap(value=>value.inventory).filter(item=>item==='utility_key').length,1,'access items exist once in shared state');
+  const firstPlacements={...game.state.roundSecrets.placements};game.finish('test');game.startRound('alice');
+  assert.notDeepEqual(game.state.roundSecrets.placements,firstPlacements,'the next deterministic round seed changes key and clue locations');
+  await game.close();
+});
+
+test('agent planning explores local knowledge instead of reading secret placement truth',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-knowledge-')),{now:()=>20_000,roundSeconds:60});game.startAgentRound();
+  const agent=game.state.participants.find(value=>value.role==='escape_planner'),actual=game.state.roundSecrets.placements.utility_key;
+  const decoy=COMPOUND_MAP.props.find(value=>['locker','cabinet','crate','guard_desk','counter','workbench','key_board','terminal'].includes(value.kind)&&value.id!==actual);
+  agent.knowledge={searched:game.state.containers.map(value=>value.id).filter(id=>id!==decoy.id),clues:[],routes:[],knownItems:{}};
+  const target=game.sourceFor('utility_key',agent);
+  assert.ok(Math.abs(target.x-decoy.x)+Math.abs(target.y-decoy.y)<=1,'unknown items lead to an unsearched location, not the server secret');
   await game.close();
 });
 
