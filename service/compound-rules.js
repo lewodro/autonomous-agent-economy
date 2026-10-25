@@ -17,6 +17,8 @@ export const ITEM_DEFINITIONS={
   scrap:{category:'material',contraband:true},wire:{category:'material',contraband:true},adhesive:{category:'material',contraband:true},
   soap:{category:'legal',contraband:false},book:{category:'legal',contraband:false},tray:{category:'job_item',contraband:false},
   package:{category:'job_item',contraband:false},access_card:{category:'access',contraband:true},maintenance_key:{category:'access',contraband:true},
+  cell_key:{category:'access',contraband:true},utility_key:{category:'access',contraband:true},staff_key:{category:'access',contraband:true},maintenance_pass:{category:'access',contraband:true},
+  service_note:{category:'clue',contraband:false},utility_note:{category:'clue',contraband:false},perimeter_map:{category:'clue',contraband:true},guard_schedule:{category:'clue',contraband:true},
   improvised_tool:{category:'tool',contraband:true},wire_cutter:{category:'tool',contraband:true},panel_bypass:{category:'tool',contraband:true},
   concealment_wrap:{category:'tool',contraband:true},field_dressing:{category:'medical',contraband:false},energy_ration:{category:'food',contraband:false},
   service_uniform:{category:'access',contraband:true},distraction_kit:{category:'tool',contraband:true},rope_line:{category:'tool',contraband:true},

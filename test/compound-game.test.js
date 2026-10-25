@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { CompoundGame } from '../service/compound-game.js';
+import { COMPOUND_MAP, CompoundGame } from '../service/compound-game.js';
 
 test('compound lobby fills with agents and hides secret roles from other viewers', async () => {
   let now = 1_000;
@@ -76,7 +76,7 @@ test('compound walls, props, inventory, jobs and escape routes are authoritative
   human.role='worker';human.job='workshop';human.position={x:22,y:10};
   const worked=game.action('owner-a',{action:'work'});
   assert.equal(worked.participants.find(value=>value.id===worked.you).job_progress,1);
-  human.position={x:20,y:19};human.inventory=['improvised_tool','panel_bypass'];
+  human.position={x:20,y:19};human.inventory=['utility_key','improvised_tool','panel_bypass'];human.knowledge.routes=['maintenance-route'];
   game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
   game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
   const escaped=game.action('owner-a',{action:'escape',route_id:'maintenance-route'});
@@ -138,12 +138,30 @@ test('authoritative realtime input moves two humans concurrently and expires saf
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-realtime-')),{now:()=>now,roundSeconds:60});
   game.join('a',{name:'Alice'});game.join('b',{name:'Bob'});game.startRound('a');
   const alice=game.participant('a'),bob=game.participant('b');alice.position={x:10,y:7};bob.position={x:14,y:7};
-  game.input('a',{right:true,sequence:1});game.input('b',{left:true,sequence:1});
+  game.input('a',{right:true,sequence:1,stream_id:'browser-a'});game.input('b',{left:true,sequence:1,stream_id:'browser-b'});
   now+=100;await game.tick();
   assert.ok(alice.position.x>10,'Alice moves continuously from held input');
   assert.ok(bob.position.x<14,'Bob moves during the same authoritative tick');
-  assert.throws(()=>game.input('a',{right:true,sequence:1}),{code:'COMPOUND_INPUT_SEQUENCE'});
+  assert.throws(()=>game.input('a',{right:true,sequence:1,stream_id:'browser-a'}),{code:'COMPOUND_INPUT_SEQUENCE'});
+  assert.doesNotThrow(()=>game.input('a',{right:true,sequence:1,stream_id:'browser-a-reloaded'}),'a new browser input stream may restart its sequence');
   const stopped=alice.position.x;now+=500;await game.tick();assert.equal(alice.position.x,stopped,'stale input cannot leave a disconnected player walking');
+  await game.close();
+});
+
+test('round keys and clues are deterministic, exclusive, and privately discovered',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-discovery-')),{now:()=>20_000,roundSeconds:60});
+  game.join('alice',{name:'Alice'});game.join('bob',{name:'Bob'});game.startRound('alice');
+  const alice=game.participant('alice'),bob=game.participant('bob');alice.role='prisoner';alice.knowledge={searched:[],clues:[],routes:[],knownItems:{}};
+  assert.deepEqual(game.snapshot().map.escape_routes,[],'spectators cannot see undiscovered escape routes');
+  assert.deepEqual(game.snapshot('alice').map.escape_routes,[],'an owner only sees routes they discovered');
+  const clueContainer=game.state.roundSecrets.placements.utility_note,prop=COMPOUND_MAP.props.find(value=>value.id===clueContainer),container=game.state.containers.find(value=>value.id===clueContainer);
+  alice.position=game.adjacentTarget(alice,prop);alice.inventory=[];
+  while(container.items.length&&!alice.inventory.includes('utility_note'))game.searchContainer(alice,clueContainer);
+  assert.ok(alice.knowledge.routes.includes('maintenance-route'));
+  assert.deepEqual(game.snapshot('alice').map.escape_routes.map(value=>value.id),['maintenance-route']);
+  assert.deepEqual(game.snapshot('bob').map.escape_routes,[],'another player does not inherit Alice knowledge');
+  assert.equal(game.snapshot('bob').participants.find(value=>value.id===alice.id).inventory,undefined);
+  assert.equal(game.state.containers.flatMap(value=>value.items).filter(item=>item==='utility_key').length+game.state.participants.flatMap(value=>value.inventory).filter(item=>item==='utility_key').length,1,'access items exist once in shared state');
   await game.close();
 });
 
@@ -151,8 +169,9 @@ test('all three original staged escape routes are reachable by a prepared prison
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-route-')),{now:()=>10_000});
   game.join('owner',{name:'Pathfinder'});game.startRound('owner');
   const human=game.participant('owner');human.role='prisoner';
-  for(const route of game.snapshot().map.escape_routes){
-    human.status='active';human.position={x:2,y:3};human.inventory=route.stages.flatMap(stage=>stage.requires);
+  const accessByRoute={'service-gate':'staff_key','maintenance-route':'utility_key','perimeter-plan':'maintenance_pass'};
+  for(const route of COMPOUND_MAP.escape_routes){
+    human.status='active';human.position={x:2,y:3};human.knowledge.routes=[route.id];human.inventory=[accessByRoute[route.id],...route.stages.flatMap(stage=>stage.requires)];
     let steps=0;
     for(const stage of route.stages){
       const target=game.adjacentTarget(human,stage.position);
