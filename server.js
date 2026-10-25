@@ -177,13 +177,13 @@ const server = http.createServer(async (req, res) => {
       const result=route.endsWith('/start')?await privateArena.start(visitor.id):await privateArena.stop(visitor.id);
       return json(res,200,result,cookie);
     }
-    if(route==='/api/compound'||route==='/api/compound/join'||route==='/api/compound/start'||route==='/api/compound/move'||route==='/api/compound/action'||route==='/api/compound/leave'){
+    if(route==='/api/compound'||route==='/api/compound/join'||route==='/api/compound/start'||route==='/api/compound/input'||route==='/api/compound/move'||route==='/api/compound/action'||route==='/api/compound/leave'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(req.method==='GET'&&route==='/api/compound')return json(res,200,compoundGame.snapshot(visitor.id),cookie);
       if(req.method!=='POST')return json(res,405,{error:'Compound command requires POST'},cookie);
       if(!compoundCommands.allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
       const data=await body(req,16_384);
-      const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/move')?compoundGame.move(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
+      const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/move')?compoundGame.move(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
       return json(res,200,result,cookie);
     }
     if(route.startsWith('/api/arena/')){

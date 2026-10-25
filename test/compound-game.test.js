@@ -133,6 +133,20 @@ test('two human owners share positions and items without seeing each others secr
   await game.close();
 });
 
+test('authoritative realtime input moves two humans concurrently and expires safely',async()=>{
+  let now=20_000;
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-realtime-')),{now:()=>now,roundSeconds:60});
+  game.join('a',{name:'Alice'});game.join('b',{name:'Bob'});game.startRound('a');
+  const alice=game.participant('a'),bob=game.participant('b');alice.position={x:10,y:7};bob.position={x:14,y:7};
+  game.input('a',{right:true,sequence:1});game.input('b',{left:true,sequence:1});
+  now+=100;await game.tick();
+  assert.ok(alice.position.x>10,'Alice moves continuously from held input');
+  assert.ok(bob.position.x<14,'Bob moves during the same authoritative tick');
+  assert.throws(()=>game.input('a',{right:true,sequence:1}),{code:'COMPOUND_INPUT_SEQUENCE'});
+  const stopped=alice.position.x;now+=500;await game.tick();assert.equal(alice.position.x,stopped,'stale input cannot leave a disconnected player walking');
+  await game.close();
+});
+
 test('all three original staged escape routes are reachable by a prepared prisoner',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-route-')),{now:()=>10_000});
   game.join('owner',{name:'Pathfinder'});game.startRound('owner');
