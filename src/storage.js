@@ -5,7 +5,7 @@ import { startTournament, nextTournamentPair, scoreTournament } from './tourname
 
 export const STORAGE_KEY = 'agent-arena-v1';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-export async function validateState(input) {
+export async function validateState(input, { agentOverride = null } = {}) {
   if (!input || input.version !== 1 || ![2, 20].includes(input.agents?.length) || !Array.isArray(input.matches)
       || !Array.isArray(input.events) || input.matches.length > 10000 || input.events.length > 150000
       || !Number.isInteger(input.rng) || input.rng < 1 || input.rng > 4294967295) throw new Error('Unsupported or malformed saved run');
@@ -53,6 +53,16 @@ export async function validateState(input) {
     const previous = expected.replace(/^assets\/agents\//, 'assets/sprites-agent/');
     if (comparable.agents[index]?.id === rebuilt.agents[index].id && comparable.agents[index].sprite === previous) {
       comparable.agents[index].sprite = expected;
+    }
+  }
+  if (agentOverride) {
+    const index = comparable.agents.findIndex(agent => agent.id === 'agent-1');
+    const expected = rebuilt.agents[index];
+    const saved = comparable.agents[index];
+    if (index < 0 || !expected || !saved) throw new Error('Private agent override target is unavailable');
+    for (const key of ['name', 'strategy', 'sprite', 'mind']) {
+      if (!same(saved[key], agentOverride[key])) throw new Error(`Saved private agent ${key} does not match its approved configuration`);
+      saved[key] = structuredClone(expected[key]);
     }
   }
   for (const key of ['agents', 'matches', 'config', 'seed', 'mode', 'paused', 'treasury', 'externalCapital', 'nextMatch', 'tournament']) {
