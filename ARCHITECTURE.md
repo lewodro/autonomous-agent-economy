@@ -6,7 +6,7 @@
 
 The existing README and AGENTS.md provide a coherent simulation-first direction. The landing page describes that direction but does not implement an economic loop. The supplied 20 PNG sprites map directly to persistent agent identities.
 
-The missing executable boundaries are:
+The missing executable boundaries are(cli tests unpassing branch-world-presence-client-integration)
 
 1. **Accounting:** use integer lamports, keep escrow and treasury separate, and conserve capital across every settlement. Funding is a recorded simulation input, never assumed creator revenue.
 2. **Authorization:** validate structured intents outside strategy code. Enforce stake caps, exposure, reserve, loss limits, approved destinations, and emergency pause before debiting either player.
