@@ -12,12 +12,13 @@ Every participant has a public **base role** (`INMATE` or `GUARD`), a physical j
 
 The 32 × 22 compound is rendered as an original top-down pixel map rather than the earlier labeled debug grid. It contains a Cell Block, Cafeteria, Kitchen, Yard, Gym, Workshop, Infirmary, Security Office, Storage, Showers, Maintenance/Utility, Visitation, Guard area, service gate, perimeter, and three physical escape routes. Textured floors, thick walls, fences, door states, contact shadows, cells, beds, toilets, lockers, desks, tables, counters, kitchen equipment, weights, treadmill, terminal, workbenches, medical furniture, showers, shelves, pipes, panels, crates, posters, vents, trays, dirty spots, and small clutter make rooms readable from their art. Walls, furniture collision, doors, containers, and routes all come from the server map.
 
-- **WASD / arrows:** hold a direction to walk through sequential, server-validated adjacent movement intents; the camera follows the controlled sprite.
+- **WASD / arrows:** hold a direction for continuous movement. The browser sends sequenced directional state, the server simulates collision at 20 Hz, and the canvas interpolates authoritative positions while the camera follows smoothly.
 - **E:** use the nearest valid pickup, container, training station, or assigned job.
+- **F:** attack the nearest participant in range using the server-owned cooldown and Stamina rules.
 - **Nearby action buttons:** talk, exchange first items, attack, craft, train, work, or advance an escape stage.
 - **Inventory buttons:** consume food/medicine or drop a material/tool.
 
-The compact in-canvas HUD shows round time, routine, security level, base role, job, private objective, room, Health, Stamina, Heat, Strength, Fitness, Intellect, credits, and six inventory slots. Context prompts appear only near usable world objects so the map remains the primary interface.
+The compact in-canvas HUD shows round time, routine, base role, job, Health, Stamina, Heat, current inventory, and only the escape information that player has actually discovered. Context prompts appear only near usable world objects so the map remains the primary interface. The longer event history is collapsed by default.
 
 ## Routine, jobs, and character state
 
@@ -29,7 +30,7 @@ Jobs are physical room activities: Janitor, Kitchen Worker, Workshop Worker, Del
 
 ## Items, containers, crafting, and trade
 
-Items exist on the floor or inside lockers, desks, counters, cabinets, crates, and workbenches. A search transfers one real server-owned item into the participant's bounded inventory. Item definitions classify legal goods, food, medicine, materials, tools, access items, and job items. Contraband can raise Heat and can be confiscated by a nearby guard.
+Items exist on the floor or inside lockers, desks, counters, cabinets, crates, workbenches, terminals, and the security key cabinet. A search transfers one real server-owned item into the participant's bounded inventory. Access keys, passes, route notes, schedules, and maps are placed from deterministic per-round spawn pools, so locations change without creating unsolvable duplicates. The same unique item is shared by every human and agent. Item definitions classify legal goods, food, medicine, materials, tools, access items, clues, and job items. Contraband can raise Heat and can be confiscated by a nearby guard.
 
 Ten original recipes produce tools, medical supplies, concealment, access utilities, and escape components. Recipes consume their exact input items, enforce Intellect requirements, and record `item_crafted`. Nearby item swaps are atomic: the server checks range and both inventories before changing either participant. No cryptocurrency, wallet, wagering, or real value is used.
 
@@ -47,19 +48,25 @@ Each route has three recorded stages. Reaching the final tile with a bag of mate
 2. **Maintenance Route:** open a utility panel, bypass its alarm, then use the service duct.
 3. **Perimeter Plan:** cut the inner fence, anchor a crossing line, then cross during a security gap.
 
-The escape components come from container searches and original recipes. A guard cannot use an escape route. Each completed stage raises risk and records `escape_stage`; only the final validated stage records `escape_success`.
+Routes begin hidden. Searching a clue can reveal a possible access-item location and the corresponding physical route to that participant only. The participant must obtain its round-specific key or pass, enter the restricted room, craft the stage components, and physically reach each stage. Another participant can take the only key first, making observation or a nearby trade meaningful. A guard cannot use an escape route. Each completed stage raises risk and records `escape_stage`; only the final validated stage records `escape_success`.
 
 ## Autonomous agents and evidence
 
-Built-in agents act on bounded one-second ticks. They travel to staggered local points rather than teleporting or marching in one line. Routine phases visibly pull agents toward the Cafeteria, jobs, Yard, and lockdown destinations; individual speed, timing, patrol, and nearby target choices vary. They follow assigned jobs, search containers, manage inventory space, train when a plan needs more Intellect, craft required components, trade, talk, patrol, inspect, and advance a selected physical escape route. Their sprites show carried items and short work, training, search, combat, and hurt cues. Canonical personality changes dialogue and decision weighting; a round's base role, job, and personal objective do not replace canonical identity.
+Built-in agents move continuously in the same 20 Hz simulation as humans. Their bounded high-level decisions run separately every 0.3–1.2 seconds, then path-follow toward the chosen destination between decisions. Routine phases visibly pull agents toward the Cafeteria, jobs, Yard, and lockdown destinations; individual speed, timing, patrol, and nearby target choices vary. They follow assigned jobs, search containers, manage inventory space, train when a plan needs more Intellect, craft required components, trade, talk, patrol, inspect, and advance a selected physical escape route. Their sprites show carried items and short work, training, search, combat, and hurt cues. Canonical personality changes dialogue and decision weighting; a round's base role, job, and personal objective do not replace canonical identity.
 
-Guard behavior is visible on the same map. A guard has a small local awareness cone, changes activity when watching, searching, pursuing, or stopping someone, responds to nearby Heat rather than omniscient global state, and returns to patrol after the interaction. Open doors and alert/lockdown framing make security changes readable without a dashboard taking over the screen.
+Agent knowledge is separate from server truth. A controller can plan from containers it searched, clues it read, items it saw nearby participants carry, and facts shared through interactions. It cannot query the hidden round placement table. Clues reveal a likely room, never the exact hidden container. When a remembered container is empty, that belief is revised and the agent resumes exploration.
+
+Round setup deterministically randomizes critical keys and clues across valid spawn pools, then validates that access items, clues, and the raw materials for all enabled escape routes remain reachable. Restricted doors are authoritative shared objects: valid access opens one briefly for everyone rather than granting an invisible client-only exception. Crafting reserves ingredients at a physical workbench, takes authoritative time, and completes while the rest of the compound keeps moving.
+
+Agents advertise one small, state-backed item favor per round. Delivering the requested shared-world item transfers it, awards fictional credits, and raises bilateral trust. A trusted agent can then share only information it actually discovered, such as a likely room for utility access. `favor_completed` and `information_shared` are evidence events; private inventory and undiscovered locations remain private.
+
+Guard behavior is visible on the same map. A guard has a small local awareness cone, changes activity when watching, searching, pursuing, or stopping someone, responds to nearby Heat rather than omniscient global state, and returns to patrol after the interaction. Detection begins a physical chase; confiscation cannot occur until the guard reaches interaction distance. Open doors and alert/lockdown framing make security changes readable without a dashboard taking over the screen.
 
 The short activity feed is bounded independently from the evidence ledger. Evidence retains important structured events such as routine misses, searches, crafting, trades, jobs, restricted entry, pursuit, confiscation, combat, escape stages, and escape success. At round end, a canonical agent may retain one structured lesson only when a referenced evidence event exists. Lessons contain a Compound session ID, lesson type, summary, and evidence event IDs. Hidden reasoning is never stored.
 
 ## Authority, privacy, and persistence
 
-The server owns roles, positions, collision, doors, containers, inventory, jobs, stats, Heat, Health, Stamina, security, combat, escape progress, routine timing, winners, results, and evidence. Humans submit keyboard/UI intents. Built-in agents submit equivalent intents through the same rule methods. Clients render snapshots and interpolate sprites; they do not settle outcomes.
+The server owns roles, positions, collision, doors, containers, inventory, jobs, stats, Heat, Health, Stamina, security, combat, escape progress, routine timing, winners, results, and evidence. Humans send sequenced held-input state through `/api/compound/input`; stale input expires so a disconnected browser cannot keep walking. A new browser stream can safely restart its sequence. Built-in agents enter the same movement and rule simulation. Clients render frequent snapshots and interpolate sprites; they do not settle outcomes. The legacy public tile-step route is no longer exposed.
 
 State persists at `MATCHES_DIR/compound/compound.json`. Version 1 and 2 prototype files migrate to a fresh version 3 live state while retaining bounded historical results and agent memories. Completed results survive restart. Per-frame animation and movement frames are not written as history. A fresh production data volume starts with an empty Compound lobby and no visitor participants.
 
@@ -77,7 +84,7 @@ node --test test/compound-game.test.js
 npm run test:browser:world:ci
 ```
 
-The focused suite covers role privacy, two human owners sharing state, movement/collision, containers, inventory, training, crafting, jobs, routine Heat, security, guard perception, atomic trade, all physical stages of the three escape routes, persistence, evidence-backed lessons, and a complete agent-only round. The browser journey enters through the public world, joins a human, renders the pixel map/HUD, searches a physical locker, observes agent movement, and reaches results. Its multiplayer pass launches a second isolated browser profile, joins the same round with another human, proves that the second participant's private objective stays private, moves that participant through the authoritative endpoint, and verifies the first browser receives the shared position.
+The focused suite covers role privacy, two concurrent human input streams, stale-input expiry, movement/collision, exclusive keys, validated randomized clue placement, private discovery, non-omniscient agent planning, shared door state, containers, inventory, training, timed crafting, jobs, favors, earned information sharing, routine Heat, security, physical guard pursuit, atomic trade, all physical stages of the three escape routes, persistence, evidence-backed lessons, and a complete real-time agent-only round. The browser journey enters through the public world, joins two isolated human browser profiles, holds movement controls on both during the same interval, searches a physical locker, observes concurrent agent movement, checks hidden-route privacy, and reaches results.
 
 ## Relationship to the public-world feed
 
@@ -85,6 +92,6 @@ The world canvas keeps a dedicated live ticker for current Survival, RPS, and Ti
 
 ## Current alpha limits
 
-Compound Run currently has one 32 × 22 map and eight seats. Movement and snapshots use bounded HTTP polling rather than realtime state deltas. Combat is intentionally compact, dialogue is short and rate-limited, there is no audio, and join-in-progress remains spectator-first. Built-in deterministic controllers keep rounds alive without paid APIs or local model processes. These limits preserve a self-hostable public alpha while the visible multiplayer loop is hardened.
+Compound Run currently has one 32 × 22 map and eight seats. Inputs and snapshots use bounded HTTP polling rather than WebSockets or client prediction, so very high latency can still feel less immediate than a dedicated realtime transport. Combat is intentionally compact, dialogue is short and rate-limited, there is no audio, and join-in-progress remains spectator-first. Built-in deterministic controllers keep rounds alive without paid APIs or local model processes. These limits preserve a self-hostable public alpha while the visible multiplayer loop is hardened.
 
 Future MCP or model controllers can submit the same narrow intents. They cannot set roles, stats, inventory, position, Heat, security, winners, research, or other participants' state directly.
