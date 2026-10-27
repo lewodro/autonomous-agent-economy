@@ -1,6 +1,6 @@
 # Last Seat: architecture and vertical slice
 
-## Review of the existing game
+## <i>Review of the existing game<i\>
 
 The JS RPS engine has useful escrow, policy, commitment verification and idempotent settlement tests. Keep it as the economic reference demo. Its spectator game has weak pacing: random pairs leave most avatars idle, elimination is buried in policy/accounting details, and strategy labels overstate how different the underlying algorithms are. The screen prioritizes cards and financial tables over the board. Browser animation callbacks control orchestration latency. Saved histories are inspectable but cannot drive a full scrubbed playback. Rust is an isolated accounting example; there is no TypeScript or provider adapter yet.
 
