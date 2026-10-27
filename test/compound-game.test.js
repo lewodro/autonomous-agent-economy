@@ -290,3 +290,20 @@ test('guards pursue only locally visible heat and can confiscate contraband',asy
   guard.position={x:15,y:5};guard.nextAgentActAt=0;game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='contraband_found'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['food']);
   await game.close();
 });
+
+test('human-heavy lobbies keep humans in the shared round and reserve security seats for agents',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-human-heavy-')),{now:()=>20_000,roundSeconds:120,guardSeats:2});
+  for(let index=0;index<4;index++)game.join(`human-${index}`,{name:`Human ${index}`});
+  game.startRound('human-0');
+  const humans=game.state.participants.filter(value=>value.type==='human'),agents=game.state.participants.filter(value=>value.type==='agent'),guards=game.state.participants.filter(value=>value.role==='guard');
+  assert.equal(game.state.participants.length,8);assert.equal(humans.length,4);assert.equal(agents.length,4);assert.equal(guards.length,2);assert.ok(guards.every(value=>value.type==='agent'));assert.equal(agents.filter(value=>value.role!=='guard').length,2);
+  await game.close();
+});
+
+test('recovering inmates and early escapes do not end a sandbox round immediately',async()=>{
+  let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-pacing-')),{now:()=>now,roundSeconds:180,minimumRoundSeconds:60});game.startAgentRound();
+  const inmates=game.state.participants.filter(value=>value.role!=='guard');for(const inmate of inmates)inmate.status='recovering';game.evaluateRound();assert.equal(game.state.phase,'active');
+  for(const inmate of inmates)inmate.status='escaped';game.evaluateRound();assert.equal(game.state.phase,'active','a fast generated escape cannot resolve the whole round');
+  now+=61_000;game.evaluateRound();assert.equal(game.state.phase,'finished');assert.equal(game.state.results.at(-1).reason,'all_escaped');
+  await game.close();
+});
