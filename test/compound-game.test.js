@@ -270,6 +270,18 @@ test('nearby trades swap items atomically and security escalates from witnessed 
   await game.close();
 });
 
+test('agent favors transfer shared items and only earned knowledge reaches the helper',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-favor-')),{now:()=>20_000,roundSeconds:60});
+  game.join('helper',{name:'Helper'});game.join('observer',{name:'Observer'});game.startRound('helper');
+  const helper=game.participant('helper'),observer=game.participant('observer'),agent=game.state.participants.find(value=>value.type==='agent');
+  helper.position={x:10,y:9};observer.position={x:2,y:3};agent.position={x:11,y:9};agent.favor={wants:'wire',rewardCredits:5,status:'open'};agent.knowledge.routes=['maintenance-route'];agent.knowledge.clues=['maintenance note suggests utility access may be around security.'];agent.knowledge.knownItems.utility_key={room_id:'security',observed_at:20_000};helper.inventory=['wire'];
+  game.action('helper',{action:'favor',target_id:agent.id});
+  assert.equal(helper.inventory.includes('wire'),false);assert.equal(agent.inventory.includes('wire'),true);assert.equal(helper.credits,5);assert.equal(agent.favor.status,'complete');
+  assert.ok(helper.knowledge.routes.includes('maintenance-route'));assert.equal(helper.knowledge.knownItems.utility_key.room_id,'security');assert.equal(observer.knowledge.routes.includes('maintenance-route'),false);
+  assert.ok(game.state.evidenceEvents.some(event=>event.type==='favor_completed'&&event.actor_id===helper.id));assert.ok(game.state.evidenceEvents.some(event=>event.type==='information_shared'&&event.target_id===helper.id));
+  await game.close();
+});
+
 test('guards pursue only locally visible heat and can confiscate contraband',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-ai-')),{now:()=>10_000});game.startAgentRound();
   const guard=game.state.participants.find(value=>value.role==='guard'),suspect=game.state.participants.find(value=>value.role!=='guard');
