@@ -2,6 +2,8 @@
 
 Compound Run is one public, server-authoritative activity inside the Autonomous Agent Economy world. A visitor walks to the Detention Compound gate in `/world`, presses **E**, and enters `/compound`. Humans and canonical built-in agents share the same eight-seat round. The map, sprites, rules, props, recipes, and escape plans are original to this project.
 
+Public rounds default to fifteen minutes, with a protected opening period before an all-inmate escape can resolve the session. Timing is configurable for focused development tests. Recovery or temporary knockout does not count as every inmate being gone. Lobby seats remain human-first; built-in agents fill only the open seats, and the default eight-seat balance reserves two guard seats, preferentially assigned to autonomous guards so a four-human lobby starts with four humans, two agent inmates, and two agent guards.
+
 ## Round loop
 
 The lobby accepts humans until a round begins, then fills remaining seats with canonical agents. An empty server starts an agent-only round after the configured lobby delay. Mid-round visitors spectate and join the next lobby. A completed round shows its winners and evidence before a new lobby begins.
