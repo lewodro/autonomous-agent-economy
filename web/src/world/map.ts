@@ -213,7 +213,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'forest-clearing', type: 'zone', position: { x: 1280, y: 500 }, radius: 86, label: 'Explore forest clearing' },
   { id: 'botanical-garden', type: 'zone', position: { x: 1702, y:620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
-  { id: 'south-market', type: 'zone', position: { x: 900, y: 1392 }, radius: 90, label: 'Visit south market' },
+  { id: 'south-market', type: 'zone', position: { x: 681, y: 1292 }, radius: 76, label: 'Open Bazaar profile terminal' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
