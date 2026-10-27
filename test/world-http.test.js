@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { verifyTicTacToeProof } from '../src/tictactoe.js';
 import { parseSurvivalSnapshot } from '../web/dist/world/survival.js';
+import { RESOURCE_NODES } from '../service/world-economy.js';
 test('world HTTP gateway serves deployable assets, shared rooms and capability-scoped free tables',{timeout:20000},async()=>{
  const child=spawn(process.execPath,['server.js'],{cwd:new URL('../',import.meta.url),env:{...process.env,PORT:'0',MATCHES_DIR:await mkdtemp(path.join(os.tmpdir(),'world-http-'))},stdio:['ignore','pipe','pipe']});
  let errors='';child.stderr.on('data',b=>errors+=b);
@@ -19,6 +20,11 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json','/assets/sprites-agent/missing.png','/assets/avatars/clean/mentor.png'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
   const compound=await(await fetch(base+'/api/compound')).json();assert.equal(compound.phase,'lobby');assert.equal(compound.participants.length,0);
+  const economyResponse=await fetch(base+'/api/world/economy'),economyCookie=economyResponse.headers.get('set-cookie')?.split(';')[0],economy=await economyResponse.json();assert.equal(economy.mode,'test_credits');assert.equal(economy.nodes.length,RESOURCE_NODES.length);assert.equal(economy.treasury.payouts_enabled,false);
+  const node=RESOURCE_NODES[0],presenceResponse=await fetch(base+'/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'resource-tester',position:node.position})}),presence=await presenceResponse.json();
+  const gatheredResponse=await fetch(base+'/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json',Cookie:economyCookie},body:JSON.stringify({player_id:'resource-tester',session_token:presence.session_token,node_id:node.id})}),gathered=await gatheredResponse.json();assert.equal(gatheredResponse.status,200);assert.equal(gathered.receipt.status,'test_credited');assert.equal(gathered.profile.credits,node.reward);
+  assert.equal((await fetch(base+'/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json',Cookie:economyCookie},body:JSON.stringify({player_id:'resource-tester',session_token:presence.session_token,node_id:node.id})})).status,409);
+  await fetch(base+'/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'resource-tester',session_token:presence.session_token})});
   const health=await(await fetch(base+'/api/health')).json();assert.deepEqual(health.arena,{status:'ok',roomCount:4,failedRooms:[]});assert.equal(health.survival.status,'ok');assert.match(health.survival.match_id,/^survival-\d+-1$/);assert.equal(health.survival.alive,20);assert.equal(health.survival.pending_research,false);assert.deepEqual(health.presence,{status:'ok',mode:'single_process_ephemeral',configured_worlds:1,active_players:0,event_streams:0,limits:{players_per_world:40,event_streams_per_world:100}});
   assert.equal((await fetch(base+'/api/arena/rooms/rps-1',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
   const survival=parseSurvivalSnapshot(await(await fetch(base+'/api/survival/current')).json());assert.equal(survival.agents.length,20);assert.ok(survival.sequence>=21);assert.equal(survival.status,'live');assert.ok(survival.events.length>0);assert.ok(survival.events.every(event=>typeof event.type==='string'));

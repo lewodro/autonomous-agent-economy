@@ -88,7 +88,7 @@ export class NpcController implements AgentController {
       this.studying-=seconds; actor.movementState='idle'; this.setState(actor,'studying');
       if(this.studying<=0){this.returningFromArena=false;this.pause=.2;} return;
     }
-    if(this.pause>0){this.pause-=seconds;actor.movementState='idle';this.setState(actor,'idle');return;}
+    if(this.pause>0){this.pause-=seconds;actor.movementState='idle';this.setState(actor,'idle');const destination=NPC_WAYPOINTS[this.waypoint];if(destination&&destination.x>=650&&destination.x<=1020&&destination.y>=1250&&destination.y<=1450)actor.activity='Registering Agent ID at the Bazaar';return;}
     const target=NPC_WAYPOINTS[this.waypoint]!; const dx=target.x-actor.position.x,dy=target.y-actor.position.y;
     const before={...actor.position};
     this.setState(actor,this.returningFromArena?'exit_arena':'wander');

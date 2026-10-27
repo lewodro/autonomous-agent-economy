@@ -1,7 +1,7 @@
 import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
-import type { Position, WorldActor, Interactable } from './model.js';
-export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number }
+import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
+export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[] }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
   render(frame:WorldFrame):void;
@@ -163,7 +163,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
     }
-    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('SOUTH MARKET',900,1088);
+    c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('WORLD BAZAAR',900,1088);
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }
@@ -187,6 +187,13 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#e68039';c.fillRect(x+flame[0],y+flame[1],flame[2],flame[3]);
       c.fillStyle='#f3c46b';c.fillRect(x-3,y-9,6,12);c.fillRect(x-1,y-14,3,8);
     }
+    for(const resource of frame.resources||[]){
+      const {x,y}=resource.position;c.fillStyle='#172b2877';c.fillRect(x-15,y+8,30,6);
+      if(resource.kind==='ore'){c.fillStyle=resource.available?'#8d9288':'#4f5952';c.fillRect(x-13,y-2,26,13);c.fillRect(x-7,y-9,15,9);c.fillStyle=resource.available?'#c8b66d':'#697069';c.fillRect(x-4,y-6,6,5);c.fillRect(x+6,y+1,4,4);}
+      else{c.fillStyle=resource.available?'#548057':'#3c5542';c.fillRect(x-2,y-11,4,22);c.fillRect(x-12,y-7,10,7);c.fillRect(x+2,y-3,12,7);c.fillStyle=resource.available?'#d8c06e':'#71806a';c.fillRect(x-8,y-10,5,5);c.fillRect(x+6,y-7,5,5);}
+      if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle='#f2d88a';c.fillRect(x+13,y-12,3,3);}
+    }
+    for(const particle of frame.particles||[]){const remaining=Math.max(0,particle.expiresAt-frame.time),age=1-Math.min(1,remaining/650);c.fillStyle=particle.color;c.fillRect(Math.round(particle.position.x+particle.velocity.x*age),Math.round(particle.position.y+particle.velocity.y*age),3,3);}
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
     const labels:{x:number;y:number;width:number;height:number}[]=[];

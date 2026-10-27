@@ -120,6 +120,7 @@ export class WorldPresenceClient {
   }
 
   get player_id():string{return this.playerId;}
+  credentials():{player_id:string;session_token:string}|null{return this.token?{player_id:this.playerId,session_token:this.token}:null;}
   snapshot():PresenceSnapshot{return {world_id:this.worldId,players:[...this.players.values()]};}
 
   async updateAvatar(avatar:string):Promise<PresenceSnapshot>{
