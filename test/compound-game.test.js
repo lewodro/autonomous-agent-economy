@@ -285,7 +285,8 @@ test('agent favors transfer shared items and only earned knowledge reaches the h
 test('guards pursue only locally visible heat and can confiscate contraband',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-ai-')),{now:()=>10_000});game.startAgentRound();
   const guard=game.state.participants.find(value=>value.role==='guard'),suspect=game.state.participants.find(value=>value.role!=='guard');
-  guard.position={x:15,y:5};suspect.position={x:16,y:5};suspect.heat=50;suspect.inventory=['wire','food'];
-  game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='contraband_found'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['food']);
+  guard.position={x:13,y:5};suspect.position={x:16,y:5};suspect.heat=50;suspect.inventory=['wire','food'];
+  game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='pursuit_started'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['wire','food'],'detection begins pursuit rather than remote confiscation');
+  guard.position={x:15,y:5};guard.nextAgentActAt=0;game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='contraband_found'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['food']);
   await game.close();
 });
