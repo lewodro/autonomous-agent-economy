@@ -158,12 +158,37 @@ test('round keys and clues are deterministic, exclusive, and privately discovere
   alice.position=game.adjacentTarget(alice,prop);alice.inventory=[];
   while(container.items.length&&!alice.inventory.includes('utility_note'))game.searchContainer(alice,clueContainer);
   assert.ok(alice.knowledge.routes.includes('maintenance-route'));
+  assert.equal(alice.knowledge.clues.at(-1).includes(clueContainer),false,'clues reveal an area rather than the exact hidden container');
   assert.deepEqual(game.snapshot('alice').map.escape_routes.map(value=>value.id),['maintenance-route']);
   assert.deepEqual(game.snapshot('bob').map.escape_routes,[],'another player does not inherit Alice knowledge');
   assert.equal(game.snapshot('bob').participants.find(value=>value.id===alice.id).inventory,undefined);
   assert.equal(game.state.containers.flatMap(value=>value.items).filter(item=>item==='utility_key').length+game.state.participants.flatMap(value=>value.inventory).filter(item=>item==='utility_key').length,1,'access items exist once in shared state');
   const firstPlacements={...game.state.roundSecrets.placements};game.finish('test');game.startRound('alice');
   assert.notDeepEqual(game.state.roundSecrets.placements,firstPlacements,'the next deterministic round seed changes key and clue locations');
+  await game.close();
+});
+
+test('seeded round generation validates many solvable critical-item layouts',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-generation-')),{now:()=>20_000,roundSeconds:60});game.join('owner',{name:'Generator'});
+  for(let round=0;round<32;round++){
+    game.startRound('owner');assert.equal(game.state.roundSecrets.validated,true);
+    const allItems=game.state.containers.flatMap(value=>value.items);
+    for(const item of['utility_key','staff_key','maintenance_pass','utility_note','service_note','perimeter_map'])assert.equal(allItems.filter(value=>value===item).length,1,`${item} must exist exactly once in round ${round+1}`);
+    game.finish('generation_test');
+  }
+  await game.close();
+});
+
+test('authorized door access creates a temporary shared physical opening',async()=>{
+  let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-door-')),{now:()=>now,roundSeconds:60});
+  game.join('alice',{name:'Alice'});game.join('bob',{name:'Bob'});game.startRound('alice');
+  const alice=game.participant('alice'),bob=game.participant('bob'),securityDoor=COMPOUND_MAP.doors.find(value=>value.room_id==='security');
+  alice.position={x:26,y:4};alice.inventory=['staff_key'];bob.position={x:26,y:4};bob.inventory=[];bob.role='prisoner';bob.job='janitor';
+  game.action('alice',{action:'open'});
+  assert.equal(game.snapshot('bob').map.doors.find(value=>value.id===securityDoor.id).unlocked,true);
+  assert.equal(game.blocked(securityDoor.position,bob),false,'a nearby player can use the same temporary opening');
+  assert.ok(game.state.evidenceEvents.some(event=>event.type==='door_unlocked'&&event.door_id===securityDoor.id));
+  now+=5_100;assert.equal(game.blocked(securityDoor.position,bob),true,'the shared opening closes on the authoritative clock');
   await game.close();
 });
 

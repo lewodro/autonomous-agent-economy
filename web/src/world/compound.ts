@@ -5,7 +5,8 @@ interface Point{x:number;y:number}
 interface Room{id:string;label:string;x:number;y:number;w:number;h:number;terrain:string;restricted:boolean}
 interface Prop{id:string;kind:string;x:number;y:number;solid:boolean}
 interface EscapeRoute{id:string;label:string;position:Point;requires:string[];stages:{id:string;label:string;position:Point;requires:string[]}[]}
-interface CompoundMap{width:number;height:number;tile_size:number;rooms:Room[];walls:Point[];doors:{id:string;position:Point;room_id:string;mode:string}[];props:Prop[];escape_routes:EscapeRoute[]}
+interface CompoundDoor{id:string;position:Point;room_id:string;mode:string;unlocked?:boolean}
+interface CompoundMap{width:number;height:number;tile_size:number;rooms:Room[];walls:Point[];doors:CompoundDoor[];props:Prop[];escape_routes:EscapeRoute[]}
 interface CompoundParticipant{id:string;name:string;type:'human'|'agent';avatar?:string|null;position:Point;facing:string;base_role:'inmate'|'guard';public_role:string;role?:string;personal_objective?:string;room:string;heat:number;hp:number;stamina:number;activity:string;status:string;inventory_count:number;inventory?:string[];objective?:string;discovered_objective?:string;discoveries?:{clues:string[];searched:string[];routes:string[]};job_progress?:number;job?:string;credits?:number;stats?:{strength:number;fitness:number;intellect:number};escape_progress?:Record<string,number>;crafting?:{id:string;label:string;available:boolean}[];message?:string|null}
 interface CompoundResult{session_id:string;reason:string;duration_ms:number;winner_ids:string[];escaped_ids:string[];participants:{id:string;name:string;status:string}[]}
 interface CompoundSnapshot{phase:'lobby'|'active'|'finished';round:number;revision:number;started_at:string|null;ends_at:number|null;routine_phase:string;routine:{current:string;next:string;required_room:string|null};security:string;map:CompoundMap;world_items:{id:string;type:string;position:Point}[];containers:{id:string;available:number}[];participants:CompoundParticipant[];events:{id:string;at:string;type:string;message:string}[];results:CompoundResult[];you:string|null}
@@ -51,7 +52,7 @@ function renderCanvas(time=performance.now()):void{
  for(const actor of state.participants)drawGuardAwareness(actor,size);
  for(const wall of map.walls)drawCompoundWall(context,wall,size,map.width,map.height);
  const alarmed=state.security==='alert'||state.security==='lockdown'||state.routine_phase==='lockdown';
- for(const door of map.doors){const open=state.participants.some(actor=>actor.status==='active'&&tileDistance(actor.position,door.position)<=1);drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted',open);}
+ for(const door of map.doors){const open=door.unlocked||state.participants.some(actor=>actor.status==='active'&&tileDistance(actor.position,door.position)<=1);drawCompoundDoor(context,door.position,size,door.mode==='restricted',alarmed&&door.mode==='restricted',open);}
  for(const prop of map.props)drawCompoundProp(context,prop,size);
  for(const route of map.escape_routes)for(const [index,stage] of route.stages.entries())drawEscapeMarker(context,stage.position,size,alarmed&&index===route.stages.length-1,index);
  for(const item of state.world_items)drawCompoundItem(context,item.type,tileCenter(item.position,size),size);
@@ -62,6 +63,8 @@ function renderCanvas(time=performance.now()):void{
 function nearestOther(own:CompoundParticipant):CompoundParticipant|undefined{return state?.participants.filter(value=>value.id!==own.id&&value.status==='active'&&Math.abs(value.position.x-own.position.x)+Math.abs(value.position.y-own.position.y)<=2).sort((a,b)=>Math.abs(a.position.x-own.position.x)+Math.abs(a.position.y-own.position.y)-Math.abs(b.position.x-own.position.x)-Math.abs(b.position.y-own.position.y))[0];}
 function tileDistance(a:Point,b:Point):number{return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);}
 function nearestProp(own:CompoundParticipant,kinds:string[]):Prop|undefined{return state?.map.props.filter(value=>kinds.includes(value.kind)&&tileDistance(own.position,value)<=1).sort((a,b)=>tileDistance(own.position,a)-tileDistance(own.position,b))[0];}
+function nearestDoor(own:CompoundParticipant):CompoundDoor|undefined{return state?.map.doors.filter(value=>value.mode==='restricted'&&!value.unlocked&&tileDistance(own.position,value.position)<=1).sort((a,b)=>tileDistance(own.position,a.position)-tileDistance(own.position,b.position))[0];}
+function canOpenDoor(own:CompoundParticipant,door:CompoundDoor):boolean{const requirements:Record<string,string[]>={kitchen:['staff_key'],security:['staff_key'],storage:['utility_key','maintenance_pass'],utility:['utility_key','maintenance_key','improvised_tool'],'service-gate':['staff_key','access_card']};return own.base_role==='guard'||Boolean(own.inventory?.includes('access_card'))||(requirements[door.room_id]||[]).some(item=>own.inventory?.includes(item))||JOB_ROOMS[own.job||'']===door.room_id;}
 function nearbyRoute(own:CompoundParticipant):EscapeRoute|undefined{return state?.map.escape_routes.find(value=>{const stage=value.stages[own.escape_progress?.[value.id]||0];return stage&&tileDistance(own.position,stage.position)<=1;});}
 function roundClock():string{if(!state?.started_at||!state.ends_at)return'--:--';const duration=state.ends_at-Date.parse(state.started_at),elapsed=Math.max(0,Date.now()-Date.parse(state.started_at));const minutes=6*60+Math.floor(Math.min(1,elapsed/Math.max(1,duration))*16*60);return`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;}
 const JOB_ROOMS:Record<string,string>={janitor:'showers',kitchen:'kitchen',workshop:'workshop',delivery:'visitation',maintenance:'utility',medical:'infirmary'};
@@ -70,6 +73,7 @@ interface ContextAction{label:string;run:()=>Promise<void>}
 function contextAction(own:CompoundParticipant):ContextAction|undefined{
  if(!state||state.phase!=='active')return;
  if(state.world_items.some(item=>tileDistance(item.position,own.position)<=1))return{label:'PICK UP ITEM',run:()=>command('/api/compound/action',{action:'pickup'})};
+ const door=nearestDoor(own);if(door&&canOpenDoor(own,door))return{label:`OPEN ${door.room_id.replaceAll('-',' ').toUpperCase()}`,run:()=>command('/api/compound/action',{action:'open'})};
  const route=nearbyRoute(own);if(own.base_role!=='guard'&&route){const progress=own.escape_progress?.[route.id]||0;return{label:route.stages[progress]?.label.toUpperCase()||`USE ${route.label.toUpperCase()}`,run:()=>command('/api/compound/action',{action:'escape',route_id:route.id})};}
  const container=nearestProp(own,['locker','cabinet','crate','guard_desk','counter','workbench','key_board','terminal']);
  if(container&&(state.containers.find(value=>value.id===container.id)?.available||0)>0)return{label:`SEARCH ${container.kind.replaceAll('_',' ').toUpperCase()}`,run:()=>command('/api/compound/action',{action:'search',container_id:container.id})};
