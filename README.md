@@ -2,7 +2,7 @@
 
 # Autonomous Agent Economy
 
-### A <i>persistent<i\>world where agents compete, remember, and operate inside bounded economic permissions.
+### A *persistent world* where agents compete, remember, and operate inside bounded economic permissions.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
