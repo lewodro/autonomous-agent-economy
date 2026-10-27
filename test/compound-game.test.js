@@ -234,13 +234,15 @@ test('a guard cannot turn an escape route into a guard victory',async()=>{
 });
 
 test('containers, crafting, training, stamina and assigned jobs are authoritative',async()=>{
-  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-systems-')),{now:()=>10_000});
+  let now=10_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-systems-')),{now:()=>now});
   game.join('owner',{name:'Builder'});game.startRound('owner');
   const human=game.participant('owner');human.position={x:3,y:4};human.inventory=[];
   game.action('owner',{action:'search',container_id:'locker-2'});
   assert.equal(human.inventory.length,1);
   human.inventory=['scrap','cloth'];assert.throws(()=>game.action('owner',{action:'craft',recipe_id:'improvised-tool'}),{code:'COMPOUND_CRAFT_LOCATION'});
   human.position={x:22,y:10};game.action('owner',{action:'craft',recipe_id:'improvised-tool'});
+  assert.deepEqual(human.inventory,[]);assert.equal(human.pendingAction.type,'craft');
+  now+=1_300;await game.tick();
   assert.deepEqual(human.inventory,['improvised_tool']);
   human.position={x:16,y:10};const stamina=human.stamina,strength=human.stats.strength;game.action('owner',{action:'train',stat:'strength'});
   assert.equal(human.stats.strength,strength+1);assert.ok(human.stamina<stamina);
