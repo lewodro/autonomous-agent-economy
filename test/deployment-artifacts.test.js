@@ -24,13 +24,15 @@ test('production image includes every runtime-owned browser and service director
   assert.match(dockerfile, /COPY scripts\/production-init\.js \.\/scripts\/production-init\.js/);
 });
 
-test('Render uses the Docker build, readiness endpoint, safe flags, and durable state', async () => {
+test('Render free demo uses Docker, readiness checks, and safe non-payment flags', async () => {
   const render = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
   assert.match(render, /runtime: docker/);
+  assert.match(render, /plan: free/);
   assert.match(render, /healthCheckPath: \/api\/health/);
   assert.match(render, /PUBLIC_ORIGIN\n\s+value: https:\/\/lastseat\.ing/);
   assert.match(render, /HOST_SESSION_SECRET\n\s+generateValue: true/);
   assert.match(render, /MATCHES_DIR\n\s+value: \/data\/matches/);
+  assert.match(render, /DEPLOYMENT_MODE\n\s+value: EPHEMERAL_DEMO/);
   assert.match(render, /WORLD_SOL_PAYOUTS_ENABLED\n\s+value: "0"/);
-  assert.match(render, /mountPath: \/data/);
+  assert.doesNotMatch(render, /^\s+disk:/m);
 });

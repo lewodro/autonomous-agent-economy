@@ -2,7 +2,7 @@ services:
   - type: web
     name: lastseat
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
@@ -13,6 +13,8 @@ services:
         value: https://lastseat.ing
       - key: MATCHES_DIR
         value: /data/matches
+      - key: DEPLOYMENT_MODE
+        value: EPHEMERAL_DEMO
       - key: HOST_SESSION_SECRET
         generateValue: true
       - key: ECONOMY_MODE
@@ -29,7 +31,3 @@ services:
         value: "false"
       - key: WORLD_SOL_PAYOUTS_ENABLED
         value: "0"
-    disk:
-      name: lastseat-data
-      mountPath: /data
-      sizeGB: 1
