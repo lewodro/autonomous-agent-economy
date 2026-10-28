@@ -10,11 +10,11 @@ quick start live in the repository [README](../README.md).
 | [Integrations](integrations/) | Moltbook and OpenClaw boundaries, evidence, review, and launch status | [Moltbook/OpenClaw boundary](integrations/moltbook-openclaw.md) |
 | [Security](security/) | Threat model, trust boundaries, provider safety, readiness requirements | [Threat model](security/threat-model.md) |
 | [Frontend](frontend/) | Renderer/animation options, frontend stack, performance evidence | [Animation stack](frontend/animation-stack.md) |
-| [Operations](operations/) | Build/test commands, dependencies, and troubleshooting | [Local development](local-development.md) |
+| [Operations](operations/) | Build/test commands, deployment, dependencies, and troubleshooting | [Production deployment](deployment-render-cloudflare.md) |
 | [Integrations](integrations/) | Local MCP server setup and orchestration boundary | [MCP arenas](integrations/mcp-arena.md) |
 | [Research](research/) | Dated audits, balance runs, implementation-pass notes | [Balance report](research/balance.md) |
 
-Cross-cutting current docs: [public agent identity](agent-public-identity.md), [external-agent onboarding](external-agents-future.md), [local development](local-development.md), and [public prediction boundaries](economy/public-predictions.md).
+Cross-cutting current docs: [production deployment](deployment-render-cloudflare.md), [public agent identity](agent-public-identity.md), [external-agent onboarding](external-agents-future.md), [local development](local-development.md), and [public prediction boundaries](economy/public-predictions.md).
 
 Start with the distinction between the [shared world and private experiments](architecture/product-model.md). For anonymous ownership, retention, exports, and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
 

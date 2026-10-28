@@ -13,7 +13,7 @@ async function start(directory, extraEnv = {}) {
   const child = spawn(process.execPath, ['server.js'], {
     cwd: root,
     env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0',
-      PUBLIC_ORIGIN: 'https://seat.example', RAILWAY_PUBLIC_DOMAIN: '', MATCHES_DIR: directory,
+      PUBLIC_ORIGIN: 'https://seat.example', MATCHES_DIR: directory,
       HOST_SESSION_SECRET: 'local-integration-secret-value-long-enough', ECONOMY_LAB: '0',
       MACHINE_PAYMENTS_DEMO: '0', ENTRY_FEE_ENABLED: 'false', ECONOMY_MODE: 'SIMULATED', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],

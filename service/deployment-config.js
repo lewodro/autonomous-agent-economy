@@ -20,7 +20,7 @@ export function validateDeploymentConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 1 to 65535 (or 0 in tests).');
 
   let publicOrigin = null;
-  const configuredOrigin = env.PUBLIC_ORIGIN || (env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : undefined);
+  const configuredOrigin = env.PUBLIC_ORIGIN;
   if (configuredOrigin) {
     let parsed;
     try { parsed = new URL(configuredOrigin); } catch { throw new Error('PUBLIC_ORIGIN must be a valid origin URL.'); }
@@ -40,7 +40,7 @@ export function validateDeploymentConfig(env = process.env) {
   if (publicPredictions && !publicDevnet) throw new Error('Public predictions require explicit production DEVNET test SOL mode.');
   if (publicPredictions) throw new Error('Public prediction routes and payment integration are not implemented; leave PREDICTIONS_ENABLED disabled.');
   if (production) {
-    if (!publicOrigin || !publicOrigin.startsWith('https://')) throw new Error('Set PUBLIC_ORIGIN or assign a Railway public domain before production startup.');
+    if (!publicOrigin || !publicOrigin.startsWith('https://')) throw new Error('Set PUBLIC_ORIGIN to the canonical HTTPS origin before production startup.');
     if (!env.MATCHES_DIR || !path.isAbsolute(env.MATCHES_DIR)) throw new Error('Set MATCHES_DIR to an absolute path on persistent mounted storage.');
     if (!env.HOST_SESSION_SECRET || env.HOST_SESSION_SECRET.length < 32) throw new Error('Set HOST_SESSION_SECRET to at least 32 random characters and keep it stable across redeploys.');
     if (env.ECONOMY_LAB === '1' || env.MACHINE_PAYMENTS_DEMO === '1') throw new Error('Economy labs and machine payment demos are disabled in public production.');
@@ -52,6 +52,6 @@ export function validateDeploymentConfig(env = process.env) {
     }
   }
 
-  const publicOrigins = [...new Set([publicOrigin, env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : null].filter(Boolean))];
+  const publicOrigins = publicOrigin ? [publicOrigin] : [];
   return { production, publicDevnet, publicPredictions, publicModelInferenceEnabled:env.ENABLE_PUBLIC_MODEL_INFERENCE==='true', publicOrigin, publicOrigins, port, host: env.HOST || (production ? '0.0.0.0' : '127.0.0.1') };
 }

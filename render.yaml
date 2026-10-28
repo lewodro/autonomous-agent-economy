@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: lastseat
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_ORIGIN
+        value: https://lastseat.ing
+      - key: MATCHES_DIR
+        value: /data/matches
+      - key: HOST_SESSION_SECRET
+        generateValue: true
+      - key: ECONOMY_MODE
+        value: SIMULATED
+      - key: ENTRY_FEE_ENABLED
+        value: "false"
+      - key: ENABLE_PUBLIC_MODEL_INFERENCE
+        value: "false"
+      - key: ECONOMY_LAB
+        value: "0"
+      - key: MACHINE_PAYMENTS_DEMO
+        value: "0"
+      - key: PREDICTIONS_ENABLED
+        value: "false"
+      - key: WORLD_SOL_PAYOUTS_ENABLED
+        value: "0"
+    disk:
+      name: lastseat-data
+      mountPath: /data
+      sizeGB: 1
