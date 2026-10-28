@@ -16,7 +16,10 @@ forbid('README.md', /href="#"[^>]*>\s*<img[^>]*Live Website Banner/s, 'live bann
 
 requireMatch('render.yaml', /PUBLIC_ORIGIN\n\s+value: https:\/\/lastseat\.ing/, 'Render must use the canonical origin');
 requireMatch('render.yaml', /HOST_SESSION_SECRET\n\s+generateValue: true/, 'Render must generate the session signing secret');
+requireMatch('render.yaml', /plan: free/, 'temporary public demo must stay on the explicitly selected free plan');
+requireMatch('render.yaml', /DEPLOYMENT_MODE\n\s+value: EPHEMERAL_DEMO/, 'free deployment must disclose ephemeral demo storage');
 requireMatch('render.yaml', /WORLD_SOL_PAYOUTS_ENABLED\n\s+value: "0"/, 'real SOL payouts must remain disabled');
+forbid('render.yaml', /^\s+disk:/m, 'free demo cannot claim unsupported persistent storage');
 forbid('render.yaml', /Railway|railway|localhost|127\.0\.0\.1/, 'production Blueprint must remain provider-current and public');
 
 for (const file of ['service/deployment-config.js', '.env.example', 'docs/deployment-render-cloudflare.md']) {

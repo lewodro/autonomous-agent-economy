@@ -8,7 +8,7 @@ test('development keeps loopback and a local port by default', () => {
   });
 });
 
-test('production accepts the canonical HTTPS host and mounted persistent directory', () => {
+test('production accepts the canonical HTTPS host and absolute runtime directory', () => {
   const config = validateDeploymentConfig({
     NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://lastseat.ing',
     MATCHES_DIR: '/data/matches', PORT: '8080', HOST_SESSION_SECRET: 'a'.repeat(32),
