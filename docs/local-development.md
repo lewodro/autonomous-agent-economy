@@ -22,4 +22,4 @@ npm run lint
 npm run docs:check
 ```
 
-Operator deployment, domain, branch-audit, and mainnet release notes are intentionally kept outside the public Git index in the maintainer checkout.
+Production deployment and domain operations are documented in the public [Render and Cloudflare runbook](deployment-render-cloudflare.md). Secrets, account identifiers, and provider access remain outside the Git index.
