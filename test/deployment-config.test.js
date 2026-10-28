@@ -8,28 +8,28 @@ test('development keeps loopback and a local port by default', () => {
   });
 });
 
-test('Railway production accepts its assigned HTTPS host and mounted persistent directory', () => {
+test('production accepts the canonical HTTPS host and mounted persistent directory', () => {
   const config = validateDeploymentConfig({
-    NODE_ENV: 'production', RAILWAY_PUBLIC_DOMAIN: 'axile.up.railway.app',
+    NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://lastseat.ing',
     MATCHES_DIR: '/data/matches', PORT: '8080', HOST_SESSION_SECRET: 'a'.repeat(32),
   });
-  assert.equal(config.publicOrigin, 'https://axile.up.railway.app');
-  assert.deepEqual(config.publicOrigins, ['https://axile.up.railway.app']);
+  assert.equal(config.publicOrigin, 'https://lastseat.ing');
+  assert.deepEqual(config.publicOrigins, ['https://lastseat.ing']);
   assert.equal(config.host, '0.0.0.0');
   assert.equal(config.port, 8080);
   assert.equal(config.publicDevnet, false);
 });
 
-test('custom domain and Railway domain are both valid public origins', () => {
+test('production exposes only its configured canonical origin', () => {
   assert.deepEqual(validateDeploymentConfig({
-    NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example',
-    RAILWAY_PUBLIC_DOMAIN: 'axile.up.railway.app', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32),
-  }).publicOrigins, ['https://axile.example', 'https://axile.up.railway.app']);
+    NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://lastseat.ing',
+    MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32),
+  }).publicOrigins, ['https://lastseat.ing']);
 });
 
 test('production refuses missing origin, ephemeral storage, and enabled economy experiments', () => {
   const base = { NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://axile.example', MATCHES_DIR: '/data/matches', HOST_SESSION_SECRET: 'a'.repeat(32) };
-  assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_ORIGIN: '' }), /PUBLIC_ORIGIN|Railway public domain/);
+  assert.throws(() => validateDeploymentConfig({ ...base, PUBLIC_ORIGIN: '' }), /PUBLIC_ORIGIN/);
   assert.throws(() => validateDeploymentConfig({ ...base, MATCHES_DIR: './matches' }), /absolute path/);
   assert.throws(() => validateDeploymentConfig({ ...base, HOST_SESSION_SECRET: 'short' }), /HOST_SESSION_SECRET/);
   assert.throws(() => validateDeploymentConfig({ ...base, ECONOMY_LAB: '1' }), /disabled in public production/);
