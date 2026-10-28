@@ -41,6 +41,7 @@
     "assets:check": "node scripts/validate-avatar-assets.js",
     "assets:world:check": "node scripts/validate-world-assets.js",
     "docs:check": "node scripts/check-docs.js",
+    "release:check": "node scripts/check-public-release.js",
     "verify:production": "node scripts/verify-production.js",
     "verify:deployment": "node scripts/verify-deployment.js",
     "production:init": "node scripts/production-init.js",
