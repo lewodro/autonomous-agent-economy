@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY rust ./rust
+COPY examples ./examples
 COPY web ./web
 COPY post ./post
 COPY docs/devlog ./docs/devlog
