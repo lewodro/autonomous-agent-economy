@@ -28,7 +28,7 @@ export class ArenaRoomPool {
         if(saved.version!==1||saved.id!==id||saved.game!==game||!Array.isArray(saved.previous)||saved.previous.length>3)throw new Error(`Invalid arena checkpoint: ${id}`);
         for(const run of [saved,...saved.previous]) {
           if(!/^[a-f0-9-]{36}$/.test(run.runId)||run.state.matches.length>64)throw new Error(`Invalid arena run: ${id}`);
-          run.state=await validateState(run.state);
+          run.state=await validateState(run.state,{agentOverride:this.agentOverride});
           if(run.state.matches.some(m=>(m.type||'rps')!==game))throw new Error(`Arena game mismatch: ${id}`);
         }
       } else saved={version:1,id,game,runId:randomUUID(),state:fresh(),previous:[]};

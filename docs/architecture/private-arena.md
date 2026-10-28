@@ -45,3 +45,5 @@ its checkpoint; starting it again resumes that owner's state.
 Production bootstrap still starts with no private arenas. The clean-volume
 guard rejects a developer's nonempty runtime directory, so local week-long
 history cannot seed anyone's private arena.
+
+Each private Survival scheduler now uses an owner-specific Rust session ID. Completed results wait for the configured result interval and then begin the next match indefinitely, including fast local speed settings. Reopening a private arena validates the canonical ledger while allowing only the separately validated private `agent-1` display/strategy/mind override; it then reapplies that override in memory. This prevents stale roster validation errors without weakening public ledger validation or leaking the custom agent into canonical rooms.

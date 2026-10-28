@@ -28,6 +28,7 @@ import { ArenaSurvivalService } from './service/arena-survival.js';
 import { ensureProductionStorage } from './service/production-storage.js';
 import { PrivateArenaManager } from './service/private-arena.js';
 import { CompoundGame } from './service/compound-game.js';
+import { WorldEconomy } from './service/world-economy.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
@@ -52,10 +53,16 @@ const publicFundedCreates=new SlidingWindowLimiter({limit:6,windowMs:10*60_000})
 const privateArenaStarts=new SlidingWindowLimiter({limit:3,windowMs:10*60_000});
 const compoundCommands=new SlidingWindowLimiter({limit:1200,windowMs:60_000});
 const compoundInputs=new SlidingWindowLimiter({limit:12_000,windowMs:60_000});
+const worldEconomyCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'));
 const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles()});
 const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
 const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles()});
+const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
+  treasuryAddress:process.env.WORLD_TREASURY_ADDRESS||null,
+  payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
+  lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
+});
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
@@ -157,6 +164,16 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res,405,{error:'Method not allowed'});
     }
+    if(route==='/api/world/economy'||route==='/api/world/economy/profile'||route==='/api/world/economy/gather'){
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      if(req.method==='GET'&&route==='/api/world/economy')return json(res,200,worldEconomy.snapshot(visitor.id),cookie);
+      if(req.method!=='POST')return json(res,405,{error:'World economy command requires POST'},cookie);
+      if(!worldEconomyCommands.allow())return json(res,429,{error:'World gathering is temporarily limited'},cookie);
+      const data=await body(req,4096);
+      if(route.endsWith('/profile'))return json(res,200,await worldEconomy.linkProfile(visitor.id,data),cookie);
+      const present=worldPresence.requirePlayer('main',data.player_id,data.session_token);
+      return json(res,200,await worldEconomy.gather(visitor.id,data,present.position),cookie);
+    }
     const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
     if(roomSpectatorRoute){
       if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
@@ -238,7 +255,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -374,7 +391,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();await worldEconomy.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
@@ -390,7 +407,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

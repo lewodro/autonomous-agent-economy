@@ -28,10 +28,10 @@ export function validatePrivateAgent(input={}){
 }
 
 class PrivateArenaSession {
-  constructor(core,directory,owner){
-    this.owner=owner;this.directory=directory;this.rooms=new ArenaRoomPool(path.join(directory,'rooms'));this.survival=new ArenaSurvivalService(core,path.join(directory,'survival'),{profiles:()=>this.rooms.profiles()});this.started=false;this.createdAt=new Date().toISOString();this.customAgent=null;
+  constructor(core,directory,owner,survivalOptions={}){
+    this.owner=owner;this.directory=directory;this.rooms=new ArenaRoomPool(path.join(directory,'rooms'));this.survival=new ArenaSurvivalService(core,path.join(directory,'survival'),{...survivalOptions,sessionId:`private-survival-${owner}`,profiles:()=>this.rooms.profiles()});this.started=false;this.createdAt=new Date().toISOString();this.customAgent=null;
   }
-  async restore(){await mkdir(this.directory,{recursive:true});try{this.customAgent=validatePrivateAgent(JSON.parse(await readFile(path.join(this.directory,'agent.json'),'utf8')));}catch(error){if(error.code!=='ENOENT')throw error;}this.rooms.setAgentOverride(this.customAgent);await this.rooms.restore();this.rooms.setAgentOverride(this.customAgent);await this.survival.restore();}
+  async restore(){await mkdir(this.directory,{recursive:true});try{this.customAgent=validatePrivateAgent(JSON.parse(await readFile(path.join(this.directory,'agent.json'),'utf8')));}catch(error){if(error.code!=='ENOENT')throw error;}this.rooms.setAgentOverride(this.customAgent);await this.rooms.restore();await this.survival.restore();}
   async setAgent(input){if(this.started)throw Object.assign(new Error('Pause your private arena before changing its agent'),{status:409});this.customAgent=validatePrivateAgent(input);this.rooms.setAgentOverride(this.customAgent);await writeFile(path.join(this.directory,'agent.json'),JSON.stringify(this.customAgent),{mode:0o600});return this.view();}
   start(){if(this.started)return;this.rooms.start();this.survival.start();this.started=true;}
   async stop(){if(!this.started)return;await this.rooms.close();await this.survival.close();this.started=false;}
@@ -42,9 +42,9 @@ class PrivateArenaSession {
 
 /** Owner-scoped private RPS, Tic-Tac-Toe, and Survival arenas. */
 export class PrivateArenaManager {
-  constructor(core,directory,{maxInstances=MAX_INSTANCES,maxActive=MAX_ACTIVE}={}){this.core=core;this.directory=directory;this.maxInstances=maxInstances;this.maxActive=maxActive;this.sessions=new Map();this.loading=new Map();}
+  constructor(core,directory,{maxInstances=MAX_INSTANCES,maxActive=MAX_ACTIVE,survivalOptions={}}={}){this.core=core;this.directory=directory;this.maxInstances=maxInstances;this.maxActive=maxActive;this.survivalOptions=survivalOptions;this.sessions=new Map();this.loading=new Map();}
   validateOwner(owner){if(!UUID.test(owner||''))throw Object.assign(new Error('Invalid private arena owner'),{status:404});return owner;}
-  async get(owner){owner=this.validateOwner(owner);const existing=this.sessions.get(owner);if(existing)return existing;const pending=this.loading.get(owner);if(pending)return pending;const task=(async()=>{if(this.sessions.size>=this.maxInstances)throw Object.assign(new Error('Private arena capacity reached'),{status:429});const session=new PrivateArenaSession(this.core,path.join(this.directory,owner),owner);await session.restore();this.sessions.set(owner,session);return session;})();this.loading.set(owner,task);try{return await task;}finally{if(this.loading.get(owner)===task)this.loading.delete(owner);}}
+  async get(owner){owner=this.validateOwner(owner);const existing=this.sessions.get(owner);if(existing)return existing;const pending=this.loading.get(owner);if(pending)return pending;const task=(async()=>{if(this.sessions.size>=this.maxInstances)throw Object.assign(new Error('Private arena capacity reached'),{status:429});const session=new PrivateArenaSession(this.core,path.join(this.directory,owner),owner,this.survivalOptions);await session.restore();this.sessions.set(owner,session);return session;})();this.loading.set(owner,task);try{return await task;}finally{if(this.loading.get(owner)===task)this.loading.delete(owner);}}
   async start(owner){const session=await this.get(owner);const active=[...this.sessions.values()].filter(value=>value.started).length;if(!session.started&&active>=this.maxActive)throw Object.assign(new Error('Private arena active limit reached'),{status:429});session.start();return session.view();}
   async setAgent(owner,input){return (await this.get(owner)).setAgent(input);}
   async stop(owner){const session=await this.get(owner);await session.close();this.sessions.delete(owner);return (await this.get(owner)).view();}

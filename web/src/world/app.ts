@@ -2,7 +2,7 @@ import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.js';
-import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech } from './model.js';
+import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
@@ -41,6 +41,7 @@ let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
 let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
+let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
 function updateWorldLabel():void {
@@ -113,6 +114,14 @@ dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
+interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;wallet_address:string|null;wallet_link_status:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string;amount_lamports?:number;transaction_signature?:string|null}>}
+async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;return result;}
+async function showBazaar():Promise<void>{const version=show('BAZAAR · link profile');text('p','Loading your local world profile…');try{const snapshot=await loadWorldEconomy();if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();text('p',`${snapshot.profile.credits} TEST CREDITS · gathered in this world. Test credits are not SOL.`);const form=document.createElement('form');form.className='world-profile-form';const nickname=document.createElement('input');nickname.placeholder='Public nickname';nickname.maxLength=24;nickname.value=snapshot.profile.nickname;const wallet=document.createElement('input');wallet.placeholder='Public Solana wallet address (optional)';wallet.maxLength=44;wallet.value=snapshot.profile.wallet_address||'';const save=document.createElement('button');save.type='submit';save.textContent='Link profile';form.append(nickname,wallet,save);content.append(form);const status=text('p',snapshot.profile.wallet_link_status==='self_declared'?'Wallet saved as self-declared; ownership is not yet verified.':'No wallet linked. Never enter a seed phrase or private key.');form.onsubmit=event=>{event.preventDefault();save.disabled=true;void fetch('/api/world/economy/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nickname:nickname.value,wallet_address:wallet.value})}).then(async response=>{const result=await response.json() as {error?:string;wallet_link_status?:string};if(!response.ok)throw new Error(result.error||'Profile update failed');status.textContent=result.wallet_link_status==='self_declared'?'Public wallet saved. Verification and payout remain separate.':'Profile saved without a wallet.';}).catch(error=>status.textContent=error instanceof Error?error.message:'Profile update failed').finally(()=>save.disabled=false);};
+    if(snapshot.treasury.public_address){text('h3','Public treasury');text('p',snapshot.treasury.public_address);text('p',snapshot.treasury.payouts_enabled?'Eligible linked-wallet receipts can be paid by the external treasury signer.':'Treasury is visible, but real payouts are disabled.');}
+    text('h3','Recent reward receipts');if(!snapshot.receipts.length)text('p','No gathering receipts yet.');for(const receipt of snapshot.receipts.slice().reverse().slice(0,8))text('p',`${receipt.amount_credits} credits · ${receipt.source_action.replace(':',' ')} · ${receipt.status}`);
+  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The bazaar terminal is temporarily unavailable.');}}}
+function burst(resource:WorldResource,time:number):void{const colors=resource.kind==='ore'?['#d5c47d','#8e9488','#665c4d']:['#d8cb75','#78a164','#496f4f'];for(let index=0;index<12;index++){const angle=index/12*Math.PI*2,range=18+(index%3)*6;particles.push({id:`${resource.id}-${time}-${index}`,position:{...resource.position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-10},color:colors[index%colors.length]!,expiresAt:time+650});}}
+async function gatherResource(id:string):Promise<void>{const resource=worldResources.find(value=>value.id===id),credentials=presenceClient?.credentials();if(!resource||!credentials)return;try{const response=await fetch('/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,node_id:id})});const result=await response.json() as {error?:string;node?:WorldResource;profile?:{credits:number};receipt?:{amount_credits:number}};if(!response.ok)throw new Error(result.error||'Gathering failed');worldResources=worldResources.map(value=>value.id===id?result.node!:value);burst(resource,performance.now());show(resource.kind==='ore'?'Ore gathered':'Plants harvested');text('p',`+${result.receipt?.amount_credits||resource.reward} TEST CREDITS · balance ${result.profile?.credits||0}.`);text('p','A reward receipt was recorded at the Bazaar terminal.');}catch(error){show('Gathering');text('p',error instanceof Error?error.message:'Gathering failed');}}
 function showProfile(id:string,sharedThought?:WorldSpeech):void {
   const profile=profiles.find(a=>a.id===id);if(!profile)return;
   show(profile.name);const head=text('div','');head.className='agent-profile-head';
@@ -196,6 +205,8 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     }else showProfile(target.id);
   }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
+    if(target.id==='south-market'){await showBazaar();return;}
+    if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
     const zones:Record<string,[string,string]>={
       'forest-clearing':['Forest clearing','A quiet trail and wooded rest point beyond the plaza.'],
       'botanical-garden':['Botanical garden','Walk among planted beds, varied trees and the garden campfire.'],
@@ -341,7 +352,9 @@ function frame(time:number):void {
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
-    const targets=[...LANDMARKS,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
+    if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});}
+    const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:resource.kind==='ore'?'Mine ore':'Harvest plants'}));
+    const targets=[...LANDMARKS,...resourceTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
@@ -363,7 +376,8 @@ function frame(time:number):void {
     remote.actor.position.x+=(remote.target.x-remote.actor.position.x)*interpolation;
     remote.actor.position.y+=(remote.target.y-remote.actor.position.y)*interpolation;
   }
-  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time});raf=requestAnimationFrame(frame);
+  for(let index=particles.length-1;index>=0;index--)if(particles[index]!.expiresAt<=time)particles.splice(index,1);
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
