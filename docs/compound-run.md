@@ -79,7 +79,7 @@ npm install
 COMPOUND_ROUND_SECONDS=120 npm start
 ```
 
-Open `http://localhost:3000/world`, follow the road to the **DETENTION COMPOUND** gate, press **E**, join, and start the round. For a fast local cycle, use `COMPOUND_ROUND_SECONDS=30`. When no human joins, the server fills all eight seats with agents and runs automatically.
+In production, open [lastseat.ing/world](https://lastseat.ing/world), follow the road to the **DETENTION COMPOUND** gate, press **E**, join, and start the round. For a local clone, open the `/world` route on the address printed by `npm start`. For a fast local cycle, use `COMPOUND_ROUND_SECONDS=30`. When no human joins, the server fills all eight seats with agents and runs automatically.
 
 ```bash
 node --test test/compound-game.test.js
