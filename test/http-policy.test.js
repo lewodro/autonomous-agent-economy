@@ -24,3 +24,10 @@ test('a public origin can only be authorized by explicit server configuration', 
   assert.equal(authorizeRequest(request, 3000, '').status, 421);
   assert.throws(() => authorizeRequest(request, 3000, 'https://table.example/path'), /HTTP origin/);
 });
+
+test('the platform hostname is authorized only for an originless health probe', () => {
+  const healthHost = 'lastseat.onrender.com';
+  assert.equal(authorizeRequest({ url: '/api/health', headers: { host: healthHost } }, 10000, 'https://lastseat.ing', healthHost), null);
+  assert.equal(authorizeRequest({ url: '/', headers: { host: healthHost } }, 10000, 'https://lastseat.ing', healthHost).status, 421);
+  assert.equal(authorizeRequest({ url: '/api/health', headers: { host: healthHost, origin: 'https://attacker.example' } }, 10000, 'https://lastseat.ing', healthHost).status, 421);
+});

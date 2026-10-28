@@ -1,5 +1,5 @@
 // Local service authority is configured by the server, never by request headers.
-export function authorizeRequest(req, port, publicOrigins = process.env.PUBLIC_ORIGIN) {
+export function authorizeRequest(req, port, publicOrigins = process.env.PUBLIC_ORIGIN, healthHost = process.env.RENDER_EXTERNAL_HOSTNAME) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([...hosts].map(host => `http://${host}`));
   for (const publicOrigin of (Array.isArray(publicOrigins) ? publicOrigins : [publicOrigins]).filter(Boolean)) {
@@ -8,6 +8,7 @@ export function authorizeRequest(req, port, publicOrigins = process.env.PUBLIC_O
     hosts.add(configured.host);
     origins.add(configured.origin);
   }
+  if (req.url === '/api/health' && healthHost && req.headers.host === healthHost && !req.headers.origin) return null;
   if (!hosts.has(req.headers.host)) return { status: 421, error: 'Unapproved request host' };
   if (req.headers.origin && !origins.has(req.headers.origin)) return { status: 403, error: 'Cross-origin requests are not allowed' };
   return null;
