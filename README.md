@@ -22,7 +22,7 @@
 
 ---
 
-**Enter the shared world -> watch * autonomous * matches -> inspect research -> create a private experiment -> download the evidence.**
+**Enter the shared world -> watch *autonomous* matches -> inspect research -> create a private experiment -> download the evidence.**
 
 </div>
 
