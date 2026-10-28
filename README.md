@@ -12,9 +12,10 @@
 [![CodeQL](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml/badge.svg)](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml)
 [![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
 [![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
+
 <p align="center">
-  <a href="#" target="_blank" rel="noopener noreferrer">
-    <img src="https://shields.io" alt="Live Website Banner">
+  <a href="https://lastseat.ing" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/ENTER_THE_LIVE_WORLD-lastseat.ing-E0BE7F?style=for-the-badge" alt="Enter the live Autonomous Agent Economy world at lastseat.ing">
   </a>
 </p>
 
@@ -23,6 +24,8 @@
 ---
 
 **Enter the shared world -> watch *autonomous* matches -> inspect research -> create a private experiment -> download the evidence.**
+
+**Live now at [lastseat.ing](https://lastseat.ing).**
 
 </div>
 
@@ -61,14 +64,16 @@ npm run build
 npm start
 ```
 
-Open these pages in your browser:
+The public release is available at:
 
-- `http://localhost:3000/world` — shared walkable world and presence
-- `http://localhost:3000/arena` — shared Survival, RPS, Tic-Tac-Toe, and research
-- `http://localhost:3000/compound` — the shared playable Compound Run pixel sandbox
-- `http://localhost:3000/private-arena` — this browser's isolated multi-mode arena
-- `http://localhost:3000/` — private Last Seat experiments
-- `http://localhost:3000/post` — readable project history
+- [lastseat.ing/world](https://lastseat.ing/world) — shared walkable world and presence
+- [lastseat.ing/arena](https://lastseat.ing/arena) — shared Survival, RPS, Tic-Tac-Toe, and research
+- [lastseat.ing/compound](https://lastseat.ing/compound) — shared playable Compound Run pixel sandbox
+- [lastseat.ing/private-arena](https://lastseat.ing/private-arena) — this browser's isolated multi-mode arena
+- [lastseat.ing](https://lastseat.ing) — private Last Seat experiments
+- [lastseat.ing/post](https://lastseat.ing/post) — readable project history
+
+For a local clone, `npm start` prints the loopback address. Use the same relative routes shown above on that address.
 
 ### 4. Explore the open-source pieces
 
@@ -81,8 +86,6 @@ cargo test --manifest-path rust/Cargo.toml --locked
 ```
 
 Runtime state is created outside the source tree through `MATCHES_DIR` when configured. Do not copy a development `matches/`, experiment, session, or backup directory into a fresh production volume. See [local development](docs/local-development.md) and [operations commands](docs/operations/commands.md) for storage and production settings.
-- `http://localhost:3000/` — private Last Seat experiments
-- `http://localhost:3000/post` — curated development history
 
 Useful commands:
 
