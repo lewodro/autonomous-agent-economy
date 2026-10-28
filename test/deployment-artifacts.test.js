@@ -17,6 +17,7 @@ test('production image includes every runtime-owned browser and service director
     'COPY --from=build /app/rust/target/debug/table-core ./rust/target/debug/table-core',
   ]) assert.ok(dockerfile.includes(line), `Missing runtime artifact: ${line}`);
   assert.match(dockerfile, /COPY docs\/devlog \.\/docs\/devlog/);
+  assert.match(dockerfile, /COPY examples \.\/examples/);
   assert.match(dockerfile, /CMD \["sh", "scripts\/start-production\.sh"\]/);
   const startup=await readFile(new URL('../scripts/start-production.sh',import.meta.url),'utf8');
   assert.match(startup,/chown node:node/);
