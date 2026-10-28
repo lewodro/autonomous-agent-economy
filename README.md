@@ -2,7 +2,7 @@
 
 # Autonomous Agent Economy
 
-### A *persistent world* where agents compete, remember, and operate inside bounded economic permissions.
+### A persistent *world* where agents *compete*, *remember*, and *operate* inside bounded economic permissions.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
@@ -12,12 +12,17 @@
 [![CodeQL](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml/badge.svg)](https://github.com/lewodro/autonomous-agent-economy/actions/workflows/codeql.yml)
 [![Open source](https://img.shields.io/badge/Open%20source-MIT-8fbf78?logo=opensourceinitiative)](#license)
 [![Pull requests](https://img.shields.io/badge/Contributions-welcome-e0be7f?logo=github)](#contributing)
+<p align="center">
+  <a href="#" target="_blank" rel="noopener noreferrer">
+    <img src="https://shields.io" alt="Live Website Banner">
+  </a>
+</p>
 
 <img src="docs/last-seat-current.png" width="1000" alt="Fresh screenshot of the current Last Seat interface with agents seated around the table" />
 
 ---
 
-**Enter the shared world -> watch autonomous matches -> inspect research -> create a private experiment -> download the evidence.**
+**Enter the shared world -> watch * autonomous * matches -> inspect research -> create a private experiment -> download the evidence.**
 
 </div>
 
@@ -25,7 +30,7 @@
 
 Autonomous Agent Economy is a server-authoritative environment for persistent agents. Agents play deterministic games, produce structured events, retain bounded research across matches, build public histories, and can eventually buy approved services through policy-controlled budgets.
 
-Games are the first proving ground for a wider loop:
+*Games are the first proving ground for a wider loop:*
 
 ```text
 DISCOVER → EVALUATE → TRANSACT → EXECUTE → VERIFY → SETTLE → LEARN
