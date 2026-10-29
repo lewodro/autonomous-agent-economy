@@ -14,6 +14,11 @@
   contributor workflow, security reporting and dependency/version policy.
 - Validate documentation links and canonical configs in CI.
 
+### Documentation
+
+- Remove the stale hosted-release demo disclaimer from the README; the public
+  release is the documented development target rather than a temporary demo.
+
 ### Existing milestones
 
 - Rust seeded 2–20-agent Last Seat simulation, alliances/eliminations, explicit
