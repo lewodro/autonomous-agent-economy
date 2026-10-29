@@ -12,3 +12,38 @@ test('world resources gather once per generation, respawn, and persist receipts'
 test('wallet linking stores only public identity and payout receipts require explicit treasury config',async()=>{const dir=await mkdtemp(path.join(os.tmpdir(),'world-payable-')),economy=new WorldEconomy(dir,{treasuryAddress:wallet,payoutsEnabled:true,lamportsPerCredit:25});try{await economy.restore();const profile=await economy.linkProfile('owner-a',{nickname:'Miro',wallet_address:wallet});assert.equal(profile.wallet_link_status,'self_declared');assert.equal('private_key' in profile,false);const node=RESOURCE_NODES[1],result=await economy.gather('owner-a',{node_id:node.id},node.position);assert.equal(result.receipt.status,'payable');assert.equal(result.receipt.amount_lamports,node.reward*25);assert.equal(result.receipt.treasury_address,wallet);assert.equal(result.receipt.transaction_signature,null);}finally{await economy.close();await rm(dir,{recursive:true,force:true});}});
 
 test('wallet input rejects secrets and malformed public addresses',async()=>{const dir=await mkdtemp(path.join(os.tmpdir(),'world-profile-')),economy=new WorldEconomy(dir);try{await economy.restore();await assert.rejects(()=>economy.linkProfile('owner-a',{nickname:'Miro',wallet_address:'seed phrase words'}),{code:'INVALID_WALLET'});assert.equal(economy.profile('owner-a').wallet_address,null);}finally{await rm(dir,{recursive:true,force:true});}});
+
+test('payable receipts move through an idempotent claim, submission, and confirmation lifecycle',async()=>{
+  let now=10_000;
+  const dir=await mkdtemp(path.join(os.tmpdir(),'world-settlement-'));
+  const economy=new WorldEconomy(dir,{now:()=>now,treasuryAddress:wallet,payoutsEnabled:true,lamportsPerCredit:25,maxPayoutLamports:100,dailyPayoutCapLamports:200});
+  try{
+    await economy.restore();await economy.linkProfile('owner-a',{nickname:'Miro',wallet_address:wallet});
+    const gathered=await economy.gather('owner-a',{node_id:RESOURCE_NODES[0].id},RESOURCE_NODES[0].position);
+    const claim=await economy.claimPayable();
+    assert.equal(claim.reward_id,gathered.receipt.reward_id);assert.equal(claim.amount_lamports,75);
+    assert.equal(await economy.claimPayable(),null,'a claimed receipt cannot be claimed twice');
+    const signature='1'.repeat(64);
+    await economy.markSubmitted(claim.reward_id,claim.claim_token,signature);
+    assert.deepEqual(economy.submittedPayouts(),[{reward_id:claim.reward_id,transaction_signature:signature}]);
+    await economy.markConfirmed(claim.reward_id,signature,1234);
+    const receipt=economy.snapshot('owner-a').receipts.at(-1);
+    assert.equal(receipt.status,'confirmed');assert.equal(receipt.confirmed_slot,1234);assert.equal('claim_token' in receipt,false);
+    await assert.rejects(()=>economy.markConfirmed(claim.reward_id,signature,1234),{code:'PAYOUT_SUBMISSION_STALE'});
+  }finally{await economy.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test('payout claims recover expired leases, retry with a stable intent, and enforce caps',async()=>{
+  let now=20_000;
+  const dir=await mkdtemp(path.join(os.tmpdir(),'world-payout-retry-'));
+  const economy=new WorldEconomy(dir,{now:()=>now,treasuryAddress:wallet,payoutsEnabled:true,lamportsPerCredit:25,maxPayoutLamports:100,dailyPayoutCapLamports:100,maxPayoutAttempts:2});
+  try{
+    await economy.restore();await economy.linkProfile('owner-a',{nickname:'Miro',wallet_address:wallet});
+    await economy.gather('owner-a',{node_id:RESOURCE_NODES[1].id},RESOURCE_NODES[1].position);
+    const first=await economy.claimPayable({leaseMs:5_000});now+=5_001;
+    const recovered=await economy.claimPayable({leaseMs:5_000});
+    assert.equal(recovered.reward_id,first.reward_id);assert.equal(recovered.idempotency_key,first.idempotency_key);
+    const failed=await economy.retryPayout(recovered.reward_id,recovered.claim_token,'executor timeout');
+    assert.equal(failed.status,'failed','the configured attempt ceiling prevents an unbounded retry loop');
+  }finally{await economy.close();await rm(dir,{recursive:true,force:true});}
+});
