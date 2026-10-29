@@ -1,175 +1,49 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import {createHmac} from 'node:crypto';
 
-const IDENTIFIER = /^[a-zA-Z0-9_-]{1,64}$/;
-const DIRECTIONS = new Set(['up', 'down', 'left', 'right']);
-const ANIMATIONS = new Set(['idle', 'walk']);
-// Keep presence inside the avatar-center walkable rectangle from web/src/world/map.ts
-// (map border 40/64 px, avatar collision radius 12 px).
-export const WORLD_PLAYABLE_BOUNDS = Object.freeze({ minX: -844, minY: -500, maxX: 2636, maxY: 1676 });
+const IDENTIFIER=/^[a-zA-Z0-9_-]{1,64}$/;
+const VISITOR_ID=/^[a-f0-9-]{36}$/;
+const DIRECTIONS=new Set(['up','down','left','right']);
+const ANIMATIONS=new Set(['idle','walk']);
+export const WORLD_PLAYABLE_BOUNDS=Object.freeze({minX:-844,minY:-500,maxX:2636,maxY:1676});
 
-function fail(code, message, status = 400) {
-  return Object.assign(new Error(message), { code, status });
-}
-
-function equalSecret(left, right) {
-  if (typeof left !== 'string' || typeof right !== 'string') return false;
-  const a = Buffer.from(left || ''), b = Buffer.from(right || '');
-  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
-}
+function fail(code,message,status=400){return Object.assign(new Error(message),{code,status});}
 
 /**
- * Ephemeral, server-authoritative enough presence for the public plaza.
- * It intentionally stores no movement history and owns no game state.
+ * One process-wide authoritative presence for the continuous public world.
+ * Anonymous visitor cookies own actors; browsers never choose public IDs or capabilities.
  */
 export class WorldPresenceService {
-  constructor({ worldIds = ['main'], allowedAvatars = ['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'], bounds = WORLD_PLAYABLE_BOUNDS, maxPlayers = 40, maxViewers = 100, staleMs = 45_000, minUpdateMs = 66, minHeartbeatMs = 1_000, now = () => Date.now() } = {}) {
-    if (!Array.isArray(worldIds) || !worldIds.length || worldIds.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(worldIds).size !== worldIds.length) {
-      throw new Error('World presence requires unique, valid configured world IDs');
-    }
-    if (!Array.isArray(allowedAvatars) || !allowedAvatars.length || allowedAvatars.some(id => typeof id !== 'string' || !IDENTIFIER.test(id)) || new Set(allowedAvatars).size !== allowedAvatars.length) {
-      throw new Error('World presence requires unique, valid approved avatar IDs');
-    }
-    this.allowedWorlds = new Set(worldIds);
-    this.allowedAvatars = new Set(allowedAvatars);
-    this.bounds = bounds; this.maxPlayers = maxPlayers; this.maxViewers = maxViewers; this.staleMs = staleMs;
-    this.minUpdateMs = minUpdateMs; this.minHeartbeatMs = minHeartbeatMs; this.now = now;
-    this.worlds = new Map(); this.listeners = new Map();
+  constructor({worldIds=['main'],allowedAvatars=['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'],bounds=WORLD_PLAYABLE_BOUNDS,maxPlayers=40,maxViewers=100,staleMs=45_000,minUpdateMs=66,minHeartbeatMs=1_000,identitySecret='local-world-presence-identity-secret',now=()=>Date.now()}={}){
+    if(!Array.isArray(worldIds)||!worldIds.length||worldIds.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(worldIds).size!==worldIds.length)throw new Error('World presence requires unique, valid configured world IDs');
+    if(!Array.isArray(allowedAvatars)||!allowedAvatars.length||allowedAvatars.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(allowedAvatars).size!==allowedAvatars.length)throw new Error('World presence requires unique, valid approved avatar IDs');
+    if(typeof identitySecret!=='string'||identitySecret.length<32)throw new Error('World presence identity secret must contain at least 32 characters');
+    this.allowedWorlds=new Set(worldIds);this.allowedAvatars=new Set(allowedAvatars);this.bounds=bounds;this.maxPlayers=maxPlayers;this.maxViewers=maxViewers;this.staleMs=staleMs;this.minUpdateMs=minUpdateMs;this.minHeartbeatMs=minHeartbeatMs;this.identitySecret=identitySecret;this.now=now;
+    this.worlds=new Map();this.listeners=new Map();
   }
-  world(worldId) {
-    if (typeof worldId !== 'string' || !this.allowedWorlds.has(worldId)) throw fail('WORLD_NOT_FOUND', 'Unknown world', 404);
-    let world = this.worlds.get(worldId);
-    if (!world) { world = new Map(); this.worlds.set(worldId, world); }
-    return world;
+  world(worldId){if(typeof worldId!=='string'||!this.allowedWorlds.has(worldId))throw fail('WORLD_NOT_FOUND','Unknown world',404);let world=this.worlds.get(worldId);if(!world){world=new Map();this.worlds.set(worldId,world);}return world;}
+  presenceId(worldId,visitorId){if(!VISITOR_ID.test(visitorId||''))throw fail('VISITOR_SESSION_INVALID','A valid anonymous visitor session is required',401);return`visitor_${createHmac('sha256',this.identitySecret).update(`world-presence-v1:${worldId}:${visitorId}`).digest('hex').slice(0,24)}`;}
+  displayName(playerId){return`Watcher ${1000+(Number.parseInt(playerId.slice(-6),16)%9000)}`;}
+  publicPlayer(player){const{visitorId,lastUpdateAt,lastMoveAt,lastHeartbeatAt,...value}=player;return value;}
+  snapshot(worldId){this.prune(worldId);return{world_id:worldId,players:[...this.world(worldId).values()].map(player=>this.publicPlayer(player)),agents:[]};}
+  sanitizePosition(position){const x=position?.x,y=position?.y;if(typeof x!=='number'||typeof y!=='number')throw fail('INVALID_POSITION','Position coordinates must be numbers');if(!Number.isFinite(x)||!Number.isFinite(y)||x<this.bounds.minX||y<this.bounds.minY||x>this.bounds.maxX||y>this.bounds.maxY)throw fail('INVALID_POSITION','Position is outside the world bounds');return{x:Math.round(x*10)/10,y:Math.round(y*10)/10};}
+  sanitizeAvatar(avatar){if(avatar==null)return'visitor_ember';if(typeof avatar!=='string'||!this.allowedAvatars.has(avatar))throw fail('INVALID_AVATAR','Avatar is not approved');return avatar;}
+  emit(worldId,type,payload){const event={type,world_id:worldId,...payload};for(const res of this.listeners.get(worldId)||[]){if(res.destroyed||res.writableLength>1_000_000){res.destroy();continue;}try{res.write(`event: ${type}\ndata: ${JSON.stringify(event)}\n\n`);}catch{res.destroy();}}}
+  join(worldId,visitorId,input={}){
+    const world=this.world(worldId);this.prune(worldId);const id=this.presenceId(worldId,visitorId),existing=world.get(id);
+    if(!existing&&world.size>=this.maxPlayers)throw fail('WORLD_FULL','This world is full',429);
+    const position=existing?existing.position:this.sanitizePosition(input.position||{x:160,y:180}),now=this.now();
+    const player={player_id:id,visitorId,display_name:existing?.display_name||this.displayName(id),avatar:input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar),position,direction:DIRECTIONS.has(input.direction)?input.direction:existing?.direction||'down',animation_state:'idle',activity:typeof input.activity==='string'?input.activity.slice(0,80):existing?.activity||'Exploring',updated_at:new Date(now).toISOString(),lastUpdateAt:now,lastMoveAt:existing?.lastMoveAt??existing?.lastUpdateAt??now,lastHeartbeatAt:existing?.lastHeartbeatAt??now-this.minHeartbeatMs};
+    world.set(id,player);this.emit(worldId,existing?'PlayerUpdated':'PlayerJoined',{player:this.publicPlayer(player)});
+    return{...this.snapshot(worldId),player:this.publicPlayer(player),presence_id:id};
   }
-  snapshot(worldId) { this.prune(worldId); return { world_id: worldId, players: [...this.world(worldId).values()].map(({ token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...player }) => player) }; }
-  sanitizePosition(position) {
-    const x = position?.x, y = position?.y;
-    if (typeof x !== 'number' || typeof y !== 'number') throw fail('INVALID_POSITION', 'Position coordinates must be numbers');
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < this.bounds.minX || y < this.bounds.minY || x > this.bounds.maxX || y > this.bounds.maxY) {
-      throw fail('INVALID_POSITION', 'Position is outside the world bounds');
-    }
-    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  requireVisitor(worldId,visitorId){const id=this.presenceId(worldId,visitorId),player=this.world(worldId).get(id);if(!player)throw fail('PLAYER_NOT_FOUND','World presence has expired; reconnect to the world',404);return player;}
+  move(worldId,visitorId,{position,direction,animation_state}){
+    const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastMoveAt<this.minUpdateMs)throw fail('PRESENCE_RATE_LIMITED','Move updates are limited',429);const next=this.sanitizePosition(position),elapsed=Math.min(Math.max(0,now-player.lastMoveAt),250),distance=Math.hypot(next.x-player.position.x,next.y-player.position.y),shortUpdateRate=elapsed<=120?.22:.15;if(distance>elapsed*shortUpdateRate+6)throw fail('INVALID_POSITION','Movement exceeded the world speed limit');const nextDirection=DIRECTIONS.has(direction)?direction:player.direction,nextAnimation=ANIMATIONS.has(animation_state)?animation_state:'idle',changed=next.x!==player.position.x||next.y!==player.position.y||nextDirection!==player.direction||nextAnimation!==player.animation_state;player.position=next;player.direction=nextDirection;player.animation_state=nextAnimation;player.lastUpdateAt=now;player.lastMoveAt=now;player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerMoved',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};
   }
-  sanitizeAvatar(avatar) {
-    if (avatar == null) return 'visitor_ember';
-    if (typeof avatar !== 'string' || !this.allowedAvatars.has(avatar)) throw fail('INVALID_AVATAR', 'Avatar is not approved');
-    return avatar;
-  }
-  publicPlayer(player) { const { token, lastUpdateAt, lastMoveAt, lastHeartbeatAt, ...value } = player; return value; }
-  nextDisplayName(world) {
-    const used = new Set([...world.values()].map(player => player.display_name));
-    let number = 1;
-    while (used.has(`Watcher ${number}`)) number++;
-    return `Watcher ${number}`;
-  }
-  emit(worldId, type, payload) {
-    const event = { type, world_id: worldId, ...payload };
-    for (const res of this.listeners.get(worldId) || []) {
-      if (res.destroyed || res.writableLength > 1_000_000) { res.destroy(); continue; }
-      try { res.write(`event: ${type}\ndata: ${JSON.stringify(event)}\n\n`); } catch { res.destroy(); }
-    }
-  }
-  join(worldId, input = {}) {
-    const world = this.world(worldId); this.prune(worldId);
-    if(input.player_id!==undefined&&(typeof input.player_id!=='string'||!IDENTIFIER.test(input.player_id)))throw fail('INVALID_PLAYER','Player identity is invalid');
-    const id = input.player_id || `player_${randomUUID()}`;
-    const existing = world.get(id);
-    if (existing && !equalSecret(existing.token, input.session_token)) {
-      throw fail('PRESENCE_NOT_AUTHORIZED', 'Player identity is already active', 403);
-    }
-    if (!existing && world.size >= this.maxPlayers) throw fail('WORLD_FULL', 'This world is full', 429);
-    // A reconnect may refresh public metadata, but only movement commands can change position.
-    const position = existing ? existing.position : this.sanitizePosition(input.position || { x: 160, y: 180 });
-    const now = this.now();
-    const player = {
-      player_id: id, display_name: existing?.display_name || this.nextDisplayName(world), avatar: input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar), position,
-      direction: DIRECTIONS.has(input.direction) ? input.direction : existing?.direction||'down',
-      animation_state: 'idle', activity: typeof input.activity === 'string' ? input.activity.slice(0, 80) : existing?.activity||'Exploring',
-      updated_at: new Date(now).toISOString(), token: existing?.token || randomUUID(), lastUpdateAt: now,
-      lastMoveAt: existing?.lastMoveAt ?? existing?.lastUpdateAt ?? now,
-      lastHeartbeatAt: existing?.lastHeartbeatAt ?? now - this.minHeartbeatMs
-    };
-    world.set(id, player);
-    this.emit(worldId, existing ? 'PlayerUpdated' : 'PlayerJoined', { player: this.publicPlayer(player) });
-    return { ...this.snapshot(worldId), player: this.publicPlayer(player), session_token: player.token };
-  }
-  requirePlayer(worldId, playerId, token) {
-    if (!IDENTIFIER.test(playerId || '')) throw fail('INVALID_PLAYER', 'Player identity is invalid');
-    const player = this.world(worldId).get(playerId);
-    if (!player) throw fail('PLAYER_NOT_FOUND', 'Player session has expired', 404);
-    if (!equalSecret(player.token, token)) throw fail('PRESENCE_NOT_AUTHORIZED', 'Player session is not authorized', 403);
-    return player;
-  }
-  move(worldId, { player_id, session_token, position, direction, animation_state }) {
-    const player = this.requirePlayer(worldId, player_id, session_token), now = this.now();
-    if (now - player.lastMoveAt < this.minUpdateMs) throw fail('PRESENCE_RATE_LIMITED', 'Move updates are limited', 429);
-    const next = this.sanitizePosition(position);
-    // Match the local world controller's 150 px/s. Short updates receive a
-    // bounded render/network-jitter allowance because backgrounded and busy
-    // browsers can batch frames; longer gaps retain the strict anti-teleport
-    // budget and idle time still cannot bank distance.
-    const elapsed = Math.min(Math.max(0, now - player.lastMoveAt), 250);
-    const distance = Math.hypot(next.x - player.position.x, next.y - player.position.y);
-    const shortUpdateRate = elapsed <= 120 ? 0.22 : 0.15;
-    if (distance > elapsed * shortUpdateRate + 6) throw fail('INVALID_POSITION', 'Movement exceeded the world speed limit');
-    const nextDirection = DIRECTIONS.has(direction) ? direction : player.direction;
-    const nextAnimation = ANIMATIONS.has(animation_state) ? animation_state : 'idle';
-    const changed = next.x !== player.position.x || next.y !== player.position.y
-      || nextDirection !== player.direction || nextAnimation !== player.animation_state;
-    player.position = next; player.direction = nextDirection; player.animation_state = nextAnimation;
-    player.lastUpdateAt = now; player.lastMoveAt = now; player.updated_at = new Date(now).toISOString();
-    if (changed) this.emit(worldId, 'PlayerMoved', { player: this.publicPlayer(player) });
-    return { player: this.publicPlayer(player) };
-  }
-  heartbeat(worldId, { player_id, session_token, activity }) {
-    const player = this.requirePlayer(worldId, player_id, session_token), now = this.now();
-    if (now - player.lastHeartbeatAt < this.minHeartbeatMs) throw fail('PRESENCE_RATE_LIMITED', 'Heartbeat updates are limited', 429);
-    if (activity !== undefined) {
-      if (typeof activity !== 'string' || activity.length > 80) throw fail('INVALID_ACTIVITY', 'Activity is invalid');
-    }
-    const activityChanged = activity !== undefined && activity !== player.activity;
-    if (activityChanged) player.activity = activity;
-    player.lastHeartbeatAt = now;
-    player.lastUpdateAt = now; player.updated_at = new Date(now).toISOString();
-    if (activityChanged) this.emit(worldId, 'PlayerUpdated', { player: this.publicPlayer(player) });
-    return { player: this.publicPlayer(player) };
-  }
-  leave(worldId, { player_id, session_token }) {
-    const player = this.requirePlayer(worldId, player_id, session_token); this.world(worldId).delete(player.player_id);
-    this.emit(worldId, 'PlayerLeft', { player_id: player.player_id }); return { left: true };
-  }
-  prune(worldId) {
-    const world = this.world(worldId), cutoff = this.now() - this.staleMs;
-    for (const player of world.values()) if (player.lastUpdateAt <= cutoff) { world.delete(player.player_id); this.emit(worldId, 'PlayerLeft', { player_id: player.player_id, reason: 'stale' }); }
-  }
-  connect(worldId, res) {
-    this.prune(worldId); const group = this.listeners.get(worldId) || new Set();
-    if (group.size >= this.maxViewers) return false;
-    this.listeners.set(worldId, group); group.add(res);
-    let closed = false; const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); group.delete(res); if (!group.size) this.listeners.delete(worldId); };
-    const heartbeat = setInterval(() => { this.prune(worldId); if (res.destroyed || res.writableLength > 1_000_000) return res.destroy(); try { res.write(': keepalive\n\n'); } catch { res.destroy(); } }, 15_000); heartbeat.unref();
-    res.on('close', cleanup); res.on('error', cleanup);
-    try {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-      res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);
-    } catch {
-      cleanup();
-      try { res.destroy(); } catch { /* response is already gone */ }
-    }
-    return true;
-  }
-  health() {
-    for (const worldId of this.allowedWorlds) this.prune(worldId);
-    let activePlayers = 0, eventStreams = 0;
-    for (const worldId of this.allowedWorlds) {
-      activePlayers += this.worlds.get(worldId)?.size || 0;
-      eventStreams += this.listeners.get(worldId)?.size || 0;
-    }
-    return {
-      status: 'ok', mode: 'single_process_ephemeral', configured_worlds: this.allowedWorlds.size,
-      active_players: activePlayers, event_streams: eventStreams,
-      limits: { players_per_world: this.maxPlayers, event_streams_per_world: this.maxViewers }
-    };
-  }
-  close() { for (const listeners of this.listeners.values()) for (const res of listeners) res.destroy(); this.listeners.clear(); this.worlds.clear(); }
+  heartbeat(worldId,visitorId,{activity}={}){const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastHeartbeatAt<this.minHeartbeatMs)throw fail('PRESENCE_RATE_LIMITED','Heartbeat updates are limited',429);if(activity!==undefined&&(typeof activity!=='string'||activity.length>80))throw fail('INVALID_ACTIVITY','Activity is invalid');const changed=activity!==undefined&&activity!==player.activity;if(changed)player.activity=activity;player.lastHeartbeatAt=now;player.lastUpdateAt=now;player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerUpdated',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};}
+  leave(worldId,visitorId){const player=this.requireVisitor(worldId,visitorId);this.world(worldId).delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id});return{left:true};}
+  prune(worldId){const world=this.world(worldId),cutoff=this.now()-this.staleMs;for(const player of world.values())if(player.lastUpdateAt<=cutoff){world.delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id,reason:'stale'});}}
+  connect(worldId,res){this.prune(worldId);const group=this.listeners.get(worldId)||new Set();if(group.size>=this.maxViewers)return false;this.listeners.set(worldId,group);group.add(res);let closed=false;const cleanup=()=>{if(closed)return;closed=true;clearInterval(heartbeat);group.delete(res);if(!group.size)this.listeners.delete(worldId);};const heartbeat=setInterval(()=>{this.prune(worldId);if(res.destroyed||res.writableLength>1_000_000)return res.destroy();try{res.write(': keepalive\n\n');}catch{res.destroy();}},15_000);heartbeat.unref();res.on('close',cleanup);res.on('error',cleanup);try{res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform',Connection:'keep-alive','X-Accel-Buffering':'no'});res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);}catch{cleanup();try{res.destroy();}catch{}}return true;}
+  health(){for(const worldId of this.allowedWorlds)this.prune(worldId);let activePlayers=0,eventStreams=0;for(const worldId of this.allowedWorlds){activePlayers+=this.worlds.get(worldId)?.size||0;eventStreams+=this.listeners.get(worldId)?.size||0;}return{status:'ok',mode:'single_process_authoritative',configured_worlds:this.allowedWorlds.size,active_players:activePlayers,event_streams:eventStreams,limits:{players_per_world:this.maxPlayers,event_streams_per_world:this.maxViewers}};}
+  close(){for(const listeners of this.listeners.values())for(const res of listeners)res.destroy();this.listeners.clear();this.worlds.clear();}
 }
