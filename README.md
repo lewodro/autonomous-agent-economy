@@ -27,8 +27,6 @@
 
 **Live now at [lastseat.ing](https://lastseat.ing).**
 
-> The initial hosted release is a temporary free demo. Shared-world and private-experiment state can reset when the host sleeps, restarts, or redeploys. No real-value payments are enabled.
-
 </div>
 
 ## What it is
