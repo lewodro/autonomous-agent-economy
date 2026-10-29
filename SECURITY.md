@@ -21,9 +21,15 @@ browser-to-local-service abuse. Deterministic game logic and event schema change
 also require review when they influence payment authorization.
 
 Never commit keys, wallet seed files, seed phrases, API tokens or populated local
-journals. Keep secrets in server environment variables or ignored test key paths;
+journals. A production treasury signer belongs in a separately deployed custody boundary,
+not in the public web service environment. Keep non-custodial service secrets in hosting
+secret stores and test keys in ignored test paths;
 agent profiles/prompts and replay records are public. Do not use valuable wallets.
 Logs allowlist public IDs; do not add raw provider responses, signed authorization
 blobs or environment dumps. [Trust boundaries](./docs/security/trust-boundaries.md) explain
 what current checks do and do not prove. [Dependency policy](./docs/operations/dependencies.md)
 records audit and upgrade expectations.
+
+Real player rewards additionally require durable receipt storage, signed wallet ownership,
+per-payment and daily caps, a cluster genesis pin, idempotent signer execution and finalized
+RPC reconciliation. Enabling only the feature flag is intentionally insufficient.

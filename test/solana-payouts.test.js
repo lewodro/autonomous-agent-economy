@@ -13,10 +13,11 @@ async function verifyProfile(ledger){const {publicKey,privateKey}=generateKeyPai
 
 test('executor submits an idempotent bounded intent and verifies finalized chain status',async()=>{
   const calls=[];
-  const fetchImpl=async(url,options)=>{calls.push({url,options});return url==='https://signer.example/v1/payouts'?new Response(JSON.stringify({intent_id:'reward-1',transaction_signature:signature}),{status:200}):new Response(JSON.stringify({jsonrpc:'2.0',id:1,result:{value:[{slot:42,err:null,confirmationStatus:'finalized'}]}}),{status:200});};
-  const client=new SolanaPayoutExecutorClient({executorUrl:'https://signer.example/v1/payouts',executorToken:'x'.repeat(32),rpcUrl:'https://rpc.example',fetchImpl});
+  const genesis='test-genesis-hash-123456789';
+  const fetchImpl=async(url,options)=>{calls.push({url,options});if(url==='https://signer.example/v1/payouts')return new Response(JSON.stringify({intent_id:'reward-1',transaction_signature:signature}),{status:200});const request=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:'2.0',id:request.id,result:request.method==='getGenesisHash'?genesis:{value:[{slot:42,err:null,confirmationStatus:'finalized'}]}}),{status:200});};
+  const client=new SolanaPayoutExecutorClient({executorUrl:'https://signer.example/v1/payouts',executorToken:'x'.repeat(32),rpcUrl:'https://rpc.example',cluster:'devnet',genesisHash:genesis,fetchImpl});
   const submitted=await client.submit({reward_id:'reward-1',idempotency_key:'node:1',recipient:wallet,treasury:wallet,amount_lamports:25});
-  assert.equal(submitted.signature,signature);assert.equal(calls[0].options.headers['Idempotency-Key'],'reward-1');assert.doesNotMatch(calls[0].options.body,/executorToken|private|secret/i);
+  assert.equal(submitted.signature,signature);const executorCall=calls.find(call=>call.url.includes('signer'));assert.equal(executorCall.options.headers['Idempotency-Key'],'reward-1');assert.doesNotMatch(executorCall.options.body,/executorToken|private|secret/i);
   assert.deepEqual(await client.status(signature),{state:'confirmed',slot:42});
 });
 
@@ -34,6 +35,7 @@ test('payout worker submits once and reconciles confirmation on a later tick',as
 });
 
 test('executor configuration rejects insecure URLs and short bearer secrets',()=>{
-  assert.throws(()=>new SolanaPayoutExecutorClient({executorUrl:'http://signer.example',executorToken:'x'.repeat(32),rpcUrl:'https://rpc.example'}),/HTTPS/);
-  assert.throws(()=>new SolanaPayoutExecutorClient({executorUrl:'https://signer.example',executorToken:'short',rpcUrl:'https://rpc.example'}),/32 characters/);
+  const common={rpcUrl:'https://rpc.example',cluster:'devnet',genesisHash:'test-genesis-hash-123456789'};
+  assert.throws(()=>new SolanaPayoutExecutorClient({executorUrl:'http://signer.example',executorToken:'x'.repeat(32),...common}),/HTTPS/);
+  assert.throws(()=>new SolanaPayoutExecutorClient({executorUrl:'https://signer.example',executorToken:'short',...common}),/32 characters/);
 });

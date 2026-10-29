@@ -16,6 +16,9 @@ flowchart TB
     LastSeat --> PrivateData[Private logs / research / JSON]
     PublicData --> Economy[Policy-bound economy]
     Economy --> Receipts[Verified receipts / settlement]
+    Receipts --> PayoutWorker[Bounded payout worker]
+    PayoutWorker --> Signer[Isolated Solana signer]
+    PayoutWorker --> Rpc[Genesis-pinned Solana RPC]
     PublicData --> Social[Manual public post proposals]
 ```
 
@@ -41,6 +44,8 @@ Models propose structured actions. They cannot select authoritative results, byp
 - mainnet funding and real-value public wagering fail closed;
 - the public free experience requires no wallet.
 
+Optional player rewards are separate from game entry and wagering. A wallet must prove ownership by signing a short-lived link challenge. A durable receipt is capped and claimed before the web process sends an idempotent intent to a separately deployed signer. The web process never receives treasury key material and only marks a payout confirmed after independently observing finalized Solana status on a genesis-pinned RPC endpoint. The current public Render demo keeps this path disabled.
+
 ## Current documents
 
 - [Public product model](docs/architecture/product-model.md)
@@ -50,6 +55,8 @@ Models propose structured actions. They cannot select authoritative results, byp
 - [Economy architecture](docs/economy/economy-architecture.md)
 - [Trust boundaries](docs/security/trust-boundaries.md)
 - [Local development](docs/local-development.md)
+- [World reward receipts](docs/world-rewards.md)
+- [Solana payout operations](docs/operations/solana-payouts.md)
 
 Historical audits and dated development logs preserve the state they reviewed. The files above are the current architecture sources.
 

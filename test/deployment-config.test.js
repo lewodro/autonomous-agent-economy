@@ -4,7 +4,7 @@ import { validateDeploymentConfig } from '../service/deployment-config.js';
 
 test('development keeps loopback and a local port by default', () => {
   assert.deepEqual(validateDeploymentConfig({}), {
-    production: false, publicDevnet: false, publicPredictions: false, publicModelInferenceEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
+    production: false, publicDevnet: false, worldPayoutsEnabled:false, publicPredictions: false, publicModelInferenceEnabled:false, publicOrigin: null, publicOrigins: [], port: 3000, host: '127.0.0.1',
   });
 });
 
@@ -73,4 +73,14 @@ test('production model spend is opt-in and remote providers require HTTPS',()=>{
   assert.throws(()=>validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'yes'}),/true or false/);
   assert.throws(()=>validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'true',MODEL_BASE_URL:'http://provider.example/v1'}),/HTTPS/);
   assert.equal(validateDeploymentConfig({...base,ENABLE_PUBLIC_MODEL_INFERENCE:'true',MODEL_BASE_URL:'https://provider.example/v1'}).publicModelInferenceEnabled,true);
+});
+
+test('real world payouts require durable storage, a pinned cluster, caps, and an external signer',()=>{
+  const base={NODE_ENV:'production',PUBLIC_ORIGIN:'https://lastseat.ing',MATCHES_DIR:'/data/matches',HOST_SESSION_SECRET:'a'.repeat(32),WORLD_SOL_PAYOUTS_ENABLED:'1'};
+  assert.throws(()=>validateDeploymentConfig({...base,DEPLOYMENT_MODE:'EPHEMERAL_DEMO'}),/durable storage/);
+  const configured={...base,WORLD_TREASURY_ADDRESS:'11111111111111111111111111111111',WORLD_SOL_PAYOUT_CLUSTER:'mainnet-beta',WORLD_SOL_PAYOUT_ACK:'I_UNDERSTAND_REAL_SOL',WORLD_PAYOUT_EXECUTOR_URL:'https://signer.example/v1/payouts',WORLD_PAYOUT_EXECUTOR_TOKEN:'x'.repeat(32),WORLD_SOLANA_RPC_URL:'https://rpc.example',WORLD_SOLANA_GENESIS_HASH:'mainnet-genesis-hash-123456',WORLD_LAMPORTS_PER_CREDIT:'10',WORLD_MAX_PAYOUT_LAMPORTS:'100',WORLD_DAILY_PAYOUT_CAP_LAMPORTS:'1000',WORLD_MAX_PAYOUT_ATTEMPTS:'3'};
+  assert.equal(validateDeploymentConfig(configured).worldPayoutsEnabled,true);
+  assert.throws(()=>validateDeploymentConfig({...configured,WORLD_SOL_PAYOUT_ACK:''}),/I_UNDERSTAND_REAL_SOL/);
+  assert.throws(()=>validateDeploymentConfig({...configured,WORLD_PAYOUT_EXECUTOR_URL:'http://signer.example'}),/HTTPS/);
+  assert.throws(()=>validateDeploymentConfig({...configured,WORLD_DAILY_PAYOUT_CAP_LAMPORTS:'0'}),/positive safe integer/);
 });

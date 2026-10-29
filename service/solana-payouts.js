@@ -9,20 +9,34 @@ function validHttpsUrl(value,name){
 
 /** Calls a separately deployed signer and independently verifies settlement through Solana RPC. */
 export class SolanaPayoutExecutorClient {
-  constructor({executorUrl,executorToken,rpcUrl,fetchImpl=fetch,timeoutMs=8_000}){
+  constructor({executorUrl,executorToken,rpcUrl,cluster,genesisHash,fetchImpl=fetch,timeoutMs=8_000}){
     this.executorUrl=validHttpsUrl(executorUrl,'WORLD_PAYOUT_EXECUTOR_URL');
     this.rpcUrl=validHttpsUrl(rpcUrl,'WORLD_SOLANA_RPC_URL');
     if(typeof executorToken!=='string'||executorToken.length<32)throw new Error('WORLD_PAYOUT_EXECUTOR_TOKEN must contain at least 32 characters');
+    if(!['devnet','mainnet-beta'].includes(cluster))throw new Error('WORLD_SOL_PAYOUT_CLUSTER must be devnet or mainnet-beta');
+    if(typeof genesisHash!=='string'||genesisHash.length<20||genesisHash.length>64)throw new Error('WORLD_SOLANA_GENESIS_HASH is required');
     if(!Number.isInteger(timeoutMs)||timeoutMs<1_000||timeoutMs>30_000)throw new Error('Invalid payout executor timeout');
-    this.executorToken=executorToken;this.fetch=fetchImpl;this.timeoutMs=timeoutMs;this.rpcId=0;
+    this.executorToken=executorToken;this.cluster=cluster;this.genesisHash=genesisHash;this.fetch=fetchImpl;this.timeoutMs=timeoutMs;this.rpcId=0;this.networkCheck=null;
   }
   async request(url,options){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),this.timeoutMs);
     try{return await this.fetch(url,{...options,signal:controller.signal});}finally{clearTimeout(timer);}
   }
+  async rpc(method,params=[]){
+    const id=++this.rpcId,response=await this.request(this.rpcUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method,params})});
+    if(!response.ok)throw Object.assign(new Error('Solana RPC request failed'),{code:`RPC_HTTP_${response.status}`});
+    const payload=await response.json();
+    if(payload.id!==id||payload.error)throw Object.assign(new Error('Solana RPC returned an invalid response'),{code:'INVALID_RPC_RESPONSE'});
+    return payload.result;
+  }
+  async ensureNetwork(){
+    this.networkCheck??=this.rpc('getGenesisHash').then(result=>{if(result!==this.genesisHash)throw Object.assign(new Error('Solana RPC genesis does not match configured cluster'),{code:'SOLANA_GENESIS_MISMATCH'});return true;}).catch(error=>{this.networkCheck=null;throw error;});
+    return this.networkCheck;
+  }
   async submit(intent){
     if(!validSolanaAddress(intent.recipient)||!validSolanaAddress(intent.treasury)||!Number.isSafeInteger(intent.amount_lamports)||intent.amount_lamports<1)throw Object.assign(new Error('Invalid payout intent'),{code:'INVALID_PAYOUT_INTENT'});
-    const response=await this.request(this.executorUrl,{method:'POST',headers:{Authorization:`Bearer ${this.executorToken}`,'Content-Type':'application/json','Idempotency-Key':intent.reward_id},body:JSON.stringify({version:1,intent_id:intent.reward_id,idempotency_key:intent.idempotency_key,recipient:intent.recipient,treasury:intent.treasury,amount_lamports:intent.amount_lamports,memo:`lastseat:${intent.reward_id}`})});
+    await this.ensureNetwork();
+    const response=await this.request(this.executorUrl,{method:'POST',headers:{Authorization:`Bearer ${this.executorToken}`,'Content-Type':'application/json','Idempotency-Key':intent.reward_id},body:JSON.stringify({version:1,intent_id:intent.reward_id,idempotency_key:intent.idempotency_key,recipient:intent.recipient,treasury:intent.treasury,amount_lamports:intent.amount_lamports,cluster:this.cluster,genesis_hash:this.genesisHash,memo:`lastseat:${intent.reward_id}`})});
     if(!response.ok)throw Object.assign(new Error('Payout executor rejected the intent'),{code:`EXECUTOR_HTTP_${response.status}`});
     const result=await response.json();
     if(result.intent_id!==intent.reward_id||!validSolanaSignature(result.transaction_signature))throw Object.assign(new Error('Payout executor returned invalid evidence'),{code:'INVALID_EXECUTOR_RESPONSE'});
@@ -30,11 +44,9 @@ export class SolanaPayoutExecutorClient {
   }
   async status(signature){
     if(!validSolanaSignature(signature))throw Object.assign(new Error('Invalid Solana transaction signature'),{code:'INVALID_TRANSACTION_SIGNATURE'});
-    const id=++this.rpcId,response=await this.request(this.rpcUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method:'getSignatureStatuses',params:[[signature],{searchTransactionHistory:true}]})});
-    if(!response.ok)throw Object.assign(new Error('Solana RPC status request failed'),{code:`RPC_HTTP_${response.status}`});
-    const payload=await response.json();
-    if(payload.id!==id||payload.error||!Array.isArray(payload.result?.value))throw Object.assign(new Error('Solana RPC returned an invalid status response'),{code:'INVALID_RPC_RESPONSE'});
-    const status=payload.result.value[0];
+    await this.ensureNetwork();const result=await this.rpc('getSignatureStatuses',[[signature],{searchTransactionHistory:true}]);
+    if(!Array.isArray(result?.value))throw Object.assign(new Error('Solana RPC returned an invalid status response'),{code:'INVALID_RPC_RESPONSE'});
+    const status=result.value[0];
     if(!status)return{state:'pending'};
     if(status.err!==null)return{state:'failed',error:'CHAIN_TRANSACTION_FAILED',slot:status.slot};
     return status.confirmationStatus==='finalized'?{state:'confirmed',slot:status.slot}:{state:'pending',slot:status.slot};

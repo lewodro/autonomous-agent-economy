@@ -29,11 +29,12 @@ import { ensureProductionStorage } from './service/production-storage.js';
 import { PrivateArenaManager } from './service/private-arena.js';
 import { CompoundGame } from './service/compound-game.js';
 import { WorldEconomy } from './service/world-economy.js';
+import {SolanaPayoutExecutorClient,WorldPayoutWorker} from './service/solana-payouts.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const deployment = validateDeploymentConfig();
-const { production, publicDevnet, publicOrigins, publicModelInferenceEnabled } = deployment;
+const { production, publicDevnet, worldPayoutsEnabled, publicOrigins, publicModelInferenceEnabled } = deployment;
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const productionStorage = await ensureProductionStorage(directory, { production });
@@ -62,7 +63,17 @@ const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
   treasuryAddress:process.env.WORLD_TREASURY_ADDRESS||null,
   payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
+  maxPayoutLamports:Number(process.env.WORLD_MAX_PAYOUT_LAMPORTS||1_000_000),
+  dailyPayoutCapLamports:Number(process.env.WORLD_DAILY_PAYOUT_CAP_LAMPORTS||10_000_000),
+  maxPayoutAttempts:Number(process.env.WORLD_MAX_PAYOUT_ATTEMPTS||5),
 });
+const payoutWorker=worldPayoutsEnabled?new WorldPayoutWorker(worldEconomy,new SolanaPayoutExecutorClient({
+  executorUrl:process.env.WORLD_PAYOUT_EXECUTOR_URL,
+  executorToken:process.env.WORLD_PAYOUT_EXECUTOR_TOKEN,
+  rpcUrl:process.env.WORLD_SOLANA_RPC_URL,
+  cluster:process.env.WORLD_SOL_PAYOUT_CLUSTER,
+  genesisHash:process.env.WORLD_SOLANA_GENESIS_HASH,
+}),{intervalMs:Number(process.env.WORLD_PAYOUT_INTERVAL_MS||10_000)}):null;
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
@@ -257,13 +268,13 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),payout_worker:payoutWorker?.health()||{enabled:false},session:'ready',network_mode:worldPayoutsEnabled?process.env.WORLD_SOL_PAYOUT_CLUSTER:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:worldPayoutsEnabled?'world_sol_rewards':publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
       game_modes:['last-seat','survival','rps','tictactoe','compound'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
-      payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
+      payment_notice:worldPayoutsEnabled?'Verified world rewards may settle in SOL. Public matches remain free; receipts and transaction signatures are public.':publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if(route==='/api/experiments'||route.startsWith('/api/experiments/')){
@@ -393,7 +404,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();await worldEconomy.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();await worldEconomy.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();payoutWorker?.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
@@ -409,7 +420,8 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),funded.close()]).then(()=>true);
+    const payoutDrain=(async()=>{await payoutWorker?.close();await worldEconomy.close();})();
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),payoutDrain,funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){
