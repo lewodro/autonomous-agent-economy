@@ -4,13 +4,12 @@ import { moveActor, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
-import { NpcController, arenaExitPosition, npcSpawnPosition, selectPlazaAgents } from './npc.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
 import { HttpArenaGateway, type AgentProfile, type MatchRecord } from './gateway.js';
 import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
-import { WorldPresenceClient, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
+import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -25,8 +24,8 @@ if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(sett
 else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
-const npcs:WorldActor[]=[],controllers=new Map<string,NpcController>();let profiles:AgentProfile[]=[];
-const arenaStatuses=new Map<string,AgentProfile['arenaStatus']>();
+const npcs:WorldActor[]=[];let profiles:AgentProfile[]=[];
+const agentTargets=new Map<string,{x:number;y:number}>();
 const speechLimiter=new SpeechLimiter();
 const thoughtCounts=new Map<string,number>();
 let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
@@ -72,7 +71,29 @@ function syncRemotePlayers(snapshot:PresenceSnapshot):void {
     }
   }
   for(const id of remotePlayers.keys())if(!next.has(id))remotePlayers.delete(id);
+  syncCanonicalAgents(snapshot.agents);
   updateConnectionLabel();
+}
+function syncCanonicalAgents(agents:PresenceAgent[]):void {
+  const next=new Set<string>();
+  for(const value of agents){
+    next.add(value.agent_id);
+    const actor=npcs.find(npc=>npc.agentId===value.agent_id);
+    const sprite=SPRITES.find(candidate=>candidate.sheet==='/'+value.sprite);
+    const facing=value.direction==='up'||value.direction==='left'||value.direction==='right'?value.direction:'down';
+    if(actor){
+      actor.name=value.display_name;actor.spriteId=sprite?.id||actor.spriteId;actor.facing=facing;
+      actor.movementState=value.animation_state==='walk'?'walking':'idle';actor.activity=value.activity;actor.recentWinner=value.recent_winner;
+    }else{
+      npcs.push({id:'npc-'+value.agent_id,type:'npc',agentId:value.agent_id,name:value.display_name,position:{...value.position},facing,
+        movementState:value.animation_state==='walk'?'walking':'idle',spriteId:sprite?.id||'founder',activity:value.activity,activityState:'wander',recentWinner:value.recent_winner});
+    }
+    agentTargets.set(value.agent_id,{...value.position});
+  }
+  for(let index=npcs.length-1;index>=0;index--){
+    const id=npcs[index]!.agentId;
+    if(id&&!next.has(id)){agentTargets.delete(id);npcs.splice(index,1);}
+  }
 }
 function presenceError(client:WorldPresenceClient):void {
   if(stopped||presenceClient!==client)return;
@@ -200,7 +221,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     const actor=npcs.find(npc=>npc.agentId===target.id);
     if(actor?.speech&&actor.speech.expiresAt>performance.now()){
       const thought=actor.speech;
-      actor.speech=undefined;controllers.get(actor.id)?.beginTalking();
+      actor.speech=undefined;
       showProfile(target.id,thought);
     }else showProfile(target.id);
   }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
@@ -290,13 +311,6 @@ canvas.addEventListener('pointerdown',event=>{
   const actor=npcs.find(a=>Math.hypot(point.x-a.position.x,point.y-a.position.y)<30);
   if(actor&&Math.hypot(player.position.x-actor.position.x,player.position.y-actor.position.y)<=72)void interact({id:actor.agentId!,type:'agent',position:actor.position,radius:72,label:`Inspect ${actor.name}`});
 });
-function addNpc(profile:AgentProfile,index:number,returningFromArena=false):void {
-  const sprite=SPRITES.find(s=>s.sheet==='/'+profile.sprite);
-  const actor:WorldActor={id:'npc-'+profile.id,type:'npc',agentId:profile.id,name:profile.name,position:returningFromArena?arenaExitPosition(index):npcSpawnPosition(index),facing:'down',movementState:'idle',spriteId:sprite?.id||'founder',activity:returningFromArena?'Leaving the Arena · match complete':'Walking through the plaza',activityState:returningFromArena?'exit_arena':'idle',recentWinner:profile.recentWinner};
-  npcs.push(actor);
-  controllers.set('npc-'+profile.id,new NpcController(index,returningFromArena,profile));
-  updateWorldLabel();
-}
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
   try{
@@ -305,14 +319,10 @@ async function refreshProfiles():Promise<void> {
       nextHistoryRefresh=Date.now()+20_000;
       try{publicHistory=await gateway.history();}catch{publicHistory=[];}
     }
-    const selected=selectPlazaAgents(profiles,npcs.map(npc=>npc.agentId||'')),selectedIds=new Set(selected.map(profile=>profile.id));
-    for(let index=npcs.length-1;index>=0;index--)if(!selectedIds.has(npcs[index]!.agentId||'')){controllers.delete(npcs[index]!.id);npcs.splice(index,1);}
-    selected.forEach((profile,index)=>{
+    for(const profile of profiles){
       const existing=npcs.find(npc=>npc.agentId===profile.id);
-      if(!existing)addNpc(profile,index,profile.arenaStatus==='finished');
-      else{existing.recentWinner=profile.recentWinner;if(profile.arenaStatus==='finished'&&arenaStatuses.get(profile.id)!=='finished')controllers.get(existing.id)?.returnToArenaLounge();}
-      arenaStatuses.set(profile.id,profile.arenaStatus);
-    });
+      if(existing)existing.recentWinner=profile.recentWinner;
+    }
     updateWorldLabel();
     arenaOnline=true;updateConnectionLabel();
     const directory=$('agent-directory'),current=new Set<string>();
@@ -341,13 +351,12 @@ function frame(time:number):void {
     const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);
     // Ambient agents remain inspectable, but cannot form a moving wall across the visitor's route.
     moveActor(player,input,dt,150,WALLS);
-    for(const npc of npcs)controllers.get(npc.id)?.update(npc,dt,[player,...npcs]);
-    for(const npc of npcs)if(npc.speech&&npc.speech.expiresAt<=time){npc.speech=undefined;controllers.get(npc.id)?.dismissThought();}
+    for(const npc of npcs)if(npc.speech&&npc.speech.expiresAt<=time)npc.speech=undefined;
     const closeNpc=npcs.filter(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<170)
       .sort((a,b)=>Math.hypot(player.position.x-a.position.x,player.position.y-a.position.y)-Math.hypot(player.position.x-b.position.x,player.position.y-b.position.y)||a.id.localeCompare(b.id))[0];
     const closeProfile=closeNpc?.agentId?profiles.find(profile=>profile.id===closeNpc.agentId):undefined;
     const activeThoughts=npcs.filter(npc=>npc.speech&&npc.speech.expiresAt>time).length;
-    if(closeNpc&&closeProfile&&!closeNpc.speech&&activeThoughts<3&&speechLimiter.allow(closeNpc.id,Date.now())&&controllers.get(closeNpc.id)?.offerThought()){
+    if(closeNpc&&closeProfile&&!closeNpc.speech&&activeThoughts<3&&speechLimiter.allow(closeNpc.id,Date.now())){
       const count=(thoughtCounts.get(closeNpc.id)||0)+1;thoughtCounts.set(closeNpc.id,count);
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
@@ -376,6 +385,11 @@ function frame(time:number):void {
     remote.actor.position.x+=(remote.target.x-remote.actor.position.x)*interpolation;
     remote.actor.position.y+=(remote.target.y-remote.actor.position.y)*interpolation;
   }
+  for(const npc of npcs){
+    const target=npc.agentId?agentTargets.get(npc.agentId):undefined;if(!target)continue;
+    npc.position.x+=(target.x-npc.position.x)*interpolation;
+    npc.position.y+=(target.y-npc.position.y)*interpolation;
+  }
   for(let index=particles.length-1;index>=0;index--)if(particles[index]!.expiresAt<=time)particles.splice(index,1);
   renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles});raf=requestAnimationFrame(frame);
 }
@@ -387,12 +401,11 @@ if(location.pathname==='/labs/world'){
   const teleport=async(position:{x:number;y:number})=>{await leavePresence();player.position=safePosition(position);persist();if(entered)startPresence();canvas.focus();};
   for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{void teleport(landmark.position);};lab.append(b);}
   for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{void teleport(position);};lab.append(b);}
-  const spawn=document.createElement('button');spawn.textContent='Spawn next NPC';spawn.onclick=()=>{const profile=profiles.find(p=>!npcs.some(n=>n.agentId===p.id));if(profile)addNpc(profile,npcs.length);};lab.append(spawn);
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
   const thought=document.createElement('button');thought.textContent='Offer nearest NPC thought';thought.onclick=()=>{
     const actor=[...npcs].sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)-Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y))[0];
     const profile=actor?.agentId?profiles.find(value=>value.id===actor.agentId):undefined;
-    if(actor&&profile){actor.position={x:player.position.x+42,y:player.position.y};controllers.get(actor.id)?.relocate(actor.position);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};controllers.get(actor.id)?.offerThought();}
+    if(actor&&profile){const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};}
   };lab.append(thought);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }

@@ -58,5 +58,5 @@ test('SSE sends one shared snapshot and ordered movement deltas to every viewer'
 
 test('presence capacity is bounded and health exposes counts without identities',()=>{
   const service=serviceAt({maxPlayers:2,maxViewers:1});service.join('main',alice);service.join('main',bob);assert.throws(()=>service.join('main','33333333-3333-4333-8333-333333333333'),{code:'WORLD_FULL'});
-  assert.deepEqual(service.health(),{status:'ok',mode:'single_process_authoritative',configured_worlds:1,active_players:2,event_streams:0,limits:{players_per_world:2,event_streams_per_world:1}});
+  assert.deepEqual(service.health(),{status:'ok',mode:'single_process_authoritative',configured_worlds:1,active_players:2,active_agents:0,event_streams:0,limits:{players_per_world:2,event_streams_per_world:1}});
 });

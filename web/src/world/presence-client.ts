@@ -3,7 +3,7 @@ export interface PresencePlayer {
   player_id:string;display_name:string;avatar:string;position:PresencePosition;direction:'up'|'down'|'left'|'right';
   animation_state:'idle'|'walk';activity:string;updated_at:string;
 }
-export interface PresenceAgent extends PresencePlayer {agent_id:string;strategy:string;kind:'canonical_agent'}
+export interface PresenceAgent extends PresencePlayer {agent_id:string;strategy:string;sprite:string;recent_winner:boolean;kind:'canonical_agent'}
 export interface PresenceSnapshot {world_id:string;players:PresencePlayer[];agents:PresenceAgent[]}
 export type PresenceEvent=
   |({type:'WorldJoined'}&PresenceSnapshot)
