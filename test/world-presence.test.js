@@ -21,6 +21,7 @@ test('signed visitors receive stable server-derived public identities and distin
   const reconnect=service.join('main',alice,{position:{x:900,y:100}});
   assert.equal(reconnect.player.player_id,a.player.player_id);assert.deepEqual(reconnect.player.position,{x:100,y:100},'refresh keeps the authoritative server position');
   assert.equal(reconnect.players.length,2);
+  assert.deepEqual(service.identityContext('main',alice),{world_id:'main',presence_id:a.player.player_id,display_name:a.player.display_name,avatar:'visitor_atlas',active:true,return_position:{x:-220,y:930}});
 });
 
 test('movement, heartbeat, leave, and resource authorization resolve from visitor ownership',()=>{

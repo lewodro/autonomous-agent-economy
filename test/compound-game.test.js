@@ -10,9 +10,10 @@ test('compound lobby fills with agents and hides secret roles from other viewers
   const game = new CompoundGame(await mkdtemp(path.join(os.tmpdir(), 'compound-')), { now: () => now, roundSeconds: 30, profiles: () => [{id:'founder',name:'Founder',strategy:'systems'}] });
   await game.restore();
   assert.throws(() => game.join('owner-a', {name:'Alice', avatar:'../../private.png'}), {code:'INVALID_COMPOUND_AVATAR'});
-  const joined = game.join('owner-a', {name:'Alice', avatar:'visitor_nova'});
+  const joined = game.join('owner-a', {name:'Alice', avatar:'visitor_nova', world_presence_id:'visitor_public_alice'});
   assert.equal(joined.phase, 'lobby');
   assert.equal(joined.participants.find(value => value.id === joined.you)?.avatar, 'visitor_nova');
+  assert.equal(joined.participants.find(value => value.id === joined.you)?.world_presence_id, 'visitor_public_alice');
   const active = game.startRound('owner-a');
   assert.equal(active.participants.length, 8);
   assert.equal(active.you, active.participants.find(value => value.name === 'Alice')?.id);

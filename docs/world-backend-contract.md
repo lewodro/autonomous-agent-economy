@@ -1,27 +1,27 @@
 # World backend contract
 
-The browser world is a presentation and presence layer. The server owns player sessions, arena room state, table turns, verified results, and research statistics. Presence is ephemeral; match and table checkpoints are durable.
+The browser renders the world, but one process-wide service owns its live human and canonical-agent presence. The server also owns anonymous visitor sessions, arena room state, table turns, verified results, and research statistics. Positions are deliberately ephemeral; match and table checkpoints are durable.
 
 ## Presence API
 
-Presence uses JSON HTTP commands and a read-only SSE stream. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client should interpolate between updates. Heartbeats are capped at one per second, and unchanged heartbeat activity is not broadcast. Each world accepts up to 100 concurrent SSE viewers. Sessions expire after 45 seconds without a heartbeat. The session token is an opaque capability and must stay in session storage, never in URLs or logs.
+Presence uses cookie-owned JSON HTTP commands and a read-only SSE stream. The signed, HttpOnly `aae_visitor` cookie is the owner boundary; browsers never choose a world actor ID or send a presence capability. Accepted movement is capped at one update per 66 ms (about 15 updates/second); the client interpolates between updates. Heartbeats are capped at one per second, and unchanged heartbeat activity is not broadcast. Each world accepts up to 100 concurrent SSE viewers. Actors expire after 45 seconds without a heartbeat, while the signed visitor identity remains stable for reconnect.
 
 | Operation | Endpoint | Request / result |
 | --- | --- | --- |
-| Join | `POST /api/worlds/:world/presence/join` | `{ player_id?, avatar?, position, direction?, activity? }`; returns snapshot, server ID, and `session_token` |
-| Snapshot | `GET /api/worlds/:world/presence` | Current public players, without tokens |
-| Subscribe | `GET /api/worlds/:world/presence/events` | SSE events: `WorldJoined`, `PlayerJoined`, `PlayerMoved`, `PlayerUpdated`, `PlayerLeft` |
-| Move | `POST /api/worlds/:world/presence/move` | `{ player_id, session_token, position, direction, animation_state }` |
-| Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ player_id, session_token, activity? }` |
-| Leave | `POST /api/worlds/:world/presence/leave` | `{ player_id, session_token }` |
+| Join | `POST /api/worlds/:world/presence/join` | `{ avatar?, position, direction?, activity? }`; returns the shared snapshot and server-derived `presence_id` |
+| Snapshot | `GET /api/worlds/:world/presence` | Current public humans and canonical agents, without private visitor IDs |
+| Subscribe | `GET /api/worlds/:world/presence/events` | SSE human and canonical-agent join/move/update/leave events |
+| Move | `POST /api/worlds/:world/presence/move` | `{ position, direction, animation_state }` |
+| Heartbeat | `POST /api/worlds/:world/presence/heartbeat` | `{ activity? }` |
+| Leave | `POST /api/worlds/:world/presence/leave` | `{}` |
 
-Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Player IDs are also validated. Avatar IDs must be approved in `assets/avatars/index.json`; an omitted avatar uses `visitor_ember`. Presence positions are avatar-center coordinates inside the walkable map rectangle (`x=52..1100`, `y=76..812` for the current 1152×864 map and 12 px collision radius). Moves are limited to the world controller's 150 px/s plus six pixels of jitter, with at most 250 ms of movement time credited per update, and requests are rate limited. Presence does not decide or persist game state. It is process-local, so production must run one application instance until a shared ephemeral presence store is added.
+Only configured world IDs are accepted; the public deployment currently configures `main`, so arbitrary valid-looking IDs cannot allocate process-local maps. Avatar IDs must be approved in `assets/avatars/index.json`; an omitted avatar uses `visitor_ember`. Presence positions are avatar-center coordinates inside the current walkable rectangle (`x=-844..2636`, `y=-500..1676`). Moves are limited to the world controller's 150 px/s plus bounded jitter, with at most 250 ms of movement time credited per update. Rejoining with the same cookie cannot overwrite the authoritative position. Presence is process-local, so production must run one application instance until a coordinated shared presence store is added.
 
-SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "main", "players": [] }`; delta events include `world_id` plus `player` or `player_id`. The browser types mirror this wire format.
+SSE data is flat: the initial event is `{ "type": "WorldJoined", "world_id": "main", "players": [], "agents": [] }`; deltas include `world_id` plus the affected public player or agent. Canonical agents use a single server route simulation with varied speed, direction, start point, and pause timing. Every browser interpolates the same positions instead of running a separate NPC world.
 
-`web/src/world/presence-client.ts` is wired into the `/world` page. It joins when a visitor enters, resumes the same capability after refresh, and supplies public snapshots to the canvas renderer. The renderer omits the current browser from remote actors and interpolates other visitors in its existing frame loop. Local changed positions are sent at up to 12.5 updates/second; heartbeats run once per second. Changing the selected avatar updates the existing server session. The Arena portal leaves explicitly. Page teardown closes the stream without deleting the session so refresh can reclaim it; an unclean exit expires after 45 seconds. `EventSource` reconnects automatically, and each `WorldJoined` replaces the snapshot before deltas. The opaque capability stays in session storage and is never included in event callbacks.
+`web/src/world/presence-client.ts` joins when a visitor enters and supplies public snapshots to the canvas renderer. The renderer omits the current browser, then interpolates other visitors and canonical agents in its frame loop. Local changed positions are sent at up to 12.5 updates/second; heartbeats run once per second. Refresh closes only the stream, preserving the actor long enough for the same signed cookie to reclaim it. Explicit portal travel leaves the live world actor. `EventSource` reconnects automatically, and each `WorldJoined` replaces the snapshot before deltas. No world identity or capability is stored in browser storage.
 
-`GET /api/health` reports presence status, active player/stream counts, configured-world count, and capacity limits. It exposes no player IDs or session capabilities; the mode is explicitly identified as single-process ephemeral.
+`GET /api/health` reports active human, canonical-agent, and stream counts plus configured-world and capacity limits. It exposes no visitor IDs. Compound responses include a server-derived `world_handoff` and human participants retain that public presence ID, so the same anonymous owner can queue, play, and return without merging private experiment state.
 
 ## Arena and research
 

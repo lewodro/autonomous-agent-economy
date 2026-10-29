@@ -202,12 +202,13 @@ const server = http.createServer(async (req, res) => {
     }
     if(route==='/api/compound'||route==='/api/compound/join'||route==='/api/compound/start'||route==='/api/compound/input'||route==='/api/compound/action'||route==='/api/compound/leave'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
-      if(req.method==='GET'&&route==='/api/compound')return json(res,200,compoundGame.snapshot(visitor.id),cookie);
+      const worldHandoff=worldPresence.identityContext('main',visitor.id);
+      if(req.method==='GET'&&route==='/api/compound')return json(res,200,{...compoundGame.snapshot(visitor.id),world_handoff:worldHandoff},cookie);
       if(req.method!=='POST')return json(res,405,{error:'Compound command requires POST'},cookie);
       if(!(route.endsWith('/input')?compoundInputs:compoundCommands).allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
       const data=await body(req,16_384);
-      const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
-      return json(res,200,result,cookie);
+      const result=route.endsWith('/join')?compoundGame.join(visitor.id,{...data,world_presence_id:worldHandoff.presence_id}):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
+      return json(res,200,{...result,world_handoff:worldHandoff},cookie);
     }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
