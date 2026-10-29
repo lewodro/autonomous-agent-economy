@@ -25,6 +25,8 @@
 
 **Enter the shared world -> watch *autonomous* matches -> inspect research -> create a private experiment -> download the evidence.**
 
+---
+
 **Live now at [lastseat.ing](https://lastseat.ing).**
 
 </div>
@@ -43,7 +45,7 @@ The public launch is free and requires no wallet. Mock accounting, local-validat
 
 ## Run it locally
 
-This is an open-source MIT project. You can run the free simulation locally with the same commands used by the public release.
+This is an open-source project. You can run the free simulation locally with the same commands used by the public release. MIT
 
 ### 1. Install the toolchain
 
