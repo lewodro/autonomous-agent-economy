@@ -2,10 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';
+import {generateKeyPairSync,sign} from 'node:crypto';
 import {WorldEconomy,RESOURCE_NODES} from '../service/world-economy.js';
 import {SolanaPayoutExecutorClient,WorldPayoutWorker} from '../service/solana-payouts.js';
 
 const wallet='11111111111111111111111111111111',signature='1'.repeat(64);
+const alphabet='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58(bytes){let value=0n;for(const byte of bytes)value=value*256n+BigInt(byte);let encoded='';while(value){encoded=alphabet[Number(value%58n)]+encoded;value/=58n;}for(const byte of bytes){if(byte)break;encoded='1'+encoded;}return encoded||'1';}
+async function verifyProfile(ledger){const {publicKey,privateKey}=generateKeyPairSync('ed25519'),address=base58(publicKey.export({format:'der',type:'spki'}).subarray(-32)),challenge=await ledger.createWalletChallenge('owner-a',{nickname:'Miro',wallet_address:address});await ledger.verifyWalletChallenge('owner-a',{challenge_id:challenge.challenge_id,signature:base58(sign(null,Buffer.from(challenge.message),privateKey))});}
 
 test('executor submits an idempotent bounded intent and verifies finalized chain status',async()=>{
   const calls=[];
@@ -22,7 +26,7 @@ test('payout worker submits once and reconciles confirmation on a later tick',as
   const executor={submit:async()=>{submits++;return{signature};},status:async()=>status==='confirmed'?{state:'confirmed',slot:77}:{state:'pending'}};
   const worker=new WorldPayoutWorker(ledger,executor,{intervalMs:60_000});
   try{
-    await ledger.restore();await ledger.linkProfile('owner-a',{nickname:'Miro',wallet_address:wallet});await ledger.gather('owner-a',{node_id:RESOURCE_NODES[0].id},RESOURCE_NODES[0].position);
+    await ledger.restore();await verifyProfile(ledger);await ledger.gather('owner-a',{node_id:RESOURCE_NODES[0].id},RESOURCE_NODES[0].position);
     await worker.tick();assert.equal(submits,1);assert.equal(ledger.snapshot('owner-a').receipts.at(-1).status,'submitted');
     await worker.tick();assert.equal(submits,1);assert.equal(ledger.snapshot('owner-a').receipts.at(-1).status,'submitted');
     status='confirmed';await worker.tick();assert.equal(ledger.snapshot('owner-a').receipts.at(-1).status,'confirmed');assert.equal(worker.health().confirmed,1);

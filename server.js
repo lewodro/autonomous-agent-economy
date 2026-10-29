@@ -164,13 +164,15 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res,405,{error:'Method not allowed'});
     }
-    if(route==='/api/world/economy'||route==='/api/world/economy/profile'||route==='/api/world/economy/gather'){
+    if(route==='/api/world/economy'||route==='/api/world/economy/profile'||route==='/api/world/economy/profile/challenge'||route==='/api/world/economy/profile/verify'||route==='/api/world/economy/gather'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(req.method==='GET'&&route==='/api/world/economy')return json(res,200,worldEconomy.snapshot(visitor.id),cookie);
       if(req.method!=='POST')return json(res,405,{error:'World economy command requires POST'},cookie);
       if(!worldEconomyCommands.allow())return json(res,429,{error:'World gathering is temporarily limited'},cookie);
       const data=await body(req,4096);
       if(route.endsWith('/profile'))return json(res,200,await worldEconomy.linkProfile(visitor.id,data),cookie);
+      if(route.endsWith('/challenge'))return json(res,200,await worldEconomy.createWalletChallenge(visitor.id,data),cookie);
+      if(route.endsWith('/verify'))return json(res,200,await worldEconomy.verifyWalletChallenge(visitor.id,data),cookie);
       const present=worldPresence.requirePlayer('main',data.player_id,data.session_token);
       return json(res,200,await worldEconomy.gather(visitor.id,data,present.position),cookie);
     }
