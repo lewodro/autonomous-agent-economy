@@ -26,6 +26,7 @@ const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const npcs:WorldActor[]=[];let profiles:AgentProfile[]=[];
 const agentTargets=new Map<string,{x:number;y:number}>();
+const labPinnedAgents=new Map<string,number>();
 const speechLimiter=new SpeechLimiter();
 const thoughtCounts=new Map<string,number>();
 let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
@@ -88,7 +89,7 @@ function syncCanonicalAgents(agents:PresenceAgent[]):void {
       npcs.push({id:'npc-'+value.agent_id,type:'npc',agentId:value.agent_id,name:value.display_name,position:{...value.position},facing,
         movementState:value.animation_state==='walk'?'walking':'idle',spriteId:sprite?.id||'founder',activity:value.activity,activityState:'wander',recentWinner:value.recent_winner});
     }
-    agentTargets.set(value.agent_id,{...value.position});
+    if((labPinnedAgents.get(value.agent_id)||0)<=performance.now())agentTargets.set(value.agent_id,{...value.position});
   }
   for(let index=npcs.length-1;index>=0;index--){
     const id=npcs[index]!.agentId;
@@ -405,7 +406,7 @@ if(location.pathname==='/labs/world'){
   const thought=document.createElement('button');thought.textContent='Offer nearest NPC thought';thought.onclick=()=>{
     const actor=[...npcs].sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)-Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y))[0];
     const profile=actor?.agentId?profiles.find(value=>value.id===actor.agentId):undefined;
-    if(actor&&profile){const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};}
+    if(actor&&profile){const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(profile.id,preview);labPinnedAgents.set(profile.id,performance.now()+25000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};}
   };lab.append(thought);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }

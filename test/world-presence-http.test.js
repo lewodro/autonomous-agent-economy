@@ -28,6 +28,12 @@ async function nextEvent(stream) {
     stream.buffered += stream.decoder.decode(value, { stream: true });
   }
 }
+async function nextEventOf(stream, expected) {
+  while (true) {
+    const event = await nextEvent(stream);
+    if (event.type === expected) return event;
+  }
+}
 
 test('presence HTTP snapshots and SSE stay consistent across two visitors and reconnects', { timeout: 20_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'world-presence-http-'));
@@ -49,11 +55,11 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
         if (match) { clearTimeout(timer); resolve(`http://127.0.0.1:${match[1]}`); }
       });
     });
-    const request = async (route, payload) => {
+    const request = async (route, payload, cookie = '') => {
       const response = await fetch(base + route, payload === undefined ? {} : {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(payload)
       });
-      return { status: response.status, data: await response.json() };
+      return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
     };
     const watch = async () => {
       const controller = new AbortController(); controllers.push(controller);
@@ -65,48 +71,48 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
     assert.equal(aliceInitial.type, 'WorldJoined');
     assert.equal(aliceInitial.data.world_id, 'main');
     assert.equal(aliceInitial.data.players.length, 0);
+    assert.equal(aliceInitial.data.agents.length, 6);
     assert.equal('snapshot' in aliceInitial.data, false, 'WorldJoined carries the snapshot fields directly');
-    const alice = await request('/api/worlds/main/presence/join', { player_id: 'alice', position: { x: 100, y: 100 } });
+    const alice = await request('/api/worlds/main/presence/join', { position: { x: 100, y: 100 } });
     assert.equal(alice.status, 201);
-    assert.equal((await nextEvent(aliceEvents)).data.player.player_id, 'alice');
+    const aliceId=alice.data.presence_id;
+    assert.equal((await nextEventOf(aliceEvents,'PlayerJoined')).data.player.player_id, aliceId);
 
     const bobEvents = await watch();
     const bobInitial = await nextEvent(bobEvents);
     assert.equal(bobInitial.type, 'WorldJoined');
-    assert.deepEqual(bobInitial.data.players.map(player => player.player_id), ['alice']);
-    const bob = await request('/api/worlds/main/presence/join', { player_id: 'bob', position: { x: 120, y: 100 } });
+    assert.deepEqual(bobInitial.data.players.map(player => player.player_id), [aliceId]);
+    const bob = await request('/api/worlds/main/presence/join', { position: { x: 120, y: 100 } });
     assert.equal(bob.status, 201);
-    const aliceSawBob = await nextEvent(aliceEvents);
+    const bobId=bob.data.presence_id;assert.notEqual(bobId,aliceId);
+    const aliceSawBob = await nextEventOf(aliceEvents,'PlayerJoined');
     assert.equal(aliceSawBob.type, 'PlayerJoined');
     assert.equal(aliceSawBob.data.world_id, 'main');
-    assert.equal(aliceSawBob.data.player.player_id, 'bob');
+    assert.equal(aliceSawBob.data.player.player_id, bobId);
     assert.equal(JSON.stringify(aliceSawBob).includes('session_token'), false);
 
     await new Promise(resolve => setTimeout(resolve, 70));
     const moved = await request('/api/worlds/main/presence/move', {
-      player_id: 'bob', session_token: bob.data.session_token,
       position: { x: 135, y: 100 }, direction: 'right', animation_state: 'walk'
-    });
+    },bob.cookie);
     assert.equal(moved.status, 200);
-    const movementEvent = await nextEvent(aliceEvents);
+    const movementEvent = await nextEventOf(aliceEvents,'PlayerMoved');
     assert.equal(movementEvent.type, 'PlayerMoved');
     assert.deepEqual(movementEvent.data.player.position, { x: 135, y: 100 });
 
-    const reconnected = await request('/api/worlds/main/presence/join', {
-      player_id: 'bob', session_token: bob.data.session_token, position: { x: 900, y: 100 }
-    });
+    const reconnected = await request('/api/worlds/main/presence/join', { position: { x: 900, y: 100 } },bob.cookie);
     assert.deepEqual(reconnected.data.player.position, { x: 135, y: 100 });
-    const updateEvent = await nextEvent(aliceEvents);
+    const updateEvent = await nextEventOf(aliceEvents,'PlayerUpdated');
     assert.equal(updateEvent.type, 'PlayerUpdated');
     assert.deepEqual(updateEvent.data.player.position, { x: 135, y: 100 });
     assert.deepEqual((await request('/api/worlds/main/presence')).data.players.map(player => player.position), [{ x: 100, y: 100 }, { x: 135, y: 100 }]);
 
-    const left = await request('/api/worlds/main/presence/leave', { player_id: 'bob', session_token: bob.data.session_token });
+    const left = await request('/api/worlds/main/presence/leave', {},bob.cookie);
     assert.equal(left.status, 200);
-    const leaveEvent = await nextEvent(aliceEvents);
+    const leaveEvent = await nextEventOf(aliceEvents,'PlayerLeft');
     assert.equal(leaveEvent.type, 'PlayerLeft');
-    assert.equal(leaveEvent.data.player_id, 'bob');
-    assert.deepEqual((await request('/api/worlds/main/presence')).data.players.map(player => player.player_id), ['alice']);
+    assert.equal(leaveEvent.data.player_id, bobId);
+    assert.deepEqual((await request('/api/worlds/main/presence')).data.players.map(player => player.player_id), [aliceId]);
   } finally {
     for (const controller of controllers) controller.abort();
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }

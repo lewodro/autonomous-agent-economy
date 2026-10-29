@@ -11,7 +11,7 @@ const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolv
 let nextId=0;const pending=new Map(),errors=[];
 socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timer);pending.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}}if(message.method==='Runtime.exceptionThrown')errors.push(message.params.exceptionDetails.text);});
 const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Browser command timed out: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
-const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+const evaluate=async expression=>{let r;try{r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});}catch(error){throw new Error(`${error?.message||error}; expression=${expression.slice(0,240)}`);}if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
@@ -21,7 +21,7 @@ async function connectSecondBrowser(){
  const secondSocket=new WebSocket(secondTarget.webSocketDebuggerUrl);await new Promise(resolve=>secondSocket.addEventListener('open',resolve,{once:true}));let id=0;const requests=new Map();
  secondSocket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(!message.id)return;const request=requests.get(message.id);if(request){clearTimeout(request.timer);requests.delete(message.id);message.error?request.reject(message.error):request.resolve(message.result);}});
  const secondSend=(method,params={})=>new Promise((resolve,reject)=>{const requestId=++id,timer=setTimeout(()=>{requests.delete(requestId);reject(new Error('Second browser command timed out: '+method));},20000);requests.set(requestId,{resolve,reject,timer});secondSocket.send(JSON.stringify({id:requestId,method,params}));});
- const secondEvaluate=async expression=>{const result=await secondSend('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
+ const secondEvaluate=async expression=>{let result;try{result=await secondSend('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});}catch(error){throw new Error(`${error?.message||error}; second expression=${expression.slice(0,240)}`);}if(result.exceptionDetails)throw new Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
  const secondWait=async(expression,timeoutMs=15000)=>{for(let attempt=0;attempt<Math.ceil(timeoutMs/100);attempt++){if(await secondEvaluate(expression))return;await delay(100);}throw new Error('Second browser condition timed out: '+expression);};
  return{send:secondSend,evaluate:secondEvaluate,wait:secondWait,close:()=>{for(const request of requests.values())clearTimeout(request.timer);secondSocket.close();}};
 }
@@ -29,7 +29,7 @@ let secondBrowser;
 let failed=false;
 try{
  await send('Runtime.enable');await send('Page.enable');await send('Page.bringToFront');
- await send('Page.addScriptToEvaluateOnNewDocument',{source:"window.__presenceRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await nativeFetch(...args);if(String(args[0]).includes('/presence/')){let body={};try{body=await response.clone().json()}catch{}window.__presenceRequests.push({path:String(args[0]),status:response.status,code:body.code})}return response}"});
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:"window.__presenceRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await nativeFetch(...args);if(String(args[0]).includes('/presence/')){let body={};try{body=await response.clone().json()}catch{}window.__presenceRequests.push({path:String(args[0]),status:response.status,code:body.code,presence_id:body.presence_id})}return response}"});
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
  await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1')");
@@ -45,20 +45,22 @@ try{
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
  await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
- let localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
+ let localPlayerId=await evaluate("window.__presenceRequests.findLast(value=>value.presence_id)?.presence_id");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  await evaluate("document.querySelector('[data-avatar=visitor_atlas]').click()");
  await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)})?.avatar==='visitor_atlas')`);
  await evaluate("document.getElementById('character-close').click()");
- const guest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',avatar:'visitor_atlas',position:{x:680,y:420}})}).then(async r=>({status:r.status,...await r.json()}))");
- assert.equal(guest.status,201,'the second visitor should join the same world');
+ secondBrowser=await connectSecondBrowser();await secondBrowser.send('Runtime.enable');await secondBrowser.send('Page.enable');
+ await secondBrowser.send('Page.navigate',{url:base+'/world'});await secondBrowser.wait('document.getElementById("character-dialog")?.open');
+ const secondWorldJoin=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:560,y:480},direction:'down',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))");
+ assert.equal(secondWorldJoin.status,201,'the independent browser should receive its own world actor');assert.notEqual(secondWorldJoin.presence_id,localPlayerId);
  await wait("document.getElementById('connection').textContent.includes('2 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('1 other visitor online')");
  await screenshot('multiplayer-plaza');
- await delay(80);
- const guestMove=await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)},position:{x:690,y:420},direction:'right',animation_state:'walk'})}).then(r=>r.status)`);
- assert.equal(guestMove,200,'a joined visitor should publish a validated move');
- const guestLeave=await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-guest',session_token:${JSON.stringify(guest.session_token)}})}).then(r=>r.status)`);
- assert.equal(guestLeave,200,'the second visitor should be able to leave');
+ const guestBefore=await secondBrowser.evaluate("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id!=="+JSON.stringify(localPlayerId)+").position.x)");
+ await delay(80);assert.equal(await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:${guestBefore+12},y:480},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200);
+ await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id!==${JSON.stringify(localPlayerId)}&&p.position.x>${guestBefore+5}))`);
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200,'the second visitor should be able to leave');
+ await secondBrowser.send('Page.navigate',{url:base+'/post'});await secondBrowser.wait('location.pathname.startsWith("/post")');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
  // The shared world keeps the current public Arena roster visible in the
  // plaza while they wait for the next match.  Assert that the roster is
@@ -154,11 +156,10 @@ try{
  await screenshot('npc-dialogue');
  await evaluate("document.getElementById('interaction-close').click()");
  await wait("!document.getElementById('interaction-dialog').open&&!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
- await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name==="+JSON.stringify(talkingAgent)+"&&n.activityState==='talking')");
  await evaluate("window.__talkPosition=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+").position");
- // The canonical Arena may claim this NPC while the browser waits. That is a
- // valid roster transition; otherwise the actor must resume a normal state.
- await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return !n||!['attention','talking','cooldown'].includes(n.activityState)})()",15000);
+ // Personal thought state is client-local; authoritative movement continues
+ // independently and every visitor still sees the same canonical position.
+ await wait("(()=>{const n=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.name==="+JSON.stringify(talkingAgent)+");return !n||!n.attention})()",15000);
  // Developer probes start just inside each former edge. Walking through those
  // coordinates exercises the real input, collision, camera and canvas paths.
  const walkProbe=async(label,key,axis,threshold,screenshotName)=>{
@@ -168,7 +169,7 @@ try{
   await delay(950);
   await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
   await wait(`(()=>{const state=JSON.parse(document.querySelector('#world-lab pre').textContent);return state.player.${axis}${threshold}})()`);
-  await wait("(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player,pid=sessionStorage.getItem('aae-world-presence-v1:main:player');return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===pid);return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()");
+  await wait(`(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)});return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()`);
   await screenshot(screenshotName);
  };
  await walkProbe('west','a','x','<0','west-expansion');
@@ -199,27 +200,27 @@ try{
  };
  await holdWorldKey('d',1700);await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.x>1525");
  await holdWorldKey('w',750);await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.y<380");
- await wait("(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player,pid=sessionStorage.getItem('aae-world-presence-v1:main:player');return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===pid);return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()");
+ await wait(`(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)});return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()`);
  await screenshot('agency-walk-in');
  await teleportProbe('agency',1568,340,'agency');
- const eastGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',avatar:'visitor_atlas',position:{x:1300,y:460}})}).then(async r=>({status:r.status,...await r.json()}))");
+ const eastGuest=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_atlas',position:{x:1300,y:460}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(eastGuest.status,201,'a second visitor can enter the east road');
  await delay(80);
- assert.equal(await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',session_token:${JSON.stringify(eastGuest.session_token)},position:{x:1312,y:460},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200,'second visitor moves on the same east road');
- await wait("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id==='browser-smoke-east'&&p.position.x===1312))");
- assert.equal(await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-east',session_token:${JSON.stringify(eastGuest.session_token)}})}).then(r=>r.status)`),200);
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:1312,y:460},direction:'right',animation_state:'walk'})}).then(r=>r.status)"),200,'second visitor moves on the same east road');
+ await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id===${JSON.stringify(eastGuest.presence_id)}&&p.position.x===1312))`);
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200);
  await teleportProbe('market',820,1320,'south-market');
- const westGuest=await evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
+ const westGuest=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_atlas',position:{x:-120,y:430}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(westGuest.status,201,'a second visitor can enter the west extension');
- await wait("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id==='browser-smoke-west'&&p.position.x===-120))");
+ await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id===${JSON.stringify(westGuest.presence_id)}&&p.position.x===-120))`);
  await delay(80);
- assert.equal(await evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',session_token:${JSON.stringify(westGuest.session_token)},position:{x:-108,y:430},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200,'second visitor moves beyond the former west boundary');
- assert.equal(await evaluate(`fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:'browser-smoke-west',session_token:${JSON.stringify(westGuest.session_token)}})}).then(r=>r.status)`),200);
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:-108,y:430},direction:'right',animation_state:'walk'})}).then(r=>r.status)"),200,'second visitor moves beyond the former west boundary');
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200);
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
- const releasedPresence=await evaluate("(()=>{const player=sessionStorage.getItem('aae-world-presence-v1:main:player'),token=sessionStorage.getItem('aae-world-presence-v1:main:token');return fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:player,session_token:token})}).then(r=>{sessionStorage.removeItem('aae-world-presence-v1:main:player');sessionStorage.removeItem('aae-world-presence-v1:main:token');return r.status})})()");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');
+ const releasedPresence=await evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');
  await send('Page.reload');await wait('document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
- localPlayerId=await evaluate("sessionStorage.getItem('aae-world-presence-v1:main:player')");assert.ok(localPlayerId);
+ localPlayerId=await evaluate("window.__presenceRequests.findLast(value=>value.presence_id)?.presence_id");assert.ok(localPlayerId);
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
  await delay(3100);const before=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x');
@@ -239,7 +240,7 @@ try{
  await send('Page.navigate',{url:base+'/compound'});await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
  await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='lobby')");
  await evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Browser Compound'})}).then(r=>r.json())");
- secondBrowser=await connectSecondBrowser();await secondBrowser.send('Runtime.enable');await secondBrowser.send('Page.enable');await secondBrowser.send('Page.navigate',{url:base+'/compound'});await secondBrowser.wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
+ await secondBrowser.send('Page.navigate',{url:base+'/compound'});await secondBrowser.wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
  await secondBrowser.evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Second Browser'})}).then(r=>r.json())");
  await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.participants.filter(p=>p.type==='human').length===2)");
  await wait("document.getElementById('compound-lobby').textContent.includes('Start round')");
