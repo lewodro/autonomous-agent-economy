@@ -26,7 +26,7 @@ function decodeBase58Size(value){
   return bytes+leading;
 }
 export function validSolanaAddress(value){return typeof value==='string'&&value.length>=32&&value.length<=44&&decodeBase58Size(value)===32;}
-function validSignature(value){return typeof value==='string'&&value.length>=64&&value.length<=100&&decodeBase58Size(value)===64;}
+export function validSolanaSignature(value){return typeof value==='string'&&value.length>=64&&value.length<=100&&decodeBase58Size(value)===64;}
 function cleanErrorCode(value){return String(value||'PAYOUT_RETRY').replace(/[^A-Z0-9_-]/gi,'_').slice(0,64);}
 function utcDay(timestamp){return new Date(timestamp).toISOString().slice(0,10);}
 
@@ -75,7 +75,7 @@ export class WorldEconomy {
     return{reward_id:receipt.reward_id,idempotency_key:receipt.idempotency_key,user_id:receipt.user_id,recipient:receipt.wallet_address,treasury:receipt.treasury_address,amount_lamports:receipt.amount_lamports,claim_token:receipt.claim_token};
   }
   findClaim(rewardId,claimToken){const receipt=this.state.receipts.find(value=>value.reward_id===rewardId);if(!receipt||receipt.status!=='submitting'||receipt.claim_token!==claimToken)throw fail('PAYOUT_CLAIM_STALE','Payout claim is stale',409);return receipt;}
-  async markSubmitted(rewardId,claimToken,signature){if(!validSignature(signature))throw fail('INVALID_TRANSACTION_SIGNATURE','Executor returned an invalid Solana signature',502);const receipt=this.findClaim(rewardId,claimToken);receipt.status='submitted';receipt.transaction_signature=signature;receipt.submitted_at=new Date(this.now()).toISOString();delete receipt.claim_token;delete receipt.lease_expires_at;await this.persist();return this.publicReceipt(receipt);}
+  async markSubmitted(rewardId,claimToken,signature){if(!validSolanaSignature(signature))throw fail('INVALID_TRANSACTION_SIGNATURE','Executor returned an invalid Solana signature',502);const receipt=this.findClaim(rewardId,claimToken);receipt.status='submitted';receipt.transaction_signature=signature;receipt.submitted_at=new Date(this.now()).toISOString();delete receipt.claim_token;delete receipt.lease_expires_at;await this.persist();return this.publicReceipt(receipt);}
   async retryPayout(rewardId,claimToken,errorCode,{delayMs=30_000}={}){const receipt=this.findClaim(rewardId,claimToken);receipt.last_error_code=cleanErrorCode(errorCode);receipt.status=receipt.payout_attempts>=this.maxPayoutAttempts?'failed':'retryable';if(receipt.status==='retryable')receipt.retry_at=new Date(this.now()+delayMs).toISOString();delete receipt.claim_token;delete receipt.lease_expires_at;await this.persist();return this.publicReceipt(receipt);}
   submittedPayouts(){return this.state.receipts.filter(receipt=>receipt.status==='submitted').map(receipt=>({reward_id:receipt.reward_id,transaction_signature:receipt.transaction_signature}));}
   async markConfirmed(rewardId,signature,slot){const receipt=this.state.receipts.find(value=>value.reward_id===rewardId);if(!receipt||receipt.status!=='submitted'||receipt.transaction_signature!==signature)throw fail('PAYOUT_SUBMISSION_STALE','Payout submission is stale',409);receipt.status='confirmed';receipt.confirmed_at=new Date(this.now()).toISOString();receipt.confirmed_slot=slot;await this.persist();return this.publicReceipt(receipt);}
