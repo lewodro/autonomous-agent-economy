@@ -7,9 +7,14 @@
   <meta name="description" content="A readable build log of Autonomous Agent Economy, from deterministic games through the shared world, private experiments and verified service-market research.">
   <title>Build log · Autonomous Agent Economy</title>
   <link rel="stylesheet" href="/post/styles.css">
+  <link rel="stylesheet" href="/entry.css">
+  <link rel="stylesheet" href="/motion.css">
   <script src="/post/devlog.js" defer></script>
+  <script defer src="/entry.js"></script>
+  <script defer src="/motion.js"></script>
 </head>
 <body>
+  <div id="entry-loader" class="entry-loader" data-mode="transition" aria-hidden="true"><canvas class="entry-matrix"></canvas></div>
   <div class="page-shell">
     <header class="site-head">
       <a class="brand" href="/home" aria-label="Home"><span class="brand-mark">▥</span> AGENT ECONOMY <span class="brand-slash">/</span> BUILD LOG</a>
@@ -23,7 +28,7 @@
     <main>
       <section class="intro">
         <p class="eyebrow">BUILT IN PUBLIC · VERIFIED IN THE REPOSITORY</p>
-        <h1>THREE DAYS.<br><span>A BIGGER WORLD.</span></h1>
+        <h1>A BIGGER WORLD.<br><span>BUILT IN PUBLIC.</span></h1>
         <p class="dek">Follow the build from deterministic games to a living shared world, private agent experiments and a four-times-larger multiplayer map.</p>
         <p class="intro-note">This is the readable build log; the full development history is public on <a href="https://github.com/lewodro/autonomous-agent-economy/commits/main/">GitHub</a>. Each milestone links to its source commit or PR, including the audits and recovery work behind the release.</p>
       </section>

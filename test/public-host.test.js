@@ -77,17 +77,21 @@ test('private experiments survive restart and stay isolated while the world stay
     const bobSeat = await request(running.base, '/api/world/table/join', { mode: 'human' });
     assert.equal(aliceSeat.body.yourSeat, 'human-x'); assert.equal(bobSeat.body.yourSeat, 'human-o');
     assert.equal((await request(running.base, '/api/world/table/start', {}, aliceSeat.cookie)).body.status, 'playing');
-    for (const route of ['/', '/home', '/rps', '/post', '/post/', '/post/styles.css', '/entry.css', '/entry.js']) {
+    for (const route of ['/', '/home', '/rps', '/post', '/post/', '/post/styles.css', '/entry.css', '/entry.js', '/motion.css', '/motion.js']) {
       const page = await fetch(running.base + route, { headers: { Host: 'seat.example', Origin: 'https://seat.example' } });
       assert.equal(page.status, 200, `${route} is served in production`);
       const content = await page.text();
-      if (route === '/') assert.match(content, /id="character-dialog"/, 'the root route serves the world page');
-      if (route === '/home' || route === '/rps') assert.match(content, /id="entry-loader"/);
+      if (route === '/') {
+        assert.match(content, /id="character-dialog"/, 'the root route serves the world page');
+        assert.match(content, /id="entry-loader"[^>]*data-mode="intro"/, 'the root route plays the intro');
+      }
+      if (route === '/home' || route === '/rps') assert.match(content, /id="entry-loader"[^>]*data-mode="transition"/);
       if (route === '/post' || route === '/post/') {
         assert.match(content, /BUILT IN PUBLIC/);
         assert.match(content, /id="devlog"/);
+        assert.doesNotMatch(content, /THREE DAYS/);
       }
-      if (route === '/entry.js') assert.match(content, /DURATION_MS = 3600/);
+      if (route === '/entry.js') assert.match(content, /window\.entryGate/);
     }
     const capabilities = await request(running.base, '/api/capabilities');
     assert.deepEqual(capabilities.body.funded_modes, []);

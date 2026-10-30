@@ -411,4 +411,5 @@ if(location.pathname==='/labs/world'){
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-void presetButtons().then(()=>{if(!entered)character.showModal();else{canvas.focus();startPresence();}void refreshProfiles();void refreshWorldLive();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});
+const entryGate=(window as unknown as {entryGate?:Promise<void>}).entryGate??Promise.resolve();
+void presetButtons().then(()=>{if(!entered)void entryGate.then(()=>{if(!entered)character.showModal();});else{canvas.focus();startPresence();}void refreshProfiles();void refreshWorldLive();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});

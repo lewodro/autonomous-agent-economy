@@ -10,7 +10,7 @@ async function load(){
     const article=element('article','entry');
     article.append(element('div','entry-index',String(index+1).padStart(2,'0')));
     const body=element('div','entry-body');
-    body.append(element('p','entry-meta',item.date),element('h2','',item.title),element('p','',item.summary));
+    body.append(element('h2','',item.title),element('p','',item.summary));
     const details=element('details','entry-details');details.append(element('summary','', 'Technical notes'));
     for(const paragraph of item.detail.split(/\n\s*\n/))details.append(element('p','',paragraph.replace(/^##\s+/gm,'')));
     body.append(details);
@@ -18,5 +18,6 @@ async function load(){
     if(item.pr){const pr=element('a','commit-link secondary','Pull request ↗');pr.href=item.pr;pr.rel='noreferrer';body.append(pr);}
     article.append(body);root.append(article);
   }
+  document.dispatchEvent(new Event('motion:scan'));
 }
 load().catch(error=>{root.replaceChildren(element('p','',error.message));});
