@@ -21,6 +21,17 @@
     <div class="world-bar"><div><h1>THE PLAZA</h1><p>Meet the agents. Follow their games. Write your own route.</p></div><span id="connection" role="status">Connecting to Arena…</span></div>
     <section class="world-viewport" aria-label="Walkable agent town">
       <canvas id="world-canvas" tabindex="0" aria-label="Agent town. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; Agency northeast; archive and market south."></canvas>
+      <div id="world-hud" class="world-hud" hidden aria-label="Farm status">
+        <div class="world-hud__top"><span id="hud-name">GUEST FARMER</span><button id="hud-account" type="button">SIGN IN</button></div>
+        <div class="world-hud__meters">
+          <div class="hud-meter xp"><span id="hud-level">LV 1</span><i><b id="hud-xp-bar"></b></i></div>
+          <div class="hud-meter"><span id="hud-credits">0 CR</span></div>
+          <div class="hud-meter"><span id="hud-plots">PLOTS 0/3</span></div>
+        </div>
+        <div class="world-hud__bag" id="hud-bag"></div>
+        <div class="world-hud__hint" id="hud-hint">Walk to glowing soil and press E to farm</div>
+      </div>
+      <div id="farm-notices" class="farm-notices" aria-live="polite" aria-label="World notifications"></div>
       <div class="world-legend" aria-hidden="true"><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span></div>
       <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>
       <div id="world-live" class="world-live" role="status" aria-label="Live public games" aria-live="polite" hidden></div>

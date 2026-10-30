@@ -30,6 +30,9 @@ import { ensureProductionStorage } from './service/production-storage.js';
 import { PrivateArenaManager } from './service/private-arena.js';
 import { CompoundGame } from './service/compound-game.js';
 import { WorldEconomy } from './service/world-economy.js';
+import { WorldFarm } from './service/world-farm.js';
+import { WorldStore } from './service/world-store.js';
+import { createClerkVerifier, accountCookie, clearAccountCookie, accountSession } from './service/world-identity.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
@@ -65,6 +68,14 @@ const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
 });
 const worldTable=new TableSession(path.join(directory,'world'));
+const worldStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null});
+const clerk=createClerkVerifier({publishableKey:process.env.CLERK_PUBLISHABLE_KEY||null});
+const worldFarm=new WorldFarm(worldStore,{
+  creditsPerMinute:Number(process.env.WORLD_CREDITS_PER_MINUTE||1),
+  lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
+  minWithdrawalCredits:Number(process.env.WORLD_MIN_WITHDRAWAL_CREDITS||50),
+});
+const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
 const worldAgents=new WorldAgentPresenceService({profiles:()=>arenaRooms.profiles()});
@@ -179,6 +190,46 @@ const server = http.createServer(async (req, res) => {
       const present=worldPresence.requireVisitor('main',visitor.id);
       return json(res,200,await worldEconomy.gather(visitor.id,data,present.position),cookie);
     }
+    if(route==='/api/world/auth'||route==='/api/world/auth/clerk'||route==='/api/world/auth/logout'){
+      if(route==='/api/world/auth'){
+        if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
+        return json(res,200,{provider:'clerk',configured:clerk.configured,publishable_key:clerk.publishableKey});
+      }
+      if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+      if(route.endsWith('/logout'))return json(res,200,{ok:true},{'Set-Cookie':clearAccountCookie()});
+      if(!clerk.configured)return json(res,503,{error:'Social login is not configured on this deployment'});
+      if(!farmCommands.allow())return json(res,429,{error:'Too many sign-in attempts. Try again shortly.'});
+      const data=await body(req,8192);
+      let verified;
+      try{verified=await clerk.verify(data.token);}catch{return json(res,401,{error:'Sign-in could not be verified'});}
+      const visitor=visitorSession(req),visitorCookie=visitor.cookie;
+      const name=String(verified.name||verified.email||'').split('@')[0];
+      const result=await worldFarm.adopt(`guest:${visitor.id}`,{key:verified.key,provider:'clerk',subject:verified.subject,name});
+      const cookies=[visitorCookie,accountCookie(verified.key)].filter(Boolean);
+      return json(res,200,result,{'Set-Cookie':cookies});
+    }
+    if(route==='/api/world/farm'||route.startsWith('/api/world/farm/')){
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      const accountKey=accountSession(req);
+      const identity=accountKey?{key:accountKey,provider:'clerk'}:{key:`guest:${visitor.id}`,provider:'guest'};
+      const auth={provider:'clerk',configured:clerk.configured,signed_in:Boolean(accountKey)};
+      if(route==='/api/world/farm'){
+        if(req.method!=='GET')return json(res,405,{error:'Method not allowed'},cookie);
+        return json(res,200,{...worldFarm.snapshot(identity),auth},cookie);
+      }
+      if(req.method!=='POST')return json(res,405,{error:'Farm command requires POST'},cookie);
+      if(!farmCommands.allow())return json(res,429,{error:'Farm actions are temporarily limited'},cookie);
+      const action=route.slice('/api/world/farm/'.length);
+      if(!['plant','harvest','sell','heartbeat','wallet','payout'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
+      const data=await body(req,4096);
+      if(action==='heartbeat')return json(res,200,{...await worldFarm.heartbeat(identity,data),auth},cookie);
+      if(action==='wallet')return json(res,200,{...await worldFarm.linkWallet(identity,data),auth},cookie);
+      if(action==='payout')return json(res,200,{...await worldFarm.requestPayout(identity,data),auth},cookie);
+      const present=worldPresence.requireVisitor('main',visitor.id);
+      if(action==='plant')return json(res,200,{...await worldFarm.plant(identity,data,present.position),auth},cookie);
+      if(action==='harvest')return json(res,200,{...await worldFarm.harvest(identity,data,present.position),auth},cookie);
+      return json(res,200,{...await worldFarm.sell(identity,data,present.position),auth},cookie);
+    }
     const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
     if(roomSpectatorRoute){
       if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
@@ -261,7 +312,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -397,7 +448,7 @@ const server = http.createServer(async (req, res) => {
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });
-try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();await worldEconomy.restore();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
+try{await replayArchive.reconcile();await experiments.restore();await runtime.restore(core,sessions);await funded.restore();await arenaRooms.restore();await arenaSurvival.restore();await worldTable.restore();await compoundGame.restore();await worldEconomy.restore();await worldStore.open();await worldFarm.restore();worldFarm.start();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();}catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
 const {host,port}=deployment;
 server.listen(port, host, () => {
   const actualPort=server.address().port;
@@ -413,7 +464,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),funded.close()]).then(()=>true);
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),worldFarm.close(),funded.close()]).then(()=>true);
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

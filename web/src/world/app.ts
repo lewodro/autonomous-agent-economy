@@ -10,6 +10,7 @@ import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
+import { FarmClient, FarmHud, CROPS, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -42,6 +43,14 @@ const events:WorldEvent[]=[];
 let interactionVersion=0;
 let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
 let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
+const farmClient=new FarmClient(),farmHud=new FarmHud();
+let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
+const knownTiles=new Map<string,string>();
+const auth=createAuth(async()=>{
+  const response=await fetch('/api/world/auth',{signal:AbortSignal.timeout(5000)});
+  if(!response.ok)throw new Error('Sign-in service unavailable');
+  return await response.json() as {configured:boolean;publishable_key:string|null};
+});
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
 function updateWorldLabel():void {
@@ -138,10 +147,146 @@ function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {c
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
 interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;wallet_address:string|null;wallet_link_status:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string;amount_lamports?:number;transaction_signature?:string|null}>}
 async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;return result;}
-async function showBazaar():Promise<void>{const version=show('BAZAAR · link profile');text('p','Loading your local world profile…');try{const snapshot=await loadWorldEconomy();if(!dialog.open||version!==interactionVersion)return;content.replaceChildren();text('p',`${snapshot.profile.credits} TEST CREDITS · gathered in this world. Test credits are not SOL.`);const form=document.createElement('form');form.className='world-profile-form';const nickname=document.createElement('input');nickname.placeholder='Public nickname';nickname.maxLength=24;nickname.value=snapshot.profile.nickname;const wallet=document.createElement('input');wallet.placeholder='Public Solana wallet address (optional)';wallet.maxLength=44;wallet.value=snapshot.profile.wallet_address||'';const save=document.createElement('button');save.type='submit';save.textContent='Link profile';form.append(nickname,wallet,save);content.append(form);const status=text('p',snapshot.profile.wallet_link_status==='self_declared'?'Wallet saved as self-declared; ownership is not yet verified.':'No wallet linked. Never enter a seed phrase or private key.');form.onsubmit=event=>{event.preventDefault();save.disabled=true;void fetch('/api/world/economy/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nickname:nickname.value,wallet_address:wallet.value})}).then(async response=>{const result=await response.json() as {error?:string;wallet_link_status?:string};if(!response.ok)throw new Error(result.error||'Profile update failed');status.textContent=result.wallet_link_status==='self_declared'?'Public wallet saved. Verification and payout remain separate.':'Profile saved without a wallet.';}).catch(error=>status.textContent=error instanceof Error?error.message:'Profile update failed').finally(()=>save.disabled=false);};
-    if(snapshot.treasury.public_address){text('h3','Public treasury');text('p',snapshot.treasury.public_address);text('p',snapshot.treasury.payouts_enabled?'Eligible linked-wallet receipts can be paid by the external treasury signer.':'Treasury is visible, but real payouts are disabled.');}
-    text('h3','Recent reward receipts');if(!snapshot.receipts.length)text('p','No gathering receipts yet.');for(const receipt of snapshot.receipts.slice().reverse().slice(0,8))text('p',`${receipt.amount_credits} credits · ${receipt.source_action.replace(':',' ')} · ${receipt.status}`);
-  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The bazaar terminal is temporarily unavailable.');}}}
+const ANCHORS:Record<string,string>={
+  'garden-north':'the botanical garden','garden-east':'the garden east beds','garden-south':'the garden south beds',
+  'garden-west':'the garden west beds','garden-path':'the garden path','market-north':'the north market','market-east':'the east market',
+  'plaza-south':'the plaza edge','south-field':'the south field','south-meadow':'the south meadow','east-workshop':'the east workshop',
+  'west-trail':'the west trail','market-home':'the market homes',
+};
+function cropLabel(crop:CropKind|null):string{return crop?crop.charAt(0).toUpperCase()+crop.slice(1):'produce';}
+function anchorLabel(anchor:string):string{return ANCHORS[anchor]||'the farm grounds';}
+function sparkle(position:{x:number;y:number},colors:string[],count=10):void{const time=performance.now();for(let index=0;index<count;index++){const angle=index/count*Math.PI*2,range=16+(index%3)*6;particles.push({id:`plot-${time}-${index}`,position:{...position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-12},color:colors[index%colors.length]!,expiresAt:time+650});}}
+function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
+function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
+async function loadFarm():Promise<void>{
+  try{
+    const snapshot=await farmClient.load(),previous=farmSnapshot;
+    farmSnapshot=snapshot;farmHud.show(snapshot);
+    for(const tile of snapshot.tiles){
+      const before=knownTiles.get(tile.id);
+      if(previous&&before===undefined)farmHud.notice(`New farm plot appeared in ${anchorLabel(tile.anchor)}`,'info');
+      if(before==='growing'&&tile.stage==='ready'&&tile.mine)farmHud.notice(`${cropLabel(tile.crop)} ready at ${anchorLabel(tile.anchor)}`,'good');
+      knownTiles.set(tile.id,tile.stage);
+    }
+  }catch{/* the HUD keeps the last snapshot until the next poll */}
+}
+async function plantPlot(tile:FarmTile,crop:CropKind):Promise<void>{
+  try{
+    const result=await farmClient.post('plant',{tile_id:tile.id,crop});
+    mergeFarmTile(result.tile as FarmTile|undefined);mergeFarmAccount(result.account as FarmAccount|undefined);
+    knownTiles.set(tile.id,'growing');
+    farmHud.notice(`Planted ${cropLabel(crop)} · ready in about ${Math.round(Number(result.grow_ms)/1000)}s`,'good');
+    dialog.close();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Planting failed','warn');}
+}
+async function harvestPlot(tile:FarmTile):Promise<void>{
+  try{
+    const result=await farmClient.post('harvest',{tile_id:tile.id});
+    mergeFarmTile(result.tile as FarmTile|undefined);mergeFarmAccount(result.account as FarmAccount|undefined);
+    knownTiles.set(tile.id,'wild');
+    sparkle(tile.position,tile.crop==='pumpkin'?['#d98336','#f0cf75','#6fa15c']:tile.crop==='carrot'?['#d8843f','#7ea55b','#f0cf75']:['#dcc46f','#b8944d','#f0cf75']);
+    farmHud.notice(`Harvested +1 ${cropLabel(tile.crop)} · carry it to the bazaar`,'good');
+    burstAtBazaarHint();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Harvesting failed','warn');}
+}
+let bazaarHinted=false;
+function burstAtBazaarHint():void{if(bazaarHinted||!farmSnapshot)return;const carrying=CROPS.reduce((sum,kind)=>sum+(farmSnapshot?.account?.inventory[kind]||0),0);if(carrying>0&&!bazaarHinted){bazaarHinted=true;farmHud.notice('Follow the arrow to the bazaar to sell your produce','info');}}
+function showFarmPlot(tile:FarmTile):void{
+  if(tile.mine&&tile.stage!=='wild'){void harvestPlot(tile);return;}
+  show(tile.stage==='wild'?'FARM PLOT · plant':`${cropLabel(tile.crop)} · ${tile.stage}`);
+  if(tile.stage==='wild'){
+    text('p','Empty soil. Pick a crop; it ripens in one to two minutes.');
+    const choices=document.createElement('div');choices.className='farm-plant-options';
+    for(const kind of CROPS){const crop=farmSnapshot?.crops[kind];const button=document.createElement('button');button.type='button';
+      button.textContent=`${crop?crop.label:kind} · ${crop?.sell||0} CR · ~${Math.round(((crop?.grow_ms[0]||60_000)+(crop?.grow_ms[1]||120_000))/2000)}s`;
+      button.onclick=()=>void plantPlot(tile,kind);choices.append(button);}
+    content.append(choices);
+    const used=farmSnapshot?.account?.plots_used||0,limit=farmSnapshot?.account?.plots_limit||3;
+    text('p',`You are tending ${used} of ${limit} plots.`);
+    return;
+  }
+  if(!tile.mine){text('p',`Another farmer planted this ${cropLabel(tile.crop).toLowerCase()}.`);return;}
+  if(tile.stage==='growing')text('p',`Growing. Ready in about ${Math.ceil(tile.ready_in_ms/1000)} seconds — the arrow will point back here.`);
+  else text('p','Ready to harvest.');
+}
+function farmSection():void{
+  const account=farmSnapshot?.account;
+  if(!account){text('p','The farm ledger is still loading.');return;}
+  text('h3',`FARM · LV ${account.level} · ${account.credits} CR`);
+  text('p',`${account.stats.harvested} harvested · ${account.stats.sold} sold · ${Math.floor(account.seconds_played/60)} minutes in the world.`);
+  const bag=CROPS.filter(kind=>(account.inventory[kind]||0)>0);
+  if(!bag.length)text('p','Your bag is empty. Harvest a plot, then carry the produce back here.');
+  for(const kind of bag){
+    const row=document.createElement('div');row.className='bazaar-row';
+    text('span',`${cropLabel(kind)} × ${account.inventory[kind]}`,row);
+    const price=farmSnapshot?.crops[kind]?.sell||0;
+    const one=document.createElement('button');one.type='button';one.textContent=`Sell 1 · +${price} CR`;
+    const all=document.createElement('button');all.type='button';all.textContent=`Sell all · +${price*account.inventory[kind]} CR`;
+    one.onclick=()=>void sellProduce(kind,1);all.onclick=()=>void sellProduce(kind,account.inventory[kind]);
+    row.append(one,all);content.append(row);
+  }
+}
+async function sellProduce(crop:CropKind,quantity:number):Promise<void>{
+  try{
+    const result=await farmClient.post('sell',{crop,quantity});
+    mergeFarmAccount(result.account as FarmAccount|undefined);
+    farmHud.notice(`Sold ${quantity} ${cropLabel(crop).toLowerCase()} · +${result.credits} CR`,'good');
+    sparkle(player.position,['#f0cf75','#dcc46f']);
+    await showBazaar();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Sale failed','warn');}
+}
+function accountSection():void{
+  const account=farmSnapshot?.account;
+  if(!account)return;
+  text('h3','ACCOUNT');
+  if(account.signed_in){
+    text('p',`Signed in as ${account.display_name}. Credits, crops and payout history follow this account.`);
+    const out=document.createElement('button');out.type='button';out.textContent='Sign out';
+    out.onclick=()=>{out.disabled=true;void auth.signOut().then(async()=>{await loadFarm();await showBazaar();});};
+    content.append(out);
+  }else{
+    text('p',farmSnapshot?.auth.configured?'Sign in with a social account to keep credits, crops and payouts across devices.':'Social login is not configured on this deployment yet; progress stays in this browser.');
+    if(farmSnapshot?.auth.configured){
+      const sign=document.createElement('button');sign.type='button';sign.className='primary';sign.textContent='Sign in with Google or GitHub';
+      sign.onclick=()=>{sign.disabled=true;void auth.signIn().then(async signed=>{if(signed){farmHud.notice('Signed in · your farm progress was linked','good');await loadFarm();await showBazaar();}else sign.disabled=false;}).catch(error=>{sign.disabled=false;farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn');});};
+      content.append(sign);
+    }
+  }
+}
+function walletSection():void{
+  const account=farmSnapshot?.account;if(!account)return;
+  text('h3','SOLANA PAYOUT');
+  text('p',`Time in the world earns ${farmSnapshot?.rates.credits_per_minute||1} credit per minute. Linked wallets receive queued payout requests; payouts are processed by the treasury, never signed in your browser.`);
+  const form=document.createElement('form');form.className='world-profile-form';
+  const wallet=document.createElement('input');wallet.placeholder='Public Solana wallet address';wallet.maxLength=44;wallet.value=account.wallet.address||'';
+  const save=document.createElement('button');save.type='submit';save.textContent=account.wallet.address?'Update wallet':'Link wallet';
+  form.append(wallet,save);content.append(form);
+  const status=text('p',account.wallet.address?'Wallet saved as self-declared. Never enter a seed phrase or private key.':'No wallet linked. Never enter a seed phrase or private key.');
+  form.onsubmit=event=>{event.preventDefault();save.disabled=true;void farmClient.post('wallet',{wallet_address:wallet.value}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);status.textContent='Public wallet saved.';farmHud.notice('Wallet linked','good');}).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet update failed';}).finally(()=>save.disabled=false);};
+  if(account.wallet.address){
+    const min=farmSnapshot?.rates.min_withdrawal_credits||50;
+    const button=document.createElement('button');button.type='button';button.textContent=`Request payout · ${account.credits} CR`;button.disabled=account.credits<min;
+    button.onclick=()=>{button.disabled=true;void farmClient.post('payout',{amount_credits:account.credits}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Payout queued for the treasury','good');void showBazaar();}).catch(error=>{button.disabled=false;farmHud.notice(error instanceof Error?error.message:'Payout request failed','warn');});};
+    content.append(button);
+    if(account.credits<min)text('p',`Withdrawals open at ${min} credits.`);
+  }
+  for(const payout of account.payouts)text('p',`${payout.amount_credits} CR · ${payout.status} · ${new Date(payout.requested_at).toLocaleDateString()}`);
+}
+async function showBazaar():Promise<void>{
+  const version=show('BAZAAR · farm exchange');
+  text('p','Loading the exchange ledger…');
+  try{
+    const [,economy]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null)]);
+    if(!dialog.open||version!==interactionVersion)return;
+    content.replaceChildren();
+    text('p','Bring produce here from the farm plots. World credits can be sold, saved and later withdrawn to a public Solana wallet.');
+    farmSection();accountSection();walletSection();
+    if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'Treasury signer configured.':'Real payouts are disabled on this deployment; requests stay queued.');}
+    text('h3','GATHERING RECEIPTS');
+    if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');
+    for(const receipt of (economy?.receipts||[]).slice().reverse().slice(0,5))text('p',`${receipt.amount_credits} credits · ${receipt.source_action.replace(':',' ')} · ${receipt.status}`);
+  }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The bazaar terminal is temporarily unavailable.');}}
+}
 function burst(resource:WorldResource,time:number):void{const colors=resource.kind==='ore'?['#d5c47d','#8e9488','#665c4d']:['#d8cb75','#78a164','#496f4f'];for(let index=0;index<12;index++){const angle=index/12*Math.PI*2,range=18+(index%3)*6;particles.push({id:`${resource.id}-${time}-${index}`,position:{...resource.position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-10},color:colors[index%colors.length]!,expiresAt:time+650});}}
 async function gatherResource(id:string):Promise<void>{const resource=worldResources.find(value=>value.id===id);if(!resource||!presenceClient?.player_id)return;try{const response=await fetch('/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:id})});const result=await response.json() as {error?:string;node?:WorldResource;profile?:{credits:number};receipt?:{amount_credits:number}};if(!response.ok)throw new Error(result.error||'Gathering failed');worldResources=worldResources.map(value=>value.id===id?result.node!:value);burst(resource,performance.now());show(resource.kind==='ore'?'Ore gathered':'Plants harvested');text('p',`+${result.receipt?.amount_credits||resource.reward} TEST CREDITS · balance ${result.profile?.credits||0}.`);text('p','A reward receipt was recorded at the Bazaar terminal.');}catch(error){show('Gathering');text('p',error instanceof Error?error.message:'Gathering failed');}}
 function showProfile(id:string,sharedThought?:WorldSpeech):void {
@@ -229,6 +374,11 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     if(target.id==='south-market'){await showBazaar();return;}
     if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
+    if(target.id.startsWith('plot:')){
+      const tile=farmSnapshot?.tiles.find(value=>value.id===target.id.slice('plot:'.length));
+      if(tile)showFarmPlot(tile);
+      return;
+    }
     const zones:Record<string,[string,string]>={
       'forest-clearing':['Forest clearing','A quiet trail and wooded rest point beyond the plaza.'],
       'botanical-garden':['Botanical garden','Walk among planted beds, varied trees and the garden campfire.'],
@@ -289,7 +439,15 @@ async function presetButtons():Promise<void> {
 }
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
-$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();startPresence();};
+$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();startPresence();lastPlayTick=Date.now();void loadFarm();};
+$('hud-account').onclick=()=>{
+  if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
+  if(!farmSnapshot?.auth.configured){farmHud.notice('Social login is not configured on this deployment yet','info');return;}
+  const button=$<HTMLButtonElement>('hud-account');button.disabled=true;
+  void auth.signIn().then(async signed=>{
+    if(signed){farmHud.notice('Signed in · your farm progress was linked','good');await loadFarm();}
+  }).catch(error=>farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn')).finally(()=>{button.disabled=false;});
+};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
   resetInput();
@@ -345,6 +503,17 @@ async function refreshWorldLive():Promise<void>{
   liveNotice.textContent=lines.length?`LIVE · ${lines[worldLiveIndex++%lines.length]}`:'LIVE · waiting for the next public match update';
   liveNotice.hidden=false;
 }
+function farmGuide():{target:{x:number;y:number};label:string}|null{
+  if(!entered||!farmSnapshot?.account)return null;
+  const account=farmSnapshot.account;
+  const carrying=CROPS.reduce((sum,kind)=>sum+(account.inventory[kind]||0),0);
+  if(carrying>0)return {target:{...farmSnapshot.bazaar.position},label:'Sell produce'};
+  const ready=farmSnapshot.tiles.filter(tile=>tile.mine&&tile.stage==='ready');
+  const candidates=ready.length?ready:farmSnapshot.tiles.filter(tile=>tile.stage==='wild');
+  if(!candidates.length)return null;
+  const nearest=[...candidates].sort((a,b)=>Math.hypot(player.position.x-a.position.x,player.position.y-a.position.y)-Math.hypot(player.position.x-b.position.x,player.position.y-b.position.y)||a.id.localeCompare(b.id))[0]!;
+  return {target:{...nearest.position},label:ready.length?`Harvest ${cropLabel(nearest.crop).toLowerCase()}`:'Plant a crop'};
+}
 function frame(time:number):void {
   const dt=Math.min(.1,(time-previous)/1000);previous=time;
   const k=keyboard.read(),t=touch.read();
@@ -362,9 +531,11 @@ function frame(time:number):void {
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
-    if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});}
+    if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});void loadFarm();}
     const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:resource.kind==='ore'?'Mine ore':'Harvest plants'}));
-    const targets=[...LANDMARKS,...resourceTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
+    const plotTargets:Interactable[]=(farmSnapshot?.tiles||[]).map(tile=>({id:`plot:${tile.id}`,position:tile.position,radius:70,type:'zone' as const,
+      label:tile.stage==='wild'?'Plant a crop':tile.mine?(tile.stage==='ready'?`Harvest ${cropLabel(tile.crop).toLowerCase()}`:`${cropLabel(tile.crop).toLowerCase()} growing`):`${cropLabel(tile.crop).toLowerCase()} field`}));
+    const targets=[...LANDMARKS,...resourceTargets,...plotTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
@@ -376,6 +547,10 @@ function frame(time:number):void {
       lastPresenceMoveAt=time;const client=presenceClient;
       void client.move({...player.position},player.facing,player.movementState==='walking'?'walk':'idle').then(sent=>{if(sent)lastPresenceMoveState=state;}).catch(()=>presenceError(client));
     }
+  }
+  if(entered&&!document.hidden&&lastPlayTick&&Date.now()-lastPlayTick>=15_000){
+    const seconds=Math.min(30,Math.round((Date.now()-lastPlayTick)/1000));lastPlayTick=Date.now();
+    void farmClient.post('heartbeat',{seconds}).then(result=>mergeFarmAccount(result.account as FarmAccount|undefined)).catch(()=>{});
   }
   const message=nearby?`E / Interact · ${nearby.label}`:'WASD / arrows to walk · E to interact';
   if(hint.textContent!==message)hint.textContent=message;
@@ -392,7 +567,7 @@ function frame(time:number):void {
     npc.position.y+=(target.y-npc.position.y)*interpolation;
   }
   for(let index=particles.length-1;index>=0;index--)if(particles[index]!.expiresAt<=time)particles.splice(index,1);
-  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles});raf=requestAnimationFrame(frame);
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuide()});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
@@ -412,4 +587,4 @@ if(location.pathname==='/labs/world'){
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 const entryGate=(window as unknown as {entryGate?:Promise<void>}).entryGate??Promise.resolve();
-void presetButtons().then(()=>{if(!entered)void entryGate.then(()=>{if(!entered)character.showModal();});else{canvas.focus();startPresence();}void refreshProfiles();void refreshWorldLive();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});
+void presetButtons().then(()=>{if(!entered)void entryGate.then(()=>{if(!entered)character.showModal();});else{canvas.focus();startPresence();lastPlayTick=Date.now();}void refreshProfiles();void refreshWorldLive();void loadFarm();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});

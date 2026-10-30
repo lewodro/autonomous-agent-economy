@@ -1,7 +1,8 @@
 import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
-export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[] }
+import type { FarmTile } from './farm.js';
+export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
   render(frame:WorldFrame):void;
@@ -194,6 +195,30 @@ export class CanvasWorldRenderer implements WorldRenderer {
       if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle='#f2d88a';c.fillRect(x+13,y-12,3,3);}
     }
     for(const particle of frame.particles||[]){const remaining=Math.max(0,particle.expiresAt-frame.time),age=1-Math.min(1,remaining/650);c.fillStyle=particle.color;c.fillRect(Math.round(particle.position.x+particle.velocity.x*age),Math.round(particle.position.y+particle.velocity.y*age),3,3);}
+    for(const tile of frame.farmTiles||[]){
+      const {x,y}=tile.position;
+      if(x<frame.camera.x-70||x>frame.camera.x+width+70||y<frame.camera.y-70||y>frame.camera.y+height+70)continue;
+      c.fillStyle='#5d3f2c';c.fillRect(x-18,y-4,36,20);
+      c.fillStyle='#7a5438';c.fillRect(x-16,y-2,32,15);
+      c.fillStyle='#8b6242';for(let furrow=0;furrow<3;furrow++)c.fillRect(x-14,y+1+furrow*4,28,2);
+      c.fillStyle='#4a3426';c.fillRect(x-18,y+14,4,4);c.fillRect(x+14,y+14,4,4);
+      if(tile.stage==='wild'){
+        c.fillStyle='#51684a';c.fillRect(x-4,y-6,2,4);c.fillRect(x+2,y-5,2,3);
+      }else{
+        const growth=tile.stage==='ready'?1:tile.growth;
+        const stem=5+Math.round(growth*15);
+        const leaf=tile.crop==='carrot'?'#6fa15c':tile.crop==='pumpkin'?'#5e8a4f':'#9aa85e';
+        c.fillStyle='#4c6b45';for(let blade=-1;blade<=1;blade++)c.fillRect(x+blade*7-1,y-stem,2,stem+4);
+        c.fillStyle=leaf;c.fillRect(x-9,y-stem+2,6,4);c.fillRect(x+3,y-stem+4,6,4);
+        if(tile.stage==='ready'){
+          if(tile.crop==='pumpkin'){c.fillStyle='#d98336';c.fillRect(x-7,y-9,14,9);c.fillRect(x-4,y-12,8,4);c.fillStyle='#8a4f27';c.fillRect(x-7,y-6,14,1);}
+          else if(tile.crop==='carrot'){c.fillStyle='#d8843f';c.fillRect(x-5,y-6,10,7);c.fillStyle='#7ea55b';c.fillRect(x-4,y-11,3,6);c.fillRect(x+1,y-12,3,7);}
+          else{c.fillStyle='#b8944d';c.fillRect(x-3,y-9,6,10);c.fillStyle='#dcc46f';c.fillRect(x-6,y-12,12,3);c.fillRect(x-4,y-15,8,3);}
+        }
+      }
+      const actionable=tile.stage==='wild'||(tile.mine&&tile.stage==='ready');
+      if(actionable&&!reduced&&Math.floor((frame.time+x)/380)%2===0){c.fillStyle='#f2d88a';c.fillRect(x+16,y-14,3,3);c.fillRect(x-19,y-10,2,2);}
+    }
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
     const labels:{x:number;y:number;width:number;height:number}[]=[];
@@ -207,6 +232,37 @@ export class CanvasWorldRenderer implements WorldRenderer {
       this.renderActor(actor,frame.time,reduced,showName);
     }
     if(frame.nearby){c.strokeStyle='#e4bc73';c.lineWidth=2;c.beginPath();c.ellipse(frame.nearby.position.x,frame.nearby.position.y+8,22,9,0,0,Math.PI*2);c.stroke();}
+    if(frame.guide)this.drawGuide(frame.guide,frame.camera,width,height,frame.time,reduced);
+  }
+  private drawGuide(guide:{target:Position;label:string},camera:Position,width:number,height:number,time:number,reduced:boolean):void {
+    const c=this.ctx,{target,label}=guide,margin=28;
+    const inside=target.x>=camera.x+margin&&target.x<=camera.x+width-margin&&target.y>=camera.y+margin&&target.y<=camera.y+height-margin;
+    c.save();
+    if(inside){
+      const bob=reduced?0:Math.round(Math.sin(time/220)*3),x=target.x,y=target.y-46+bob;
+      c.fillStyle='#f0cf75';c.beginPath();c.moveTo(x-9,y-12);c.lineTo(x+9,y-12);c.lineTo(x,y);c.closePath();c.fill();
+      c.strokeStyle='#1a2928';c.lineWidth=2;c.stroke();
+      this.guideLabel(label,x,y-20);
+    }else{
+      const cx=camera.x+width/2,cy=camera.y+height/2,angle=Math.atan2(target.y-cy,target.x-cx);
+      const rx=width/2-margin-8,ry=height/2-margin-8;
+      const scale=Math.min(Math.abs(rx/(Math.cos(angle)||1e-6)),Math.abs(ry/(Math.sin(angle)||1e-6)));
+      const x=cx+Math.cos(angle)*scale,y=cy+Math.sin(angle)*scale;
+      c.translate(x,y);c.rotate(angle);
+      c.fillStyle='#f0cf75';c.beginPath();c.moveTo(13,0);c.lineTo(-8,-9);c.lineTo(-3,0);c.lineTo(-8,9);c.closePath();c.fill();
+      c.strokeStyle='#1a2928';c.lineWidth=2;c.stroke();
+      c.rotate(-angle);
+      const metres=Math.round(Math.hypot(target.x-cx,target.y-cy)/32);
+      this.guideLabel(`${label} · ${metres}m`,0,16);
+    }
+    c.restore();
+  }
+  private guideLabel(label:string,x:number,y:number):void {
+    const c=this.ctx,text=label.toUpperCase();
+    c.textAlign='center';c.font='bold 9px monospace';
+    const width=text.length*5.8+8;
+    c.fillStyle='#1a2928e6';c.fillRect(x-width/2,y,width,13);
+    c.fillStyle='#f0cf75';c.fillText(text,x,y+10);
   }
   private renderActor(actor:WorldActor,time:number,reduced:boolean,showName:boolean):void {
     const c=this.ctx,{x,y}=actor.position;const sprite=SPRITES.find(s=>s.id===actor.spriteId);const image=this.images.get(actor.spriteId);

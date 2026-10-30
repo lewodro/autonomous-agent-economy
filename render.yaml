@@ -9,6 +9,18 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lastseat-db
+          property: connectionString
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: WORLD_CREDITS_PER_MINUTE
+        value: "1"
+      - key: WORLD_MIN_WITHDRAWAL_CREDITS
+        value: "50"
+      - key: WORLD_LAMPORTS_PER_CREDIT
+        value: "0"
       - key: PUBLIC_ORIGIN
         value: https://lastseat.ing
       - key: MATCHES_DIR
@@ -31,3 +43,9 @@ services:
         value: "false"
       - key: WORLD_SOL_PAYOUTS_ENABLED
         value: "0"
+
+databases:
+  - name: lastseat-db
+    plan: free
+    databaseName: lastseat
+    user: lastseat

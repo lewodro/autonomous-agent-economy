@@ -16,7 +16,8 @@ quick start live in the repository [README](../README.md).
 
 Cross-cutting current docs: [production deployment](deployment-render-cloudflare.md), [public agent identity](agent-public-identity.md), [external-agent onboarding](external-agents-future.md), [local development](local-development.md), and [public prediction boundaries](economy/public-predictions.md).
 
-Start with the distinction between the [shared world and private experiments](architecture/product-model.md). For anonymous ownership, retention, exports, and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
+The human farm loop, Clerk social login, Render Postgres setup and the queued payout
+ledger are documented in [world farm and payouts](economy/world-farm-and-payouts.md).Start with the distinction between the [shared world and private experiments](architecture/product-model.md). For anonymous ownership, retention, exports, and safe local reset, see [visitor experiments](architecture/visitor-experiments.md).
 
 Screenshots and visual references remain alongside this index. Balance run data is
 in [`research/balance/`](research/balance/); architecture JSON examples are in

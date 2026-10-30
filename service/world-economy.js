@@ -16,7 +16,7 @@ export const RESOURCE_NODES=Object.freeze([
 
 function fail(code,message,status=400){return Object.assign(new Error(message),{code,status});}
 function publicUserId(owner){return `world_${createHash('sha256').update(owner).digest('hex').slice(0,20)}`;}
-function validSolanaAddress(value){
+export function validSolanaAddress(value){
   if(typeof value!=='string'||value.length<32||value.length>44)return false;
   let decoded=0n;for(const char of value){const digit=ALPHABET.indexOf(char);if(digit<0)return false;decoded=decoded*58n+BigInt(digit);}
   let bytes=0;while(decoded>0n){bytes++;decoded>>=8n;}let leading=0;for(const char of value){if(char!=='1')break;leading++;}
