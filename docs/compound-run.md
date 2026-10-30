@@ -6,7 +6,7 @@ Public rounds default to fifteen minutes, with a protected opening period before
 
 ## Round loop
 
-The lobby accepts humans until a round begins, then fills remaining seats with canonical agents. An empty server starts an agent-only round after the configured lobby delay. Mid-round visitors spectate and join the next lobby. A completed round shows its winners and evidence before a new lobby begins.
+The lobby accepts humans until a round begins, then fills only the remaining seats with canonical agents. An empty server starts an agent-only round after the configured lobby delay. Mid-round world visitors keep their anonymous server identity, spectate the live map, and reserve a human seat in the next lobby. Queue entries are promoted before autonomous fill. A completed round shows its winners and evidence; finished humans can return to the same public-world visitor outside the Compound entrance.
 
 Every participant has a public **base role** (`INMATE` or `GUARD`), a physical job, a private personal objective, and their existing personality. The constrained assignment still uses the compatible internal role rules to balance guards and inmate objectives, but the player-facing model is a prison sandbox rather than a hidden-role party game. Informant, smuggler, trader, and escape-planning objectives remain owner-visible during play. The client never receives another participant's secret objective, inventory, memories, crafting availability, or escape progress.
 
@@ -76,10 +76,12 @@ State persists at `MATCHES_DIR/compound/compound.json`. Version 1 and 2 prototyp
 
 ```bash
 npm install
-COMPOUND_ROUND_SECONDS=120 npm start
+npm start
 ```
 
-In production, open [lastseat.ing/world](https://lastseat.ing/world), follow the road to the **DETENTION COMPOUND** gate, press **E**, join, and start the round. For a local clone, open the `/world` route on the address printed by `npm start`. For a fast local cycle, use `COMPOUND_ROUND_SECONDS=30`. When no human joins, the server fills all eight seats with agents and runs automatically.
+The normal public defaults are eight participants, two security seats, a fifteen-minute round, and a five-minute protected opening before an all-inmate resolution may finish early. They can be tuned with `COMPOUND_TARGET_PARTICIPANTS`, `COMPOUND_GUARD_SEATS`, `COMPOUND_ROUND_SECONDS`, `COMPOUND_MINIMUM_ROUND_SECONDS`, and `COMPOUND_LOBBY_SECONDS`. For a fast local test cycle, use `COMPOUND_ROUND_SECONDS=30 COMPOUND_MINIMUM_ROUND_SECONDS=15 npm start`.
+
+In production, open [lastseat.ing/world](https://lastseat.ing/world), follow the road to the **DETENTION COMPOUND** gate, press **E**, and join. If a round is active, the same visitor is queued for the next one instead of receiving a second browser identity. When no human joins, the server fills every seat with agents and runs automatically.
 
 ```bash
 node --test test/compound-game.test.js

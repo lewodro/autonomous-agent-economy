@@ -301,6 +301,26 @@ test('human-heavy lobbies keep humans in the shared round and reserve security s
   await game.close();
 });
 
+test('world visitors queue during an active round and retain their shared-world identity next round',async()=>{
+  let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-queue-')),{now:()=>now,roundSeconds:120,capacity:8});
+  game.join('owner-a',{name:'Human A',world_presence_id:'presence-a'});game.startRound('owner-a');
+  const queued=game.join('owner-b',{name:'Human B',avatar:'visitor_nova',world_presence_id:'presence-b'});
+  assert.equal(queued.you,null);assert.equal(queued.queue.count,1);assert.equal(queued.queue.you.world_presence_id,'presence-b');assert.equal(game.state.participants.some(value=>value.owner==='owner-b'),false);
+  game.finish('timer');game.resetLobby();
+  const promoted=game.snapshot('owner-b'),human=game.state.participants.find(value=>value.owner==='owner-b');
+  assert.equal(promoted.you,human.id);assert.equal(human.worldPresenceId,'presence-b');assert.equal(human.avatar,'visitor_nova');assert.equal(game.state.queue.length,0);
+  game.startRound('owner-b');assert.equal(game.participant('owner-b').worldPresenceId,'presence-b','round initialization must preserve the public-world handoff');
+  await game.close();
+});
+
+test('one human leaving or escaping does not resolve the shared round for another human',async()=>{
+  let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-human-continuity-')),{now:()=>now,roundSeconds:180,minimumRoundSeconds:60});
+  game.join('owner-a',{name:'Human A'});game.join('owner-b',{name:'Human B'});game.startRound('owner-a');
+  game.participant('owner-a').status='escaped';game.evaluateRound();assert.equal(game.state.phase,'active');
+  const remainingId=game.participant('owner-b').id;game.leave('owner-a');assert.equal(game.state.phase,'active');assert.equal(game.snapshot('owner-b').you,remainingId);
+  await game.close();
+});
+
 test('recovering inmates and early escapes do not end a sandbox round immediately',async()=>{
   let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-pacing-')),{now:()=>now,roundSeconds:180,minimumRoundSeconds:60});game.startAgentRound();
   const inmates=game.state.participants.filter(value=>value.role!=='guard');for(const inmate of inmates)inmate.status='recovering';game.evaluateRound();assert.equal(game.state.phase,'active');
