@@ -4,11 +4,11 @@ The world is a browser presence layer. The Rust Last Seat engine remains respons
 
 ```mermaid
 flowchart TD
- Visitor[Browser visitor] --> Presence[HTTP commands + SSE]
+ Visitor[Signed anonymous visitor] --> Presence[Cookie-owned commands + SSE]
  Presence --> World[Canvas world: position, collision, interactions]
- Presence --> Service[Ephemeral world presence service]
+ Presence --> Service[Authoritative live-world presence]
  Service --> Presence
- NPC[NPC presence controller] --> World
+ AgentService[Canonical agent route service] --> Presence
  World --> Gateway[Arena gateway]
  Gateway --> Rooms[Four bounded persistent room slots]
  Rooms --> Orchestrator[Existing JavaScript Orchestrator]
@@ -24,9 +24,9 @@ flowchart TD
 
 ## Boundaries
 
-- `web/src/world/model.ts`, `map.ts`, `movement.ts`, `input.ts`, `npc.ts`, and `renderer.ts` own presence, movement, collision, camera, and pixels. Tree positions are shared between the map collider and renderer so actors cannot pass through their trunks. These modules do not import Rust or minigame rules.
+- `web/src/world/model.ts`, `map.ts`, `movement.ts`, `input.ts`, and `renderer.ts` own local input, collision, camera, interpolation, and pixels. Tree positions are shared between the map collider and renderer so actors cannot pass through their trunks. These modules do not import Rust or minigame rules.
 - The visitor collides with fixed map geometry but can pass ambient NPCs. NPCs keep spacing from one another and remain inspectable, so a moving crowd cannot block routes to world landmarks.
-- The plaza renders at most six NPCs at once. Agents marked as fighting remain associated with the Arena; up to two recently finished agents get priority to appear at the Arena exit, and queued agents fill any remaining plaza slots. NPC movement checks nearby actors to prevent overlapping paths and uses separate approach points outside the Arena. Activity text follows each actual waypoint.
+- The world renders at most six ambient canonical agents at once. Agents marked as fighting remain inside the Arena. `service/world-agent-presence.js` advances the remaining agents along the collision-safe public route with different start points, directions, speeds, and pauses; clients interpolate the same server positions. Activity text follows the authoritative route state.
 - `web/src/world/gateway.ts` is the browser's read-only boundary to `/api/arena/*`. Room IDs and game types are checked before navigation.
 - `service/arena-rooms.js` hosts two RPS and two Tic-Tac-Toe slots. Each uses the existing `src/orchestrator.js`, `src/economy.js`, and verified game rules in an isolated simulated run. A run rotates after 64 matches or when its retained mock policies can no longer enter. Three completed runs are retained per slot.
 - `legacy/script.js` observes a room URL and renders its current state. Its local controls are hidden for shared rooms; the browser cannot submit moves or advance those simulations.
@@ -35,7 +35,7 @@ flowchart TD
 
 The room and table files are written atomically under `MATCHES_DIR/arena` and `MATCHES_DIR/world`. Startup verifies saved room ledgers before exposing them. If a verification fails, startup fails closed rather than publishing corrupt results. The room scheduler retries a failed step up to three times with backoff; structured failure logs include the room, attempt, error class, and safe error code without raw messages. A persistently failing room remains marked failed and requires operator investigation/restart. Run multiple server instances only with a storage and coordination design that supports their shared writes; the current JSON room pool is a single-process design.
 
-The local browser character moves immediately and synchronizes through the ephemeral presence service; other visitors render as interpolated remote actors. NPC positions remain local presentation and do not represent connected players. The plaza table supports up to two anonymous browser capabilities; the first seat can wait for another visitor or play the existing Founder policy. Table sessions expire after inactivity. Match rooms continuously run the existing local adaptive policies and show simulated-unit accounting; they do not accept wallet entry. Presence is single-process and needs shared ephemeral storage before horizontal scaling.
+The local browser character moves immediately and submits bounded position intents to the authoritative presence service; other visitors and canonical agents render as interpolated remote actors. Distinct signed cookies create distinct visitors, while refresh reclaims the same public presence ID and server position. Disconnect timeouts remove ghosts without persisting every movement frame. The world remains continuous when no humans are online because canonical services run independently. Compound reuses the anonymous owner and public presence ID for handoff, while private experiments remain owner-isolated. Presence is single-process and needs coordinated shared state before horizontal scaling.
 
 ## Public routes
 

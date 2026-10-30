@@ -23,6 +23,7 @@ import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
 import { requestErrorStatus } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
+import { WorldAgentPresenceService } from './service/world-agent-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
 import { ensureProductionStorage } from './service/production-storage.js';
@@ -66,7 +67,10 @@ const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
 const worldTable=new TableSession(path.join(directory,'world'));
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 let shuttingDown=false;
-const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds});
+const worldAgents=new WorldAgentPresenceService({profiles:()=>arenaRooms.profiles()});
+const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds,identitySecret:process.env.HOST_SESSION_SECRET||'local-world-presence-identity-secret',agentPresence:worldAgents});
+worldAgents.setEmitter((type,payload)=>worldPresence.emit('main',type,payload));
+worldAgents.start();
 const roomSpectators=new RoomSpectators();
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 const json = (res, status, data, headers = {}) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }).end(JSON.stringify(data));
@@ -145,9 +149,10 @@ const server = http.createServer(async (req, res) => {
       }
       if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
       if(action==='join'&&!presenceJoins.allow())return json(res,429,{error:'Presence joins are temporarily limited'});
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const data=await body(req,4096);
-      const result=action==='join'?worldPresence.join(worldId,data):action==='move'?worldPresence.move(worldId,data):action==='heartbeat'?worldPresence.heartbeat(worldId,data):worldPresence.leave(worldId,data);
-      return json(res,action==='join'?201:200,result);
+      const result=action==='join'?worldPresence.join(worldId,visitor.id,data):action==='move'?worldPresence.move(worldId,visitor.id,data):action==='heartbeat'?worldPresence.heartbeat(worldId,visitor.id,data):worldPresence.leave(worldId,visitor.id);
+      return json(res,action==='join'?201:200,result,cookie);
     }
     if(req.method==='GET'&&route==='/api/funded-matches'){
       if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
@@ -171,7 +176,7 @@ const server = http.createServer(async (req, res) => {
       if(!worldEconomyCommands.allow())return json(res,429,{error:'World gathering is temporarily limited'},cookie);
       const data=await body(req,4096);
       if(route.endsWith('/profile'))return json(res,200,await worldEconomy.linkProfile(visitor.id,data),cookie);
-      const present=worldPresence.requirePlayer('main',data.player_id,data.session_token);
+      const present=worldPresence.requireVisitor('main',visitor.id);
       return json(res,200,await worldEconomy.gather(visitor.id,data,present.position),cookie);
     }
     const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
@@ -197,12 +202,13 @@ const server = http.createServer(async (req, res) => {
     }
     if(route==='/api/compound'||route==='/api/compound/join'||route==='/api/compound/start'||route==='/api/compound/input'||route==='/api/compound/action'||route==='/api/compound/leave'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
-      if(req.method==='GET'&&route==='/api/compound')return json(res,200,compoundGame.snapshot(visitor.id),cookie);
+      const worldHandoff=worldPresence.identityContext('main',visitor.id);
+      if(req.method==='GET'&&route==='/api/compound')return json(res,200,{...compoundGame.snapshot(visitor.id),world_handoff:worldHandoff},cookie);
       if(req.method!=='POST')return json(res,405,{error:'Compound command requires POST'},cookie);
       if(!(route.endsWith('/input')?compoundInputs:compoundCommands).allow())return json(res,429,{error:'Compound commands are temporarily limited'},cookie);
       const data=await body(req,16_384);
-      const result=route.endsWith('/join')?compoundGame.join(visitor.id,data):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
-      return json(res,200,result,cookie);
+      const result=route.endsWith('/join')?compoundGame.join(visitor.id,{...data,world_presence_id:worldHandoff.presence_id}):route.endsWith('/start')?compoundGame.startRound(visitor.id):route.endsWith('/input')?compoundGame.input(visitor.id,data):route.endsWith('/action')?compoundGame.action(visitor.id,data):compoundGame.leave(visitor.id);
+      return json(res,200,{...result,world_handoff:worldHandoff},cookie);
     }
     if(route.startsWith('/api/arena/')){
       if(req.method!=='GET')return json(res,405,{error:'Arena rooms are read-only'});
