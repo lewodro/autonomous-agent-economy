@@ -18,13 +18,12 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   for(const route of ['/','/arena']){const html=await(await fetch(base+route)).text();assert.doesNotMatch(html,/moltbook|openclaw/i,`${route} should not render external ecosystem cards`);}
   const rootHtml=await(await fetch(base+'/')).text();assert.match(rootHtml,/THE PLAZA/,'the root route should serve the world page');
   assert.doesNotMatch(rootHtml,/id="entry-loader"/,'the world-first root should not block the plaza with an intro splash');
-  assert.match(rootHtml,/href="\/compound"[^>]*>Compound</,'Compound should stay a first-class entry point');
-  assert.match(rootHtml,/class="world-places"/,'the Places menu should expose the in-world destinations');
-  assert.match(rootHtml,/data-place="market"/,'the market should be reachable from the Places menu');
-  assert.match(rootHtml,/data-place="archive"/,'the archive should be reachable from the Places menu');
   assert.match(rootHtml,/href="\/post\/">Build log</,'the devlog should remain reachable');
+  assert.doesNotMatch(rootHtml,/href="\/compound"|href="\/arena"/,'Arena and Compound are discovered in the world, not the global header');
+  assert.match(rootHtml,/COMPOUND ↙/,'the world directions should point to the Compound');
+  assert.match(rootHtml,/ARENA ↘/,'the world directions should point to the Arena');
   const arenaHtml=await(await fetch(base+'/arena')).text();assert.match(arenaHtml,/data-mode="transition"/,'the other pages should use the short matrix transition');
-  const worldApp=await(await fetch(base+'/web/dist/world/app.js')).text();assert.match(worldApp,/assets\/avatars\/index\.json/);assert.doesNotMatch(worldApp,/assets\/aae_avatar_kit\/examples/);
+  const worldApp=await(await fetch(base+'/web/dist/world/app.js')).text();assert.match(worldApp,/assets\/avatars\/index\.json/);assert.doesNotMatch(worldApp,/assets\/aae_avatar_kit\/examples/);assert.match(worldApp,/compound-entrance/,'the Compound must remain reachable through its physical world entrance');
   for(const route of ['/labs/world','/arena/rps/ttt-1','/api/arena/rooms/missing','/assets/aae_avatar_kit/avatar-manifest.json','/assets/sprites-agent/missing.png','/assets/avatars/clean/mentor.png'])assert.equal((await fetch(base+route)).status,404,route);
   const list=await(await fetch(base+'/api/arena/rooms')).json();assert.equal(list.rooms.length,4);assert.ok(list.rooms.every(r=>r.mode==='simulation'));
   const compound=await(await fetch(base+'/api/compound')).json();assert.equal(compound.phase,'lobby');assert.equal(compound.participants.length,0);

@@ -51,6 +51,8 @@ try{
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
  await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
+ assert.equal(await evaluate('!!document.querySelector(".world-header a[href=\\"/compound\\"],.world-header a[href=\\"/arena\\"]")'),false,'Arena and Compound must not return as global header buttons');
+ assert.ok(await evaluate('(()=>{const text=document.querySelector(".world-legend")?.textContent||"";return text.includes("ARENA")&&text.includes("COMPOUND")})()'),'the world must still show where Arena and Compound are');
  await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
  let localPlayerId=await evaluate("window.__presenceRequests.findLast(value=>value.presence_id)?.presence_id");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
@@ -87,9 +89,14 @@ try{
  await wait('document.getElementById("interaction-dialog").open');
  assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained RPS, Tic-Tac-Toe, and Survival runs")'));
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
- // Exercise arena routes directly. Browser-generated keyboard holds are
- // unreliable in headless Chrome and the ambient NPC path is frame-timed.
- await send('Page.navigate',{url:base+'/arena'});
+ // Arena and Compound are entered through their physical doors in the world.
+ // The lab teleport keeps the headless path deterministic while still
+ // exercising the real interaction and navigation handoff.
+ await send('Page.navigate',{url:base+'/labs/world'});
+ await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
+ await wait('!document.getElementById("interact").disabled');
+ await evaluate('document.getElementById("interact").click()');
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
  assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
@@ -249,7 +256,11 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=360'),'original Last Seat page must fit a 360px viewport');
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
- await send('Page.navigate',{url:base+'/compound'});await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
+ await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter detention compound').click()");
+ await wait('!document.getElementById("interact").disabled');
+ await evaluate('document.getElementById("interact").click()');
+ await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');
  await wait("fetch('/api/compound').then(r=>r.json()).then(s=>s.phase==='lobby')");
  await evaluate("fetch('/api/compound/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Browser Compound'})}).then(r=>r.json())");
  await secondBrowser.send('Page.navigate',{url:base+'/compound'});await secondBrowser.wait('location.pathname==="/compound"&&document.getElementById("compound-map")');

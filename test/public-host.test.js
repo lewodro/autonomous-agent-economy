@@ -84,7 +84,8 @@ test('private experiments survive restart and stay isolated while the world stay
       if (route === '/') {
         assert.match(content, /id="character-dialog"/, 'the root route serves the world page');
         assert.doesNotMatch(content, /id="entry-loader"/, 'the root route joins the live world without a splash');
-        assert.match(content, /href="\/compound"/, 'Compound remains reachable from the world header');
+        assert.doesNotMatch(content, /href="\/compound"/, 'Compound is discovered in the world, not through a global header button');
+        assert.match(content, /COMPOUND ↙/, 'the world directions point to the Compound');
       }
       if (route === '/home' || route === '/rps') assert.match(content, /id="entry-loader"[^>]*data-mode="transition"/);
       if (route === '/post' || route === '/post/') {
