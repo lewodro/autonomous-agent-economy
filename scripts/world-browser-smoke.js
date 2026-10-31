@@ -32,6 +32,10 @@ try{
  await send('Page.addScriptToEvaluateOnNewDocument',{source:"window.__presenceRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await nativeFetch(...args);if(String(args[0]).includes('/presence/')){let body={};try{body=await response.clone().json()}catch{}window.__presenceRequests.push({path:String(args[0]),status:response.status,code:body.code,presence_id:body.presence_id})}return response}"});
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
+ // The plaza auto-joins the shared world on load and that join owns the
+ // visitor cookie. Let it finish before the identity-refresh reload so the
+ // visitor is not replaced by a second login on this first visit.
+ await wait("document.getElementById('connection')?.textContent.includes('HERE')");
  await evaluate("sessionStorage.clear();localStorage.removeItem('agent-world-settings-v1')");
  await send('Page.reload',{ignoreCache:true});
  await wait("document.getElementById('connection')?.textContent.includes('HERE')");
