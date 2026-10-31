@@ -32,8 +32,11 @@ try{
  await send('Page.addScriptToEvaluateOnNewDocument',{source:"window.__presenceRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await nativeFetch(...args);if(String(args[0]).includes('/presence/')){let body={};try{body=await response.clone().json()}catch{}window.__presenceRequests.push({path:String(args[0]),status:response.status,code:body.code,presence_id:body.presence_id})}return response}"});
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base});await wait("document.querySelector('a[href=\"/world\"]')");
- await evaluate("sessionStorage.setItem('last-seat-entry-seen-v1','1');sessionStorage.removeItem('agent-world-entered');localStorage.removeItem('agent-world-settings-v1')");
- await send('Page.navigate',{url:base+'/world'});
+ await evaluate("sessionStorage.clear();localStorage.removeItem('agent-world-settings-v1')");
+ await send('Page.reload',{ignoreCache:true});
+ await wait("document.getElementById('connection')?.textContent.includes('HERE')");
+ await wait("!document.getElementById('character-dialog')?.open");
+ await evaluate("document.getElementById('avatar-change').click()");
  await wait('document.getElementById("character-dialog")?.open');
  await wait('document.querySelectorAll("#avatar-presets img").length===4&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
  const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
@@ -51,7 +54,8 @@ try{
  await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)})?.avatar==='visitor_atlas')`);
  await evaluate("document.getElementById('character-close').click()");
  secondBrowser=await connectSecondBrowser();await secondBrowser.send('Runtime.enable');await secondBrowser.send('Page.enable');
- await secondBrowser.send('Page.navigate',{url:base+'/world'});await secondBrowser.wait('document.getElementById("character-dialog")?.open');
+ await secondBrowser.send('Page.navigate',{url:base+'/world'});
+ await secondBrowser.wait("document.getElementById('connection')?.textContent.includes('HERE')");
  const secondWorldJoin=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:560,y:480},direction:'down',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))");
  assert.equal(secondWorldJoin.status,201,'the independent browser should receive its own world actor');assert.notEqual(secondWorldJoin.presence_id,localPlayerId);
  await wait("document.getElementById('connection').textContent.includes('2 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('1 other visitor online')");
@@ -59,6 +63,10 @@ try{
  const guestBefore=await secondBrowser.evaluate("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id!=="+JSON.stringify(localPlayerId)+").position.x)");
  await delay(80);assert.equal(await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:${guestBefore+12},y:480},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200);
  await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.some(p=>p.player_id!==${JSON.stringify(localPlayerId)}&&p.position.x>${guestBefore+5}))`);
+ await secondBrowser.send('Page.reload',{ignoreCache:true});
+ await secondBrowser.wait("document.getElementById('connection')?.textContent.includes('2 HERE')");
+ await wait("document.getElementById('connection').textContent.includes('2 HERE')");
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.length)"),2,'a refresh reuses the visitor identity instead of leaving a ghost');
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200,'the second visitor should be able to leave');
  await secondBrowser.send('Page.navigate',{url:base+'/post'});await secondBrowser.wait('location.pathname.startsWith("/post")');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
