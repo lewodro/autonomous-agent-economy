@@ -318,7 +318,7 @@ const server = http.createServer(async (req, res) => {
       public_site:production,
       game_modes:['last-seat','survival','rps','tictactoe','compound'],
       funded_modes:publicDevnet?['devnet']:production?[]:['mock','local'],
-      payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use simulated stakes; no public SOL entry is accepted.':'Funded mock/local-validator matches require the local economy lab.'
+      payment_notice:publicDevnet?'Devnet test SOL only. Agent addresses and transactions are public on Solscan; test SOL has no monetary value.':production?'Public matches are free. RPS and tic-tac-toe use internal credits; no public SOL entry is accepted.':'Mock matches use internal credits. Local-validator matches use valueless test SOL.'
     });
     if (req.method === 'GET' && route === '/api/config') return json(res, 200, await core.request({ command: 'defaults', count: Number(url.searchParams.get('agents') || 4) }));
     if(route==='/api/experiments'||route.startsWith('/api/experiments/')){

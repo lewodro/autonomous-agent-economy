@@ -254,22 +254,24 @@ function accountSection():void{
     }
   }
 }
-function walletSection():void{
+function walletSection(payoutsEnabled:boolean):void{
   const account=farmSnapshot?.account;if(!account)return;
-  text('h3','SOLANA PAYOUT');
-  text('p',`Time in the world earns ${farmSnapshot?.rates.credits_per_minute||1} credit per minute. Linked wallets receive queued payout requests; payouts are processed by the treasury, never signed in your browser.`);
+  text('h3','FUTURE REWARD LINK');
+  text('p',`Time in the world earns ${farmSnapshot?.rates.credits_per_minute||1} internal credit per minute. Credits are not SOL or wallet funds. A public address can be linked for a future, separately enabled payout program.`);
   const form=document.createElement('form');form.className='world-profile-form';
   const wallet=document.createElement('input');wallet.placeholder='Public Solana wallet address';wallet.maxLength=44;wallet.value=account.wallet.address||'';
   const save=document.createElement('button');save.type='submit';save.textContent=account.wallet.address?'Update wallet':'Link wallet';
   form.append(wallet,save);content.append(form);
   const status=text('p',account.wallet.address?'Wallet saved as self-declared. Never enter a seed phrase or private key.':'No wallet linked. Never enter a seed phrase or private key.');
   form.onsubmit=event=>{event.preventDefault();save.disabled=true;void farmClient.post('wallet',{wallet_address:wallet.value}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);status.textContent='Public wallet saved.';farmHud.notice('Wallet linked','good');}).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet update failed';}).finally(()=>save.disabled=false);};
-  if(account.wallet.address){
+  if(account.wallet.address&&payoutsEnabled){
     const min=farmSnapshot?.rates.min_withdrawal_credits||50;
     const button=document.createElement('button');button.type='button';button.textContent=`Request payout · ${account.credits} CR`;button.disabled=account.credits<min;
     button.onclick=()=>{button.disabled=true;void farmClient.post('payout',{amount_credits:account.credits}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Payout queued for the treasury','good');void showBazaar();}).catch(error=>{button.disabled=false;farmHud.notice(error instanceof Error?error.message:'Payout request failed','warn');});};
     content.append(button);
     if(account.credits<min)text('p',`Withdrawals open at ${min} credits.`);
+  }else if(account.wallet.address){
+    text('p','Real payouts are disabled. Linking an address does not convert credits into SOL or create a payable balance.');
   }
   for(const payout of account.payouts)text('p',`${payout.amount_credits} CR · ${payout.status} · ${new Date(payout.requested_at).toLocaleDateString()}`);
 }
@@ -280,9 +282,9 @@ async function showBazaar():Promise<void>{
     const [,economy]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null)]);
     if(!dialog.open||version!==interactionVersion)return;
     content.replaceChildren();
-    text('p','Bring produce here from the farm plots. World credits can be sold, saved and later withdrawn to a public Solana wallet.');
-    farmSection();accountSection();walletSection();
-    if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'Treasury signer configured.':'Real payouts are disabled on this deployment; requests stay queued.');}
+    text('p','Bring produce here from the farm plots. Produce sells for internal world credits; credits are not SOL or wallet funds.');
+    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
+    if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY CONFIGURATION');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'A separately configured real-payout program is enabled.':'Real payouts are disabled; internal credits remain in-game only.');}
     text('h3','GATHERING RECEIPTS');
     if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');
     for(const receipt of (economy?.receipts||[]).slice().reverse().slice(0,5))text('p',`${receipt.amount_credits} credits · ${receipt.source_action.replace(':',' ')} · ${receipt.status}`);

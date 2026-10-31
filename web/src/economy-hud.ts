@@ -9,6 +9,11 @@ export function formatSol(units:string):string {
  if(!/^(0|[1-9]\d{0,19})$/.test(units))throw Error('Invalid lamports');
  const n=BigInt(units),whole=n/1000000000n,fraction=(n%1000000000n).toString().padStart(9,'0').replace(/0+$/,'');return whole.toString()+(fraction?'.'+fraction:'');
 }
+export function formatInternalCredits(units:string):string {
+ if(!/^(0|[1-9]\d{0,19})$/.test(units))throw Error('Invalid internal amount');
+ const hundredths=BigInt(units)/100000n,whole=hundredths/100n,fraction=(hundredths%100n).toString().padStart(2,'0').replace(/0+$/,'');
+ return `${whole}${fraction?'.'+fraction:''} CR`;
+}
 export function fundingStatus(view:PublicEconomy,id:string):string {
  if(view.economy.funded_agents.includes(id))return view.economy.state==='refunded'?'↩':'✓';
  return view.operations.some(o=>o.purpose==='entry'&&o.payer===id&&o.status!=='failed')?'◐':'○';
@@ -33,9 +38,10 @@ export class EconomyHUD {
  private render(){
   const v=this.view!;const e=v.economy;this.root.hidden=false;this.root.replaceChildren();
   const label=document.createElement('span');label.className='pot-label';
-  if(e.state==='settled'&&v.settlement?.status==='confirmed')label.textContent=`PAID · ${formatSol(v.settlement.payout_amount)} ${e.payment_mode==='mock'?'MOCK ':''}SOL → ${v.settlement.winner_id}`;
-  else if(e.state==='funding')label.textContent=`POT ${formatSol(e.pot_amount)} / ${formatSol(v.expected_pot)} ${e.payment_mode==='mock'?'MOCK ':''}SOL · ${e.funded_agents.length}/${e.required_agents.length} FUNDED`;
-  else label.textContent=`POT ${formatSol(e.pot_amount)} ${e.payment_mode==='mock'?'MOCK ':''}SOL · ${e.state==='running'?'LOCKED':e.state.replaceAll('_',' ').toUpperCase()}`;
+  const amount=(value:string)=>e.payment_mode==='mock'?formatInternalCredits(value):`${formatSol(value)} TEST SOL`;
+  if(e.state==='settled'&&v.settlement?.status==='confirmed')label.textContent=e.payment_mode==='mock'?`SETTLED · ${amount(v.settlement.payout_amount)} → ${v.settlement.winner_id}`:`PAID · ${amount(v.settlement.payout_amount)} → ${v.settlement.winner_id}`;
+  else if(e.state==='funding')label.textContent=`POOL ${amount(e.pot_amount)} / ${amount(v.expected_pot)} · ${e.funded_agents.length}/${e.required_agents.length} ${e.payment_mode==='mock'?'COMMITTED':'FUNDED'}`;
+  else label.textContent=`POOL ${amount(e.pot_amount)} · ${e.state==='running'?'LOCKED':e.state.replaceAll('_',' ').toUpperCase()}`;
   this.root.append(label);
   const presentation=document.createElement('small');presentation.className='economy-presentation';presentation.hidden=true;this.root.append(presentation);if(this.presentation)this.present(this.presentation.turn,this.presentation.ended);
   const status=document.createElement('span');status.className='funding-statuses';status.textContent=e.required_agents.map(id=>`${id} ${fundingStatus(v,id)}`).join(' · ');this.root.append(status);
@@ -48,7 +54,7 @@ export class EconomyHUD {
   }
   const command=async(action:string,body:object={})=>{const r=await fetch(`/api/funded-matches/${encodeURIComponent(v.session)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await r.json();if(!r.ok)throw Error(result.error);this.accept(result.economy);};
   if(e.state==='funding'){
-   const actions=e.payment_mode==='devnet'?[...e.required_agents.filter(id=>!e.funded_agents.includes(id)).map(id=>({action:'fund',text:`Verify ${id}`,body:{agent_id:id}})),{action:'cancel',text:'Cancel / refund',body:{}}]:[{action:'fund-all',text:'Fund test entries',body:{}},{action:'cancel',text:'Cancel / refund',body:{}}];
+   const actions=e.payment_mode==='devnet'?[...e.required_agents.filter(id=>!e.funded_agents.includes(id)).map(id=>({action:'fund',text:`Verify ${id}`,body:{agent_id:id}})),{action:'cancel',text:'Cancel / refund',body:{}}]:[{action:'fund-all',text:e.payment_mode==='mock'?'Commit internal credits':'Fund test entries',body:{}},{action:'cancel',text:e.payment_mode==='mock'?'Cancel / return credits':'Cancel / refund',body:{}}];
    for(const action of actions){const b=document.createElement('button');b.textContent=action.text;b.className='small-button';b.onclick=async()=>{b.disabled=true;try{await command(action.action,action.body);}catch(error){this.error((error as Error).message);}finally{b.disabled=false;}};this.root.append(b);}
   }
   this.decorate();

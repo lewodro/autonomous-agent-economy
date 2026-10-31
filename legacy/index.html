@@ -33,12 +33,12 @@
 <h1>Twenty agents.<br>
 <span>One last standing?</span>
 </h1>
-<p class="lede">They stake. They fight. They learn.<br>Follow the rivals—or run the experiment your way.</p>
+<p class="lede">They commit. They fight. They learn.<br>Follow the rivals—or run the experiment your way.</p>
 </div>
 <div class="intro-note">
 <span>✦</span>
 <p>Rock. Paper. Scissors.<br>Small moves. Real lessons.</p>
-<small>Local adaptive algorithms · simulated SOL<br>No real money or wallet connection</small>
+<small>Local adaptive agents · internal credits<br>No real money or wallet connection</small>
 </div>
 </section>
 <section class="metrics" aria-label="Economy statistics">
@@ -51,12 +51,12 @@
 <strong id="match-count">0000</strong>
 </div>
 <div>
-<span>AGENT CAPITAL / SOL</span>
-<strong id="capital">20.000</strong>
+<span>AGENT CAPITAL</span>
+<strong id="capital">2,000 CR</strong>
 </div>
 <div>
-<span>TREASURY / SOL</span>
-<strong id="treasury-total">0.000</strong>
+<span>INTERNAL TREASURY</span>
+<strong id="treasury-total">0 CR</strong>
 </div>
 </section>
 <section class="arena-layout" id="arena">
@@ -127,7 +127,7 @@
 <option value="pnl">P&amp;L</option>
 <option value="balance">Bankroll</option>
 <option value="wins">Wins</option>
-<option value="drawdown">Drawdown</option>
+<option value="drawdown">Risk drawdown</option>
 </select>
 </label>
 </div>
@@ -164,7 +164,7 @@
 <button id="share">Copy run summary</button>
 </div>
 </div>
-<p class="muted">Select a settled match to inspect moves, commitments, and payouts.</p>
+<p class="muted">Select a settled match to inspect moves, commitments, and internal-credit settlement.</p>
 <div id="history-list" class="history-list">
 <p class="empty">The story begins with the first match.</p>
 </div>
@@ -186,9 +186,9 @@
 <option value="survival">Survival · play until out</option>
 </select>
 </label>
-<label>Stake per agent · SOL<input name="stake" inputmode="decimal" value="0.03" required>
+<label>Risk per agent · credits<input name="stake" inputmode="decimal" value="3" required>
 </label>
-<label>Initial bankroll · SOL<input name="bankroll" inputmode="decimal" value="1" required>
+<label>Initial capital · credits<input name="bankroll" inputmode="decimal" value="100" required>
 </label>
 <label>Experiment seed<input name="seed" type="number" min="1" max="4294967295" value="42" required>
 </label>
@@ -196,18 +196,18 @@
 </label>
 <button class="primary" type="submit">Create new run ↗</button>
 </form>
-<p class="muted">Bounded mode protects a reserve and limits loss and exposure. Survival mode removes those buffers; an agent is out when it cannot cover the next stake. Both modes have a match limit.</p>
+<p class="muted">Bounded mode protects a reserve and limits loss and exposure. Survival mode removes those buffers; an agent is out when it cannot cover the next risk commitment. Both modes have a match limit.</p>
 </div>
 <div class="panel">
 <p class="eyebrow">ECONOMY LAB</p>
 <h2>Follow the money</h2>
-<p class="muted">Treasury starts at zero. No imagined creator revenue. Stakes move through escrow; wins transfer the pot; draws return the stakes.</p>
+<p class="muted">The internal treasury starts at zero. No imagined creator revenue. Credits move through game escrow; wins transfer the pool; draws return each commitment.</p>
 <div id="treasury-controls">
 <p class="muted">Treasury controls arrive in the next delivery.</p>
 </div>
 <div class="rules-note">
 <h3>Rules you can inspect</h3>
-<p>Rock beats scissors. Scissors beat paper. Paper beats rock. Each agent pays one stake. The winner receives two stakes. A draw refunds both. Network and protocol fees are zero in this simulation.</p>
+<p>Rock beats scissors. Scissors beat paper. Paper beats rock. Each agent commits internal credits. The winner receives the pool. A draw returns both commitments. No wallet transaction occurs.</p>
 </div>
 </div>
 </section>
@@ -227,7 +227,7 @@
 <article>
 <span>03 / EXPERIMENT</span>
 <h3>Change the conditions</h3>
-<p>Choose a seed, capital, and stake. Compare results, export your run, and share what happened.</p>
+<p>Choose a seed, capital, and risk. Compare results, export your run, and share what happened.</p>
 </article>
 </div>
 </section>
