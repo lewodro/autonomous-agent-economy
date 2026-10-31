@@ -111,25 +111,26 @@ function presenceError(client:WorldPresenceClient):void {
   if(presenceReconnect)return;
   presenceReconnect=window.setTimeout(()=>{presenceReconnect=0;connectPresence(client);},1_000);
 }
-function connectPresence(client:WorldPresenceClient):void {
-  if(stopped||presenceClient!==client||presenceConnecting)return;
+function connectPresence(client:WorldPresenceClient):Promise<void> {
+  if(stopped||presenceClient!==client||presenceConnecting)return Promise.resolve();
   presenceConnecting=true;presenceState='connecting';updateConnectionLabel();
-  void client.connect().then(()=>{lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
+  return client.connect().then(()=>{lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
     .catch(()=>presenceError(client)).finally(()=>{presenceConnecting=false;});
 }
-function startPresence():void {
-  if(!entered||stopped||presenceClient)return;
+function startPresence():Promise<void> {
+  if(!entered||stopped||presenceClient)return Promise.resolve();
   let client:WorldPresenceClient;
   client=new WorldPresenceClient({avatar:player.spriteId,position:{...player.position},direction:player.facing,activity:player.activity,
     onPlayers:syncRemotePlayers,onConnection:state=>{
       if(presenceClient!==client)return;
       presenceState=state==='closed'?'closed':state;updateConnectionLabel();
     }});
-  presenceClient=client;connectPresence(client);
+  presenceClient=client;const joined=connectPresence(client);
   presenceHeartbeat=window.setInterval(()=>{
     if(presenceClient!==client)return;
     void client.heartbeat(player.activity).catch(()=>presenceError(client));
   },1_000);
+  return joined;
 }
 async function leavePresence():Promise<void> {
   const client=presenceClient;if(!client)return;
@@ -439,7 +440,7 @@ async function presetButtons():Promise<void> {
 }
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
-$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();startPresence();lastPlayTick=Date.now();void loadFarm();};
+$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
 document.querySelectorAll<HTMLButtonElement>('[data-place]').forEach(button=>{
   button.onclick=()=>{
     button.closest('details')?.removeAttribute('open');
@@ -602,5 +603,8 @@ try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 // stays available from the header.
 if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');}catch{}}
 void presetButtons();
-canvas.focus();startPresence();lastPlayTick=Date.now();
-void refreshProfiles();void refreshWorldLive();void loadFarm();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);
+canvas.focus();const joined=startPresence();lastPlayTick=Date.now();
+// The presence join owns the anonymous visitor cookie. Wait for it before
+// loading other visitor-scoped state so a concurrent request cannot mint a
+// second identity and ghost this visitor on refresh.
+void refreshProfiles();void refreshWorldLive();void joined.then(()=>loadFarm());worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);

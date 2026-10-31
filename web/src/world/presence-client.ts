@@ -44,7 +44,11 @@ export class WorldPresenceClient {
   }
   get player_id():string{return this.playerId;}
   snapshot():PresenceSnapshot{return{world_id:this.worldId,players:[...this.players.values()],agents:[...this.agents.values()]};}
-  async updateAvatar(avatar:string):Promise<PresenceSnapshot>{this.options.avatar=avatar;return this.connect();}
+  async updateAvatar(avatar:string):Promise<PresenceSnapshot>{
+    this.options.avatar=avatar;
+    if(this.connecting)await this.connecting.catch(()=>undefined);
+    return this.connect();
+  }
   async move(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{if(this.closed||!this.playerId||this.moveInFlight||this.now()-this.lastMoveAt<this.moveIntervalMs)return false;this.moveInFlight=true;this.lastMoveAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/move`,{position,direction,animation_state});return true;}finally{this.moveInFlight=false;}}
   async heartbeat(activity?:string):Promise<boolean>{if(this.closed||!this.playerId||this.heartbeatInFlight||this.now()-this.lastHeartbeatAt<this.heartbeatIntervalMs)return false;this.heartbeatInFlight=true;this.lastHeartbeatAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/heartbeat`,activity===undefined?{}:{activity});return true;}finally{this.heartbeatInFlight=false;}}
   async leave():Promise<void>{if(this.closed)return;if(this.connecting)await this.connecting.catch(()=>undefined);if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];try{if(this.playerId)await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/leave`,{});}finally{this.playerId='';this.onConnection('closed');}}
