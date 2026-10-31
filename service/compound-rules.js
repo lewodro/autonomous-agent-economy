@@ -8,12 +8,13 @@ export const ROUTINE=[
   {id:'exercise',label:'Exercise',room:'yard',required:false},
   {id:'lunch',label:'Lunch',room:'cafeteria',required:true},
   {id:'free_time',label:'Free time',room:null,required:false},
+  {id:'dinner',label:'Dinner',room:'cafeteria',required:true},
   {id:'evening_count',label:'Evening count',room:'cell-block',required:true},
   {id:'lockdown',label:'Lockdown',room:'cell-block',required:true},
 ];
 
 export const ITEM_DEFINITIONS={
-  food:{category:'food',contraband:false},medicine:{category:'medical',contraband:false},cloth:{category:'material',contraband:false},
+  food:{category:'food',contraband:false,nutrition:28},meal_tray:{category:'food',contraband:false,nutrition:38},bread:{category:'food',contraband:false,nutrition:24},fruit:{category:'food',contraband:false,nutrition:20},snack:{category:'food',contraband:false,nutrition:16},ration:{category:'food',contraband:false,nutrition:45},medicine:{category:'medical',contraband:false},cloth:{category:'material',contraband:false},
   scrap:{category:'material',contraband:true},wire:{category:'material',contraband:true},adhesive:{category:'material',contraband:true},
   soap:{category:'legal',contraband:false},book:{category:'legal',contraband:false},tray:{category:'job_item',contraband:false},
   package:{category:'job_item',contraband:false},access_card:{category:'access',contraband:true},maintenance_key:{category:'access',contraband:true},
@@ -30,7 +31,7 @@ export const RECIPES=[
   {id:'panel-bypass',label:'Panel bypass',requires:['wire','access_card'],output:'panel_bypass',intellect:3},
   {id:'concealment-wrap',label:'Concealment wrap',requires:['cloth','adhesive'],output:'concealment_wrap',intellect:1},
   {id:'field-dressing',label:'Field dressing',requires:['cloth','medicine'],output:'field_dressing',intellect:1},
-  {id:'energy-ration',label:'Energy ration',requires:['food','medicine'],output:'energy_ration',intellect:2},
+  {id:'energy-ration',label:'Packed ration',requires:['snack','medicine'],output:'ration',intellect:2},
   {id:'service-uniform',label:'Service uniform',requires:['cloth','soap'],output:'service_uniform',intellect:2},
   {id:'distraction-kit',label:'Distraction kit',requires:['wire','soap'],output:'distraction_kit',intellect:2},
   {id:'rope-line',label:'Rope line',requires:['cloth','wire'],output:'rope_line',intellect:3},

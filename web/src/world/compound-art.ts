@@ -199,12 +199,14 @@ export function drawCompoundItem(context: PixelContext, type: string, center: Co
   const x = center.x;
   const y = center.y;
   rect(context, 'rgba(14,24,21,.4)', x - 7, y + 5, 14, 4);
-  if (type === 'food' || type === 'medicine') {
-    rect(context, type === 'food' ? '#739650' : '#d8ddd0', x - 6, y - 7, 12, 13);
+  const food = ['food', 'meal_tray', 'bread', 'fruit', 'snack', 'ration', 'energy_ration'].includes(type);
+  if (food || type === 'medicine') {
+    const foodColor = type === 'fruit' ? '#b85b48' : type === 'bread' ? '#c99b58' : type === 'meal_tray' ? '#778985' : type === 'ration' ? '#667d4c' : '#739650';
+    rect(context, food ? foodColor : '#d8ddd0', x - 6, y - 7, 12, 13);
     if (type === 'medicine') {
       rect(context, '#c9564e', x - 2, y - 5, 4, 9);
       rect(context, '#c9564e', x - 4, y - 3, 8, 4);
-    } else rect(context, '#d4b060', x - 3, y - 4, 6, 5);
+    } else if(type==='meal_tray'){rect(context,'#d9c476',x-4,y-3,4,4);rect(context,'#93ad69',x+1,y-3,4,4);}else rect(context, '#f0ce7b', x - 3, y - 4, 6, 5);
   } else if (type.includes('card') || type.includes('key')) {
     rect(context, '#dfc265', x - 7, y - 4, 14, 9);
     rect(context, '#283833', x + 2, y - 2, 3, 3);

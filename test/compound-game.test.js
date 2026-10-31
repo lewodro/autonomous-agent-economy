@@ -126,7 +126,7 @@ test('two human owners share positions and items without seeing each others secr
   const first=game.participant('browser-a');
   first.position={x:12,y:5};
   const picked=game.action('browser-a',{action:'pickup'});
-  assert.ok(picked.participants.find(value=>value.id===picked.you).inventory.includes('food'));
+  assert.ok(picked.participants.find(value=>value.id===picked.you).inventory.includes('fruit'));
   assert.equal(game.snapshot('browser-b').world_items.some(value=>value.id==='item-food-a'),false);
   now+=200;game.move('browser-a',{x:13,y:5});
   assert.deepEqual(game.snapshot('browser-b').participants.find(value=>value.id===alice.you).position,{x:13,y:5});
@@ -327,4 +327,18 @@ test('recovering inmates and early escapes do not end a sandbox round immediatel
   for(const inmate of inmates)inmate.status='escaped';game.evaluateRound();assert.equal(game.state.phase,'active','a fast generated escape cannot resolve the whole round');
   now+=61_000;game.evaluateRound();assert.equal(game.state.phase,'finished');assert.equal(game.state.results.at(-1).reason,'all_escaped');
   await game.close();
+});
+
+test('hunger creates gentle pressure, food restores it, and shared meals feed agents too',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-hunger-')),{now:()=>20_000,roundSeconds:900});game.join('owner',{name:'Hungry Human'});game.startRound('owner');
+  const human=game.participant('owner');human.hunger=50;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.hunger,49.4);assert.equal(human.stamina,60);
+  human.hunger=10;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.stamina,51.5,'low hunger must slow stamina recovery');
+  human.inventory.push('fruit');game.useItem(human,'fruit');assert.equal(human.hunger,29.4);assert.ok(game.snapshot().events.some(event=>event.type==='item_used'&&event.item==='fruit'));
+  const before=game.state.worldItems.length;game.serveMeal('breakfast');const mealItems=game.state.worldItems.slice(before);assert.ok(mealItems.length>0);assert.ok(mealItems.every(item=>['bread','fruit','meal_tray'].includes(item.type)));
+  const agent=game.state.participants.find(value=>value.type==='agent'&&value.status==='active');agent.hunger=20;agent.inventory=['bread'];agent.nextAgentActAt=0;game.agentAct(agent);assert.equal(agent.inventory.includes('bread'),false);assert.ok(agent.hunger>20);
+  await game.close();
+});
+
+test('knockout recovery returns humans to play instead of ending their round',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-recovery-')),{now:()=>20_000});game.join('owner',{name:'Recovering Human'});game.startRound('owner');const human=game.participant('owner');human.status='recovering';human.hp=80;human.stamina=20;game.updateNeeds(human,2);assert.equal(human.status,'active');assert.equal(human.hp,100);assert.ok(human.stamina>20);await game.close();
 });
