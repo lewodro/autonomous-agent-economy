@@ -69,14 +69,8 @@ npm start
 The public release is available at:
 
 - [lastseat.ing/world](https://lastseat.ing/world) — shared walkable world and presence
-- [lastseat.ing/arena](https://lastseat.ing/arena) — shared Survival, RPS, Tic-Tac-Toe, and research
-- [lastseat.ing/compound](https://lastseat.ing/compound) — shared playable Compound Run pixel sandbox
-- [lastseat.ing/private-arena](https://lastseat.ing/private-arena) — this browser's isolated multi-mode arena
-- [lastseat.ing](https://lastseat.ing) — opens the shared walkable world and character picker
-- [lastseat.ing/home](https://lastseat.ing/home) — private Last Seat experiments
-- [lastseat.ing/post](https://lastseat.ing/post) — readable project history
 
-For a local clone, `npm start` prints the loopback address. Use the same relative routes shown above on that address.
+---
 
 ### 4. Explore the open-source pieces
 
