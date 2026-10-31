@@ -48,7 +48,7 @@ test('live Statistics messages come only from current public room and Survival s
   const survival={match_id:'current-7',status:'live',round:3,agents:[{status:'alive'},{status:'eliminated'}],
     events:[{round:3,summary:'Founder moved behind cover.'}]};
   const lines=liveMatchMessages(rooms,survival);
-  assert.deepEqual(lines,['Survival current-7 · round 3 · 1 alive','Round 3 · Founder moved behind cover.','RPS · Founder vs Analyst · turn 2']);
+  assert.deepEqual(lines,['Survival · round 3 · 1 alive','Round 3 · Founder moved behind cover.','RPS · Founder vs Analyst · turn 2']);
   assert.deepEqual(liveMatchMessages([],null),[]);
   assert.deepEqual(liveMatchMessages(rooms.map(room=>({...room,status:'waiting'})),{...survival,status:'finished'}),[]);
 });

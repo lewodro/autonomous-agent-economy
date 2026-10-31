@@ -6,7 +6,7 @@ export function liveMatchMessages(rooms:readonly ArenaRoom[],survival:SurvivalSn
   const messages:string[]=[];
   if(survival?.status==='live'){
     const alive=survival.agents.filter(agent=>agent.status==='alive').length;
-    messages.push(`Survival ${survival.match_id} · round ${survival.round} · ${alive} alive`);
+    messages.push(`Survival · round ${survival.round} · ${alive} alive`);
     for(const event of survival.events.slice(-4).reverse())messages.push(`Round ${event.round} · ${event.summary}`);
   }
   for(const room of rooms){

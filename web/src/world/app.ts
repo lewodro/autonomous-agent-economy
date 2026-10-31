@@ -59,7 +59,7 @@ function updateWorldLabel():void {
 }
 function updateConnectionLabel():void {
   updateWorldLabel();
-  if(!entered){connection.textContent=arenaOnline?'ARENA ONLINE · SIMULATION':'ARENA OFFLINE · retrying';return;}
+  if(!entered){connection.textContent='WORLD LIVE · JOINING';return;}
   const presenceText=presenceState==='connected'?'ONLINE':presenceState==='reconnecting'?'RECONNECTING':presenceState==='closed'?'OFFLINE':'CONNECTING';
   connection.textContent=`WORLD ${presenceText} · ${remotePlayers.size+1} HERE${arenaOnline?'':' · ARENA DATA OFFLINE'}`;
 }
@@ -440,6 +440,17 @@ async function presetButtons():Promise<void> {
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();startPresence();lastPlayTick=Date.now();void loadFarm();};
+document.querySelectorAll<HTMLButtonElement>('[data-place]').forEach(button=>{
+  button.onclick=()=>{
+    button.closest('details')?.removeAttribute('open');
+    const place=button.dataset.place;
+    if(place==='market')void showBazaar();
+    else if(place==='archive')void showResearch();
+    else if(place==='agency'){show('Agent agency');text('p','The agent house sits northeast of the plaza. It is reserved for a future agent gathering place.');}
+  };
+});
+document.addEventListener('click',event=>{const places=document.querySelector<HTMLDetailsElement>('.world-places');if(places?.open&&!places.contains(event.target as Node))places.open=false;});
+const legend=document.querySelector<HTMLDetailsElement>('.world-legend');if(legend&&matchMedia('(max-width:680px)').matches)legend.open=false;
 $('hud-account').onclick=()=>{
   if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
   if(!farmSnapshot?.auth.configured){farmHud.notice('Social login is not configured on this deployment yet','info');return;}
@@ -500,7 +511,7 @@ async function refreshWorldLive():Promise<void>{
   if(stopped)return;
   const [roomResult,survivalResult]=await Promise.allSettled([gateway.listRooms(),loadSurvivalSnapshot()]);
   const lines=liveMatchMessages(roomResult.status==='fulfilled'?roomResult.value:[],survivalResult.status==='fulfilled'?survivalResult.value:null);
-  liveNotice.textContent=lines.length?`LIVE · ${lines[worldLiveIndex++%lines.length]}`:'LIVE · waiting for the next public match update';
+  liveNotice.textContent=lines.length?`LIVE · ${lines[worldLiveIndex++%lines.length]}`:'LIVE · plaza open · the next public match is starting soon';
   liveNotice.hidden=false;
 }
 function farmGuide():{target:{x:number;y:number};label:string}|null{
@@ -586,5 +597,10 @@ if(location.pathname==='/labs/world'){
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-const entryGate=(window as unknown as {entryGate?:Promise<void>}).entryGate??Promise.resolve();
-void presetButtons().then(()=>{if(!entered)void entryGate.then(()=>{if(!entered)character.showModal();});else{canvas.focus();startPresence();lastPlayTick=Date.now();}void refreshProfiles();void refreshWorldLive();void loadFarm();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);});
+// The plaza is the landing page: join it immediately instead of covering the
+// live world with a splash or a blocking character picker. Character choice
+// stays available from the header.
+if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');}catch{}}
+void presetButtons();
+canvas.focus();startPresence();lastPlayTick=Date.now();
+void refreshProfiles();void refreshWorldLive();void loadFarm();worldLiveTimer=window.setInterval(()=>void refreshWorldLive(),4000);raf=requestAnimationFrame(frame);

@@ -2,23 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#22332f"><meta name="description" content="Walk through a small pixel agent town. Meet adaptive agents, visit the Arena, and watch Survival, RPS, and Tic-Tac-Toe matches.">
-  <title>Agent World · Autonomous Agent Economy</title><link rel="stylesheet" href="/world/styles.css"><link rel="stylesheet" href="/entry.css"><link rel="stylesheet" href="/motion.css"><script defer src="/entry.js"></script><script defer src="/motion.js"></script>
+  <meta name="theme-color" content="#22332f"><meta name="description" content="Join a live shared pixel agent town. Meet adaptive agents, visit the Arena and Compound, farm the plaza, and watch Survival, RPS, and Tic-Tac-Toe matches.">
+  <title>Agent World · Live shared plaza · Autonomous Agent Economy</title><link rel="stylesheet" href="/world/styles.css"><link rel="stylesheet" href="/motion.css"><script defer src="/motion.js"></script>
 </head>
 <body class="world-page">
-  <dialog id="entry-loader" class="entry-loader" data-mode="intro" aria-labelledby="entry-title" aria-describedby="entry-description">
-    <canvas class="entry-matrix" aria-hidden="true"></canvas>
-    <div class="entry-loader__panel">
-      <span class="entry-loader__eyebrow">AGENT WORLD // SYSTEM ONLINE</span>
-      <h2 id="entry-title">ENTERING THE PLAZA</h2>
-      <p id="entry-description">Loading the town. Pick a character and walk in.</p>
-      <div class="entry-loader__track" role="progressbar" aria-label="Intro animation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
-      <div class="entry-loader__footer"><span>RENDERING THE WORLD</span><button type="button" class="entry-loader__skip">Skip intro</button></div>
-    </div>
-  </dialog>
-  <header class="world-header"><a class="brand" href="/world">▦ AGENT WORLD</a><span class="mode">LOCAL SPECTATOR · FREE</span><nav aria-label="World navigation"><a href="/arena">Arena</a><a href="/compound">Compound</a><a href="/private-arena">Your arena</a><a href="/home">Quick match</a><button id="avatar-change">Character</button></nav></header>
+  <header class="world-header"><a class="brand" href="/world">▦ AGENT WORLD</a><span class="mode">SHARED PUBLIC WORLD</span><nav aria-label="World navigation"><a href="/arena">Arena</a><a class="nav-compound" href="/compound">Compound</a><details class="world-places"><summary>Places</summary><div class="world-places__panel"><p class="world-places__group">IN THE WORLD</p><button type="button" data-place="market">Market <small>Bazaar exchange</small></button><button type="button" data-place="archive">Archive <small>Arena research</small></button><button type="button" data-place="agency">Agency <small>Agent house</small></button><p class="world-places__group">PAGES</p><a href="/private-arena">Your arena</a><a href="/home">Quick match</a><a href="/post/">Build log</a></div></details><button id="avatar-change">Character</button></nav></header>
   <main class="world-shell">
-    <div class="world-bar"><div><h1>THE PLAZA</h1><p>Meet the agents. Follow their games. Write your own route.</p></div><span id="connection" role="status">Connecting to Arena…</span></div>
+    <div class="world-bar"><div><h1>THE PLAZA</h1><p>Live shared world. The Arena, Compound, market and archive are open.</p></div><span id="connection" role="status">Joining the shared world…</span></div>
     <section class="world-viewport" aria-label="Walkable agent town">
       <canvas id="world-canvas" tabindex="0" aria-label="Agent town. Use WASD or arrow keys to move, E to interact. Arena is southeast; free table southwest; Agency northeast; archive and market south."></canvas>
       <div id="world-hud" class="world-hud" hidden aria-label="Farm status">
@@ -32,12 +22,12 @@
         <div class="world-hud__hint" id="hud-hint">Walk to glowing soil and press E to farm</div>
       </div>
       <div id="farm-notices" class="farm-notices" aria-live="polite" aria-label="World notifications"></div>
-      <div class="world-legend" aria-hidden="true"><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span></div>
+      <details class="world-legend" open aria-label="Landmark directions"><summary>Directions</summary><div class="world-legend__grid"><b>AROUND YOU</b><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span></div></details>
       <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>
       <div id="world-live" class="world-live" role="status" aria-label="Live public games" aria-live="polite" hidden></div>
       <div class="touch-controls"><div id="joystick" class="joystick" aria-label="Touch movement joystick"><span id="joystick-knob"></span></div><button id="interact" class="interact-button" disabled>Interact</button></div>
     </section>
-    <div class="world-footer"><p>Click the world to focus controls. Crown = this agent’s latest retained match was a win. No wallet or real funds.</p><details><summary>Agent directory · keyboard accessible</summary><div id="agent-directory" class="agent-directory"></div></details></div>
+    <div class="world-footer"><div><p>Click the world to focus controls. Crown = this agent’s latest retained match was a win. No wallet or real funds.</p><nav class="world-footer__links" aria-label="Project links"><a href="/arena">Arena</a><a href="/compound">Compound</a><a href="/post/">Build log</a><a href="https://github.com/lewodro/autonomous-agent-economy/tree/main/docs" target="_blank" rel="noreferrer">Docs ↗</a><a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">GitHub ↗</a></nav></div><details><summary>Agent directory · keyboard accessible</summary><div id="agent-directory" class="agent-directory"></div></details></div>
     <section id="world-lab" class="lab-panel" hidden aria-label="World developer controls"></section>
   </main>
   <dialog id="character-dialog" aria-labelledby="character-title"><div class="dialog-heading"><div><p class="eyebrow">YOUR SPECTATOR</p><h2 id="character-title">Pick a character</h2></div><button id="character-close" aria-label="Close character selection">×</button></div><p>No account needed. Your choice and position stay in this browser.</p><div id="avatar-presets" class="avatar-presets"></div><button id="enter-world" class="primary">Enter World →</button></dialog>

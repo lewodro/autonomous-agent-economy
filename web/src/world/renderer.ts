@@ -237,12 +237,15 @@ export class CanvasWorldRenderer implements WorldRenderer {
   private drawGuide(guide:{target:Position;label:string},camera:Position,width:number,height:number,time:number,reduced:boolean):void {
     const c=this.ctx,{target,label}=guide,margin=28;
     const inside=target.x>=camera.x+margin&&target.x<=camera.x+width-margin&&target.y>=camera.y+margin&&target.y<=camera.y+height-margin;
+    // Keep edge labels inside the viewport on narrow phones instead of
+    // clipping the first or last letters.
+    const labelX=(text:string,x:number)=>{const half=(text.toUpperCase().length*5.8+8)/2;return Math.max(camera.x+8+half,Math.min(camera.x+width-8-half,x));};
     c.save();
     if(inside){
       const bob=reduced?0:Math.round(Math.sin(time/220)*3),x=target.x,y=target.y-46+bob;
       c.fillStyle='#f0cf75';c.beginPath();c.moveTo(x-9,y-12);c.lineTo(x+9,y-12);c.lineTo(x,y);c.closePath();c.fill();
       c.strokeStyle='#1a2928';c.lineWidth=2;c.stroke();
-      this.guideLabel(label,x,y-20);
+      this.guideLabel(label,labelX(label,x),y-20);
     }else{
       const cx=camera.x+width/2,cy=camera.y+height/2,angle=Math.atan2(target.y-cy,target.x-cx);
       const rx=width/2-margin-8,ry=height/2-margin-8;
@@ -252,8 +255,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#f0cf75';c.beginPath();c.moveTo(13,0);c.lineTo(-8,-9);c.lineTo(-3,0);c.lineTo(-8,9);c.closePath();c.fill();
       c.strokeStyle='#1a2928';c.lineWidth=2;c.stroke();
       c.rotate(-angle);
-      const metres=Math.round(Math.hypot(target.x-cx,target.y-cy)/32);
-      this.guideLabel(`${label} · ${metres}m`,0,16);
+      const metres=Math.round(Math.hypot(target.x-cx,target.y-cy)/32),text=`${label} · ${metres}m`;
+      // The context is translated to the arrow, so draw the label in local space.
+      this.guideLabel(text,labelX(text,x)-x,y>camera.y+height-46?-20:16);
     }
     c.restore();
   }

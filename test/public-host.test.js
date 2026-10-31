@@ -83,7 +83,8 @@ test('private experiments survive restart and stay isolated while the world stay
       const content = await page.text();
       if (route === '/') {
         assert.match(content, /id="character-dialog"/, 'the root route serves the world page');
-        assert.match(content, /id="entry-loader"[^>]*data-mode="intro"/, 'the root route plays the intro');
+        assert.doesNotMatch(content, /id="entry-loader"/, 'the root route joins the live world without a splash');
+        assert.match(content, /href="\/compound"/, 'Compound remains reachable from the world header');
       }
       if (route === '/home' || route === '/rps') assert.match(content, /id="entry-loader"[^>]*data-mode="transition"/);
       if (route === '/post' || route === '/post/') {
