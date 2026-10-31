@@ -441,16 +441,6 @@ async function presetButtons():Promise<void> {
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
-document.querySelectorAll<HTMLButtonElement>('[data-place]').forEach(button=>{
-  button.onclick=()=>{
-    button.closest('details')?.removeAttribute('open');
-    const place=button.dataset.place;
-    if(place==='market')void showBazaar();
-    else if(place==='archive')void showResearch();
-    else if(place==='agency'){show('Agent agency');text('p','The agent house sits northeast of the plaza. It is reserved for a future agent gathering place.');}
-  };
-});
-document.addEventListener('click',event=>{const places=document.querySelector<HTMLDetailsElement>('.world-places');if(places?.open&&!places.contains(event.target as Node))places.open=false;});
 const legend=document.querySelector<HTMLDetailsElement>('.world-legend');if(legend&&matchMedia('(max-width:680px)').matches)legend.open=false;
 $('hud-account').onclick=()=>{
   if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
