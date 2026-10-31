@@ -234,7 +234,7 @@ test('seeded security codes stay private until discovered and are validated at t
   const ownView=game.snapshot('alice').participants.find(value=>value.id===alice.id),otherView=game.snapshot('bob').participants.find(value=>value.id===alice.id);
   assert.equal(ownView.discoveries.codes.security_keypad,code);assert.equal(otherView.discoveries,undefined);
   const route=COMPOUND_MAP.escape_routes.find(value=>value.id==='security-override');alice.inventory.push('access_card');alice.position=game.adjacentTarget(alice,route.stages[0].position);
-  assert.throws(()=>game.attemptEscape(alice,'security-override:0000'),{code:'COMPOUND_CODE_INVALID'});game.attemptEscape(alice,`security-override:${code}`);assert.equal(alice.escapeProgress['security-override'],1);
+  assert.throws(()=>game.attemptEscape(alice,'security-override:0000'),{code:'COMPOUND_CODE_INVALID'});assert.ok(alice.heat>0,'a wrong code raises heat');assert.ok(game.state.events.some(event=>event.type==='security_tamper'));game.attemptEscape(alice,`security-override:${code}`);assert.equal(alice.escapeProgress['security-override'],1);
   alice.trust[bob.id]=1;bob.trust[alice.id]=1;assert.equal(game.shareKnowledge(alice,bob),true);assert.equal(bob.knowledge.codes.security_keypad,code);
   await game.close();
 });
@@ -275,6 +275,28 @@ test('containers, crafting, training, stamina and assigned jobs are authoritativ
   await game.close();
 });
 
+test('each job provides a concrete perk beyond credits on the first completed shift',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-perks-')),{now:()=>10_000});game.join('owner',{name:'Worker'});game.startRound('owner');
+  const human=game.participant('owner');human.role='worker';
+  const perks={janitor:['dirt-showers','janitor_pass'],kitchen:['food-counter','meal_tray'],workshop:['workbench-a','scrap'],maintenance:['utility-panel','maintenance_pass'],medical:['medical-bed','medicine']};
+  for(const [job,[propId,perk]] of Object.entries(perks)){
+    const prop=COMPOUND_MAP.props.find(value=>value.id===propId);human.job=job;human.jobProgress=0;human.inventory=[];human.stamina=100;human.perks={};human.position=game.adjacentTarget(human,prop);
+    game.performJob(human);assert.equal(human.jobProgress,1);assert.ok(human.inventory.includes(perk),`${job} must grant ${perk}`);assert.ok(game.state.events.some(event=>event.type==='job_perk'&&event.job===job&&event.item===perk));
+  }
+  human.job='janitor';human.inventory=['janitor_pass'];assert.ok(game.doorAccess(human,COMPOUND_MAP.doors.find(value=>value.room_id==='storage')),'a janitor pass widens restricted movement');
+  await game.close();
+});
+
+test('guard detention confiscates contraband and returns the inmate to play',async()=>{
+  let now=10_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-detain-')),{now:()=>now,roundSeconds:900});game.join('guard',{name:'Guard'});game.join('inmate',{name:'Inmate'});game.startRound('guard');
+  const guard=game.participant('guard'),inmate=game.participant('inmate');guard.role='guard';guard.position={x:10,y:12};inmate.role='prisoner';inmate.position={x:11,y:12};inmate.heat=60;inmate.inventory=['access_card','bread'];
+  const before=game.state.worldItems.length;game.action('guard',{action:'detain',target_id:inmate.id});
+  assert.equal(inmate.status,'detained');assert.equal(inmate.inventory.includes('access_card'),false);assert.ok(inmate.inventory.includes('bread'),'legal food is not confiscated');assert.deepEqual(inmate.position,{x:4,y:3});assert.ok(game.state.worldItems.slice(before).some(item=>item.type==='access_card'),'confiscated contraband stays recoverable');
+  assert.equal(guard.status,'active');assert.ok(game.state.events.some(event=>event.type==='detained'&&event.target_id===inmate.id));
+  now+=13_000;game.updateNeeds(inmate,1);assert.equal(inmate.status,'active','detention is lost time, not game over');
+  await game.close();
+});
+
 test('missing a required routine raises heat and records evidence',async()=>{
   let now=10_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-routine-')),{now:()=>now,roundSeconds:80});
   game.join('owner',{name:'Late Visitor'});game.startRound('owner');const human=game.participant('owner');human.role='prisoner';human.position={x:16,y:12};
@@ -309,7 +331,7 @@ test('agent favors transfer shared items and only earned knowledge reaches the h
 test('guards pursue only locally visible heat and can confiscate contraband',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-guard-ai-')),{now:()=>10_000});game.startAgentRound();
   const guard=game.state.participants.find(value=>value.role==='guard'),suspect=game.state.participants.find(value=>value.role!=='guard');
-  guard.position={x:13,y:5};suspect.position={x:16,y:5};suspect.heat=50;suspect.inventory=['wire','food'];
+  guard.position={x:13,y:5};suspect.position={x:16,y:5};suspect.heat=30;suspect.inventory=['wire','food'];
   game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='pursuit_started'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['wire','food'],'detection begins pursuit rather than remote confiscation');
   guard.position={x:15,y:5};guard.nextAgentActAt=0;game.agentAct(guard);assert.ok(game.snapshot().events.some(event=>event.type==='contraband_found'&&event.target_id===suspect.id));assert.deepEqual(suspect.inventory,['food']);
   await game.close();

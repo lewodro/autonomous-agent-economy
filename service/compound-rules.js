@@ -72,7 +72,7 @@ export const ESCAPE_PLANS=[
 ];
 
 export function securityFor(events,participants){
-  const severe=events.slice(-30).filter(event=>['escape_stage','attack','knockout','restricted_entry'].includes(event.type)).length;
+  const severe=events.slice(-30).filter(event=>['escape_stage','attack','knockout','restricted_entry','security_tamper','detained'].includes(event.type)).length;
   const heat=Math.max(0,...participants.map(value=>value.heat||0));
   if(severe>=5||heat>=90)return'lockdown';
   if(severe>=3||heat>=65)return'alert';
