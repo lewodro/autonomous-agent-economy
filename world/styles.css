@@ -87,3 +87,52 @@
 .compound-keypad{position:absolute;z-index:6;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;gap:8px;min-width:240px;padding:14px;border:2px solid #d2b66d;background:#162720;box-shadow:8px 8px 0 rgba(10,20,17,.6);color:#f2dfb4;font:700 10px/1.4 ui-monospace,monospace;text-transform:uppercase}.compound-keypad label{letter-spacing:.12em;color:#f2dfb4}.compound-keypad small{color:#aab6ad;text-transform:none}.compound-keypad input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #6f7d63;background:#0f1d18;color:#f0d67b;font:700 22px ui-monospace,monospace;letter-spacing:.4em;text-align:center}.compound-keypad-actions{display:flex;gap:6px}.compound-keypad-actions button{flex:1;padding:8px;border:1px solid #d2b66d;background:#22352c;color:#f2dfb4;font:700 10px ui-monospace,monospace;cursor:pointer}.compound-keypad-actions button:hover{background:#2d4638}
 
 .compound-tutorial{position:absolute;z-index:7;inset:0;display:grid;place-items:center;padding:18px;background:rgba(9,17,14,.72)}.compound-tutorial[hidden]{display:none}.compound-tutorial-card{max-width:420px;padding:18px;border:2px solid #d2b66d;background:#162720;box-shadow:8px 8px 0 rgba(10,20,17,.6);color:#e8eadf}.compound-tutorial-card .eyebrow{margin:0 0 4px;color:#d2b66d;font:700 9px ui-monospace,monospace;letter-spacing:.16em}.compound-tutorial-card h2{margin:0 0 10px;font:800 18px/1.1 ui-monospace,monospace}.compound-tutorial-card ul{display:grid;gap:6px;margin:0 0 14px;padding-left:16px;color:#c8d7bd;font:11px/1.45 ui-monospace,monospace}.compound-tutorial-card b{color:#f0d67b}.compound-tutorial-card button{padding:8px 12px;border:1px solid #d2b66d;background:#22352c;color:#f2dfb4;font:700 10px ui-monospace,monospace;cursor:pointer}.compound-tutorial-card button:hover{background:#2d4638}
+
+/* World intro: always shown over the running plaza, with an explicit saved-instance path. */
+.intro-lede{margin:14px 0 0;font-size:12px;color:var(--muted);max-width:56ch}
+.intro-auth{display:grid;gap:8px;margin:18px 0 6px;padding:14px;border:2px solid #64765e;background:#22352c}
+.google-button{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:44px;border:2px solid #e8eadf;background:#f7f4ea;color:#1f2b26;font-weight:bold;letter-spacing:.3px;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+.google-button::before{content:"G";display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);color:#fff;font:900 13px/1 system-ui,sans-serif;text-shadow:0 1px 0 #0006}
+.google-button:hover:not(:disabled){background:#fff;transform:translateY(-1px);box-shadow:0 4px 0 #142821}
+.google-button:disabled{opacity:.6;cursor:default;transform:none;box-shadow:none}
+.intro-auth__note{margin:0;font-size:11px;line-height:1.55;color:var(--muted)}
+.intro-auth__note[data-tone=good]{color:#b9eb69}
+.intro-auth__note[data-tone=warn]{color:#f1be93}
+.intro-footnote{margin:10px 0 0;font-size:10px;color:#96a39c;line-height:1.5}
+
+/* Arena motion: tabs, buttons, room cards, live status and agent rows. */
+@keyframes arena-rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes arena-tab-glow{0%,100%{box-shadow:0 0 0 0 #b9eb6900}50%{box-shadow:0 0 0 3px #b9eb6933}}
+@keyframes arena-live-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes arena-fighter-pulse{0%,100%{box-shadow:inset 0 0 0 2px #e0be7f22}50%{box-shadow:inset 0 0 0 2px #e0be7f77,0 0 12px #e0be7f33}}
+@keyframes arena-stat-flash{0%{color:#b9eb69;transform:translateY(-3px)}100%{color:inherit;transform:none}}
+@keyframes arena-scan{from{transform:translateX(-110%)}to{transform:translateX(110%)}}
+.arena-modes button{transition:background .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}
+.arena-modes button:hover{transform:translateY(-2px);border-color:#b9eb6988;color:#e8eadf}
+.arena-modes button[aria-pressed=true]{animation:arena-tab-glow 2.6s ease-in-out infinite}
+.survival-view{animation:arena-rise .45s ease both}
+.survival-wrap,.survival-field-wrap,.arena-shell .room-card,.arena-shell .agent-directory a{animation:arena-rise .5s ease both}
+.arena-shell .room-card:nth-child(2){animation-delay:60ms}
+.arena-shell .room-card:nth-child(3){animation-delay:120ms}
+.arena-shell .room-card:nth-child(4){animation-delay:180ms}
+.arena-shell .room-card:hover{transform:translateY(-3px);border-color:#b9eb6988}
+.room-card{transition:border-color .18s,transform .18s,box-shadow .18s}
+.room-card[data-status=live] .room-state::before,.room-card[data-status=starting] .room-state::before{content:"● ";animation:arena-live-pulse 1.4s ease-in-out infinite}
+.room-player{transition:border-color .18s,background .18s,transform .18s}
+.room-player:hover{transform:translateY(-2px);border-color:#b9eb6988}
+.room-player.fighting{animation:arena-fighter-pulse 1.8s ease-in-out infinite}
+.survival-stats>div{transition:background .2s ease}
+.survival-stats>div:hover{background:#20302b}
+.survival-stats strong{transition:color .2s ease}
+.survival-stats strong.is-flashing{animation:arena-stat-flash .55s ease both}
+.survival-heading #survival-status{position:relative;overflow:hidden}
+.survival-heading #survival-status::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#b9eb6940,transparent);animation:arena-scan 2.8s linear infinite;pointer-events:none}
+.survival-overlay{transition:opacity .3s ease}
+.arena-shell .agent-directory a{transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.arena-shell .agent-directory a:hover{transform:translateX(3px);border-color:#b9eb6988;background:#263a32}
+.arena-shell .button{transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+.arena-shell .button:hover{transform:translateY(-2px);box-shadow:0 4px 0 #142821}
+@media(prefers-reduced-motion:reduce){
+  .arena-modes button,.survival-view,.survival-wrap,.survival-field-wrap,.arena-shell .room-card,.arena-shell .agent-directory a,.google-button,.room-player,.survival-stats>div,.survival-stats strong,.survival-overlay,.arena-shell .button{animation:none!important;transition:none!important;transform:none!important}
+  .survival-heading #survival-status::after,.room-card .room-state::before{animation:none!important}
+}
