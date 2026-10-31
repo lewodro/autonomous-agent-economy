@@ -201,12 +201,40 @@ export function drawCompoundItem(context: PixelContext, type: string, center: Co
   rect(context, 'rgba(14,24,21,.4)', x - 7, y + 5, 14, 4);
   const food = ['food', 'meal_tray', 'bread', 'fruit', 'snack', 'ration', 'energy_ration'].includes(type);
   if (food || type === 'medicine') {
-    const foodColor = type === 'fruit' ? '#b85b48' : type === 'bread' ? '#c99b58' : type === 'meal_tray' ? '#778985' : type === 'ration' ? '#667d4c' : '#739650';
-    rect(context, food ? foodColor : '#d8ddd0', x - 6, y - 7, 12, 13);
     if (type === 'medicine') {
+      rect(context, '#d8ddd0', x - 6, y - 7, 12, 13);
       rect(context, '#c9564e', x - 2, y - 5, 4, 9);
       rect(context, '#c9564e', x - 4, y - 3, 8, 4);
-    } else if(type==='meal_tray'){rect(context,'#d9c476',x-4,y-3,4,4);rect(context,'#93ad69',x+1,y-3,4,4);}else rect(context, '#f0ce7b', x - 3, y - 4, 6, 5);
+    } else if (type === 'meal_tray') {
+      rect(context, '#3d4b47', x - 7, y - 5, 14, 10);
+      rect(context, '#cfc39a', x - 6, y - 4, 12, 8);
+      rect(context, '#c99b58', x - 5, y - 3, 4, 4);
+      rect(context, '#93ad69', x, y - 3, 4, 4);
+      rect(context, '#b85b48', x + 5, y - 2, 2, 3);
+      rect(context, '#d9c476', x - 5, y + 2, 4, 2);
+    } else if (type === 'bread') {
+      rect(context, '#b9854d', x - 6, y - 3, 12, 8);
+      rect(context, '#d3a568', x - 5, y - 5, 10, 4);
+      line(context, '#8a6038', x - 3, y - 1, 6, 1);
+      line(context, '#8a6038', x - 2, y + 2, 6, 1);
+    } else if (type === 'fruit') {
+      rect(context, '#b8503f', x - 5, y - 3, 10, 9);
+      rect(context, '#d9856b', x - 3, y - 2, 3, 3);
+      rect(context, '#6f9a5a', x + 1, y - 6, 4, 3);
+      line(context, '#5b4630', x, y - 6, 2, 3);
+    } else if (type === 'snack') {
+      rect(context, '#b8873f', x - 6, y - 5, 12, 11);
+      rect(context, '#e0c36f', x - 6, y - 1, 12, 3);
+      rect(context, '#8a5f2c', x - 4, y + 3, 8, 1);
+    } else if (type === 'ration' || type === 'energy_ration') {
+      rect(context, '#5b6f45', x - 6, y - 6, 12, 12);
+      rect(context, '#d9c476', x - 4, y - 3, 8, 3);
+      line(context, '#445636', x - 4, y + 2, 8, 1);
+      line(context, '#445636', x - 4, y + 4, 5, 1);
+    } else {
+      rect(context, '#739650', x - 6, y - 6, 12, 12);
+      rect(context, '#f0ce7b', x - 3, y - 3, 6, 5);
+    }
   } else if (type.includes('card') || type.includes('key')) {
     rect(context, '#dfc265', x - 7, y - 4, 14, 9);
     rect(context, '#283833', x + 2, y - 2, 3, 3);

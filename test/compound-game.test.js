@@ -354,11 +354,22 @@ test('recovering inmates and early escapes do not end a sandbox round immediatel
 
 test('hunger creates gentle pressure, food restores it, and shared meals feed agents too',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-hunger-')),{now:()=>20_000,roundSeconds:900});game.join('owner',{name:'Hungry Human'});game.startRound('owner');
-  const human=game.participant('owner');human.hunger=50;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.hunger,49.4);assert.equal(human.stamina,60);
+  const human=game.participant('owner');assert.equal(human.hunger,76);human.hunger=50;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.hunger,49);assert.equal(human.stamina,57.5);
   human.hunger=10;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.stamina,51.5,'low hunger must slow stamina recovery');
-  human.inventory.push('fruit');game.useItem(human,'fruit');assert.equal(human.hunger,29.4);assert.ok(game.snapshot().events.some(event=>event.type==='item_used'&&event.item==='fruit'));
-  const before=game.state.worldItems.length;game.serveMeal('breakfast');const mealItems=game.state.worldItems.slice(before);assert.ok(mealItems.length>0);assert.ok(mealItems.every(item=>['bread','fruit','meal_tray'].includes(item.type)));
+  human.hunger=.5;human.hp=100;human.stamina=50;game.updateNeeds(human,10);assert.equal(human.hunger,0);assert.equal(human.hp,97.5);assert.ok(human.stamina<50,'empty hunger must cost health and stamina');
+  human.inventory.push('fruit');game.useItem(human,'fruit');assert.equal(human.hunger,20);assert.ok(game.snapshot().events.some(event=>event.type==='item_used'&&event.item==='fruit'));
+  const before=game.state.worldItems.length;game.serveMeal('breakfast');const mealItems=game.state.worldItems.slice(before),inmates=game.state.participants.filter(value=>value.role!=='guard').length;assert.equal(mealItems.length,inmates,'every inmate gets a tray while food lasts');assert.ok(mealItems.every(item=>['bread','fruit','meal_tray'].includes(item.type)));
   const agent=game.state.participants.find(value=>value.type==='agent'&&value.status==='active');agent.hunger=20;agent.inventory=['bread'];agent.nextAgentActAt=0;game.agentAct(agent);assert.equal(agent.inventory.includes('bread'),false);assert.ok(agent.hunger>20);
+  await game.close();
+});
+
+test('hungry agents leave their routine to seek food during meal service',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-agent-food-')),{now:()=>20_000,roundSeconds:900});game.join('owner',{name:'Observer'});game.startRound('owner');
+  game.now=()=>120_000;assert.equal(game.routinePhase(),'breakfast');
+  const agent=game.state.participants.find(value=>value.type==='agent'&&value.role!=='guard'&&value.status==='active');agent.role='prisoner';agent.hunger=18;agent.inventory=[];agent.knowledge??={searched:[],clues:[],routes:[],knownItems:{},codes:{},doors:[],guardPatterns:[],shared:[]};
+  const target=game.agentTarget(agent),cafeteria=COMPOUND_MAP.rooms.find(value=>value.id==='cafeteria');
+  assert.ok(target, 'a hungry agent must choose a destination');
+  assert.ok(target.x>=cafeteria.x&&target.x<cafeteria.x+cafeteria.w&&target.y>=cafeteria.y&&target.y<cafeteria.y+cafeteria.h,'hungry agents head to the cafeteria during meals');
   await game.close();
 });
 
