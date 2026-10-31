@@ -68,7 +68,7 @@ npm start
 
 The public release is available at:
 
-- [lastseat.ing/world](https://lastseat.ing/world) — shared walkable world and presence
+- [lastseat.ing/world](https://lastseat.ing/world)
 
 ---
 
