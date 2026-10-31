@@ -150,6 +150,25 @@ test('signing in merges guest progress, plots and inventory', async () => {
   } finally { await close(); }
 });
 
+test('a signed-in account saves the character and plaza position as its instance', async () => {
+  const { farm, advance, close } = await setup();
+  const member = { key: 'clerk:user_saved', provider: 'clerk', subject: 'user_saved', name: 'Miro' };
+  try {
+    assert.deepEqual(farm.snapshot(member).account.profile, { avatar: null, position: null, saved_at: null });
+    const saved = await farm.saveProfile(member, { avatar: 'visitor_nova', position: { x: 640.4, y: 1000.6 } });
+    assert.deepEqual(saved.saved.position, { x: 640, y: 1001 });
+    assert.equal(saved.account.profile.avatar, 'visitor_nova');
+    assert.ok(saved.account.profile.saved_at);
+    advance(10_000);
+    const updated = await farm.saveProfile(member, { position: { x: -220, y: 930 } });
+    assert.equal(updated.account.profile.avatar, 'visitor_nova', 'saving a position keeps the saved character');
+    assert.deepEqual(farm.snapshot(member).account.profile.position, { x: -220, y: 930 });
+    await assert.rejects(() => farm.saveProfile(member, { avatar: 'visitor_debug' }), { code: 'INVALID_AVATAR' });
+    await assert.rejects(() => farm.saveProfile(member, { position: { x: 999_999, y: 0 } }), { code: 'INVALID_POSITION' });
+    await assert.rejects(() => farm.saveProfile(member, {}), { code: 'EMPTY_PROFILE' });
+  } finally { await close(); }
+});
+
 test('farm state survives a restart through the shared store', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'world-farm-persist-'));
   let now = 1_000_000;

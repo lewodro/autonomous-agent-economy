@@ -39,9 +39,11 @@ try{
  await evaluate("sessionStorage.clear();localStorage.removeItem('agent-world-settings-v1')");
  await send('Page.reload',{ignoreCache:true});
  await wait("document.getElementById('connection')?.textContent.includes('HERE')");
- await wait("!document.getElementById('character-dialog')?.open");
- await evaluate("document.getElementById('avatar-change').click()");
- await wait('document.getElementById("character-dialog")?.open');
+ await wait("document.getElementById('character-dialog')?.open");
+ assert.ok(await evaluate("document.querySelector('#character-dialog h2')?.textContent.includes('Step into the live world')"),'the intro must greet returning visitors on every world load');
+ const googleIntro=await evaluate("(()=>{const button=document.getElementById('intro-google'),note=document.getElementById('intro-auth-note');return {text:button?.textContent||'',disabled:button?.disabled,note:note?.textContent||''}})()");
+ assert.ok(googleIntro.text.includes('Continue with Google'),'the intro must offer a Google saved-instance sign-in');
+ assert.ok(googleIntro.disabled?/not configured|Checking/.test(googleIntro.note):googleIntro.note.includes('Sign in with Google'),'the Google button must explain its configured or guest-only state');
  await wait('document.querySelectorAll("#avatar-presets img").length===4&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
  const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
  await evaluate('document.querySelector("[data-avatar=visitor_ember]").click()');
@@ -94,6 +96,7 @@ try{
  // exercising the real interaction and navigation handoff.
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
  await wait('!document.getElementById("interact").disabled');
  await evaluate('document.getElementById("interact").click()');
@@ -125,11 +128,14 @@ try{
  }
  assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
  await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
- await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&!document.getElementById("character-dialog").open');
+ await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
+ assert.ok(await evaluate("document.querySelector('#character-dialog h2')?.textContent.includes('Step into the live world')"),'a returning visitor still sees the intro');
+ await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open&&document.activeElement?.id==="world-canvas"');
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:560,y:480},'entering from Arena must reset the visitor to the plaza spawn');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Open arena statistics').click()");
  await wait('!document.getElementById("interact").disabled');
  await evaluate("window.__researchStats=null;window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/api/arena/statistics'))window.__researchStats=await response.clone().json();if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
@@ -158,6 +164,7 @@ try{
  assert.equal(await evaluate("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.agents.some(a=>a.name==='Browser Agent'))"),false,'private agents must not enter canonical rankings');
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await wait("(()=>{const value=document.querySelector('#world-lab pre').textContent;return value&&JSON.parse(value).npcs.length>=3})()");
  await evaluate("window.__npcBefore=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs");
  await wait("(()=>{const after=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs,before=new Map(window.__npcBefore.map(n=>[n.id,n.position]));return after.filter(n=>{const old=before.get(n.id);return old&&Math.hypot(n.position.x-old.x,n.position.y-old.y)>8}).length>=2})()");
@@ -239,6 +246,7 @@ try{
  // persisted location before testing client movement against server speed limits.
  const releasedPresence=await evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');
  await send('Page.reload');await wait('document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden&&document.getElementById("connection").textContent.includes("WORLD ONLINE")');
+ await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  localPlayerId=await evaluate("window.__presenceRequests.findLast(value=>value.presence_id)?.presence_id");assert.ok(localPlayerId);
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
@@ -257,6 +265,7 @@ try{
  assert.ok(await evaluate("document.querySelector('a[href=\"/world\"]').getBoundingClientRect().width>0"),'world entry must remain visible on mobile');
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter detention compound').click()");
  await wait('!document.getElementById("interact").disabled');
  await evaluate('document.getElementById("interact").click()');

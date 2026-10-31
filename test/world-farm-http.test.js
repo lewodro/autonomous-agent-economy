@@ -64,6 +64,12 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     assert.equal(heartbeat.body.accepted_seconds, 30);
     assert.equal(heartbeat.body.account.seconds_played, 30);
 
+    const savedProfile = await post('profile', { avatar: 'visitor_atlas', position: { x: 560, y: 480 } });
+    assert.equal(savedProfile.status, 200);
+    assert.equal(savedProfile.body.account.profile.avatar, 'visitor_atlas');
+    assert.deepEqual(savedProfile.body.account.profile.position, { x: 560, y: 480 });
+    assert.equal((await post('profile', { avatar: 'visitor_debug' })).status, 400);
+
     const wallet = await post('wallet', { wallet_address: '11111111111111111111111111111111' });
     assert.equal(wallet.status, 200);
     assert.equal(wallet.body.account.wallet.status, 'self_declared');

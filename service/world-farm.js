@@ -3,6 +3,10 @@ import { validSolanaAddress } from './world-economy.js';
 
 const VERSION = 1;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
+/** Kept in sync with the curated browser avatar catalog. */
+export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
+/** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
+const WORLD_BOUNDS = Object.freeze({ minX: -896, minY: -576, maxX: 2688, maxY: 1728 });
 const GROW_MS = { wheat: [60_000, 110_000], carrot: [60_000, 95_000], pumpkin: [75_000, 120_000] };
 export const CROPS = Object.freeze({
   wheat: { label: 'Wheat', sell: 6, xp: 12, grow: GROW_MS.wheat },
@@ -57,6 +61,7 @@ function defaultAccount(identity, now) {
     time_credits: 0,
     inventory: { wheat: 0, carrot: 0, pumpkin: 0 },
     stats: { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 },
+    profile: { avatar: null, position: null, saved_at: null },
     created_at: new Date(now).toISOString(),
     last_seen: new Date(now).toISOString(),
   };
@@ -110,6 +115,7 @@ export class WorldFarm {
       account.time_credits ||= 0;
       account.xp ||= 0;
       account.credits ||= 0;
+      account.profile ||= { avatar: null, position: null, saved_at: null };
     }
     this.tick();
     while (Object.keys(this.state.tiles).length < this.maxTiles) this.spawnTile();
@@ -193,6 +199,11 @@ export class WorldFarm {
       stats: { ...account.stats },
       plots_used: active,
       plots_limit: this.maxPlotsPerPlayer,
+      profile: account.profile ? {
+        avatar: account.profile.avatar || null,
+        position: account.profile.position ? { ...account.profile.position } : null,
+        saved_at: account.profile.saved_at || null,
+      } : { avatar: null, position: null, saved_at: null },
       wallet: { address: account.wallet_address, status: account.wallet_status },
       payouts: this.state.payouts.filter(payout => payout.key === account.key).slice(-8).reverse().map(({ key, ...payout }) => payout),
     };
@@ -343,6 +354,28 @@ export class WorldFarm {
     account.wallet_status = wallet ? 'self_declared' : 'unlinked';
     await this.persist();
     return { account: this.view(identity) };
+  }
+
+  /** A signed-in visitor keeps their character and plaza position across devices. */
+  async saveProfile(identity, { avatar, position } = {}) {
+    const account = this.account(identity);
+    const profile = account.profile || { avatar: null, position: null, saved_at: null };
+    if (avatar !== undefined) {
+      if (!SAVED_AVATARS.includes(avatar)) throw fail('INVALID_AVATAR', 'That character is not available');
+      profile.avatar = avatar;
+    }
+    if (position !== undefined) {
+      const x = Number(position?.x), y = Number(position?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < WORLD_BOUNDS.minX || x > WORLD_BOUNDS.maxX || y < WORLD_BOUNDS.minY || y > WORLD_BOUNDS.maxY) {
+        throw fail('INVALID_POSITION', 'That saved position is outside the world');
+      }
+      profile.position = { x: Math.round(x), y: Math.round(y) };
+    }
+    if (avatar === undefined && position === undefined) throw fail('EMPTY_PROFILE', 'Nothing to save');
+    profile.saved_at = new Date(this.now()).toISOString();
+    account.profile = profile;
+    await this.persist();
+    return { account: this.view(identity), saved: { ...profile, position: profile.position ? { ...profile.position } : null } };
   }
 
   async requestPayout(identity, { amount_credits } = {}) {

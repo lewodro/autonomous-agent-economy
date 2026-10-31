@@ -19,6 +19,9 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   const rootHtml=await(await fetch(base+'/')).text();assert.match(rootHtml,/THE PLAZA/,'the root route should serve the world page');
   assert.doesNotMatch(rootHtml,/id="entry-loader"/,'the world-first root should not block the plaza with an intro splash');
   assert.match(rootHtml,/href="\/post\/">Build log</,'the devlog should remain reachable');
+  assert.match(rootHtml,/id="character-dialog"[\s\S]*?Step into the live world/,'the intro should always be present in the world markup');
+  assert.match(rootHtml,/id="intro-google"[^>]*>Continue with Google</,'the intro should offer Google sign-in for a saved instance');
+  assert.match(rootHtml,/id="intro-auth-note"/,'the intro should explain whether saved-instance sign-in is configured');
   assert.doesNotMatch(rootHtml,/href="\/compound"|href="\/arena"/,'Arena and Compound are discovered in the world, not the global header');
   assert.match(rootHtml,/COMPOUND ↙/,'the world directions should point to the Compound');
   assert.match(rootHtml,/ARENA ↘/,'the world directions should point to the Arena');
