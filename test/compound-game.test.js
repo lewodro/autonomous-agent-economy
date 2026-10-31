@@ -160,7 +160,7 @@ test('round keys and clues are deterministic, exclusive, and privately discovere
   while(container.items.length&&!alice.inventory.includes('utility_note'))game.searchContainer(alice,clueContainer);
   assert.ok(alice.knowledge.routes.includes('maintenance-route'));
   assert.equal(alice.knowledge.clues.at(-1).includes(clueContainer),false,'clues reveal an area rather than the exact hidden container');
-  assert.deepEqual(game.snapshot('alice').map.escape_routes.map(value=>value.id),['maintenance-route']);
+  assert.deepEqual(new Set(game.snapshot('alice').map.escape_routes.map(value=>value.id)),new Set(game.state.roundSecrets.code_source==='utility_note'?['maintenance-route','security-override']:['maintenance-route']));
   assert.deepEqual(game.snapshot('bob').map.escape_routes,[],'another player does not inherit Alice knowledge');
   assert.equal(game.snapshot('bob').participants.find(value=>value.id===alice.id).inventory,undefined);
   assert.equal(game.state.containers.flatMap(value=>value.items).filter(item=>item==='utility_key').length+game.state.participants.flatMap(value=>value.inventory).filter(item=>item==='utility_key').length,1,'access items exist once in shared state');
@@ -203,24 +203,47 @@ test('agent planning explores local knowledge instead of reading secret placemen
   await game.close();
 });
 
-test('all three original staged escape routes are reachable by a prepared prisoner',async()=>{
+test('all original staged escape routes are reachable by a prepared prisoner',async()=>{
   const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-route-')),{now:()=>10_000});
   game.join('owner',{name:'Pathfinder'});game.startRound('owner');
   const human=game.participant('owner');human.role='prisoner';
-  const accessByRoute={'service-gate':'staff_key','maintenance-route':'utility_key','perimeter-plan':'maintenance_pass'};
+  const accessByRoute={'service-gate':'staff_key','maintenance-route':'utility_key','perimeter-plan':'maintenance_pass','security-override':'access_card'};
   for(const route of COMPOUND_MAP.escape_routes){
-    human.status='active';human.position={x:2,y:3};human.knowledge.routes=[route.id];human.inventory=[accessByRoute[route.id],...route.stages.flatMap(stage=>stage.requires)];
+    human.status='active';human.position={x:2,y:3};human.knowledge.routes=[route.id];human.knowledge.codes={security_keypad:game.state.roundSecrets.codes.security_keypad};human.inventory=[accessByRoute[route.id],...route.stages.flatMap(stage=>stage.requires)];
     let steps=0;
     for(const stage of route.stages){
       const target=game.adjacentTarget(human,stage.position);
       while(Math.abs(human.position.x-stage.position.x)+Math.abs(human.position.y-stage.position.y)>1&&steps++<180){
         const next=game.pathStep(human,target);assert.ok(next,`${route.id}/${stage.id} must have a route`);game.stepParticipant(human,next);
       }
-      game.attemptEscape(human,route.id);
+      game.attemptEscape(human,stage.keypad?`${route.id}:${human.knowledge.codes.security_keypad}`:route.id);
     }
     assert.ok(steps<180,`${route.id} must be reachable`);
     assert.equal(human.status,'escaped');
   }
+  await game.close();
+});
+
+test('seeded security codes stay private until discovered and are validated at the physical keypad',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-keypad-')),{now:()=>20_000});game.join('alice',{name:'Alice'});game.join('bob',{name:'Bob'});game.startRound('alice');
+  const alice=game.participant('alice'),bob=game.participant('bob'),source=game.state.roundSecrets.code_source,containerId=game.state.roundSecrets.placements[source],prop=COMPOUND_MAP.props.find(value=>value.id===containerId),container=game.state.containers.find(value=>value.id===containerId);
+  assert.ok(['security_memo','utility_note','guard_schedule'].includes(source));assert.ok(container,`${source} must spawn in a real container`);
+  alice.role='prisoner';alice.position=game.adjacentTarget(alice,prop);alice.inventory=[];
+  assert.equal(alice.knowledge.codes.security_keypad,undefined);assert.equal(bob.knowledge.codes.security_keypad,undefined);while(container.items.length&&!alice.inventory.includes(source))game.searchContainer(alice,containerId);
+  const code=alice.knowledge.codes.security_keypad;assert.match(code,/^\d{4}$/);assert.equal(bob.knowledge.codes.security_keypad,undefined);assert.ok(alice.knowledge.routes.includes('security-override'));
+  const ownView=game.snapshot('alice').participants.find(value=>value.id===alice.id),otherView=game.snapshot('bob').participants.find(value=>value.id===alice.id);
+  assert.equal(ownView.discoveries.codes.security_keypad,code);assert.equal(otherView.discoveries,undefined);
+  const route=COMPOUND_MAP.escape_routes.find(value=>value.id==='security-override');alice.inventory.push('access_card');alice.position=game.adjacentTarget(alice,route.stages[0].position);
+  assert.throws(()=>game.attemptEscape(alice,'security-override:0000'),{code:'COMPOUND_CODE_INVALID'});game.attemptEscape(alice,`security-override:${code}`);assert.equal(alice.escapeProgress['security-override'],1);
+  alice.trust[bob.id]=1;bob.trust[alice.id]=1;assert.equal(game.shareKnowledge(alice,bob),true);assert.equal(bob.knowledge.codes.security_keypad,code);
+  await game.close();
+});
+
+test('round generator rotates scenario families and seeds the code source without leaking it',async()=>{
+  const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-scenario-')),{now:()=>30_000});game.join('owner',{name:'Runner'});
+  const scenarios=new Set(),sources=new Set(),codes=new Set();
+  for(let round=0;round<4;round++){game.state.phase='lobby';game.startRound('owner');const secrets=game.state.roundSecrets;scenarios.add(secrets.scenario);sources.add(secrets.code_source);codes.add(secrets.codes.security_keypad);assert.equal(secrets.scenario_id,Object.entries({'maintenance-route':'MAINTENANCE ESCAPE','service-gate':'SERVICE GATE','security-override':'SECURITY OVERRIDE','perimeter-plan':'PERIMETER BREACH'}).find(([,label])=>label===secrets.scenario)?.[0]);assert.ok(secrets.placements[secrets.code_source]);}
+  assert.equal(scenarios.size,4);assert.ok(sources.size>1);assert.equal(codes.size,4);
   await game.close();
 });
 

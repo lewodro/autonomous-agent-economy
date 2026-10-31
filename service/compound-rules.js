@@ -20,6 +20,7 @@ export const ITEM_DEFINITIONS={
   package:{category:'job_item',contraband:false},access_card:{category:'access',contraband:true},maintenance_key:{category:'access',contraband:true},
   cell_key:{category:'access',contraband:true},utility_key:{category:'access',contraband:true},staff_key:{category:'access',contraband:true},maintenance_pass:{category:'access',contraband:true},
   service_note:{category:'clue',contraband:false},utility_note:{category:'clue',contraband:false},perimeter_map:{category:'clue',contraband:true},guard_schedule:{category:'clue',contraband:true},
+  security_memo:{category:'clue',contraband:true},janitor_pass:{category:'access',contraband:false},
   improvised_tool:{category:'tool',contraband:true},wire_cutter:{category:'tool',contraband:true},panel_bypass:{category:'tool',contraband:true},
   concealment_wrap:{category:'tool',contraband:true},field_dressing:{category:'medical',contraband:false},energy_ration:{category:'food',contraband:false},
   service_uniform:{category:'access',contraband:true},distraction_kit:{category:'tool',contraband:true},rope_line:{category:'tool',contraband:true},
@@ -62,6 +63,11 @@ export const ESCAPE_PLANS=[
     {id:'cut-inner',label:'Cut the inner fence',position:{x:15,y:20},requires:['wire_cutter']},
     {id:'anchor-line',label:'Anchor the crossing line',position:{x:24,y:16},requires:['rope_line']},
     {id:'cross',label:'Cross during a security gap',position:{x:31,y:16},requires:[]},
+  ]},
+  {id:'security-override',label:'Security Override',position:{x:29,y:19},stages:[
+    {id:'keypad',label:'Enter discovered security code',position:{x:29,y:5},requires:[],keypad:true},
+    {id:'control',label:'Override the gate controller',position:{x:26,y:19},requires:['access_card']},
+    {id:'release',label:'Use the released service gate',position:{x:29,y:19},requires:[]},
   ]},
 ];
 

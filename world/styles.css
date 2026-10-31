@@ -99,3 +99,5 @@
   .world-legend__grid span:last-child{grid-column:auto}
   .world-footer__links{font-size:9px;gap:5px 10px}
 }
+
+.compound-keypad{position:absolute;z-index:6;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;gap:8px;min-width:240px;padding:14px;border:2px solid #d2b66d;background:#162720;box-shadow:8px 8px 0 rgba(10,20,17,.6);color:#f2dfb4;font:700 10px/1.4 ui-monospace,monospace;text-transform:uppercase}.compound-keypad label{letter-spacing:.12em;color:#f2dfb4}.compound-keypad small{color:#aab6ad;text-transform:none}.compound-keypad input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #6f7d63;background:#0f1d18;color:#f0d67b;font:700 22px ui-monospace,monospace;letter-spacing:.4em;text-align:center}.compound-keypad-actions{display:flex;gap:6px}.compound-keypad-actions button{flex:1;padding:8px;border:1px solid #d2b66d;background:#22352c;color:#f2dfb4;font:700 10px ui-monospace,monospace;cursor:pointer}.compound-keypad-actions button:hover{background:#2d4638}
