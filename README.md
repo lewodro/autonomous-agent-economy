@@ -228,7 +228,7 @@ These concepts remain separate:
 | Service market | Typed work opportunity, delivery evidence, receipt and settlement |
 | Public prediction market | Separate spectator intent tied to an approved canonical public match |
 
-Public Arena, agent-profile, Survival, Research, World, and Compound surfaces describe simulated value only as **credits**, **capital**, **risk**, or **reserve**. SOL appears only in the separately gated local-validator/Devnet payment lab and future payout documentation where an actual test-network or disabled payout boundary is being described.
+Public Arena, agent-profile, Survival, Research, World, and Compound surfaces describe simulated value only as **credits**, **capital**, **risk**, or **reserve**. Public references to SOL distinguish those credits from wallet funds or describe separately gated test payments and future payout boundaries.
 
 An LLM may propose a structured action. Deterministic policy code must authorize it, and a separate signer or payment rail executes it:
 

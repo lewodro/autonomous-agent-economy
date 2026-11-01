@@ -6,11 +6,14 @@ const publicGameFiles = [
   'index.html',
   'legacy/index.html',
   'legacy/script.js',
+  'labs/economy.html',
+  'labs/funded.html',
   'world/index.html',
   'world/arena.html',
   'world/private-arena.html',
   'world/compound.html',
   'web/src/main.ts',
+  'web/src/funded-lab.ts',
   'web/src/world/app.ts',
   'web/src/world/lobby.ts',
   'web/src/world/private-arena.ts',
@@ -28,6 +31,8 @@ test('public game surfaces never denominate simulated agent value as SOL', async
     /stake per agent[^\n]*\bsol\b/i,
     /creator revenue[^\n]*\bsol\b/i,
     /mock wallet capability/i,
+    /<th>SOL balance<\/th>/i,
+    /aria-label="Entry SOL"/i,
   ];
   for (const file of publicGameFiles) {
     const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
@@ -45,6 +50,10 @@ test('public copy separates internal credits from feature-gated test payments', 
   assert.match(lastSeat, /Local validator · test SOL/);
   assert.match(world, /Credits are not SOL or wallet funds/);
   assert.match(world, /Real payouts are disabled/);
+  const fundedLab = await readFile(new URL('../web/src/funded-lab.ts', import.meta.url), 'utf8');
+  assert.match(fundedLab, /payment_mode==='mock'/);
+  assert.match(fundedLab, /formatInternalCredits/);
+  assert.match(fundedLab, /Internal account/);
 });
 
 test('mock economy documentation uses credits rather than fake SOL units', async () => {

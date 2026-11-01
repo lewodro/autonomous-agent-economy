@@ -30,7 +30,7 @@ export class EconomyHUD {
   if(!projection||JSON.stringify(projection.match)!==JSON.stringify(data.economy))throw Error('Snapshot differs from Rust economy events');
   formatSol(data.expected_pot);this.view=structuredClone(data);this.render();
  }
- decorate(){if(!this.view)return;for(const button of document.querySelectorAll<HTMLElement>('.agent-tab[data-agent]')){button.dataset.funding=fundingStatus(this.view,button.dataset.agent!);button.title=`Funding ${button.dataset.funding}`;}}
+ decorate(){if(!this.view)return;for(const button of document.querySelectorAll<HTMLElement>('.agent-tab[data-agent]')){button.dataset.funding=fundingStatus(this.view,button.dataset.agent!);button.title=`${this.view.economy.payment_mode==='mock'?'Credit commitment':'Test payment'} ${button.dataset.funding}`;}}
  present(turn:number,ended:boolean){
   this.presentation={turn,ended};const note=this.root.querySelector<HTMLElement>('.economy-presentation');
   if(note){note.hidden=!this.view||!['settled','refunded'].includes(this.view.economy.state)||ended;note.textContent=`HOST COMPLETE · WATCHING T${String(turn).padStart(2,'0')}`;}
