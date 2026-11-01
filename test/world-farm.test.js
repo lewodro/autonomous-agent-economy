@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { WorldFarm, FARM_ANCHORS, BAZAAR, CROPS } from '../service/world-farm.js';
 import { WorldStore } from '../service/world-store.js';
-import { collides } from '../web/dist/world/map.js';
+import { collides, isNaturalGround, MAP } from '../web/dist/world/map.js';
 
 const guest = { key: 'guest:visitor-a', provider: 'guest' };
 const wallet = '11111111111111111111111111111111';
@@ -32,9 +32,12 @@ test('spawned tiles sit on reachable ground and start empty', async () => {
   try {
     const snapshot = farm.snapshot(guest);
     assert.equal(snapshot.tiles.length, 6);
+    assert.equal(new Set(snapshot.tiles.map(tile => tile.anchor)).size, snapshot.tiles.length, 'wild plots use distinct zone anchors');
     for (const tile of snapshot.tiles) {
       assert.equal(tile.stage, 'wild');
       assert.equal(collides(tile.position), false, tile.id);
+      assert.equal(isNaturalGround(tile.position, 18), true, tile.id);
+      assert.ok(Math.hypot(tile.position.x - MAP.spawn.x, tile.position.y - MAP.spawn.y) >= 900, tile.id);
       assert.ok(FARM_ANCHORS.some(anchor => Math.hypot(anchor.x - tile.position.x, anchor.y - tile.position.y) <= 30));
     }
     assert.equal(snapshot.account.credits, 0);

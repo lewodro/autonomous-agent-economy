@@ -19,19 +19,15 @@ export const PLANT_RADIUS = 96;
 
 /** Fixed open ground anchors; each spawn jitters a little so tiles feel scattered without landing in walls. */
 export const FARM_ANCHORS = Object.freeze([
-  { id: 'garden-north', x: 1560, y: 760 },
-  { id: 'garden-east', x: 2080, y: 700 },
-  { id: 'garden-south', x: 1900, y: 1020 },
-  { id: 'garden-west', x: 1500, y: 980 },
-  { id: 'garden-path', x: 1700, y: 1250 },
-  { id: 'market-north', x: 420, y: 1140 },
-  { id: 'market-east', x: 1320, y: 1180 },
-  { id: 'plaza-south', x: 640, y: 1000 },
-  { id: 'south-field', x: 1000, y: 1500 },
-  { id: 'south-meadow', x: 1500, y: 1600 },
-  { id: 'east-workshop', x: 2200, y: 1450 },
-  { id: 'west-trail', x: 300, y: 900 },
-  { id: 'market-home', x: 760, y: 1350 },
+  { id: 'garden-north', zone: 'botanical', tier: 2, x: 1560, y: 760 },
+  { id: 'garden-east', zone: 'botanical', tier: 2, x: 2080, y: 700 },
+  { id: 'garden-south', zone: 'botanical', tier: 2, x: 1900, y: 1020 },
+  { id: 'garden-west', zone: 'botanical', tier: 2, x: 1500, y: 980 },
+  { id: 'garden-path', zone: 'garden_outskirts', tier: 2, x: 1700, y: 1250 },
+  { id: 'south-meadow', zone: 'south_meadow', tier: 3, x: 1500, y: 1600 },
+  { id: 'east-workshop', zone: 'east_outskirts', tier: 3, x: 2200, y: 1450 },
+  { id: 'west-clearing', zone: 'west_outskirts', tier: 3, x: -620, y: 1320 },
+  { id: 'forest-edge', zone: 'outer_forest', tier: 3, x: 2250, y: 620 },
 ]);
 
 function fail(code, message, status = 400) { return Object.assign(new Error(message), { code, status }); }
@@ -133,8 +129,18 @@ export class WorldFarm {
 
   persist() { return this.store.save(this.state); }
 
+  chooseAnchor(excludeTileId = null) {
+    const occupied = new Set(Object.values(this.state.tiles).filter(tile => tile.id !== excludeTileId).map(tile => tile.anchor));
+    const start = Math.floor(this.random() * FARM_ANCHORS.length) % FARM_ANCHORS.length;
+    for (let offset = 0; offset < FARM_ANCHORS.length; offset += 1) {
+      const anchor = FARM_ANCHORS[(start + offset) % FARM_ANCHORS.length];
+      if (!occupied.has(anchor.id)) return anchor;
+    }
+    return FARM_ANCHORS[start] || FARM_ANCHORS[0];
+  }
+
   spawnTile() {
-    const anchor = FARM_ANCHORS[Math.floor(this.random() * FARM_ANCHORS.length)] || FARM_ANCHORS[0];
+    const anchor = this.chooseAnchor();
     const jitter = () => Math.round((this.random() * 40 - 20) / 4) * 4;
     const tile = {
       id: `plot_${randomUUID().slice(0, 8)}`,
@@ -158,7 +164,7 @@ export class WorldFarm {
     for (const tile of Object.values(this.state.tiles)) {
       if (tile.stage !== 'wild') continue;
       if (now - (tile.spawned_at || 0) < this.wildTtlMs) continue;
-      const anchor = FARM_ANCHORS[Math.floor(this.random() * FARM_ANCHORS.length)] || FARM_ANCHORS[0];
+      const anchor = this.chooseAnchor(tile.id);
       tile.anchor = anchor.id;
       tile.position = { x: anchor.x + Math.round((this.random() * 40 - 20) / 4) * 4, y: anchor.y + Math.round((this.random() * 40 - 20) / 4) * 4 };
       tile.spawned_at = now;

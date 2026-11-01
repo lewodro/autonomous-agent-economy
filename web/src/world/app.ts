@@ -599,7 +599,7 @@ function frame(time:number):void {
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
     if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});void loadFarm();}
-    const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:resource.kind==='ore'?'Mine ore':'Harvest plants'}));
+    const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:`${resource.kind==='ore'?'Mine ore':'Harvest plants'} · ${resource.rarity.replace('_',' ')}`}));
     const plotTargets:Interactable[]=(farmSnapshot?.tiles||[]).map(tile=>({id:`plot:${tile.id}`,position:tile.position,radius:70,type:'zone' as const,
       label:tile.stage==='wild'?'Plant a crop':tile.mine?(tile.stage==='ready'?`Harvest ${cropLabel(tile.crop).toLowerCase()}`:`${cropLabel(tile.crop).toLowerCase()} growing`):`${cropLabel(tile.crop).toLowerCase()} field`}));
     const targets=[...LANDMARKS,...resourceTargets,...plotTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];

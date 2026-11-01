@@ -192,7 +192,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
       const {x,y}=resource.position;c.fillStyle='#172b2877';c.fillRect(x-15,y+8,30,6);
       if(resource.kind==='ore'){c.fillStyle=resource.available?'#8d9288':'#4f5952';c.fillRect(x-13,y-2,26,13);c.fillRect(x-7,y-9,15,9);c.fillStyle=resource.available?'#c8b66d':'#697069';c.fillRect(x-4,y-6,6,5);c.fillRect(x+6,y+1,4,4);}
       else{c.fillStyle=resource.available?'#548057':'#3c5542';c.fillRect(x-2,y-11,4,22);c.fillRect(x-12,y-7,10,7);c.fillRect(x+2,y-3,12,7);c.fillStyle=resource.available?'#d8c06e':'#71806a';c.fillRect(x-8,y-10,5,5);c.fillRect(x+6,y-7,5,5);}
-      if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle='#f2d88a';c.fillRect(x+13,y-12,3,3);}
+      if(resource.available&&resource.rarity!=='common'){const color=resource.rarity==='uncommon'?'#a9c889':resource.rarity==='rare'?'#80b9c8':'#d9a8df';c.strokeStyle=color;c.lineWidth=2;c.strokeRect(x-17,y-14,34,28);}
+      if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle=resource.rarity==='very_rare'?'#efc8f2':'#f2d88a';c.fillRect(x+13,y-12,3,3);}
     }
     for(const particle of frame.particles||[]){const remaining=Math.max(0,particle.expiresAt-frame.time),age=1-Math.min(1,remaining/650);c.fillStyle=particle.color;c.fillRect(Math.round(particle.position.x+particle.velocity.x*age),Math.round(particle.position.y+particle.velocity.y*age),3,3);}
     for(const tile of frame.farmTiles||[]){
