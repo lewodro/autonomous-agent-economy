@@ -43,6 +43,7 @@ the other side of the map.
 | `/api/world/farm/sell` | POST | `{crop, quantity}`; requires presence near the bazaar. |
 | `/api/world/farm/heartbeat` | POST | `{seconds}`; play-time credits, capped at 30 seconds per call. |
 | `/api/world/farm/wallet` | POST | `{wallet_address, display_name?}`; saves a **public** address only. |
+| `/api/world/farm/profile` | POST | `{avatar?, position?}`; saves the signed-in visitor's character and plaza position. |
 | `/api/world/farm/payout` | POST | `{amount_credits}`; signed-in accounts only. Creates a queued payout. |
 | `/api/world/auth` | GET | `{provider, configured, publishable_key}` for the browser. |
 | `/api/world/auth/clerk` | POST | `{token}`; verifies a Clerk session token and sets the signed account cookie. |
@@ -58,6 +59,11 @@ single publishable key. The integration is deliberately optional:
 * With the key, the world loads Clerk's browser SDK lazily, opens the hosted sign-in
   modal, and exchanges the resulting session token for a server-signed
   `aae_account` cookie.
+* The plaza intro is shown on **every** world load, including returning visitors.
+  **Continue with Google** opens the hosted Clerk flow; the running world stays visible
+  behind the card. The world does not wait for sign-in.
+* Signed-in visitors also get a saved instance: their character and plaza position are
+  stored with the farm account and restored on any browser after sign-in.
 * The server verifies the token against `https://<frontend-api>/.well-known/jwks.json`
   using `node:crypto`. There is no Clerk secret key in this service and no JWT library
   dependency.

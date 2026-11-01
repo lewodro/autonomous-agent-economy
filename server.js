@@ -220,9 +220,10 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST')return json(res,405,{error:'Farm command requires POST'},cookie);
       if(!farmCommands.allow())return json(res,429,{error:'Farm actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/farm/'.length);
-      if(!['plant','harvest','sell','heartbeat','wallet','payout'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
+      if(!['plant','harvest','sell','heartbeat','wallet','payout','profile'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
       const data=await body(req,4096);
       if(action==='heartbeat')return json(res,200,{...await worldFarm.heartbeat(identity,data),auth},cookie);
+      if(action==='profile')return json(res,200,{...await worldFarm.saveProfile(identity,data),auth},cookie);
       if(action==='wallet')return json(res,200,{...await worldFarm.linkWallet(identity,data),auth},cookie);
       if(action==='payout')return json(res,200,{...await worldFarm.requestPayout(identity,data),auth},cookie);
       const present=worldPresence.requireVisitor('main',visitor.id);

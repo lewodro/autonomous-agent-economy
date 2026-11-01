@@ -8,6 +8,9 @@ export interface FarmPayout {
   id: string; amount_credits: number; amount_lamports: number; status: string;
   requested_at: string; wallet_address: string; note: string;
 }
+export interface FarmProfile {
+  avatar: string | null; position: FarmPosition | null; saved_at: string | null;
+}
 export interface FarmAccount {
   id: string; signed_in: boolean; provider: string; display_name: string;
   credits: number; xp: number; level: number; level_progress: number; xp_next: number;
@@ -15,6 +18,7 @@ export interface FarmAccount {
   inventory: Record<CropKind, number>;
   stats: { planted: number; harvested: number; sold: number; credits_from_sales: number };
   plots_used: number; plots_limit: number;
+  profile: FarmProfile;
   wallet: { address: string | null; status: string };
   payouts: FarmPayout[];
 }
@@ -52,6 +56,10 @@ export class FarmClient {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     return read(response);
+  }
+
+  async saveProfile(avatar: string, position: FarmPosition): Promise<Record<string, unknown>> {
+    return this.post('profile', { avatar, position });
   }
 }
 

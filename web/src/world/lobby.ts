@@ -5,6 +5,13 @@ let stopped=false;window.addEventListener('pagehide',()=>stopped=true);
 let gameMode='survival',snapshot:SurvivalSnapshot|undefined,selection:Selection|undefined,survivalRenderer:SurvivalRenderer|undefined;
 const survivalCanvas=document.getElementById('survival-field') as HTMLCanvasElement;
 const survivalStatus=document.getElementById('survival-status')!;
+const lastStatValues=new Map<string,string>();
+function flashStat(id:string,value:string):void{
+  const node=document.getElementById(id);if(!node)return;
+  const before=lastStatValues.get(id);node.textContent=value;
+  if(before!==undefined&&before!==value){node.classList.remove('is-flashing');void node.offsetWidth;node.classList.add('is-flashing');}
+  lastStatValues.set(id,value);
+}
 function setMode(mode:string):void{
   gameMode=mode;for(const button of document.querySelectorAll<HTMLButtonElement>('[data-game-mode]'))button.setAttribute('aria-pressed',String(button.dataset.gameMode===mode));
   const survival=mode==='survival';document.getElementById('survival-view')!.hidden=!survival;document.getElementById('rooms-view')!.hidden=survival;
@@ -19,9 +26,10 @@ function inspector(title:string,paragraphs:string[],href?:string,label='VIEW FUL
   if(href){const a=document.createElement('a');a.href=href;a.className='button';a.textContent=label;body.append(a);}
 }
 function paintSurvival():void{
-  if(!snapshot)return;document.getElementById('survival-alive')!.textContent=`${snapshot.agents.filter(a=>a.status==='alive').length} / ${snapshot.agents.length}`;
-  document.getElementById('survival-round')!.textContent=String(snapshot.round).padStart(2,'0');document.getElementById('survival-fights')!.textContent=String(snapshot.engagements.filter(e=>e.status==='fighting').length);
-  const leader=snapshot.agents.find(a=>a.id===snapshot!.leader_id);document.getElementById('survival-leader')!.textContent=leader?.name||'—';document.getElementById('survival-eliminated')!.textContent=String(snapshot.agents.filter(a=>a.status==='eliminated').length);
+  if(!snapshot)return;flashStat('survival-alive',`${snapshot.agents.filter(a=>a.status==='alive').length} / ${snapshot.agents.length}`);
+  const leader=snapshot.agents.find(a=>a.id===snapshot!.leader_id);
+  flashStat('survival-round',String(snapshot.round).padStart(2,'0'));flashStat('survival-fights',String(snapshot.engagements.filter(e=>e.status==='fighting').length));
+  flashStat('survival-leader',leader?.name||'—');flashStat('survival-eliminated',String(snapshot.agents.filter(a=>a.status==='eliminated').length));
   const overlay=document.getElementById('survival-overlay')!;overlay.hidden=true;survivalStatus.textContent=`${snapshot.status.toUpperCase()}${snapshot.status==='finished'&&leader?' · WINNER '+leader.name:''} · MATCH ${snapshot.match_id} · SEQ ${snapshot.sequence}`;
   survivalRenderer??=new SurvivalRenderer(survivalCanvas);survivalRenderer.render(snapshot,selection);
   if(selection?.kind==='agent'){

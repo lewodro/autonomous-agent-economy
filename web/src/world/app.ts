@@ -45,6 +45,7 @@ let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
 let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
 const farmClient=new FarmClient(),farmHud=new FarmHud();
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
+let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
 const knownTiles=new Map<string,string>();
 const auth=createAuth(async()=>{
   const response=await fetch('/api/world/auth',{signal:AbortSignal.timeout(5000)});
@@ -52,7 +53,17 @@ const auth=createAuth(async()=>{
   return await response.json() as {configured:boolean;publishable_key:string|null};
 });
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
-function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});}
+function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});savedProfileDirty=true;scheduleSavedProfile();}
+async function flushSavedProfile():Promise<void>{
+  if(!savedProfileDirty||!farmSnapshot?.account?.signed_in)return;
+  savedProfileDirty=false;
+  try{await farmClient.saveProfile(player.spriteId,{...player.position});}
+  catch{savedProfileDirty=true;}
+}
+function scheduleSavedProfile():void{
+  if(savedProfileTimer||!farmSnapshot?.account?.signed_in)return;
+  savedProfileTimer=window.setTimeout(()=>{savedProfileTimer=0;void flushSavedProfile();},8_000);
+}
 function updateWorldLabel():void {
   const others=remotePlayers.size,visitorLabel=others===1?'other visitor':'other visitors';
   canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza and ${others} ${visitorLabel} online. Agents fighting are inside the Arena. Use WASD or arrow keys to move, E to interact. Free table southwest; arena statistics south.`);
@@ -159,10 +170,32 @@ function anchorLabel(anchor:string):string{return ANCHORS[anchor]||'the farm gro
 function sparkle(position:{x:number;y:number},colors:string[],count=10):void{const time=performance.now();for(let index=0;index<count;index++){const angle=index/count*Math.PI*2,range=16+(index%3)*6;particles.push({id:`plot-${time}-${index}`,position:{...position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-12},color:colors[index%colors.length]!,expiresAt:time+650});}}
 function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
+/** Signed-in players resume the character and plaza spot tied to their account. */
+function applySavedProfile(snapshot:FarmSnapshot):void{
+  if(savedProfileApplied||!snapshot.account?.signed_in)return;
+  savedProfileApplied=true;
+  const profile=snapshot.account.profile;
+  if(!profile)return;
+  let avatarChanged=false,positionChanged=false;
+  if(profile.avatar&&AVATARS.includes(profile.avatar)&&profile.avatar!==player.spriteId){player.spriteId=profile.avatar;avatarChanged=true;}
+  if(profile.position){
+    const next=safePosition(profile.position);
+    if(Math.hypot(next.x-player.position.x,next.y-player.position.y)>2){player.position=next;positionChanged=true;}
+  }
+  if(!avatarChanged&&!positionChanged)return;
+  saveSettings({...settings,avatar:player.spriteId,position:player.position});
+  const client=presenceClient;
+  if(client){
+    const update=avatarChanged?client.updateAvatar(player.spriteId):Promise.resolve();
+    void update.then(()=>{if(presenceClient===client&&positionChanged)return client.move(player.position,player.facing,'idle');}).catch(()=>presenceError(client));
+  }
+  farmHud.notice('Restored your saved world instance','good');
+}
 async function loadFarm():Promise<void>{
   try{
     const snapshot=await farmClient.load(),previous=farmSnapshot;
-    farmSnapshot=snapshot;farmHud.show(snapshot);
+    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);updateIntroAccount(snapshot);
+    if(snapshot.account?.signed_in&&savedProfileDirty)scheduleSavedProfile();
     for(const tile of snapshot.tiles){
       const before=knownTiles.get(tile.id);
       if(previous&&before===undefined)farmHud.notice(`New farm plot appeared in ${anchorLabel(tile.anchor)}`,'info');
@@ -438,19 +471,38 @@ async function presetButtons():Promise<void> {
     button.setAttribute('aria-pressed',String(player.spriteId===id));
   }
 }
+function setIntroNote(message:string,tone:'info'|'good'|'warn'='info'):void{
+  const note=$('intro-auth-note');if(!note)return;note.textContent=message;note.dataset.tone=tone;
+}
+function updateIntroAccount(snapshot?:FarmSnapshot|null):void{
+  const account=snapshot?.account,google=$<HTMLButtonElement>('intro-google');
+  if(account?.signed_in){
+    if(google){google.textContent='Signed in';google.disabled=true;}
+    setIntroNote(`Saved instance · ${account.display_name}. Your character and plaza position follow your account.`,'good');
+    return;
+  }
+  if(google){google.disabled=!authConfigured;google.textContent='Continue with Google';}
+  setIntroNote(authConfigured
+    ?'Sign in with Google to save your character, plaza position and farm progress on every device.'
+    :'Google sign-in is not configured on this deployment yet. Play as a guest; progress stays in this browser.');
+}
+function openIntro():void{if(!character.open)character.showModal();}
+void fetch('/api/world/auth',{signal:AbortSignal.timeout(5000)}).then(response=>response.ok?response.json():null).then(config=>{
+  authConfigured=Boolean(config?.configured&&config?.publishable_key);updateIntroAccount(farmSnapshot);
+}).catch(()=>{authConfigured=false;updateIntroAccount(farmSnapshot);});
+$('intro-google').onclick=async()=>{
+  if(!authConfigured){setIntroNote('Google sign-in is not configured on this deployment yet.','warn');return;}
+  const button=$<HTMLButtonElement>('intro-google');button.disabled=true;setIntroNote('Opening Google sign-in…');
+  try{
+    const signed=await auth.signIn();
+    if(signed){savedProfileApplied=false;setIntroNote('Signed in. Loading your saved instance…','good');await loadFarm();}
+    else setIntroNote('Sign-in did not complete. You can keep playing as a guest.','warn');
+  }catch(error){setIntroNote(error instanceof Error?error.message:'Sign-in failed','warn');}
+  finally{if(!farmSnapshot?.account?.signed_in){button.disabled=false;button.textContent='Continue with Google';}}
+};
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
-document.querySelectorAll<HTMLButtonElement>('[data-place]').forEach(button=>{
-  button.onclick=()=>{
-    button.closest('details')?.removeAttribute('open');
-    const place=button.dataset.place;
-    if(place==='market')void showBazaar();
-    else if(place==='archive')void showResearch();
-    else if(place==='agency'){show('Agent agency');text('p','The agent house sits northeast of the plaza. It is reserved for a future agent gathering place.');}
-  };
-});
-document.addEventListener('click',event=>{const places=document.querySelector<HTMLDetailsElement>('.world-places');if(places?.open&&!places.contains(event.target as Node))places.open=false;});
 const legend=document.querySelector<HTMLDetailsElement>('.world-legend');if(legend&&matchMedia('(max-width:680px)').matches)legend.open=false;
 $('hud-account').onclick=()=>{
   if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
@@ -598,12 +650,11 @@ if(location.pathname==='/labs/world'){
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
-// The plaza is the landing page: join it immediately instead of covering the
-// live world with a splash or a blocking character picker. Character choice
-// stays available from the header.
+// The plaza is the landing page: agents, matches and presence start immediately.
+// The intro card is shown over the running world on every load; it never gates
+// simulation or network traffic, only movement until the visitor dismisses it.
 if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');}catch{}}
-void presetButtons();
-canvas.focus();const joined=startPresence();lastPlayTick=Date.now();
+void presetButtons();canvas.focus();openIntro();const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
 // loading other visitor-scoped state so a concurrent request cannot mint a
 // second identity and ghost this visitor on refresh.
