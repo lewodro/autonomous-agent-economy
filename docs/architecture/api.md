@@ -43,8 +43,10 @@ A funded request uses `config` for the simulation, plus top-level `mode`,
 
 The full FundedMatchConfig sample is a Rust schema, not this HTTP envelope: map
 its `simulation` to `config` and its `economy.mode` / `economy.entry_amount_sol`
-to those top-level fields. HTTP test treasury/reserve/cap defaults remain fixed
-at 1 / 0.005 / 0.05 SOL. Fees support winner 10000 bps / house 0 only.
+to those top-level fields. The field name is retained for compatibility. Mock
+mode presents the 0.02 / 1 / 0.005 / 0.05 defaults as internal credits; only
+local-validator and Devnet modes interpret them as test SOL. Fees support winner
+10000 bps / house 0 only.
 No endpoint accepts a caller-selected payout winner or a claimed confirmed receipt.
 
 Ordinary request bodies are capped at 1 MB; replay requests at 32 MB and economy

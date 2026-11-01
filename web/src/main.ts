@@ -49,10 +49,9 @@ function inspect(profile:AgentConfig) {
   const events=run.events.filter(e=>e.seq<player.cursor && e.actor===profile.id);
   const actions=events.filter(e=>e.type==='AgentActionSelected').slice(-3).reverse();
   $('favorite').textContent=favorites.has(profile.id)?'★ Following':'☆ Follow';
-  setHTML('inspect-content',`<div class="agent-name"><img src="/${profile.sprite}" alt=""><div><strong>${escape(profile.name)} · ${a.credits} credits</strong><small>${escape(profile.provider)} · ${escape(profile.model)} · ${a.alive?'SEATED':`OUT T${a.stats.eliminated_turn}`}</small></div></div><p class="personality">${escape(profile.personality)}</p><button id="copy-agent" class="small-button">Copy agent config</button><details><summary class="personality">Prompt / strategy</summary><p class="personality">${escape(profile.prompt)}<br>Strategy: ${escape(profile.strategy)}</p></details><ul class="last-decisions">${actions.map(e=>`<li><b>T${e.turn} · ${e.decision?.action.toUpperCase()}</b> ${escape(e.reason)}</li>`).join('')||'<li>No decisions yet. Select Play to begin.</li>'}</ul>${profile.wallet_enabled?'<button id="wallet-demo">Try mock wallet capability</button>':''}`);
+  setHTML('inspect-content',`<div class="agent-name"><img src="/${profile.sprite}" alt=""><div><strong>${escape(profile.name)} · ${a.credits} credits</strong><small>${escape(profile.provider)} · ${escape(profile.model)} · ${a.alive?'SEATED':`OUT T${a.stats.eliminated_turn}`}</small></div></div><p class="personality">${escape(profile.personality)}</p><button id="copy-agent" class="small-button">Copy agent config</button><details><summary class="personality">Prompt / strategy</summary><p class="personality">${escape(profile.prompt)}<br>Strategy: ${escape(profile.strategy)}</p></details><ul class="last-decisions">${actions.map(e=>`<li><b>T${e.turn} · ${e.decision?.action.toUpperCase()}</b> ${escape(e.reason)}</li>`).join('')||'<li>No decisions yet. Select Play to begin.</li>'}</ul>`);
   $('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(profile,null,2));notice('Agent config copied. Paste into a match setup.');}catch{download(JSON.stringify(profile,null,2),'agent.json');}};
   economyHUD.decorate();
-  const wallet=$('wallet-demo');if(wallet)wallet.onclick=async()=>{try{const result=await api<{wallet:{address:string;balance:number};events:unknown[]}>('/api/wallet-demo',{});notice(`Mock wallet ${result.wallet.address}: ${result.wallet.balance} lamports. ${result.events.length} activity events. Credits are separate.`);}catch(error){notice((error as Error).message);}};
 }
 function download(content:string,name:string,type='application/json') {const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function randomSeed():number{return crypto.getRandomValues(new Uint32Array(1))[0]||1;}
@@ -94,12 +93,19 @@ $<HTMLInputElement>('scrub').oninput=()=>player.seek(Number($<HTMLInputElement>(
 $('favorite').onclick=()=>{favorites.has(selected)?favorites.delete(selected):favorites.add(selected);try{localStorage.setItem('last-seat-favorites',JSON.stringify([...favorites]));}catch{}update();};
 document.addEventListener('click',e=>{const target=(e.target as HTMLElement).closest<HTMLElement>('[data-agent],[data-turn]');if(target?.dataset.agent){selected=target.dataset.agent;$<HTMLDetailsElement>('agent-drawer').open=true;update();}if(target?.dataset.turn){player.seek(Number(target.dataset.turn));}});
 const dialog=$<HTMLDialogElement>('config-dialog');
+function updateEconomyEntryCopy():void{
+ const mode=$<HTMLSelectElement>('economy-mode').value,isMock=mode==='mock';
+ $('economy-entry-label').textContent=isMock?'Internal risk':'Test SOL entry';
+ for(const option of [...$<HTMLSelectElement>('economy-entry').options])option.textContent=isMock?`${Number(option.value)*100} credits`:`${option.value} test SOL`;
+}
 void api<{funded_modes:string[];payment_notice:string}>('/api/capabilities').then(capabilities=>{
   const mode=$<HTMLSelectElement>('economy-mode');
   for(const option of [...mode.options])if(option.value!=='none'&&!capabilities.funded_modes.includes(option.value))option.remove();
   $<HTMLElement>('economy-options').hidden=capabilities.funded_modes.length===0;
   $('payment-notice').textContent=capabilities.payment_notice;
+  updateEconomyEntryCopy();
 }).catch(()=>{$<HTMLElement>('economy-options').hidden=true;$('payment-notice').textContent='Payment modes are unavailable.';});
+$<HTMLSelectElement>('economy-mode').onchange=updateEconomyEntryCopy;
 $('new').onclick=()=>{player.pause();if(player.run){$<HTMLTextAreaElement>('config-json').value=JSON.stringify(player.run.config,null,2);$<HTMLInputElement>('seed').value=String(player.run.seed);$<HTMLSelectElement>('population').value=String(player.run.config.agents.length);$<HTMLInputElement>('credits').value=String(player.run.config.agents[0]!.starting_credits);$<HTMLInputElement>('max-turns').value=String(player.run.config.max_turns);}$('config-error').textContent='';dialog.showModal();};
 $('random-seed').onclick=()=>{$<HTMLInputElement>('seed').value=String(randomSeed());};
 $('close-config').onclick=()=>dialog.close();

@@ -6,7 +6,6 @@ import { verifyProof } from '../src/rps.js';
 import { verifyTicTacToeProof } from '../src/tictactoe.js';
 import { loadState, saveState } from '../src/storage.js';
 import { receiveRevenue, allocateTreasury } from '../src/treasury.js';
-import { toLamports } from '../src/policy.js';
 import { startTournament, nextTournamentPair, scoreTournament } from '../src/tournament.js';
 
 const $ = id => document.getElementById(id);
@@ -56,7 +55,18 @@ function leaveRoomSpectator(){
   if(!sharedRoom||!spectatorLease)return Promise.resolve();
   return spectatorRequest('leave',spectatorLease,true).then(()=>saveSpectatorLease(null)).catch(()=>{/* The lease expires automatically if navigation interrupts the request. */});
 }
-const fmt = n => (n / SOL).toFixed(3);
+// The legacy engine stores exact integer base units. Public simulation copy
+// deliberately presents those units as internal credits, never as SOL.
+const credits = n => n / SOL * 100;
+const fmt = n => `${Number.isInteger(credits(n)) ? credits(n).toFixed(0) : credits(n).toFixed(2)} CR`;
+const creditInputToUnits = value => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Use a positive credit amount.');
+  const units = Math.round(amount * SOL / 100);
+  if (!Number.isSafeInteger(units)) throw new Error('Credit amount is too large.');
+  return units;
+};
+const creditInputToLegacyDecimal = value => String(creditInputToUnits(value) / SOL);
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 let state = createState(), selected = state.agents[0].id, watching = false, current = null, phase = '', busy = false;
 let orchestrator;
@@ -85,7 +95,7 @@ function render() {
   $('treasury-total').textContent = fmt(state.treasury);
   $('seed-label').textContent = `SEED ${state.seed}`;
   $('run-status').textContent = state.paused ? 'PAUSED' : watching ? 'LIVE' : settled.length >= state.config.maxRounds || available.length < 2 ? 'COMPLETE' : 'READY';
-  $('arena-caption').textContent = state.mode === 'survival' ? 'Survival · out when the next stake cannot be covered' : 'Bounded · reserve, exposure, and loss limits enforced';
+  $('arena-caption').textContent = state.mode === 'survival' ? 'Survival · out when the next risk cannot be covered' : 'Bounded · reserve, exposure, and loss limits enforced';
   $('run').textContent = watching ? '■ Stop watching' : '▶ Start watching';
   $('step').disabled = busy || watching || state.paused;
   $('run').disabled = state.paused;
@@ -95,11 +105,11 @@ function render() {
   $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="/${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
   if (current) {
     const ttt = current.type === 'tictactoe';
-    $('match-title').textContent = `${current.id} · ${ttt ? 'TIC-TAC-TOE' : 'RPS'} · ${fmt(current.stake)} simulated SOL each`;
+    $('match-title').textContent = `${current.id} · ${ttt ? 'TIC-TAC-TOE' : 'RPS'} · ${fmt(current.stake)} risk each`;
     $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="/${agent(id).sprite}" alt="">${agent(id).name}<b>${ttt ? i ? 'O' : 'X' : ['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
     $('ttt-board').hidden = !ttt;
     if (ttt) $('ttt-board').innerHTML = current.board.map(cell => `<span>${cell === 'a' ? 'X' : cell === 'b' ? 'O' : '·'}</span>`).join('');
-    $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both simulated stakes returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} simulated SOL pot settled.` : ttt ? `Move ${current.moves.length + 1} · ${agent(current.players[current.moves.length % 2]).name} to play.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Stakes held in escrow.';
+    $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both credit commitments returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} pool settled.` : ttt ? `Move ${current.moves.length + 1} · ${agent(current.players[current.moves.length % 2]).name} to play.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Internal credits held in game escrow.';
   } else {
     $('match-title').textContent = 'Waiting for rivals';
     $('duel').innerHTML = '<b>?</b><span>VS</span><b>?</b>';
@@ -114,7 +124,7 @@ function render() {
   renderDetail();
   const t = state.tournament;
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
-  $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · REFUNDED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} simulated SOL pot · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
+  $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · RETURNED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} internal pool · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
   if(sharedRoom){
     document.body.classList.add('shared-room');
     $('run-status').textContent='LIVE · SHARED ROOM';
@@ -126,7 +136,7 @@ function render() {
 function renderDetail() {
   const a = agent(selected) || state.agents[0]; selected = a.id;
   const count = games(a);
-  $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX DRAWDOWN</dt><dd>${fmt(a.drawdown)} SOL</dd></div><div><dt>AVERAGE STAKE</dt><dd>${fmt(count ? a.staked / count : 0)} SOL</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max stake ${fmt(a.policy.maxStake)} SOL · reserve ${fmt(a.policy.reserve)} SOL · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)} SOL.</p><h3>What this agent learns</h3><p class="muted">RPS move frequencies inform counter-moves; tic-tac-toe records board outcomes. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} simulated SOL</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
+  $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX RISK DRAWDOWN</dt><dd>${fmt(a.drawdown)}</dd></div><div><dt>AVERAGE RISK</dt><dd>${fmt(count ? a.staked / count : 0)}</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max risk ${fmt(a.policy.maxStake)} · reserve ${fmt(a.policy.reserve)} · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)}.</p><h3>What this agent learns</h3><p class="muted">RPS move frequencies inform counter-moves; tic-tac-toe records board outcomes. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} internal change</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
 }
 async function playOne() {
   if (busy) return;
@@ -138,7 +148,7 @@ async function playOne() {
     if (inTournament && !pair) { save(); watching = false; notice('Tournament complete. Inspect the recorded points.'); return; }
     const match = await orchestrator.step(pair, $('game-type').value); current = match; phase = 'settle';
     if (inTournament) { scoreTournament(state, match); save(); }
-    notice('Simulated settlement verified · saved locally · capital conserved');
+    notice('Internal-credit settlement verified · saved locally · capital conserved');
   } catch (error) { watching = false; current = state.matches.at(-1) || null; phase = current ? 'settle' : ''; notice(error.message); }
   finally { busy = false; render(); }
 }
@@ -165,13 +175,13 @@ document.addEventListener('click', async event => {
     if (!match || match.status !== 'settled') return;
     const valid = match.type === 'tictactoe' ? verifyTicTacToeProof(match) : await verifyProof(match);
     current = match; phase = 'settle'; render(); $('proof').hidden = false;
-    $('proof').innerHTML = `<p class="${valid ? 'positive' : 'negative'}">${esc(match.id)} · ${valid ? match.type === 'tictactoe' ? 'Board and deterministic result verified' : 'SHA-256 reveals and deterministic result verified' : 'Verification failed'}</p>${match.players.map(id => `<p>${agent(id).name}: ${esc(match.type === 'tictactoe' ? `${match.moves.filter(m => m.agentId === id).length} moves` : match.reveals[id].move)} · payout ${fmt(match.payouts[id])} simulated SOL</p>`).join('')}<details><summary>Inspect complete proof</summary><pre>${esc(JSON.stringify(match, null, 2))}</pre></details>`;
+    $('proof').innerHTML = `<p class="${valid ? 'positive' : 'negative'}">${esc(match.id)} · ${valid ? match.type === 'tictactoe' ? 'Board and deterministic result verified' : 'SHA-256 reveals and deterministic result verified' : 'Verification failed'}</p>${match.players.map(id => `<p>${agent(id).name}: ${esc(match.type === 'tictactoe' ? `${match.moves.filter(m => m.agentId === id).length} moves` : match.reveals[id].move)} · settlement ${fmt(match.payouts[id])}</p>`).join('')}<details><summary>Inspect complete proof</summary><pre>${esc(JSON.stringify(match, null, 2))}</pre></details>`;
   }
 });
 $('new-run').addEventListener('submit', event => {
   event.preventDefault();
   if (busy || watching) return;
-  try { state = configureRun(Object.fromEntries(new FormData(event.target))); selected = state.agents[0].id; current = null; phase = ''; $('proof').hidden = true; connect(); save(state); render(); notice('New experiment ready. Previous run replaced.'); }
+  try { const values=Object.fromEntries(new FormData(event.target));values.stake=creditInputToLegacyDecimal(values.stake);values.bankroll=creditInputToLegacyDecimal(values.bankroll);state = configureRun(values); selected = state.agents[0].id; current = null; phase = ''; $('proof').hidden = true; connect(); save(state); render(); notice('New experiment ready. Previous run replaced.'); }
   catch (error) { notice(error.message); }
 });
 $('export').addEventListener('click', () => {
@@ -186,14 +196,14 @@ $('export').addEventListener('click', () => {
 });
 $('share').addEventListener('click', async () => {
   const top = [...state.agents].sort((a, b) => b.pnl - a.pnl)[0];
-  const summary = `I made ${state.agents.length} pixel agents compete in RPS and tic-tac-toe. Seed ${state.seed}, ${state.matches.filter(m => m.status === 'settled').length} settled matches, ${state.agents.filter(a => eligibility(state, a).eligible).length} still eligible. ${top.name} leads by P&L (${fmt(top.pnl)} simulated SOL). Run yours: https://github.com/lewodro/autonomous-agent-economy`;
+  const summary = `I made ${state.agents.length} pixel agents compete in RPS and tic-tac-toe. Seed ${state.seed}, ${state.matches.filter(m => m.status === 'settled').length} settled matches, ${state.agents.filter(a => eligibility(state, a).eligible).length} still eligible. ${top.name} leads by internal P&L (${fmt(top.pnl)}). Run yours: https://github.com/lewodro/autonomous-agent-economy`;
   try { await navigator.clipboard.writeText(summary); notice('Run summary copied.'); }
   catch { notice(summary); }
 });
-$('treasury-controls').innerHTML = `<form id="revenue-form" class="settings-form"><label>Simulated receipt ID<input name="receipt" value="demo-receipt-1" required></label><label>Creator revenue · SOL<input name="revenue" inputmode="decimal" value="1" required></label><button type="submit">Record receipt → allocate 30% to treasury</button></form><div class="button-row" style="margin-top:12px"><button id="allocate">Distribute bounded grants</button><button id="tournament">Start tournament</button></div><p id="tournament-status" class="muted"></p><p class="muted">Duplicate receipt IDs cannot create funds twice. Grants go to lower balances first, capped at 10% of each agent's capital per allocation. Grants never reset loss limits.</p>`;
+$('treasury-controls').innerHTML = `<form id="revenue-form" class="settings-form"><label>Internal receipt ID<input name="receipt" value="demo-receipt-1" required></label><label>Creator revenue · credits<input name="revenue" inputmode="decimal" value="100" required></label><button type="submit">Record receipt → allocate 30% to treasury</button></form><div class="button-row" style="margin-top:12px"><button id="allocate">Distribute bounded grants</button><button id="tournament">Start tournament</button></div><p id="tournament-status" class="muted"></p><p class="muted">This is internal game accounting, not wallet value. Duplicate receipt IDs cannot create credits twice. Grants go to lower balances first, capped at 10% of each agent's capital per allocation. Grants never reset loss limits.</p>`;
 $('revenue-form').addEventListener('submit', event => {
   event.preventDefault(); if (busy || watching) return;
-  try { const form = new FormData(event.target); const deposit = receiveRevenue(state, form.get('receipt'), toLamports(form.get('revenue'))); save(); render(); notice(`${fmt(deposit)} simulated SOL recorded for treasury.`); }
+  try { const form = new FormData(event.target); const deposit = receiveRevenue(state, form.get('receipt'), creditInputToUnits(form.get('revenue'))); save(); render(); notice(`${fmt(deposit)} recorded in the internal treasury.`); }
   catch (error) { notice(error.message); }
 });
 $('allocate').addEventListener('click', () => {
@@ -238,7 +248,7 @@ connect(); render();
       if(!response.ok)throw new Error('Room unavailable');
       const snapshot=await response.json();state=snapshot.state;current=snapshot.current;phase=snapshot.phase;sharedRunId=snapshot.room.runId;
       render();$('run-status').textContent=snapshot.room.status.toUpperCase()+' · SHARED';
-      notice(snapshot.room.status==='failed'?'This room has stopped. Return to the Arena and choose another room.':'LIVE · adaptive local algorithms · simulated SOL only · shared server room');
+      notice(snapshot.room.status==='failed'?'This room has stopped. Return to the Arena and choose another room.':'LIVE · adaptive local agents · internal credits · shared server room');
     }catch{notice('Connection interrupted. Reconnecting to the room…');$('run-status').textContent='RECONNECTING';}
     if(!stopped)setTimeout(observe,750);
   }

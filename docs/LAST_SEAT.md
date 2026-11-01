@@ -26,6 +26,8 @@ The JS RPS engine has useful escrow, policy, commitment verification and idempot
 
 Work creates capital; challenges transfer it; upkeep burns it. These are game credits, **not SOL**. This is a seeded local sandbox, not verifiable economic randomness. No chance-based real-value game is introduced.
 
+The older Arena engine also stores its accounting in exact integer base units for conservation checks. Its public presentation normalizes those values to credits (100 starting credits and 3-credit default risk) rather than displaying fake SOL balances. Only the separate local-validator and Devnet payment lab may display test SOL.
+
 ## Screen layout
 
 ```text
@@ -59,7 +61,7 @@ flowchart TD
   Transport --> TS[TypeScript playback controller]
   TS --> Canvas[Canvas pixel renderer]
   Events --> Share[Config, match ID, turn links, share cards]
-  Wallet[Mock / Solana devnet wallet capability] -. separate activity events .-> Events
+  PaymentLab[Separate local-validator / Devnet test-payment lab] -. separate activity events .-> Events
 ```
 
 Rust owns state, RNG, validation, action resolution, elimination, winners, and replay verification. Node owns process lifetime, local HTTP, disk replay files, and optional provider I/O. TypeScript owns presentation state, queue timing, inspection, sharing, and replay scrubbing. The renderer never resolves an action. HTTP suits one turn at a time; no WebSocket dependency is needed for this slice. A persistent Rust JSON-line worker avoids rebuilding/spawning the core per animation. Later streaming transport can carry the same events unchanged.
