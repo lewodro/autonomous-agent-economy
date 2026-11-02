@@ -57,7 +57,7 @@
 .bazaar-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid #64725b;font-size:12px}
 .bazaar-row span{flex:1;min-width:120px}
 .bazaar-row button{font-size:10px;padding:6px 9px}
-@media(max-width:680px){.world-hud{left:8px;top:8px;width:min(230px,64%)}.farm-notices{left:8px;top:166px;width:min(220px,68%)}.hud-meter{font-size:8px;padding:3px 4px}.farm-plant-options{grid-template-columns:1fr}}
+@media(max-width:680px){.world-hud{left:8px;top:8px;width:min(250px,64%)}.farm-notices{left:8px;top:166px;width:min(220px,68%)}.hud-meter{font-size:8px;padding:3px 4px}.farm-plant-options{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.farm-notice,.hud-meter b{animation:none;transition:none;opacity:1;transform:none}}
 
 /* World-first hierarchy: keep navigation and directions compact, and let the
@@ -77,8 +77,9 @@
 @media(max-width:680px){
   .world-header nav{gap:10px}
   .world-header{position:relative}
-  .world-live{top:122px;left:8px;right:8px;max-width:none;transform:none;text-align:left;font-size:10px;padding:6px 9px}
-  .world-legend{right:8px;top:64px}
+  .world-live{top:132px;left:8px;right:8px;max-width:none;transform:none;text-align:left;font-size:10px;padding:6px 9px}
+  .world-legend{right:8px;top:8px}
+  .farm-notices{top:176px}
   .world-legend[open] .world-legend__grid{grid-template-columns:1fr;gap:2px 0;padding:8px 10px;font-size:9px}
   .world-legend__grid span:last-child{grid-column:auto}
   .world-footer__links{font-size:9px;gap:5px 10px}
