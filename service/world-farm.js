@@ -16,18 +16,29 @@ export const CROPS = Object.freeze({
 export const CROP_KINDS = Object.freeze(Object.keys(CROPS));
 export const BAZAAR = Object.freeze({ position: { x: 681, y: 1292 }, radius: 160 });
 export const PLANT_RADIUS = 96;
+/** Scarcity is deliberate: a fresh world starts with one plot and reaches four. */
+export const FARM_SCARCITY = Object.freeze({
+  maxTiles: 4,
+  startingTiles: 1,
+  spawnIntervalMs: 150_000,
+  wildTtlMs: 10 * 60_000,
+});
 
-/** Fixed open ground anchors; each spawn jitters a little so tiles feel scattered without landing in walls. */
+/**
+ * Fixed natural-ground anchors. They are far enough apart that a plot always
+ * requires a real search, and every anchor has been checked with the browser's
+ * terrain helpers so jitter cannot land in a road, plaza or building.
+ */
 export const FARM_ANCHORS = Object.freeze([
-  { id: 'garden-north', zone: 'botanical', tier: 2, x: 1560, y: 760 },
-  { id: 'garden-east', zone: 'botanical', tier: 2, x: 2080, y: 700 },
-  { id: 'garden-south', zone: 'botanical', tier: 2, x: 1900, y: 1020 },
-  { id: 'garden-west', zone: 'botanical', tier: 2, x: 1500, y: 980 },
-  { id: 'garden-path', zone: 'garden_outskirts', tier: 2, x: 1700, y: 1250 },
-  { id: 'south-meadow', zone: 'south_meadow', tier: 3, x: 1500, y: 1600 },
-  { id: 'east-workshop', zone: 'east_outskirts', tier: 3, x: 2200, y: 1450 },
-  { id: 'west-clearing', zone: 'west_outskirts', tier: 3, x: -620, y: 1320 },
-  { id: 'forest-edge', zone: 'outer_forest', tier: 3, x: 2250, y: 620 },
+  { id: 'west-road', zone: 'west_outskirts', tier: 3, x: -720, y: 600 },
+  { id: 'north-west', zone: 'outer_north', tier: 3, x: -350, y: -450 },
+  { id: 'north-east', zone: 'north_ridge', tier: 3, x: 1000, y: -420 },
+  { id: 'east-north', zone: 'east_outskirts', tier: 3, x: 2400, y: -200 },
+  { id: 'east-mid', zone: 'outer_forest', tier: 3, x: 2500, y: 680 },
+  { id: 'garden-east', zone: 'botanical', tier: 2, x: 1600, y: 650 },
+  { id: 'south-east', zone: 'east_meadow', tier: 3, x: 1950, y: 1450 },
+  { id: 'south-west', zone: 'south_meadow', tier: 3, x: -500, y: 1500 },
+  { id: 'south-mid', zone: 'south_fields', tier: 3, x: 1020, y: 1610 },
 ]);
 
 function fail(code, message, status = 400) { return Object.assign(new Error(message), { code, status }); }
@@ -75,10 +86,11 @@ export class WorldFarm {
     random = Math.random,
     creditsPerMinute = 1,
     lamportsPerCredit = 0,
-    maxTiles = 6,
+    maxTiles = FARM_SCARCITY.maxTiles,
     maxPlotsPerPlayer = 3,
     minWithdrawalCredits = 50,
-    wildTtlMs = 4 * 60_000,
+    spawnIntervalMs = FARM_SCARCITY.spawnIntervalMs,
+    wildTtlMs = FARM_SCARCITY.wildTtlMs,
   } = {}) {
     if (!Number.isInteger(creditsPerMinute) || creditsPerMinute < 0 || creditsPerMinute > 60) throw new Error('Invalid creditsPerMinute');
     if (!Number.isSafeInteger(lamportsPerCredit) || lamportsPerCredit < 0) throw new Error('Invalid lamportsPerCredit');
@@ -90,8 +102,9 @@ export class WorldFarm {
     this.maxTiles = clamp(maxTiles, 1, 24);
     this.maxPlotsPerPlayer = clamp(maxPlotsPerPlayer, 1, 12);
     this.minWithdrawalCredits = clamp(minWithdrawalCredits, 1, 1_000_000);
-    this.wildTtlMs = wildTtlMs;
-    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], migrated_at: null };
+    this.spawnIntervalMs = Math.max(10_000, Number(spawnIntervalMs) || FARM_SCARCITY.spawnIntervalMs);
+    this.wildTtlMs = Math.max(this.spawnIntervalMs, Number(wildTtlMs) || FARM_SCARCITY.wildTtlMs);
+    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], migrated_at: null, next_spawn_at: null };
     this.timer = null;
   }
 
@@ -113,8 +126,8 @@ export class WorldFarm {
       account.credits ||= 0;
       account.profile ||= { avatar: null, position: null, saved_at: null };
     }
+    this.state.next_spawn_at ??= null;
     this.tick();
-    while (Object.keys(this.state.tiles).length < this.maxTiles) this.spawnTile();
     await this.persist();
     return this.snapshot(null);
   }
@@ -129,23 +142,27 @@ export class WorldFarm {
 
   persist() { return this.store.save(this.state); }
 
-  chooseAnchor(excludeTileId = null) {
-    const occupied = new Set(Object.values(this.state.tiles).filter(tile => tile.id !== excludeTileId).map(tile => tile.anchor));
-    const start = Math.floor(this.random() * FARM_ANCHORS.length) % FARM_ANCHORS.length;
-    for (let offset = 0; offset < FARM_ANCHORS.length; offset += 1) {
-      const anchor = FARM_ANCHORS[(start + offset) % FARM_ANCHORS.length];
-      if (!occupied.has(anchor.id)) return anchor;
-    }
-    return FARM_ANCHORS[start] || FARM_ANCHORS[0];
+  chooseAnchor(excludeTileId = null, avoidAnchor = null) {
+    const occupied = new Set(Object.values(this.state.tiles)
+      .filter(tile => tile.id !== excludeTileId)
+      .map(tile => tile.anchor));
+    const available = FARM_ANCHORS.filter(anchor => !occupied.has(anchor.id) && anchor.id !== avoidAnchor);
+    if (!available.length) return FARM_ANCHORS.find(anchor => anchor.id !== avoidAnchor) || FARM_ANCHORS[0];
+    return available[Math.floor(this.random() * available.length) % available.length];
+  }
+
+  /** Every 4 px jitter candidate is covered by the terrain-placement tests. */
+  positionFor(anchor) {
+    const jitter = () => Math.round((this.random() * 32 - 16) / 4) * 4;
+    return { x: anchor.x + jitter(), y: anchor.y + jitter() };
   }
 
   spawnTile() {
     const anchor = this.chooseAnchor();
-    const jitter = () => Math.round((this.random() * 40 - 20) / 4) * 4;
     const tile = {
       id: `plot_${randomUUID().slice(0, 8)}`,
       anchor: anchor.id,
-      position: { x: anchor.x + jitter(), y: anchor.y + jitter() },
+      position: this.positionFor(anchor),
       stage: 'wild',
       crop: null,
       owner: null,
@@ -157,20 +174,44 @@ export class WorldFarm {
     return tile;
   }
 
-  /** Wild soil relocates after a while so the map keeps growing new patches. */
+  /** Wild soil relocates after a while; new soil appears on a slower cadence. */
   tick() {
     const now = this.now();
     let changed = false;
+
+    // Trim any pre-scarcity checkpoint down to the new cap without touching
+    // planted plots, so an older world keeps its crops while new growth slows.
+    let excess = Object.keys(this.state.tiles).length - this.maxTiles;
+    if (excess > 0) {
+      const wild = Object.values(this.state.tiles)
+        .filter(tile => tile.stage === 'wild')
+        .sort((a, b) => (a.spawned_at || 0) - (b.spawned_at || 0));
+      for (const tile of wild) {
+        if (excess <= 0) break;
+        delete this.state.tiles[tile.id];
+        excess -= 1;
+        changed = true;
+      }
+    }
+
     for (const tile of Object.values(this.state.tiles)) {
       if (tile.stage !== 'wild') continue;
       if (now - (tile.spawned_at || 0) < this.wildTtlMs) continue;
-      const anchor = this.chooseAnchor(tile.id);
+      const anchor = this.chooseAnchor(tile.id, tile.anchor);
       tile.anchor = anchor.id;
-      tile.position = { x: anchor.x + Math.round((this.random() * 40 - 20) / 4) * 4, y: anchor.y + Math.round((this.random() * 40 - 20) / 4) * 4 };
+      tile.position = this.positionFor(anchor);
       tile.spawned_at = now;
       changed = true;
     }
-    while (Object.keys(this.state.tiles).length < this.maxTiles) { this.spawnTile(); changed = true; }
+
+    const count = Object.keys(this.state.tiles).length;
+    if (count < this.maxTiles) {
+      if (count === 0 || this.state.next_spawn_at == null || now >= this.state.next_spawn_at) {
+        this.spawnTile();
+        this.state.next_spawn_at = now + this.spawnIntervalMs;
+        changed = true;
+      }
+    }
     return changed;
   }
 
@@ -307,9 +348,9 @@ export class WorldFarm {
     tile.planted_at = null;
     tile.ready_at = null;
     tile.spawned_at = now;
-    const anchor = FARM_ANCHORS[Math.floor(this.random() * FARM_ANCHORS.length)] || FARM_ANCHORS[0];
+    const anchor = this.chooseAnchor(tile.id, tile.anchor);
     tile.anchor = anchor.id;
-    tile.position = { x: anchor.x + Math.round((this.random() * 40 - 20) / 4) * 4, y: anchor.y + Math.round((this.random() * 40 - 20) / 4) * 4 };
+    tile.position = this.positionFor(anchor);
     await this.persist();
     return { tile: this.publicTile(tile, account.key), account: this.view(identity), crop, harvest_xp: CROPS[crop].xp };
   }
