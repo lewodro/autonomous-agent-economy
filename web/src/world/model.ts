@@ -27,7 +27,8 @@ export interface Interactable {
   id: string; position: Position; radius: number;
   type: 'arena' | 'table' | 'agent' | 'research' | 'zone'; label: string;
 }
-export interface WorldResource {id:string;kind:'ore'|'herb';position:Position;reward:number;available:boolean;available_at:string}
+export type ResourceRarity='common'|'uncommon'|'rare'|'very_rare';
+export interface WorldResource {id:string;kind:'ore'|'herb';zone:string;rarity:ResourceRarity;position:Position;reward:number;respawn_ms:number;available:boolean;available_at:string}
 export interface WorldParticle {id:string;position:Position;velocity:Position;color:string;expiresAt:number}
 export function normalizeInput(x: number, y: number, interact = false): WorldInput {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: 0, y: 0, interact };

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { WorldFarm, FARM_ANCHORS, BAZAAR, CROPS } from '../service/world-farm.js';
+import { WorldFarm, FARM_ANCHORS, FARM_SCARCITY, BAZAAR, CROPS } from '../service/world-farm.js';
 import { WorldStore } from '../service/world-store.js';
-import { collides } from '../web/dist/world/map.js';
+import { collides, isNaturalGround, MAP } from '../web/dist/world/map.js';
 
 const guest = { key: 'guest:visitor-a', provider: 'guest' };
 const wallet = '11111111111111111111111111111111';
@@ -27,18 +27,68 @@ async function setup(options = {}) {
   };
 }
 
-test('spawned tiles sit on reachable ground and start empty', async () => {
-  const { farm, close } = await setup();
+test('farm anchors are natural ground and widely spaced', () => {
+  assert.ok(FARM_ANCHORS.length >= 8, 'the world keeps enough remote anchors to search');
+  for (const anchor of FARM_ANCHORS) {
+    assert.equal(isNaturalGround(anchor, 18), true, `${anchor.id} natural`);
+    assert.equal(collides(anchor), false, `${anchor.id} reachable`);
+    for (let dx = -16; dx <= 16; dx += 4) {
+      for (let dy = -16; dy <= 16; dy += 4) {
+        const position = { x: anchor.x + dx, y: anchor.y + dy };
+        assert.equal(isNaturalGround(position, 18), true, `${anchor.id} jitter natural`);
+        assert.equal(collides(position), false, `${anchor.id} jitter reachable`);
+      }
+    }
+  }
+  for (let left = 0; left < FARM_ANCHORS.length; left += 1) {
+    for (let right = left + 1; right < FARM_ANCHORS.length; right += 1) {
+      assert.ok(Math.hypot(FARM_ANCHORS[left].x - FARM_ANCHORS[right].x, FARM_ANCHORS[left].y - FARM_ANCHORS[right].y) >= 800, `${FARM_ANCHORS[left].id} is far from ${FARM_ANCHORS[right].id}`);
+    }
+  }
+});
+
+test('spawned tiles start scarce, stay on reachable ground and respect the cap', async () => {
+  const { farm, advance, close } = await setup();
   try {
-    const snapshot = farm.snapshot(guest);
-    assert.equal(snapshot.tiles.length, 6);
+    let snapshot = farm.snapshot(guest);
+    assert.equal(snapshot.tiles.length, FARM_SCARCITY.startingTiles);
+    for (let count = FARM_SCARCITY.startingTiles + 1; count <= FARM_SCARCITY.maxTiles; count += 1) {
+      advance(FARM_SCARCITY.spawnIntervalMs);
+      snapshot = farm.snapshot(guest);
+      assert.equal(snapshot.tiles.length, count, 'one plot appears per cadence window');
+    }
+    advance(FARM_SCARCITY.spawnIntervalMs);
+    snapshot = farm.snapshot(guest);
+    assert.equal(snapshot.tiles.length, FARM_SCARCITY.maxTiles, 'the concurrent cap holds');
+    assert.equal(new Set(snapshot.tiles.map(tile => tile.anchor)).size, snapshot.tiles.length, 'wild plots use distinct zone anchors');
     for (const tile of snapshot.tiles) {
       assert.equal(tile.stage, 'wild');
       assert.equal(collides(tile.position), false, tile.id);
+      assert.equal(isNaturalGround(tile.position, 18), true, tile.id);
+      assert.ok(Math.hypot(tile.position.x - MAP.spawn.x, tile.position.y - MAP.spawn.y) >= 900, tile.id);
       assert.ok(FARM_ANCHORS.some(anchor => Math.hypot(anchor.x - tile.position.x, anchor.y - tile.position.y) <= 30));
+    }
+    for (let left = 0; left < snapshot.tiles.length; left += 1) {
+      for (let right = left + 1; right < snapshot.tiles.length; right += 1) {
+        assert.ok(Math.hypot(snapshot.tiles[left].position.x - snapshot.tiles[right].position.x, snapshot.tiles[left].position.y - snapshot.tiles[right].position.y) >= 800, 'plots are not clustered');
+      }
     }
     assert.equal(snapshot.account.credits, 0);
     assert.equal(snapshot.account.level, 1);
+  } finally { await close(); }
+});
+
+test('wild soil relocates to a different far anchor after its ttl', async () => {
+  const { farm, advance, close } = await setup({ maxTiles: 2 });
+  try {
+    const before = farm.snapshot(guest).tiles[0];
+    advance(FARM_SCARCITY.wildTtlMs);
+    const after = farm.snapshot(guest).tiles.find(tile => tile.id === before.id);
+    assert.ok(after);
+    assert.notEqual(after.anchor, before.anchor);
+    assert.ok(Math.hypot(after.position.x - before.position.x, after.position.y - before.position.y) >= 800);
+    assert.equal(isNaturalGround(after.position, 18), true);
+    assert.equal(collides(after.position), false);
   } finally { await close(); }
 });
 
@@ -75,9 +125,14 @@ test('only the owner can harvest a growing plot', async () => {
 });
 
 test('a player cannot tend more than three plots at once', async () => {
-  const { farm, close } = await setup();
+  const { farm, advance, close } = await setup();
   try {
-    const tiles = farm.snapshot(guest).tiles.slice(0, 4);
+    for (let count = FARM_SCARCITY.startingTiles; count < FARM_SCARCITY.maxTiles; count += 1) {
+      advance(FARM_SCARCITY.spawnIntervalMs);
+      farm.snapshot(guest);
+    }
+    const tiles = farm.snapshot(guest).tiles;
+    assert.equal(tiles.length, FARM_SCARCITY.maxTiles);
     for (const tile of tiles.slice(0, 3)) await farm.plant(guest, { tile_id: tile.id, crop: 'pumpkin' }, tile.position);
     await assert.rejects(() => farm.plant(guest, { tile_id: tiles[3].id, crop: 'pumpkin' }, tiles[3].position), { code: 'PLOT_LIMIT' });
   } finally { await close(); }

@@ -25,9 +25,18 @@ runs on the server. The browser only renders snapshots and sends intents.
 | `web/src/world/farm.ts` | Browser client, Clerk loader, RPG HUD and notice stack. |
 | `web/src/world/renderer.ts` | Pixel-art soil/crops and the on-screen/edge arrow pointers. |
 
-Tiles are anchored to fixed open-ground positions (`FARM_ANCHORS`) with small random
-jitter, so a plot never lands inside a wall. Wild soil relocates after four minutes,
-which is what makes plots feel like they are spawning around the map.
+Tiles are anchored to nine fixed natural-ground positions (`FARM_ANCHORS`) with small
+jitter, so a plot never lands in a road, plaza or building. The anchors sit far apart
+across the outer districts; players have to search for soil instead of finding a dense
+garden of plots. A fresh world starts with **one** wild plot, adds another every
+**2.5 minutes**, and holds at most **four** at once, so roughly four opportunities
+appear in the first ten minutes. Wild soil relocates to a different far anchor after
+**ten minutes**, which keeps plots moving without turning the map into a farm.
+
+Resource gathering follows the same scarcity rule. The nine ore and herb nodes sit on
+remote natural ground at least 650 px apart. One common and one uncommon node are live
+when a world starts, and the rest unlock over the next half hour; respawns take 18–60 minutes depending on
+rarity, which keeps the global rate to roughly three or four gathers per ten minutes.
 
 A player can tend three plots at once. Harvest locations and the bazaar are validated
 against the visitor's live presence position, so a browser cannot sell or harvest from

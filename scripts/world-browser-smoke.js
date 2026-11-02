@@ -85,7 +85,7 @@ try{
  await wait('document.activeElement?.id==="world-canvas"');
  await evaluate('window.__worldRafTicks=0;const worldRafProbe=()=>{window.__worldRafTicks++;requestAnimationFrame(worldRafProbe)};requestAnimationFrame(worldRafProbe)');
  await delay(250);assert.ok(await evaluate('window.__worldRafTicks>5'),'world animation loop must remain live after character entry');
- const focusedAgent=await evaluate('(()=>{document.querySelector(".world-footer details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
+ const focusedAgent=await evaluate('(()=>{document.getElementById("agent-directory").closest("details").open=true;const b=document.querySelector("#agent-directory button");b.focus();return b.id})()');
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
  await wait('document.getElementById("interaction-dialog").open');
