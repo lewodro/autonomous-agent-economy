@@ -180,7 +180,7 @@ export class FarmHud {
       }
     }
     const carrying = CROPS.reduce((sum, kind) => sum + (account.inventory[kind] || 0), 0);
-    this.text('hud-hint', carrying ? 'Carry produce to the bazaar in the lower market' : 'Walk to glowing soil and press E to farm');
+    this.text('hud-hint', carrying ? 'Carry produce to the bazaar in the lower market' : 'Explore beyond the plaza for soil and resources');
   }
 
   private text(id: string, value: string): void {

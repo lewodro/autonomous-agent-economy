@@ -324,7 +324,7 @@ async function showBazaar():Promise<void>{
   }catch{if(dialog.open&&version===interactionVersion){content.replaceChildren();text('p','The bazaar terminal is temporarily unavailable.');}}
 }
 function burst(resource:WorldResource,time:number):void{const colors=resource.kind==='ore'?['#d5c47d','#8e9488','#665c4d']:['#d8cb75','#78a164','#496f4f'];for(let index=0;index<12;index++){const angle=index/12*Math.PI*2,range=18+(index%3)*6;particles.push({id:`${resource.id}-${time}-${index}`,position:{...resource.position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-10},color:colors[index%colors.length]!,expiresAt:time+650});}}
-async function gatherResource(id:string):Promise<void>{const resource=worldResources.find(value=>value.id===id);if(!resource||!presenceClient?.player_id)return;try{const response=await fetch('/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:id})});const result=await response.json() as {error?:string;node?:WorldResource;profile?:{credits:number};receipt?:{amount_credits:number}};if(!response.ok)throw new Error(result.error||'Gathering failed');worldResources=worldResources.map(value=>value.id===id?result.node!:value);burst(resource,performance.now());show(resource.kind==='ore'?'Ore gathered':'Plants harvested');text('p',`+${result.receipt?.amount_credits||resource.reward} TEST CREDITS · balance ${result.profile?.credits||0}.`);text('p','A reward receipt was recorded at the Bazaar terminal.');}catch(error){show('Gathering');text('p',error instanceof Error?error.message:'Gathering failed');}}
+async function gatherResource(id:string):Promise<void>{const resource=worldResources.find(value=>value.id===id);if(!resource||!presenceClient?.player_id)return;try{const response=await fetch('/api/world/economy/gather',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:id})});const result=await response.json() as {error?:string;node?:WorldResource;profile?:{credits:number};receipt?:{amount_credits:number}};if(!response.ok)throw new Error(result.error||'Gathering failed');worldResources=worldResources.map(value=>value.id===id?result.node!:value);burst(resource,performance.now());const amount=result.receipt?.amount_credits||resource.reward;farmHud.notice(`+${amount} ${resource.kind} · ${result.profile?.credits||0} resource credits`,'good');}catch(error){farmHud.notice(error instanceof Error?error.message:'Gathering failed','warn');}}
 function showProfile(id:string,sharedThought?:WorldSpeech):void {
   const profile=profiles.find(a=>a.id===id);if(!profile)return;
   show(profile.name);const head=text('div','');head.className='agent-profile-head';
@@ -574,6 +574,7 @@ function farmGuide():{target:{x:number;y:number};label:string}|null{
   const account=farmSnapshot.account;
   const carrying=CROPS.reduce((sum,kind)=>sum+(account.inventory[kind]||0),0);
   if(carrying>0)return {target:{...farmSnapshot.bazaar.position},label:'Sell produce'};
+  if(Math.hypot(player.position.x-MAP.spawn.x,player.position.y-MAP.spawn.y)<650)return null;
   const ready=farmSnapshot.tiles.filter(tile=>tile.mine&&tile.stage==='ready');
   const candidates=ready.length?ready:farmSnapshot.tiles.filter(tile=>tile.stage==='wild');
   if(!candidates.length)return null;
@@ -598,7 +599,7 @@ function frame(time:number):void {
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
     if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});void loadFarm();}
-    const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:resource.kind==='ore'?'Mine ore':'Harvest plants'}));
+    const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:`${resource.kind==='ore'?'Mine ore':'Harvest plants'} · ${resource.rarity.replace('_',' ')}`}));
     const plotTargets:Interactable[]=(farmSnapshot?.tiles||[]).map(tile=>({id:`plot:${tile.id}`,position:tile.position,radius:70,type:'zone' as const,
       label:tile.stage==='wild'?'Plant a crop':tile.mine?(tile.stage==='ready'?`Harvest ${cropLabel(tile.crop).toLowerCase()}`:`${cropLabel(tile.crop).toLowerCase()} growing`):`${cropLabel(tile.crop).toLowerCase()} field`}));
     const targets=[...LANDMARKS,...resourceTargets,...plotTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];

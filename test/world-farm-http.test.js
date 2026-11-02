@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
+import { FARM_SCARCITY } from '../service/world-farm.js';
 
 function start(environment) {
   const child = spawn(process.execPath, ['server.js'], { cwd: new URL('../', import.meta.url), env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -37,7 +38,7 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     const snapshot = await snapshotResponse.json();
     assert.ok(cookie);
     assert.equal(snapshot.mode, 'farm_v1');
-    assert.equal(snapshot.tiles.length, 6);
+    assert.equal(snapshot.tiles.length, FARM_SCARCITY.startingTiles);
     assert.equal(snapshot.auth.signed_in, false);
     assert.equal(snapshot.account.credits, 0);
     assert.equal(snapshot.account.signed_in, false);
@@ -82,7 +83,7 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     const health = await (await fetch(base + '/api/health')).json();
     assert.equal(health.world_farm.status, 'ok');
     assert.equal(health.world_farm.storage, 'json');
-    assert.equal(health.world_farm.tiles, 6);
+    assert.equal(health.world_farm.tiles, FARM_SCARCITY.startingTiles);
     assert.equal(health.world_farm.payouts_enabled, false);
   } finally {
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
