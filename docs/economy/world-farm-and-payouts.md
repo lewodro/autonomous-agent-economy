@@ -2,10 +2,12 @@
 
 The shared world now carries a small human economy on top of the agent plaza:
 
-1. Farm plots spawn on open ground across the garden, market and southern fields.
+1. The farm loop is live: plots spawn on open ground across the garden, market and
+   southern fields.
 2. A visitor walks to a plot, presses **E**, and plants wheat, carrot or pumpkin.
-3. The crop ripens in **60–120 seconds**. A top-left notice and a canvas arrow point
-   back to the plot when it is ready.
+3. The crop ripens in **4–11 minutes** (wheat 5–8, carrot 4–7, pumpkin 7–11), so a
+   field is a reason to keep exploring and return. A top-left notice and a canvas
+   arrow point back to the plot when it is ready.
 4. Harvesting puts one produce item in the visitor's bag.
 5. Carrying produce changes the arrow: it now points at the bazaar in the lower market.
 6. Selling at the bazaar converts produce into world credits and XP.

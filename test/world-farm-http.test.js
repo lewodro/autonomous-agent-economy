@@ -55,7 +55,7 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     const planted = await post('plant', { tile_id: tile.id, crop: 'wheat' });
     assert.equal(planted.status, 200);
     assert.equal(planted.body.tile.stage, 'growing');
-    assert.ok(planted.body.grow_ms >= 60_000 && planted.body.grow_ms <= 120_000);
+    assert.ok(planted.body.grow_ms >= 240_000 && planted.body.grow_ms <= 660_000);
 
     assert.equal((await post('harvest', { tile_id: tile.id })).status, 409);
     assert.equal((await post('sell', { crop: 'wheat', quantity: 1 })).status, 409);

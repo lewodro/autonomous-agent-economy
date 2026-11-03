@@ -85,7 +85,7 @@ test('private experiments survive restart and stay isolated while the world stay
         assert.match(content, /id="character-dialog"/, 'the root route serves the world page');
         assert.match(content, /Step into the live world/, 'the intro is part of every world load');
         assert.match(content, /Continue with Google/, 'the intro offers a saved-instance Google sign-in');
-        assert.doesNotMatch(content, /id="entry-loader"/, 'the root route joins the live world without a splash');
+        assert.match(content, /id="entry-loader"[^>]*data-mode="transition"/, 'the world route shows the shared entry animation');
         assert.doesNotMatch(content, /href="\/compound"/, 'Compound is discovered in the world, not through a global header button');
         assert.match(content, /COMPOUND ↙/, 'the world directions point to the Compound');
       }

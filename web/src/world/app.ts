@@ -166,6 +166,7 @@ const ANCHORS:Record<string,string>={
   'west-trail':'the west trail','market-home':'the market homes',
 };
 function cropLabel(crop:CropKind|null):string{return crop?crop.charAt(0).toUpperCase()+crop.slice(1):'produce';}
+function growthLabel(range?:readonly[number,number]):string{const low=Math.max(1,Math.round((range?.[0]??300_000)/60_000)),high=Math.max(low,Math.round((range?.[1]??660_000)/60_000));return low===high?`${low} minute${low===1?'':'s'}`:`${low}–${high} minutes`;}
 function anchorLabel(anchor:string):string{return ANCHORS[anchor]||'the farm grounds';}
 function sparkle(position:{x:number;y:number},colors:string[],count=10):void{const time=performance.now();for(let index=0;index<count;index++){const angle=index/count*Math.PI*2,range=16+(index%3)*6;particles.push({id:`plot-${time}-${index}`,position:{...position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-12},color:colors[index%colors.length]!,expiresAt:time+650});}}
 function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
@@ -209,7 +210,7 @@ async function plantPlot(tile:FarmTile,crop:CropKind):Promise<void>{
     const result=await farmClient.post('plant',{tile_id:tile.id,crop});
     mergeFarmTile(result.tile as FarmTile|undefined);mergeFarmAccount(result.account as FarmAccount|undefined);
     knownTiles.set(tile.id,'growing');
-    farmHud.notice(`Planted ${cropLabel(crop)} · ready in about ${Math.round(Number(result.grow_ms)/1000)}s`,'good');
+    farmHud.notice(`Planted ${cropLabel(crop)} · ready in about ${Math.max(1,Math.round(Number(result.grow_ms)/60_000))} minutes`,'good');
     dialog.close();
   }catch(error){farmHud.notice(error instanceof Error?error.message:'Planting failed','warn');}
 }
@@ -229,10 +230,10 @@ function showFarmPlot(tile:FarmTile):void{
   if(tile.mine&&tile.stage!=='wild'){void harvestPlot(tile);return;}
   show(tile.stage==='wild'?'FARM PLOT · plant':`${cropLabel(tile.crop)} · ${tile.stage}`);
   if(tile.stage==='wild'){
-    text('p','Empty soil. Pick a crop; it ripens in one to two minutes.');
+    text('p','Farms are live. Pick a crop; it ripens in several minutes while you explore.');
     const choices=document.createElement('div');choices.className='farm-plant-options';
     for(const kind of CROPS){const crop=farmSnapshot?.crops[kind];const button=document.createElement('button');button.type='button';
-      button.textContent=`${crop?crop.label:kind} · ${crop?.sell||0} CR · ~${Math.round(((crop?.grow_ms[0]||60_000)+(crop?.grow_ms[1]||120_000))/2000)}s`;
+      button.textContent=`${crop?crop.label:kind} · ${crop?.sell||0} CR · ~${growthLabel(crop?.grow_ms)}`;
       button.onclick=()=>void plantPlot(tile,kind);choices.append(button);}
     content.append(choices);
     const used=farmSnapshot?.account?.plots_used||0,limit=farmSnapshot?.account?.plots_limit||3;
@@ -240,13 +241,14 @@ function showFarmPlot(tile:FarmTile):void{
     return;
   }
   if(!tile.mine){text('p',`Another farmer planted this ${cropLabel(tile.crop).toLowerCase()}.`);return;}
-  if(tile.stage==='growing')text('p',`Growing. Ready in about ${Math.ceil(tile.ready_in_ms/1000)} seconds — the arrow will point back here.`);
+  if(tile.stage==='growing')text('p',`Growing. Ready in about ${Math.max(1,Math.ceil(tile.ready_in_ms/60_000))} minutes — the arrow will point back here.`);
   else text('p','Ready to harvest.');
 }
 function farmSection():void{
   const account=farmSnapshot?.account;
   if(!account){text('p','The farm ledger is still loading.');return;}
   text('h3',`FARM · LV ${account.level} · ${account.credits} CR`);
+  text('p','Farms are live. Crops ripen in several minutes, so plant a field before you explore.');
   text('p',`${account.stats.harvested} harvested · ${account.stats.sold} sold · ${Math.floor(account.seconds_played/60)} minutes in the world.`);
   const bag=CROPS.filter(kind=>(account.inventory[kind]||0)>0);
   if(!bag.length)text('p','Your bag is empty. Harvest a plot, then carry the produce back here.');
@@ -657,7 +659,12 @@ try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 // The intro card is shown over the running world on every load; it never gates
 // simulation or network traffic, only movement until the visitor dismisses it.
 if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');}catch{}}
-void presetButtons();canvas.focus();openIntro();const joined=startPresence();lastPlayTick=Date.now();
+// entry.js exposes a gate that resolves when the shared page-entry animation
+// has finished. Wait for it so the character card does not cover the animation;
+// if the loader is missing or reduced motion is enabled, open immediately.
+void presetButtons();canvas.focus();
+void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(()=>openIntro(),()=>openIntro());
+const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
 // loading other visitor-scoped state so a concurrent request cannot mint a
 // second identity and ghost this visitor on refresh.
