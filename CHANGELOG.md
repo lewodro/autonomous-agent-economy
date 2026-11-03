@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### World
+
+- Mark the farm loop as live in the world UI and lengthen crop growth to
+  4–11 minutes so fields stay a reason to return.
+
 ### Hardening
 
 - Add cohort conservation/terminal invariants and persisted receipt roundtrips.

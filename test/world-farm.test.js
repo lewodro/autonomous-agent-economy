@@ -98,10 +98,10 @@ test('planting, growth and harvest move one crop into the inventory', async () =
     const tile = farm.snapshot(guest).tiles[0];
     const planted = await farm.plant(guest, { tile_id: tile.id, crop: 'wheat' }, tile.position);
     assert.equal(planted.tile.stage, 'growing');
-    assert.ok(planted.grow_ms >= 60_000 && planted.grow_ms <= 120_000);
+    assert.ok(planted.grow_ms >= 240_000 && planted.grow_ms <= 660_000);
     await assert.rejects(() => farm.harvest(guest, { tile_id: tile.id }, tile.position), { code: 'CROP_GROWING' });
     assert.equal(farm.snapshot(guest).account.inventory.wheat, 0);
-    advance(120_001);
+    advance(660_001);
     const harvested = await farm.harvest(guest, { tile_id: tile.id }, tile.position);
     assert.equal(harvested.crop, 'wheat');
     assert.equal(harvested.account.inventory.wheat, 1);
@@ -119,7 +119,7 @@ test('only the owner can harvest a growing plot', async () => {
     const other = { key: 'guest:visitor-b', provider: 'guest' };
     const tile = farm.snapshot(guest).tiles[0];
     await farm.plant(guest, { tile_id: tile.id, crop: 'carrot' }, tile.position);
-    advance(121_000);
+    advance(660_001);
     await assert.rejects(() => farm.harvest(other, { tile_id: tile.id }, tile.position), { code: 'NOT_YOUR_PLOT' });
   } finally { await close(); }
 });
@@ -143,7 +143,7 @@ test('produce only sells at the bazaar and credits the account', async () => {
   try {
     const tile = farm.snapshot(guest).tiles[0];
     await farm.plant(guest, { tile_id: tile.id, crop: 'pumpkin' }, tile.position);
-    advance(121_000);
+    advance(661_000);
     await farm.harvest(guest, { tile_id: tile.id }, tile.position);
     await assert.rejects(() => farm.sell(guest, { crop: 'pumpkin', quantity: 1 }, { x: 0, y: 0 }), { code: 'BAZAAR_OUT_OF_RANGE' });
     const sold = await farm.sell(guest, { crop: 'pumpkin', quantity: 1 }, BAZAAR.position);
@@ -191,7 +191,7 @@ test('signing in merges guest progress, plots and inventory', async () => {
   try {
     const tile = farm.snapshot(guest).tiles[0];
     await farm.plant(guest, { tile_id: tile.id, crop: 'wheat' }, tile.position);
-    advance(121_000);
+    advance(481_000);
     await farm.harvest(guest, { tile_id: tile.id }, tile.position);
     await farm.heartbeat(guest, { seconds: 30 });
     const account = { key: 'clerk:user_123', provider: 'clerk', subject: 'user_123', name: 'Miro' };
@@ -238,7 +238,7 @@ test('farm state survives a restart through the shared store', async () => {
     await first.heartbeat(guest, { seconds: 30 });
     const tileId = tile.id;
     await first.close();
-    now += 121_000;
+    now += 421_000;
     const secondStore = new WorldStore({ directory });
     await secondStore.open();
     const second = new WorldFarm(secondStore, { now: clock, random: () => 0.5 });

@@ -7,7 +7,9 @@ const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
 export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
 /** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
 const WORLD_BOUNDS = Object.freeze({ minX: -896, minY: -576, maxX: 2688, maxY: 1728 });
-const GROW_MS = { wheat: [60_000, 110_000], carrot: [60_000, 95_000], pumpkin: [75_000, 120_000] };
+// Crops are deliberately slow: a planted field is a reason to keep exploring
+// and return to the same world later rather than an instant loop.
+const GROW_MS = { wheat: [300_000, 480_000], carrot: [240_000, 420_000], pumpkin: [420_000, 660_000] };
 export const CROPS = Object.freeze({
   wheat: { label: 'Wheat', sell: 6, xp: 12, grow: GROW_MS.wheat },
   carrot: { label: 'Carrot', sell: 5, xp: 10, grow: GROW_MS.carrot },
