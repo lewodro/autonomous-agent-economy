@@ -17,7 +17,8 @@ test('world HTTP gateway serves deployable assets, shared rooms and capability-s
   for(const route of ['/','/home','/rps','/world','/entry.js','/entry.css','/motion.js','/motion.css','/compound','/arena','/arena/rps/rps-1','/arena/tictactoe/ttt-1','/world/styles.css','/web/dist/world/app.js','/web/dist/world/table.js','/web/dist/world/compound.js','/assets/avatars/index.json','/assets/avatars/clean/ember.png','/assets/avatars/clean/ember_preview.png','/assets/agents/01-founder.png','/assets/sprites-agent/01-founder.png','/assets/sprites-agent/20-wild-card.png'])assert.equal((await fetch(base+route)).status,200,route);
   for(const route of ['/','/arena']){const html=await(await fetch(base+route)).text();assert.doesNotMatch(html,/moltbook|openclaw/i,`${route} should not render external ecosystem cards`);}
   const rootHtml=await(await fetch(base+'/')).text();assert.match(rootHtml,/THE PLAZA/,'the root route should serve the world page');
-  assert.doesNotMatch(rootHtml,/id="entry-loader"/,'the world-first root should not block the plaza with an intro splash');
+  assert.match(rootHtml,/id="entry-loader"[^>]*data-mode="transition"/,'the world-first root should use the shared short entry animation');
+  assert.match(rootHtml,/src="\/entry\.js"/,'the world-first root should load the shared entry animation script');
   assert.match(rootHtml,/href="\/post\/">Build log</,'the devlog should remain reachable');
   assert.match(rootHtml,/id="character-dialog"[\s\S]*?Step into the live world/,'the intro should always be present in the world markup');
   assert.match(rootHtml,/id="intro-google"[^>]*>Continue with Google</,'the intro should offer Google sign-in for a saved instance');

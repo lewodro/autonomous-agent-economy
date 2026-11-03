@@ -657,7 +657,12 @@ try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 // The intro card is shown over the running world on every load; it never gates
 // simulation or network traffic, only movement until the visitor dismisses it.
 if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');}catch{}}
-void presetButtons();canvas.focus();openIntro();const joined=startPresence();lastPlayTick=Date.now();
+// entry.js exposes a gate that resolves when the shared page-entry animation
+// has finished. Wait for it so the character card does not cover the animation;
+// if the loader is missing or reduced motion is enabled, open immediately.
+void presetButtons();canvas.focus();
+void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(()=>openIntro(),()=>openIntro());
+const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
 // loading other visitor-scoped state so a concurrent request cannot mint a
 // second identity and ghost this visitor on refresh.
