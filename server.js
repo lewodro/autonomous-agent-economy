@@ -21,7 +21,7 @@ import { hostCookie, hasHostCookie } from './service/host-auth.js';
 import { SlidingWindowLimiter } from './service/rate-limit.js';
 import { ArenaRoomPool } from './service/arena-rooms.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
-import { requestErrorStatus } from './service/http-error.js';
+import { publicRequestError } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { WorldAgentPresenceService } from './service/world-agent-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
@@ -74,6 +74,8 @@ const worldFarm=new WorldFarm(worldStore,{
   creditsPerMinute:Number(process.env.WORLD_CREDITS_PER_MINUTE||1),
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
   minWithdrawalCredits:Number(process.env.WORLD_MIN_WITHDRAWAL_CREDITS||50),
+  timeScale:process.env.WORLD_FARM_TIME_SCALE===undefined?1:Number(process.env.WORLD_FARM_TIME_SCALE),
+  allowTimeScale:!production,
 });
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
@@ -441,11 +443,8 @@ const server = http.createServer(async (req, res) => {
     if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
-    let detail;try{detail=JSON.parse(error.message);}catch{}
-    const status=requestErrorStatus(error);
-    const code=error.code||detail?.code;
+    const {status,code,error:safeMessage}=publicRequestError(error,{production});
     if(status>=500)console.error(JSON.stringify({event:'request_failed',code:typeof code==='string'?code:'INTERNAL_ERROR'}));
-    const safeMessage=production?(status===404?'Not found':status===413?'Request too large':status===429?'Too many requests':status<500?'Request rejected':'Service temporarily unavailable'):error.message;
     json(res,status,{error:safeMessage,...(typeof code==='string'?{code}:{})});
   }
 });

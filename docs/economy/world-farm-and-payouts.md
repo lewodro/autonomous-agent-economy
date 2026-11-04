@@ -5,7 +5,7 @@ The shared world now carries a small human economy on top of the agent plaza:
 1. The farm loop is live: plots spawn on open ground across the garden, market and
    southern fields.
 2. A visitor walks to a plot, presses **E**, and plants wheat, carrot or pumpkin.
-3. The crop ripens in **4–11 minutes** (wheat 5–8, carrot 4–7, pumpkin 7–11), so a
+3. The crop ripens on an exact server timestamp after **3, 6 or 9 minutes**, so a
    field is a reason to keep exploring and return. A top-left notice and a canvas
    arrow point back to the plot when it is ready.
 4. Harvesting puts one produce item in the visitor's bag.
@@ -16,6 +16,23 @@ The shared world now carries a small human economy on top of the agent plaza:
 
 Everything that decides state — growth, inventory, prices, XP, play time and payouts —
 runs on the server. The browser only renders snapshots and sends intents.
+
+## Crop progression and balance
+
+| Crop | Level | Growth | Seed cost | Market value | Net sale value |
+|---|---:|---:|---:|---:|---:|
+| Wheat | 1 | 3 minutes | 0 CR | 4 CR | 4 CR |
+| Carrot | 2 | 6 minutes | 2 CR | 10 CR | 8 CR |
+| Pumpkin | 3 | 9 minutes | 4 CR | 18 CR | 14 CR |
+
+Farming starts at level 1. Level 2 begins at 40 XP and level 3 at 160 XP. Planting
+and harvesting both award XP; locked crops are rejected by the server. Longer crops
+produce better value per plot while taking proportionally more real time.
+
+Growth is derived from persisted `planted_at` and `ready_at` timestamps. Closing the
+browser does not pause or reset a crop. `WORLD_FARM_TIME_SCALE` can shorten the clock
+only outside production; malformed, zero and greater-than-one values fail startup,
+and production refuses any accelerated value.
 
 ## Domain model
 
@@ -49,9 +66,9 @@ the other side of the map.
 | Route | Method | Notes |
 |---|---|---|
 | `/api/world/farm` | GET | Snapshot: account, tiles, bazaar prices, rates, auth configuration. |
-| `/api/world/farm/plant` | POST | `{tile_id, crop}`; requires presence near the plot. |
-| `/api/world/farm/harvest` | POST | `{tile_id}`; requires presence near the plot and plot ownership. |
-| `/api/world/farm/sell` | POST | `{crop, quantity}`; requires presence near the bazaar. |
+| `/api/world/farm/plant` | POST | `{tile_id, crop, request_id}`; requires presence near an unclaimed plot. |
+| `/api/world/farm/harvest` | POST | `{tile_id, request_id}`; requires presence, maturity and plot ownership. Adds produce to inventory, never credits. |
+| `/api/world/farm/sell` | POST | `{crop, quantity, request_id}`; atomically removes inventory and adds internal credits while physically at the Market. |
 | `/api/world/farm/heartbeat` | POST | `{seconds}`; play-time credits, capped at 30 seconds per call. |
 | `/api/world/farm/wallet` | POST | `{wallet_address, display_name?}`; saves a **public** address only. |
 | `/api/world/farm/profile` | POST | `{avatar?, position?}`; saves the signed-in visitor's character and plaza position. |
@@ -59,6 +76,18 @@ the other side of the map.
 | `/api/world/auth` | GET | `{provider, configured, publishable_key}` for the browser. |
 | `/api/world/auth/clerk` | POST | `{token}`; verifies a Clerk session token and sets the signed account cookie. |
 | `/api/world/auth/logout` | POST | Clears the account cookie. |
+
+`request_id` is generated once by the browser and reused for its one network retry.
+The server persists the result under the owner, action and request ID, so double-clicks,
+timeouts, two tabs and reconnect retries cannot plant, harvest or sell twice. Successful
+actions append `crop_planted`, `crop_harvested` or `market_sale` to the account's bounded
+farm ledger. Plot ownership and distance are checked against authoritative shared-world
+presence; coordinates supplied in the action body are never trusted.
+
+Expected domain failures carry stable codes (`NOT_ENOUGH_CREDITS`, `TOO_FAR`,
+`PLOT_OCCUPIED`, `PLOT_LIMIT`, `CROP_NOT_READY`, `NOT_OWNER`, `INVENTORY_TOO_LOW`,
+`MARKET_REQUIRED` and `LEVEL_REQUIRED`). Production exposes reviewed, safe copy for
+these errors while keeping unexpected internal details private.
 
 ## Accounts and social login (Clerk)
 
@@ -191,6 +220,7 @@ enable live transfers by flipping a flag; build and audit that signer first.
 | `WORLD_MIN_WITHDRAWAL_CREDITS` | `50` | Minimum payout request. |
 | `WORLD_LAMPORTS_PER_CREDIT` | `0` | Bookkeeping conversion; `0` keeps payouts ledger-only. |
 | `WORLD_SOL_PAYOUTS_ENABLED` | `0` | Existing economy payout flag; remains disabled. |
+| `WORLD_FARM_TIME_SCALE` | `1` | Non-production test acceleration in `(0, 1]`; production requires exactly `1`. |
 
 ## Testing
 
@@ -199,7 +229,7 @@ node --test test/world-farm.test.js test/world-identity.test.js test/world-farm-
 npm test
 ```
 
-The unit tests cover growth timing, plot ownership, plot limits, bazaar range, play-time
-caps, wallet validation, queued payouts, guest-to-account merging and restart
-persistence. The HTTP test boots the real server and exercises the same routes the
-browser uses.
+The unit tests cover exact growth timing, the test clock, offline maturity, plot
+contention, ownership, duplicate harvest/sale protection, inventory, Market range,
+guest-to-account merging and restart persistence. The HTTP test boots the real server,
+replays the same request ID and exercises the same routes the browser uses.

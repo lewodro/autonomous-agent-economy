@@ -19,6 +19,7 @@ export interface FarmAccount {
   stats: { planted: number; harvested: number; sold: number; credits_from_sales: number };
   plots_used: number; plots_limit: number;
   profile: FarmProfile;
+  ledger: Array<{ id: string; type: string; timestamp: string; details: Record<string, unknown> }>;
   wallet: { address: string | null; status: string };
   payouts: FarmPayout[];
 }
@@ -27,7 +28,7 @@ export interface FarmSnapshot {
   account: FarmAccount | null;
   tiles: FarmTile[];
   bazaar: { position: FarmPosition; radius: number; prices: Record<CropKind, number> };
-  crops: Record<CropKind, { label: string; sell: number; xp: number; grow_ms: [number, number] }>;
+  crops: Record<CropKind, { label: string; sell: number; seed_cost: number; xp: number; unlock_level: number; grow_ms: [number, number]; production_grow_ms: number }>;
   rates: { credits_per_minute: number; lamports_per_credit: number; min_withdrawal_credits: number };
   auth: { provider: string; configured: boolean; signed_in: boolean };
   server_time: string;
@@ -37,7 +38,20 @@ export const CROPS: CropKind[] = ['wheat', 'carrot', 'pumpkin'];
 
 async function read(response: Response): Promise<Record<string, unknown>> {
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) throw Object.assign(new Error(String(body.error || 'The farm did not respond')), { status: response.status, code: body.code });
+  const code = typeof body.code === 'string' ? body.code : '';
+  const friendly: Record<string, string> = {
+    NOT_ENOUGH_CREDITS: 'You need more credits for that crop.',
+    TOO_FAR: 'Walk closer to the farm plot.',
+    PLOT_OCCUPIED: 'Another visitor claimed this plot first.',
+    PLOT_LIMIT: 'You are already tending the maximum number of plots.',
+    CROP_NOT_READY: 'This crop is still growing.',
+    NOT_OWNER: 'This crop belongs to another visitor.',
+    INVENTORY_TOO_LOW: 'You do not carry enough of that resource.',
+    MARKET_REQUIRED: 'Carry your produce to the Market before selling.',
+    LEVEL_REQUIRED: 'Raise your farming level to unlock this crop.',
+    PLAYER_NOT_FOUND: 'Reconnect to the shared world and try again.',
+  };
+  if (!response.ok) throw Object.assign(new Error(friendly[code] || String(body.error || 'The farm did not respond')), { status: response.status, code });
   return body;
 }
 
@@ -52,10 +66,22 @@ export class FarmClient {
   }
 
   async post(action: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    const response = await fetch(`/api/world/farm/${action}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    return read(response);
+    const idempotent = ['plant', 'harvest', 'sell'].includes(action);
+    const payload = idempotent && body.request_id === undefined ? { ...body, request_id: crypto.randomUUID() } : body;
+    let failure: unknown;
+    for (let attempt = 0; attempt < (idempotent ? 2 : 1); attempt += 1) {
+      try {
+        const response = await fetch(`/api/world/farm/${action}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload), signal: AbortSignal.timeout(6_000),
+        });
+        return await read(response);
+      } catch (error) {
+        failure = error;
+        if (error && typeof error === 'object' && 'status' in error) throw error;
+      }
+    }
+    throw failure instanceof Error ? failure : new Error('The farm did not respond');
   }
 
   async saveProfile(avatar: string, position: FarmPosition): Promise<Record<string, unknown>> {
