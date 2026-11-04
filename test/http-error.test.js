@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestErrorStatus, withStorageFailure } from '../service/http-error.js';
+import { publicRequestError, requestErrorStatus, withStorageFailure } from '../service/http-error.js';
 import { WorkerError } from '../service/worker-error.js';
 
 test('HTTP error mapping separates client errors from unavailable local storage',()=>{
@@ -27,4 +27,12 @@ test('typed Rust storage and RPC failures are reported as service unavailable',(
     assert.equal(error.code,code);
     assert.equal(requestErrorStatus(error),503);
   }
+});
+
+test('production exposes reviewed farm errors without leaking unexpected details',()=>{
+  const tooFar=Object.assign(new Error('raw coordinate detail'),{status:409,code:'TOO_FAR'});
+  assert.deepEqual(publicRequestError(tooFar,{production:true}),{status:409,code:'TOO_FAR',error:'Walk closer and try again.'});
+  const unexpected=Object.assign(new Error('/private/path leaked'),{status:409,code:'UNREVIEWED'});
+  assert.deepEqual(publicRequestError(unexpected,{production:true}),{status:409,code:'UNREVIEWED',error:'Request rejected'});
+  assert.equal(publicRequestError(tooFar).error,'raw coordinate detail');
 });
