@@ -1,19 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validSolanaAddress } from './world-economy.js';
 
-const VERSION = 1;
+const VERSION = 2;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
 /** Kept in sync with the curated browser avatar catalog. */
 export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
 /** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
 const WORLD_BOUNDS = Object.freeze({ minX: -896, minY: -576, maxX: 2688, maxY: 1728 });
-// Crops are deliberately slow: a planted field is a reason to keep exploring
-// and return to the same world later rather than an instant loop.
-const GROW_MS = { wheat: [300_000, 480_000], carrot: [240_000, 420_000], pumpkin: [420_000, 660_000] };
+// Production crop durations are exact server timestamps. Tests may apply the
+// explicit constructor time scale; browsers never influence these values.
 export const CROPS = Object.freeze({
-  wheat: { label: 'Wheat', sell: 6, xp: 12, grow: GROW_MS.wheat },
-  carrot: { label: 'Carrot', sell: 5, xp: 10, grow: GROW_MS.carrot },
-  pumpkin: { label: 'Pumpkin', sell: 9, xp: 18, grow: GROW_MS.pumpkin },
+  wheat: { label: 'Wheat', unlockLevel: 1, growMs: 3 * 60_000, seedCost: 0, sell: 4, plantXp: 4, xp: 18 },
+  carrot: { label: 'Carrot', unlockLevel: 2, growMs: 6 * 60_000, seedCost: 2, sell: 10, plantXp: 8, xp: 32 },
+  pumpkin: { label: 'Pumpkin', unlockLevel: 3, growMs: 9 * 60_000, seedCost: 4, sell: 18, plantXp: 12, xp: 54 },
 });
 export const CROP_KINDS = Object.freeze(Object.keys(CROPS));
 export const BAZAAR = Object.freeze({ position: { x: 681, y: 1292 }, radius: 160 });
@@ -93,9 +92,13 @@ export class WorldFarm {
     minWithdrawalCredits = 50,
     spawnIntervalMs = FARM_SCARCITY.spawnIntervalMs,
     wildTtlMs = FARM_SCARCITY.wildTtlMs,
+    timeScale = 1,
+    allowTimeScale = true,
   } = {}) {
     if (!Number.isInteger(creditsPerMinute) || creditsPerMinute < 0 || creditsPerMinute > 60) throw new Error('Invalid creditsPerMinute');
     if (!Number.isSafeInteger(lamportsPerCredit) || lamportsPerCredit < 0) throw new Error('Invalid lamportsPerCredit');
+    if (!Number.isFinite(timeScale) || timeScale <= 0 || timeScale > 1) throw new Error('WORLD_FARM_TIME_SCALE must be greater than 0 and at most 1');
+    if (!allowTimeScale && timeScale !== 1) throw new Error('WORLD_FARM_TIME_SCALE cannot accelerate production farming');
     this.store = store;
     this.now = now;
     this.random = random;
@@ -106,18 +109,28 @@ export class WorldFarm {
     this.minWithdrawalCredits = clamp(minWithdrawalCredits, 1, 1_000_000);
     this.spawnIntervalMs = Math.max(10_000, Number(spawnIntervalMs) || FARM_SCARCITY.spawnIntervalMs);
     this.wildTtlMs = Math.max(this.spawnIntervalMs, Number(wildTtlMs) || FARM_SCARCITY.wildTtlMs);
-    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], migrated_at: null, next_spawn_at: null };
+    this.timeScale = timeScale;
+    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], ledger: [], idempotency: [], migrated_at: null, next_spawn_at: null };
     this.timer = null;
   }
 
   async restore() {
     const saved = await this.store.load();
     if (saved) {
-      if (saved.version !== VERSION || typeof saved.accounts !== 'object' || typeof saved.tiles !== 'object' || !Array.isArray(saved.payouts)) {
+      if (![1, VERSION].includes(saved.version) || typeof saved.accounts !== 'object' || typeof saved.tiles !== 'object' || !Array.isArray(saved.payouts)) {
         throw new Error('Invalid world farm checkpoint');
       }
       this.state = saved;
+      if (saved.version === 1) {
+        this.state.version = VERSION;
+        this.state.ledger = [];
+        this.state.idempotency = [];
+        this.state.migrated_at = new Date(this.now()).toISOString();
+      }
     }
+    this.state.ledger ||= [];
+    this.state.idempotency ||= [];
+    if (!Array.isArray(this.state.ledger) || !Array.isArray(this.state.idempotency)) throw new Error('Invalid world farm ledger');
     for (const key of Object.keys(this.state.accounts)) {
       const account = this.state.accounts[key];
       account.inventory ||= { wheat: 0, carrot: 0, pumpkin: 0 };
@@ -289,7 +302,15 @@ export class WorldFarm {
       account,
       tiles: this.tiles(identity?.key || null),
       bazaar: { position: { ...BAZAAR.position }, radius: BAZAAR.radius, prices: Object.fromEntries(CROP_KINDS.map(kind => [kind, CROPS[kind].sell])) },
-      crops: Object.fromEntries(CROP_KINDS.map(kind => [kind, { label: CROPS[kind].label, sell: CROPS[kind].sell, xp: CROPS[kind].xp, grow_ms: CROPS[kind].grow }])),
+      crops: Object.fromEntries(CROP_KINDS.map(kind => [kind, {
+        label: CROPS[kind].label,
+        sell: CROPS[kind].sell,
+        seed_cost: CROPS[kind].seedCost,
+        xp: CROPS[kind].xp,
+        unlock_level: CROPS[kind].unlockLevel,
+        grow_ms: [this.growthDuration(kind), this.growthDuration(kind)],
+        production_grow_ms: CROPS[kind].growMs,
+      }])),
       rates: { credits_per_minute: this.creditsPerMinute, lamports_per_credit: this.lamportsPerCredit, min_withdrawal_credits: this.minWithdrawalCredits },
       server_time: new Date(this.now()).toISOString(),
       ...(changed ? { changed: true } : {}),
@@ -303,23 +324,28 @@ export class WorldFarm {
   }
 
   requireRange(position, target, radius = PLANT_RADIUS) {
-    if (!position || distance(position, target) > radius) throw fail('OUT_OF_RANGE', 'Walk closer to the farm plot', 409);
+    if (!position || distance(position, target) > radius) throw fail('TOO_FAR', 'Walk closer to the farm plot', 409);
   }
 
   activePlots(account) {
     return Object.values(this.state.tiles).filter(tile => tile.owner === account.key && tile.stage !== 'wild').length;
   }
 
+  growthDuration(crop) { return Math.max(100, Math.round(CROPS[crop].growMs * this.timeScale)); }
+
   async plant(identity, { tile_id, crop } = {}, position) {
     const account = this.account(identity);
     if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Choose wheat, carrot or pumpkin');
     const tile = this.requireTile(tile_id);
-    if (tile.stage !== 'wild') throw fail('PLOT_TAKEN', 'Someone is already farming this plot', 409);
+    if (tile.stage !== 'wild') throw fail('PLOT_OCCUPIED', 'Someone is already farming this plot', 409);
     this.requireRange(position, tile.position);
     if (this.activePlots(account) >= this.maxPlotsPerPlayer) throw fail('PLOT_LIMIT', `You can tend ${this.maxPlotsPerPlayer} plots at once`, 409);
-    const [min, max] = CROPS[crop].grow;
-    const growMs = Math.round(min + this.random() * (max - min));
+    const level = levelFor(account.xp).level;
+    if (level < CROPS[crop].unlockLevel) throw fail('LEVEL_REQUIRED', `${CROPS[crop].label} unlocks at farming level ${CROPS[crop].unlockLevel}`, 409);
+    if (account.credits < CROPS[crop].seedCost) throw fail('NOT_ENOUGH_CREDITS', `${CROPS[crop].label} seed costs ${CROPS[crop].seedCost} credits`, 409);
+    const growMs = this.growthDuration(crop);
     const now = this.now();
+    account.credits -= CROPS[crop].seedCost;
     tile.stage = 'growing';
     tile.crop = crop;
     tile.owner = account.key;
@@ -327,7 +353,7 @@ export class WorldFarm {
     tile.ready_at = now + growMs;
     tile.spawned_at = now;
     account.stats.planted += 1;
-    account.xp += 6;
+    account.xp += CROPS[crop].plantXp;
     await this.persist();
     return { tile: this.publicTile(tile, account.key), account: this.view(identity), grow_ms: growMs };
   }
@@ -336,8 +362,8 @@ export class WorldFarm {
     const account = this.account(identity);
     const tile = this.requireTile(tile_id);
     if (tile.stage === 'wild') throw fail('PLOT_EMPTY', 'This plot has not been planted');
-    if (tile.owner !== account.key) throw fail('NOT_YOUR_PLOT', 'This crop belongs to another farmer', 403);
-    if (tile.stage !== 'ready' && tile.ready_at > this.now()) throw fail('CROP_GROWING', 'This crop is still growing', 409);
+    if (tile.owner !== account.key) throw fail('NOT_OWNER', 'This crop belongs to another farmer', 403);
+    if (tile.stage !== 'ready' && tile.ready_at > this.now()) throw fail('CROP_NOT_READY', 'This crop is still growing', 409);
     this.requireRange(position, tile.position);
     const crop = tile.crop;
     const now = this.now();
@@ -360,11 +386,11 @@ export class WorldFarm {
   async sell(identity, { crop, quantity = 1 } = {}, position) {
     const account = this.account(identity);
     if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Unknown produce');
-    if (!position || distance(position, BAZAAR.position) > BAZAAR.radius) throw fail('BAZAAR_OUT_OF_RANGE', 'Carry produce to the bazaar stalls in the lower market', 409);
+    if (!position || distance(position, BAZAAR.position) > BAZAAR.radius) throw fail('MARKET_REQUIRED', 'Carry produce to the bazaar stalls in the lower market', 409);
     const amount = Math.floor(Number(quantity));
     if (!Number.isInteger(amount) || amount < 1 || amount > 20) throw fail('INVALID_QUANTITY', 'Sell between 1 and 20 produce at a time');
     const held = account.inventory[crop] || 0;
-    if (held < amount) throw fail('NOT_ENOUGH_PRODUCE', `You only carry ${held} ${CROPS[crop].label.toLowerCase()}`, 409);
+    if (held < amount) throw fail('INVENTORY_TOO_LOW', `You only carry ${held} ${CROPS[crop].label.toLowerCase()}`, 409);
     const total = CROPS[crop].sell * amount;
     account.inventory[crop] = held - amount;
     account.credits += total;

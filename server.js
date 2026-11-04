@@ -74,6 +74,8 @@ const worldFarm=new WorldFarm(worldStore,{
   creditsPerMinute:Number(process.env.WORLD_CREDITS_PER_MINUTE||1),
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
   minWithdrawalCredits:Number(process.env.WORLD_MIN_WITHDRAWAL_CREDITS||50),
+  timeScale:process.env.WORLD_FARM_TIME_SCALE===undefined?1:Number(process.env.WORLD_FARM_TIME_SCALE),
+  allowTimeScale:!production,
 });
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});

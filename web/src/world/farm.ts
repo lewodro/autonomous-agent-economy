@@ -27,7 +27,7 @@ export interface FarmSnapshot {
   account: FarmAccount | null;
   tiles: FarmTile[];
   bazaar: { position: FarmPosition; radius: number; prices: Record<CropKind, number> };
-  crops: Record<CropKind, { label: string; sell: number; xp: number; grow_ms: [number, number] }>;
+  crops: Record<CropKind, { label: string; sell: number; seed_cost: number; xp: number; unlock_level: number; grow_ms: [number, number]; production_grow_ms: number }>;
   rates: { credits_per_minute: number; lamports_per_credit: number; min_withdrawal_credits: number };
   auth: { provider: string; configured: boolean; signed_in: boolean };
   server_time: string;

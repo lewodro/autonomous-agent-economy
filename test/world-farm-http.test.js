@@ -42,7 +42,8 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     assert.equal(snapshot.auth.signed_in, false);
     assert.equal(snapshot.account.credits, 0);
     assert.equal(snapshot.account.signed_in, false);
-    assert.equal(snapshot.bazaar.prices.wheat, 6);
+    assert.equal(snapshot.bazaar.prices.wheat, 4);
+    assert.deepEqual(Object.fromEntries(Object.entries(snapshot.crops).map(([kind,crop])=>[kind,crop.production_grow_ms])),{wheat:180_000,carrot:360_000,pumpkin:540_000});
 
     const tile = snapshot.tiles[0];
     await fetch(base + '/api/worlds/main/presence/join', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ position: tile.position }) });
@@ -55,10 +56,10 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     const planted = await post('plant', { tile_id: tile.id, crop: 'wheat' });
     assert.equal(planted.status, 200);
     assert.equal(planted.body.tile.stage, 'growing');
-    assert.ok(planted.body.grow_ms >= 240_000 && planted.body.grow_ms <= 660_000);
+    assert.equal(planted.body.grow_ms, 180_000);
 
-    assert.equal((await post('harvest', { tile_id: tile.id })).status, 409);
-    assert.equal((await post('sell', { crop: 'wheat', quantity: 1 })).status, 409);
+    const growing=await post('harvest', { tile_id: tile.id });assert.equal(growing.status,409);assert.equal(growing.body.code,'CROP_NOT_READY');
+    const remoteSale=await post('sell', { crop: 'wheat', quantity: 1 });assert.equal(remoteSale.status,409);assert.equal(remoteSale.body.code,'MARKET_REQUIRED');
 
     const heartbeat = await post('heartbeat', { seconds: 30 });
     assert.equal(heartbeat.status, 200);
