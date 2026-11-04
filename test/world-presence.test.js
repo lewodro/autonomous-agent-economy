@@ -37,7 +37,15 @@ test('movement limits prevent teleporting and idle time cannot bank distance',()
   let now=1_000;const service=serviceAt({now:()=>now,minUpdateMs:50});service.join('main',alice,{position:{x:100,y:100}});now+=250;
   assert.throws(()=>service.move('main',alice,{position:{x:150,y:100}}),{code:'INVALID_POSITION'});
   assert.equal(service.move('main',alice,{position:{x:143.5,y:100}}).player.position.x,143.5);now+=5_000;
-  assert.throws(()=>service.move('main',alice,{position:{x:190,y:100}}),{code:'INVALID_POSITION'});
+  assert.throws(()=>service.move('main',alice,{position:{x:300,y:100}}),{code:'INVALID_POSITION'});
+});
+
+test('a delayed legitimate movement update catches up without breaking interaction range',()=>{
+  let now=1_000;const service=serviceAt({now:()=>now,minUpdateMs:50});service.join('main',alice,{position:{x:100,y:100}});
+  now+=700;
+  assert.deepEqual(service.move('main',alice,{position:{x:205,y:100},direction:'right',animation_state:'walk'}).player.position,{x:205,y:100});
+  now+=5_000;
+  assert.throws(()=>service.move('main',alice,{position:{x:362,y:100}}),{code:'INVALID_POSITION'},'idle time still cannot bank more than one bounded catch-up window');
 });
 
 test('stale visitors are removed without resetting the continuous world',()=>{
