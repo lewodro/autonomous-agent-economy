@@ -53,10 +53,13 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
       return { status: response.status, body: await response.json() };
     };
 
-    const planted = await post('plant', { tile_id: tile.id, crop: 'wheat' });
+    const planted = await post('plant', { tile_id: tile.id, crop: 'wheat', request_id: 'http-plant-001' });
     assert.equal(planted.status, 200);
     assert.equal(planted.body.tile.stage, 'growing');
     assert.equal(planted.body.grow_ms, 180_000);
+    const replayedPlant = await post('plant', { tile_id: tile.id, crop: 'wheat', request_id: 'http-plant-001' });
+    assert.equal(replayedPlant.status, 200);
+    assert.equal(replayedPlant.body.event_id, planted.body.event_id);
 
     const growing=await post('harvest', { tile_id: tile.id });assert.equal(growing.status,409);assert.equal(growing.body.code,'CROP_NOT_READY');
     const remoteSale=await post('sell', { crop: 'wheat', quantity: 1 });assert.equal(remoteSale.status,409);assert.equal(remoteSale.body.code,'MARKET_REQUIRED');

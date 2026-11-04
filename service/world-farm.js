@@ -3,6 +3,7 @@ import { validSolanaAddress } from './world-economy.js';
 
 const VERSION = 2;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{7,95}$/;
 /** Kept in sync with the curated browser avatar catalog. */
 export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
 /** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
@@ -111,6 +112,7 @@ export class WorldFarm {
     this.wildTtlMs = Math.max(this.spawnIntervalMs, Number(wildTtlMs) || FARM_SCARCITY.wildTtlMs);
     this.timeScale = timeScale;
     this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], ledger: [], idempotency: [], migrated_at: null, next_spawn_at: null };
+    this.inflightCommands = new Map();
     this.timer = null;
   }
 
@@ -267,6 +269,7 @@ export class WorldFarm {
         saved_at: account.profile.saved_at || null,
       } : { avatar: null, position: null, saved_at: null },
       wallet: { address: account.wallet_address, status: account.wallet_status },
+      ledger: this.state.ledger.filter(event => event.owner === account.key).slice(-20).reverse().map(({ owner, ...event }) => event),
       payouts: this.state.payouts.filter(payout => payout.key === account.key).slice(-8).reverse().map(({ key, ...payout }) => payout),
     };
   }
@@ -333,72 +336,105 @@ export class WorldFarm {
 
   growthDuration(crop) { return Math.max(100, Math.round(CROPS[crop].growMs * this.timeScale)); }
 
-  async plant(identity, { tile_id, crop } = {}, position) {
-    const account = this.account(identity);
-    if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Choose wheat, carrot or pumpkin');
-    const tile = this.requireTile(tile_id);
-    if (tile.stage !== 'wild') throw fail('PLOT_OCCUPIED', 'Someone is already farming this plot', 409);
-    this.requireRange(position, tile.position);
-    if (this.activePlots(account) >= this.maxPlotsPerPlayer) throw fail('PLOT_LIMIT', `You can tend ${this.maxPlotsPerPlayer} plots at once`, 409);
-    const level = levelFor(account.xp).level;
-    if (level < CROPS[crop].unlockLevel) throw fail('LEVEL_REQUIRED', `${CROPS[crop].label} unlocks at farming level ${CROPS[crop].unlockLevel}`, 409);
-    if (account.credits < CROPS[crop].seedCost) throw fail('NOT_ENOUGH_CREDITS', `${CROPS[crop].label} seed costs ${CROPS[crop].seedCost} credits`, 409);
-    const growMs = this.growthDuration(crop);
-    const now = this.now();
-    account.credits -= CROPS[crop].seedCost;
-    tile.stage = 'growing';
-    tile.crop = crop;
-    tile.owner = account.key;
-    tile.planted_at = now;
-    tile.ready_at = now + growMs;
-    tile.spawned_at = now;
-    account.stats.planted += 1;
-    account.xp += CROPS[crop].plantXp;
-    await this.persist();
-    return { tile: this.publicTile(tile, account.key), account: this.view(identity), grow_ms: growMs };
+  event(account, type, details) {
+    const value = { id: `farm_${randomUUID()}`, owner: account.key, type, timestamp: new Date(this.now()).toISOString(), details };
+    this.state.ledger.push(value);
+    this.state.ledger = this.state.ledger.slice(-10_000);
+    return value.id;
   }
 
-  async harvest(identity, { tile_id } = {}, position) {
-    const account = this.account(identity);
-    const tile = this.requireTile(tile_id);
-    if (tile.stage === 'wild') throw fail('PLOT_EMPTY', 'This plot has not been planted');
-    if (tile.owner !== account.key) throw fail('NOT_OWNER', 'This crop belongs to another farmer', 403);
-    if (tile.stage !== 'ready' && tile.ready_at > this.now()) throw fail('CROP_NOT_READY', 'This crop is still growing', 409);
-    this.requireRange(position, tile.position);
-    const crop = tile.crop;
-    const now = this.now();
-    account.inventory[crop] = (account.inventory[crop] || 0) + 1;
-    account.stats.harvested += 1;
-    account.xp += CROPS[crop].xp;
-    tile.stage = 'wild';
-    tile.crop = null;
-    tile.owner = null;
-    tile.planted_at = null;
-    tile.ready_at = null;
-    tile.spawned_at = now;
-    const anchor = this.chooseAnchor(tile.id, tile.anchor);
-    tile.anchor = anchor.id;
-    tile.position = this.positionFor(anchor);
-    await this.persist();
-    return { tile: this.publicTile(tile, account.key), account: this.view(identity), crop, harvest_xp: CROPS[crop].xp };
+  async command(identity, action, input, operation) {
+    const supplied = input?.request_id;
+    const requestId = supplied == null ? `server:${randomUUID()}` : String(supplied);
+    if (!REQUEST_ID.test(requestId)) throw fail('INVALID_REQUEST_ID', 'Request ID must contain 8-96 safe characters');
+    const key = `${identity.key}:${action}:${requestId}`;
+    const stored = this.state.idempotency.find(value => value.key === key);
+    if (stored) return structuredClone(stored.result);
+    if (this.inflightCommands.has(key)) return structuredClone(await this.inflightCommands.get(key));
+    const task = (async () => {
+      const result = operation();
+      this.state.idempotency.push({ key, owner: identity.key, action, request_id: requestId, timestamp: new Date(this.now()).toISOString(), result: structuredClone(result) });
+      this.state.idempotency = this.state.idempotency.slice(-5_000);
+      await this.persist();
+      return result;
+    })();
+    this.inflightCommands.set(key, task);
+    try { return structuredClone(await task); } finally { this.inflightCommands.delete(key); }
   }
 
-  async sell(identity, { crop, quantity = 1 } = {}, position) {
+  async plant(identity, input = {}, position) {
+    const { tile_id, crop } = input;
     const account = this.account(identity);
-    if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Unknown produce');
-    if (!position || distance(position, BAZAAR.position) > BAZAAR.radius) throw fail('MARKET_REQUIRED', 'Carry produce to the bazaar stalls in the lower market', 409);
-    const amount = Math.floor(Number(quantity));
-    if (!Number.isInteger(amount) || amount < 1 || amount > 20) throw fail('INVALID_QUANTITY', 'Sell between 1 and 20 produce at a time');
-    const held = account.inventory[crop] || 0;
-    if (held < amount) throw fail('INVENTORY_TOO_LOW', `You only carry ${held} ${CROPS[crop].label.toLowerCase()}`, 409);
-    const total = CROPS[crop].sell * amount;
-    account.inventory[crop] = held - amount;
-    account.credits += total;
-    account.stats.sold += amount;
-    account.stats.credits_from_sales += total;
-    account.xp += 15 * amount;
-    await this.persist();
-    return { account: this.view(identity), sold: amount, crop, credits: total };
+    return this.command(identity, 'plant', input, () => {
+      if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Choose wheat, carrot or pumpkin');
+      const tile = this.requireTile(tile_id);
+      if (tile.stage !== 'wild') throw fail('PLOT_OCCUPIED', 'Someone is already farming this plot', 409);
+      this.requireRange(position, tile.position);
+      if (this.activePlots(account) >= this.maxPlotsPerPlayer) throw fail('PLOT_LIMIT', `You can tend ${this.maxPlotsPerPlayer} plots at once`, 409);
+      const level = levelFor(account.xp).level;
+      if (level < CROPS[crop].unlockLevel) throw fail('LEVEL_REQUIRED', `${CROPS[crop].label} unlocks at farming level ${CROPS[crop].unlockLevel}`, 409);
+      if (account.credits < CROPS[crop].seedCost) throw fail('NOT_ENOUGH_CREDITS', `${CROPS[crop].label} seed costs ${CROPS[crop].seedCost} credits`, 409);
+      const growMs = this.growthDuration(crop);
+      const now = this.now();
+      account.credits -= CROPS[crop].seedCost;
+      Object.assign(tile, { stage: 'growing', crop, owner: account.key, planted_at: now, ready_at: now + growMs, spawned_at: now });
+      account.stats.planted += 1;
+      account.xp += CROPS[crop].plantXp;
+      const event_id = this.event(account, 'crop_planted', {
+        tile_id: tile.id, crop, planted_at: new Date(now).toISOString(),
+        ready_at: new Date(tile.ready_at).toISOString(), seed_cost: CROPS[crop].seedCost,
+      });
+      return { tile: this.publicTile(tile, account.key), account: this.view(identity), grow_ms: growMs, event_id };
+    });
+  }
+
+  async harvest(identity, input = {}, position) {
+    const { tile_id } = input;
+    const account = this.account(identity);
+    return this.command(identity, 'harvest', input, () => {
+      const tile = this.requireTile(tile_id);
+      if (tile.stage === 'wild') throw fail('PLOT_EMPTY', 'This plot has not been planted');
+      if (tile.owner !== account.key) throw fail('NOT_OWNER', 'This crop belongs to another farmer', 403);
+      if (tile.stage !== 'ready' && tile.ready_at > this.now()) throw fail('CROP_NOT_READY', 'This crop is still growing', 409);
+      this.requireRange(position, tile.position);
+      const crop = tile.crop;
+      const now = this.now();
+      const harvestedAt = { ...tile.position };
+      account.inventory[crop] = (account.inventory[crop] || 0) + 1;
+      account.stats.harvested += 1;
+      account.xp += CROPS[crop].xp;
+      Object.assign(tile, { stage: 'wild', crop: null, owner: null, planted_at: null, ready_at: null, spawned_at: now });
+      const anchor = this.chooseAnchor(tile.id, tile.anchor);
+      tile.anchor = anchor.id;
+      tile.position = this.positionFor(anchor);
+      const event_id = this.event(account, 'crop_harvested', { tile_id: tile.id, crop, quantity: 1, position: harvestedAt });
+      return { tile: this.publicTile(tile, account.key), account: this.view(identity), crop, quantity: 1, harvest_xp: CROPS[crop].xp, event_id };
+    });
+  }
+
+  async sell(identity, input = {}, position) {
+    const { crop, quantity = 1 } = input;
+    const account = this.account(identity);
+    return this.command(identity, 'sell', input, () => {
+      if (!CROP_KINDS.includes(crop)) throw fail('INVALID_CROP', 'Unknown produce');
+      if (!position || distance(position, BAZAAR.position) > BAZAAR.radius) throw fail('MARKET_REQUIRED', 'Carry produce to the bazaar stalls in the lower market', 409);
+      const amount = Math.floor(Number(quantity));
+      if (!Number.isInteger(amount) || amount < 1 || amount > 20) throw fail('INVALID_QUANTITY', 'Sell between 1 and 20 produce at a time');
+      const held = account.inventory[crop] || 0;
+      if (held < amount) throw fail('INVENTORY_TOO_LOW', `You only carry ${held} ${CROPS[crop].label.toLowerCase()}`, 409);
+      const total = CROPS[crop].sell * amount;
+      const creditsBefore = account.credits;
+      account.inventory[crop] = held - amount;
+      account.credits += total;
+      account.stats.sold += amount;
+      account.stats.credits_from_sales += total;
+      account.xp += 15 * amount;
+      const event_id = this.event(account, 'market_sale', {
+        crop, quantity: amount, unit_price: CROPS[crop].sell, credits: total,
+        credits_before: creditsBefore, credits_after: account.credits,
+      });
+      return { account: this.view(identity), sold: amount, crop, credits: total, event_id };
+    });
   }
 
   /** Play time accrues credits; the client sends elapsed seconds, the server caps and audits them. */
