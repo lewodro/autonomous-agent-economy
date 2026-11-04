@@ -189,6 +189,15 @@
       "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/32",
       "detail": "## Scale without a new engine\nThe world grew from 1792 × 1152 to 3584 × 2304 while the Arena, Research House, tables and existing interactions stayed at their established coordinates. Camera, collision, multiplayer presence and server validation now share the expanded bounds.\n\nThe visual polish pass replaced long diagonal terrain wedges with stepped pixel regions, joined path pieces into roads with one outer edge, added stable sparse ground texture, and placed eleven varied homes around useful routes. A five-stall south bazaar gives the lower district food, fictional exchange, data, tools and general-goods vendors without claiming real financial execution.\n\n## Botanical district\nIrregular paths lead through varied trees, bushes, flowers, rocks, open clearings and inexpensive animated campfires. Canonical NPC routes reach the west, east, north, south and garden districts without using another movement system.\n\n## Commit sequence\nworld_expand_001–003 enlarged the map, added botanical rendering and exercised every direction with a second visitor. world_expand_004 fixed a real CI timing edge in presence synchronization while preserving the anti-teleport boundary.",
       "source": "2026-10-17-fourfold-shared-world.md"
+    },
+    {
+      "date": "2026-11-04",
+      "title": "Give every page entrance a short, readable transition",
+      "summary": "Every public page now opens through the shared matrix transition with a slim progress bar that starts slowly and accelerates near the end, including on repeat visits.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/af10349bd8f90ed91679cd073b9edcb35ed3874c",
+      "pr": null,
+      "detail": "## Why\nPage loads jumped straight from the previous screen into the next one. The short matrix wipe that already existed on public pages now carries one shared progress bar, so navigation reads as a deliberate entrance instead of a flash of unstyled content.\n\n## Entry transition\nThe shared entry script adds a compact track to the transition overlay and fills it on a gentle ease-in curve: slow at first, then a quick sweep to the end. The bar appears on every page load, not just the first visit, and the overlay clears itself after the fill. A timer fallback removes it even when requestAnimationFrame is paused in a background tab.\n\nReduced-motion visitors still skip the overlay entirely.\n\n## Tests\nThe full test suite passed with 298 tests and 4 skipped. The repository syntax check passed, and a browser check confirmed the bar, the eased fill and clean removal on the root, World and build-log pages across repeat loads.",
+      "source": "2026-11-04-page-entry-transition.md"
     }
   ]
 }
