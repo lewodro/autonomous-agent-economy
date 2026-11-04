@@ -25,6 +25,7 @@ if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(sett
 else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
+const touchFirst=matchMedia('(pointer: coarse)').matches;
 const npcs:WorldActor[]=[];let profiles:AgentProfile[]=[];
 const agentTargets=new Map<string,{x:number;y:number}>();
 const labPinnedAgents=new Map<string,number>();
@@ -231,11 +232,28 @@ function showFarmPlot(tile:FarmTile):void{
   show(tile.stage==='wild'?'FARM PLOT · plant':`${cropLabel(tile.crop)} · ${tile.stage}`);
   if(tile.stage==='wild'){
     text('p','Farms are live. Pick a crop; it ripens in several minutes while you explore.');
-    const choices=document.createElement('div');choices.className='farm-plant-options';
-    for(const kind of CROPS){const crop=farmSnapshot?.crops[kind];const button=document.createElement('button');button.type='button';
-      button.textContent=`${crop?crop.label:kind} · ${crop?.sell||0} CR · ~${growthLabel(crop?.grow_ms)}`;
-      button.onclick=()=>void plantPlot(tile,kind);choices.append(button);}
-    content.append(choices);
+    const choices=document.createElement('div');choices.className='farm-plant-options';choices.setAttribute('role','group');choices.setAttribute('aria-label','Choose a crop');
+    const options:HTMLButtonElement[]=[];
+    let selected:CropKind|null=null;
+    const submit=document.createElement('button');submit.type='button';submit.className='primary farm-plant-submit';submit.disabled=true;submit.textContent='Select a crop to plant';
+    const choose=(kind:CropKind,button:HTMLButtonElement):void=>{
+      selected=kind;
+      for(const option of options)option.setAttribute('aria-pressed',String(option===button));
+      submit.disabled=false;submit.textContent=`Plant ${cropLabel(kind)} · ${growthLabel(farmSnapshot?.crops[kind]?.grow_ms)}`;
+    };
+    for(const kind of CROPS){
+      const crop=farmSnapshot?.crops[kind];
+      const button=document.createElement('button');button.type='button';button.className='crop-option';button.dataset.crop=kind;button.setAttribute('aria-pressed','false');
+      const name=document.createElement('strong');name.textContent=crop?.label??cropLabel(kind);
+      const price=document.createElement('span');price.className='crop-option__price';price.textContent=`Sells ${crop?.sell||0} CR`;
+      const time=document.createElement('span');time.className='crop-option__time';time.textContent=growthLabel(crop?.grow_ms);
+      button.append(name,price,time);
+      button.setAttribute('aria-label',`${crop?.label??cropLabel(kind)} · sells for ${crop?.sell||0} credits · ready in ${growthLabel(crop?.grow_ms)}`);
+      button.title=button.getAttribute('aria-label')??'';
+      button.onclick=()=>choose(kind,button);options.push(button);choices.append(button);
+    }
+    submit.onclick=()=>{if(selected)void plantPlot(tile,selected);};
+    content.append(choices,submit);
     const used=farmSnapshot?.account?.plots_used||0,limit=farmSnapshot?.account?.plots_limit||3;
     text('p',`You are tending ${used} of ${limit} plots.`);
     return;
@@ -508,6 +526,27 @@ $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>chara
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
 const legend=document.querySelector<HTMLDetailsElement>('.world-legend');if(legend&&matchMedia('(max-width:680px)').matches)legend.open=false;
+legend?.querySelector('[data-close-legend]')?.addEventListener('click',()=>{legend.open=false;});
+const worldMenu=document.querySelector<HTMLDetailsElement>('.world-menu');
+const closeWorldMenu=()=>{if(worldMenu)worldMenu.open=false;};
+const revealFooterPanel=(id:string):void=>{
+  const panel=document.getElementById(id) as HTMLDetailsElement|null;if(!panel)return;
+  panel.open=true;
+  panel.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+};
+if(worldMenu){
+  for(const item of worldMenu.querySelectorAll<HTMLElement>('[data-world-menu]')){
+    item.addEventListener('click',()=>{
+      const action=item.dataset.worldMenu;closeWorldMenu();
+      if(action==='directions'){if(legend)legend.open=true;}
+      else if(action==='help')revealFooterPanel('world-help');
+      else if(action==='directory')revealFooterPanel('world-directory');
+    });
+  }
+  for(const link of worldMenu.querySelectorAll('a'))link.addEventListener('click',closeWorldMenu);
+  document.addEventListener('pointerdown',event=>{if(worldMenu.open&&!worldMenu.contains(event.target as Node))closeWorldMenu();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeWorldMenu();});
+}
 $('hud-account').onclick=()=>{
   if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
   if(!farmSnapshot?.auth.configured){farmHud.notice('Social login is not configured on this deployment yet','info');return;}
@@ -621,7 +660,7 @@ function frame(time:number):void {
     const seconds=Math.min(30,Math.round((Date.now()-lastPlayTick)/1000));lastPlayTick=Date.now();
     void farmClient.post('heartbeat',{seconds}).then(result=>mergeFarmAccount(result.account as FarmAccount|undefined)).catch(()=>{});
   }
-  const message=nearby?`E / Interact · ${nearby.label}`:'WASD / arrows to walk · E to interact';
+  const message=nearby?`${touchFirst?'Tap Interact':'E / Interact'} · ${nearby.label}`:(touchFirst?'Use the stick to walk · tap Interact near things':'WASD / arrows to walk · E to interact');
   if(hint.textContent!==message)hint.textContent=message;
   $<HTMLButtonElement>('interact').disabled=!nearby;
   camera=followCamera(camera,player.position,renderer.viewport().width,renderer.viewport().height,dt);
