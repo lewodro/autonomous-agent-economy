@@ -42,15 +42,37 @@
 /* Short matrix wipe used when moving between the other pages. */
 .entry-loader[data-mode="transition"] {
   pointer-events: none;
-  animation: entry-transition-out 1.05s ease forwards;
 }
 .entry-loader[data-mode="transition"] .entry-loader__panel { display: none; }
 .entry-loader[data-mode="transition"] .entry-matrix { opacity: .58; }
-
-@keyframes entry-transition-out {
-  0%, 48% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
+.entry-loader[data-mode="transition"].is-closing { transition: opacity .18s ease; }
+/* Slim loading bar: quiet at the start, then a quick sweep at the end. */
+.entry-loader__track--transition {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(38px, 9vh, 88px);
+  width: min(320px, 62vw);
+  height: 3px;
+  margin: 0;
+  transform: translateX(-50%);
+  overflow: visible;
+  background: rgba(23, 51, 33, .82);
+  box-shadow: 0 0 0 1px rgba(98, 239, 144, .16), 0 0 18px rgba(16, 180, 76, .18);
 }
+.entry-loader__track--transition span {
+  position: relative;
+  background: linear-gradient(90deg, #2f9c58, #7df0a4, #d7b675);
+  box-shadow: 0 0 14px rgba(98, 239, 144, .6);
+}
+.entry-loader__track--transition span::after {
+  content: "";
+  position: absolute;
+  top: -2px; right: -1px;
+  width: 2px; height: 7px;
+  background: #e2ffe9;
+  box-shadow: 0 0 10px #7df0a4;
+}
+
 @keyframes entry-caret {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0; }
@@ -59,6 +81,6 @@
 @media (prefers-reduced-motion: reduce) {
   .entry-loader, .entry-loader * { scroll-behavior: auto !important; }
   .entry-matrix { display: none; }
-  .entry-loader[data-mode="transition"] { animation: none; opacity: 0; visibility: hidden; }
+  .entry-loader[data-mode="transition"] { opacity: 0; visibility: hidden; }
   .entry-loader__eyebrow::after { animation: none; }
 }
