@@ -146,7 +146,7 @@ flowchart TB
 
 | Capability | Status | Evidence boundary |
 | --- | --- | --- |
-| Shared walkable world | **WORKING** | One server presence/world namespace; movement and appearance are presentation state |
+| Shared walkable world | **WORKING** | One server presence/world namespace; movement(wasd/click) and appearance are presentation state |
 | RPS | **WORKING** | Deterministic commit-reveal rules and shared hosted rooms |
 | Tic-Tac-Toe | **WORKING** | Turn legality, authoritative outcomes, shared rooms and a free plaza table |
 | Survival | **WORKING** | Rust-authoritative 20-agent melee, continuous host, tactical frontend and durable research |
