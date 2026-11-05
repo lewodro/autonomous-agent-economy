@@ -59,7 +59,9 @@ rarity, which keeps the global rate to roughly three or four gathers per ten min
 
 A player can tend three plots at once. Harvest locations and the bazaar are validated
 against the visitor's live presence position, so a browser cannot sell or harvest from
-the other side of the map.
+the other side of the map. Presence reconnects re-join at the visitor's latest walked
+position, and a farm action that still reports `TOO_FAR` resyncs presence and retries
+once, so a short network blip cannot strand a character on top of a plot.
 
 ### API
 
@@ -91,11 +93,18 @@ these errors while keeping unexpected internal details private.
 
 ## Accounts and social login (Clerk)
 
+Every browser gets a **temporary account** automatically on its first farm request.
+The server issues a signed, HttpOnly `aae_visitor` cookie (90 days) and keys the farm
+account as `guest:<visitor-id>`. Credits, crops, inventory, play time and owned plots
+are written to the shared `world_state` document, so reopening the site on the same
+browser resumes the same farmer even after a server restart. Clearing cookies starts a
+new temporary account. The HUD labels this state **TEMP ACCOUNT**.
+
 Clerk was chosen because it gives Google/GitHub/Apple/X sign-in with a hosted UI and a
 single publishable key. The integration is deliberately optional:
 
-* Without `CLERK_PUBLISHABLE_KEY`, the farm runs as a browser guest and the HUD shows
-  **GUEST**. No third-party script is loaded.
+* Without `CLERK_PUBLISHABLE_KEY`, the temporary account still works. No third-party
+  script is loaded and the intro explains that Google sign-in arrives later.
 * With the key, the world loads Clerk's browser SDK lazily, opens the hosted sign-in
   modal, and exchanges the resulting session token for a server-signed
   `aae_account` cookie.
@@ -108,8 +117,10 @@ single publishable key. The integration is deliberately optional:
   using `node:crypto`. There is no Clerk secret key in this service and no JWT library
   dependency.
 
-Guest progress is merged into the account the first time a visitor signs in: credits,
-XP, play time, inventory, statistics and owned plots all move to `clerk:<subject>`.
+Temporary-account progress is merged into the account the first time a visitor signs
+in: credits, XP, play time, inventory, statistics and owned plots all move to
+`clerk:<subject>`. The API exposes `account.temporary` so the browser can label the
+account without guessing from the auth configuration.
 
 ### Setting up Clerk
 
@@ -231,5 +242,6 @@ npm test
 
 The unit tests cover exact growth timing, the test clock, offline maturity, plot
 contention, ownership, duplicate harvest/sale protection, inventory, Market range,
-guest-to-account merging and restart persistence. The HTTP test boots the real server,
-replays the same request ID and exercises the same routes the browser uses.
+guest-to-account merging, temporary-account credit persistence and restart persistence.
+The HTTP test boots the real server, replays the same request ID and exercises the same
+routes the browser uses.
