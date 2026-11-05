@@ -12,7 +12,7 @@ export interface FarmProfile {
   avatar: string | null; position: FarmPosition | null; saved_at: string | null;
 }
 export interface FarmAccount {
-  id: string; signed_in: boolean; provider: string; display_name: string;
+  id: string; temporary: boolean; signed_in: boolean; provider: string; display_name: string;
   credits: number; xp: number; level: number; level_progress: number; xp_next: number;
   seconds_played: number; time_credits: number;
   inventory: Record<CropKind, number>;
@@ -187,7 +187,7 @@ export class FarmHud {
     this.text('hud-name', account.display_name.toUpperCase());
     const accountButton = this.$('hud-account') as HTMLButtonElement | null;
     if (accountButton) {
-      accountButton.textContent = account.signed_in ? 'ACCOUNT' : snapshot.auth.configured ? 'SIGN IN' : 'GUEST';
+      accountButton.textContent = account.signed_in ? 'ACCOUNT' : 'TEMP ACCOUNT';
       accountButton.dataset.signedIn = String(account.signed_in);
     }
     this.text('hud-level', `LV ${account.level}`);

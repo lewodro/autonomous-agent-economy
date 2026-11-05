@@ -330,3 +330,43 @@ test('farm state survives a restart through the shared store', async () => {
     await second.close();
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('a temporary account keeps farm credits and produce across sessions', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'world-farm-temp-'));
+  let now = 1_000_000;
+  const clock = () => now;
+  try {
+    const firstStore = new WorldStore({ directory });
+    await firstStore.open();
+    const first = new WorldFarm(firstStore, { now: clock, random: () => 0.5 });
+    await first.restore();
+    const before = first.snapshot(guest).account;
+    assert.equal(before.temporary, true, 'a browser without a sign-in gets a temporary account automatically');
+    assert.equal(before.signed_in, false);
+    assert.match(before.id, /^farmer_[a-f0-9]{16}$/, 'the temporary account has a stable public id');
+    first.account(guest).inventory.wheat = 2;
+    const sold = await first.sell(guest, { crop: 'wheat', quantity: 2 }, BAZAAR.position);
+    assert.equal(sold.account.credits, CROPS.wheat.sell * 2);
+    await first.close();
+    const secondStore = new WorldStore({ directory });
+    await secondStore.open();
+    const second = new WorldFarm(secondStore, { now: clock, random: () => 0.5 });
+    await second.restore();
+    const after = second.snapshot(guest).account;
+    assert.equal(after.id, before.id, 'the same browser resumes the same temporary account');
+    assert.equal(after.credits, CROPS.wheat.sell * 2, 'sold farm produce stays as credits');
+    assert.equal(after.stats.sold, 2);
+    assert.equal(after.temporary, true);
+    await second.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a signed-in account is not marked temporary', async () => {
+  const { farm, close } = await setup();
+  try {
+    const member = { key: 'clerk:user_temp_flag', provider: 'clerk', subject: 'user_temp_flag', name: 'Miro' };
+    const account = farm.snapshot(member).account;
+    assert.equal(account.temporary, false);
+    assert.equal(account.signed_in, true);
+  } finally { await close(); }
+});

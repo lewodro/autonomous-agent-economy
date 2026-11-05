@@ -249,6 +249,7 @@ export class WorldFarm {
     const active = Object.values(this.state.tiles).filter(tile => tile.owner === identity.key && tile.stage !== 'wild').length;
     return {
       id: publicId(account.key),
+      temporary: account.provider === 'guest',
       signed_in: account.provider !== 'guest',
       provider: account.provider,
       display_name: account.display_name,

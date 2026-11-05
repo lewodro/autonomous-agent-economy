@@ -352,20 +352,36 @@ async function sellProduce(crop:CropKind,quantity:number):Promise<void>{
 function accountSection():void{
   const account=farmSnapshot?.account;
   if(!account)return;
-  text('h3','ACCOUNT');
   if(account.signed_in){
+    text('h3','ACCOUNT');
     text('p',`Signed in as ${account.display_name}. Credits, crops and payout history follow this account.`);
+    text('p',`${account.credits} credits · ${account.plots_used}/${account.plots_limit} plots · ${CROPS.reduce((sum,kind)=>sum+(account.inventory[kind]||0),0)} produce in the bag.`);
     const out=document.createElement('button');out.type='button';out.textContent='Sign out';
-    out.onclick=()=>{out.disabled=true;void auth.signOut().then(async()=>{await loadFarm();await showBazaar();});};
+    out.onclick=()=>{out.disabled=true;void auth.signOut().then(async()=>{await loadFarm();showAccount();});};
     content.append(out);
-  }else{
-    text('p',farmSnapshot?.auth.configured?'Sign in with a social account to keep credits, crops and payouts across devices.':'Social login is not configured on this deployment yet; progress stays in this browser.');
-    if(farmSnapshot?.auth.configured){
-      const sign=document.createElement('button');sign.type='button';sign.className='primary';sign.textContent='Sign in with Google or GitHub';
-      sign.onclick=()=>{sign.disabled=true;void auth.signIn().then(async signed=>{if(signed){farmHud.notice('Signed in · your farm progress was linked','good');await loadFarm();await showBazaar();}else sign.disabled=false;}).catch(error=>{sign.disabled=false;farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn');});};
-      content.append(sign);
-    }
+    return;
   }
+  text('h3','TEMPORARY ACCOUNT');
+  text('p',`${account.display_name} · ${account.id}`);
+  text('p',`${account.credits} credits · ${account.plots_used}/${account.plots_limit} plots · ${CROPS.reduce((sum,kind)=>sum+(account.inventory[kind]||0),0)} produce in the bag.`);
+  text('p','Plant a plot, harvest the produce, then sell it at the bazaar to turn it into credits. Play time also earns credits.');
+  text('p','This browser keeps your temporary account automatically. Credits, growing crops and harvested produce are saved for your next visit — no sign-up needed.');
+  if(farmSnapshot?.auth.configured){
+    text('p','Sign in with Google or GitHub to link this temporary account and keep it on other devices.');
+    const sign=document.createElement('button');sign.type='button';sign.className='primary';sign.textContent='Sign in and link this account';
+    sign.onclick=()=>{sign.disabled=true;void auth.signIn().then(async signed=>{if(signed){farmHud.notice('Signed in · your temporary farm progress was linked','good');await loadFarm();showAccount();}else sign.disabled=false;}).catch(error=>{sign.disabled=false;farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn');});};
+    content.append(sign);
+  }else{
+    text('p','Google sign-in is not enabled yet. Keep playing — this temporary account is already saved on this browser.');
+  }
+}
+async function showAccount():Promise<void>{
+  const version=show('WORLD ACCOUNT');
+  text('p','Checking your saved world account…');
+  await loadFarm();
+  if(!dialog.open||version!==interactionVersion)return;
+  content.replaceChildren();
+  accountSection();
 }
 function walletSection(payoutsEnabled:boolean):void{
   const account=farmSnapshot?.account;if(!account)return;
@@ -564,9 +580,13 @@ function updateIntroAccount(snapshot?:FarmSnapshot|null):void{
     return;
   }
   if(google){google.disabled=!authConfigured;google.textContent='Continue with Google';}
-  setIntroNote(authConfigured
-    ?'Sign in with Google to save your character, plaza position and farm progress on every device.'
-    :'Google sign-in is not configured on this deployment yet. Play as a guest; progress stays in this browser.');
+  setIntroNote(account
+    ?authConfigured
+      ?`Temporary account · ${account.display_name}. Your credits and crops save on this browser; sign in to link them to Google.`
+      :`Temporary account · ${account.display_name}. Your credits and crops save for your next visit on this browser. Google sign-in arrives later.`
+    :authConfigured
+      ?'Sign in with Google to save your character, plaza position and farm progress on every device.'
+      :'Each browser gets a temporary account automatically. Credits and crops are saved for your next visit.',authConfigured?'info':'good');
 }
 function openIntro():void{if(!character.open)character.showModal();}
 void fetch('/api/world/auth',{signal:AbortSignal.timeout(5000)}).then(response=>response.ok?response.json():null).then(config=>{
@@ -578,7 +598,7 @@ $('intro-google').onclick=async()=>{
   try{
     const signed=await auth.signIn();
     if(signed){savedProfileApplied=false;setIntroNote('Signed in. Loading your saved instance…','good');await loadFarm();}
-    else setIntroNote('Sign-in did not complete. You can keep playing as a guest.','warn');
+    else setIntroNote('Sign-in did not complete. You can keep playing on your temporary account.','warn');
   }catch(error){setIntroNote(error instanceof Error?error.message:'Sign-in failed','warn');}
   finally{if(!farmSnapshot?.account?.signed_in){button.disabled=false;button.textContent='Continue with Google';}}
 };
@@ -601,20 +621,14 @@ if(worldMenu){
       if(action==='directions'){if(legend)legend.open=true;}
       else if(action==='help')revealFooterPanel('world-help');
       else if(action==='directory')revealFooterPanel('world-directory');
+      else if(action==='account')void showAccount();
     });
   }
   for(const link of worldMenu.querySelectorAll('a'))link.addEventListener('click',closeWorldMenu);
   document.addEventListener('pointerdown',event=>{if(worldMenu.open&&!worldMenu.contains(event.target as Node))closeWorldMenu();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeWorldMenu();});
 }
-$('hud-account').onclick=()=>{
-  if(farmSnapshot?.account?.signed_in){void showBazaar();return;}
-  if(!farmSnapshot?.auth.configured){farmHud.notice('Social login is not configured on this deployment yet','info');return;}
-  const button=$<HTMLButtonElement>('hud-account');button.disabled=true;
-  void auth.signIn().then(async signed=>{
-    if(signed){farmHud.notice('Signed in · your farm progress was linked','good');await loadFarm();}
-  }).catch(error=>farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn')).finally(()=>{button.disabled=false;});
-};
+$('hud-account').onclick=()=>{void showAccount();};
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
   resetInput();
