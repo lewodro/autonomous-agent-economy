@@ -213,6 +213,25 @@ function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
 }
 function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
+/** Pushes the live position to presence before retrying a range-checked farm action. */
+async function resyncPresence():Promise<void>{
+  const client=presenceClient;if(!client?.player_id)return;
+  const state=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;
+  try{
+    if(await client.resync({...player.position},player.facing,player.movementState==='walking'?'walk':'idle'))lastPresenceMoveState=state;
+  }catch{/* the next reconnect joins with the same fresh position */ }
+}
+async function farmPost(action:string,body:Record<string,unknown>):Promise<Record<string,unknown>>{
+  try{return await farmClient.post(action,body);}
+  catch(error){
+    const code=error&&typeof error==='object'&&'code'in error?String((error as {code:unknown}).code):'';
+    if(code!=='TOO_FAR')throw error;
+    // The server can briefly hold an older presence position after a reconnect.
+    await resyncPresence();
+    await new Promise(resolve=>window.setTimeout(resolve,220));
+    return farmClient.post(action,body);
+  }
+}
 /** Signed-in players resume the character and plaza spot tied to their account. */
 function applySavedProfile(snapshot:FarmSnapshot):void{
   if(savedProfileApplied||!snapshot.account?.signed_in)return;
@@ -249,7 +268,7 @@ async function loadFarm():Promise<void>{
 }
 async function plantPlot(tile:FarmTile,crop:CropKind):Promise<void>{
   try{
-    const result=await farmClient.post('plant',{tile_id:tile.id,crop});
+    const result=await farmPost('plant',{tile_id:tile.id,crop});
     mergeFarmTile(result.tile as FarmTile|undefined);mergeFarmAccount(result.account as FarmAccount|undefined);
     knownTiles.set(tile.id,'growing');
     farmHud.notice(`Planted ${cropLabel(crop)} · ready in about ${Math.max(1,Math.round(Number(result.grow_ms)/60_000))} minutes`,'good');
@@ -258,7 +277,7 @@ async function plantPlot(tile:FarmTile,crop:CropKind):Promise<void>{
 }
 async function harvestPlot(tile:FarmTile):Promise<void>{
   try{
-    const result=await farmClient.post('harvest',{tile_id:tile.id});
+    const result=await farmPost('harvest',{tile_id:tile.id});
     mergeFarmTile(result.tile as FarmTile|undefined);mergeFarmAccount(result.account as FarmAccount|undefined);
     knownTiles.set(tile.id,'wild');
     sparkle(tile.position,tile.crop==='pumpkin'?['#d98336','#f0cf75','#6fa15c']:tile.crop==='carrot'?['#d8843f','#7ea55b','#f0cf75']:['#dcc46f','#b8944d','#f0cf75']);
@@ -323,7 +342,7 @@ function farmSection():void{
 }
 async function sellProduce(crop:CropKind,quantity:number):Promise<void>{
   try{
-    const result=await farmClient.post('sell',{crop,quantity});
+    const result=await farmPost('sell',{crop,quantity});
     mergeFarmAccount(result.account as FarmAccount|undefined);
     farmHud.notice(`Sold ${quantity} ${cropLabel(crop).toLowerCase()} · +${result.credits} CR`,'good');
     sparkle(player.position,['#f0cf75','#dcc46f']);

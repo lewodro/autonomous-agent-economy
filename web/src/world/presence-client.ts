@@ -49,7 +49,15 @@ export class WorldPresenceClient {
     if(this.connecting)await this.connecting.catch(()=>undefined);
     return this.connect();
   }
-  async move(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{if(this.closed||!this.playerId||this.moveInFlight||this.now()-this.lastMoveAt<this.moveIntervalMs)return false;this.moveInFlight=true;this.lastMoveAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/move`,{position,direction,animation_state});return true;}finally{this.moveInFlight=false;}}
+  async move(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{
+    // The latest local position is also the join payload, so an SSE or heartbeat
+    // reconnect resumes where the visitor stands instead of snapping them back to
+    // the position captured when the presence session first opened.
+    this.options.position={...position};this.options.direction=direction;
+    if(this.closed||!this.playerId||this.moveInFlight||this.now()-this.lastMoveAt<this.moveIntervalMs)return false;this.moveInFlight=true;this.lastMoveAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/move`,{position,direction,animation_state});return true;}finally{this.moveInFlight=false;}
+  }
+  /** Forces the next move through the throttle so a server-side range check can be retried immediately. */
+  async resync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{this.moveInFlight=false;this.lastMoveAt=0;return this.move(position,direction,animation_state);}
   async heartbeat(activity?:string):Promise<boolean>{if(this.closed||!this.playerId||this.heartbeatInFlight||this.now()-this.lastHeartbeatAt<this.heartbeatIntervalMs)return false;this.heartbeatInFlight=true;this.lastHeartbeatAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/heartbeat`,activity===undefined?{}:{activity});return true;}finally{this.heartbeatInFlight=false;}}
   async leave():Promise<void>{if(this.closed)return;if(this.connecting)await this.connecting.catch(()=>undefined);if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];try{if(this.playerId)await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/leave`,{});}finally{this.playerId='';this.onConnection('closed');}}
   close():void{if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];this.onConnection('closed');}

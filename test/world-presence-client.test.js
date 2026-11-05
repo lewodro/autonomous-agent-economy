@@ -22,6 +22,22 @@ test('concurrent connects share one join and one stream',async()=>{let finish;co
 
 test('movement and heartbeat are throttled and contain only state intent',async()=>{let now=1_000;const{client,requests}=setup({now:()=>now});await client.connect();assert.equal(await client.move({x:101,y:100},'right','walk'),false);now+=66;assert.equal(await client.move({x:110,y:100},'right','walk'),true);assert.equal(await client.heartbeat('Exploring'),false);now+=1_000;assert.equal(await client.heartbeat('Exploring'),true);assert.deepEqual(requests.slice(1).map(({url,body})=>[url.split('/').at(-1),Object.keys(body).sort()]),[['move',['animation_state','direction','position']],['heartbeat',['activity']]]);await client.leave();});
 
+test('reconnect joins at the latest walked position instead of the stale session start',async()=>{
+  let now=1_000;const{client,requests}=setup({now:()=>now});await client.connect();now+=100;
+  assert.equal(await client.move({x:240,y:320},'right','walk'),true);
+  await client.connect();
+  assert.deepEqual(requests.at(-1).body.position,{x:240,y:320});
+  assert.equal(requests.at(-1).body.direction,'right');
+  await client.leave();
+});
+test('resync bypasses the move throttle for a range-check retry',async()=>{
+  let now=1_000;const{client,requests}=setup({now:()=>now});await client.connect();now+=100;
+  assert.equal(await client.move({x:110,y:100},'right','walk'),true);
+  assert.equal(await client.move({x:120,y:100},'right','walk'),false);
+  assert.equal(await client.resync({x:130,y:100},'right','walk'),true);
+  assert.deepEqual(requests.at(-1).body.position,{x:130,y:100});
+  await client.leave();
+});
 test('close preserves the anonymous server session for refresh while leave removes it',async()=>{const{client,streams,requests}=setup();await client.connect();client.close();assert.equal(streams[0].closed,true);assert.equal(requests.some(value=>value.url.endsWith('/leave')),false);const snapshot=await client.connect();assert.equal(snapshot.players[0].player_id,'visitor_server-owned');await client.leave();assert.equal(requests.some(value=>value.url.endsWith('/leave')),true);});
 
 test('invalid join responses and structured API errors fail closed',async()=>{const bad=setup({fetcher:async()=>({ok:true,status:200,json:async()=>({world_id:'main',players:[],agents:[]})})}).client;await assert.rejects(()=>bad.connect(),/invalid join response/i);const denied=setup({fetcher:async()=>({ok:false,status:404,json:async()=>({code:'PLAYER_NOT_FOUND',error:'World presence expired'})})}).client;await assert.rejects(()=>denied.connect(),/World presence expired/);});
