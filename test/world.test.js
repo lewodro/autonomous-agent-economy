@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
-import { moveActor, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
+import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
 import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
@@ -17,6 +17,14 @@ test('movement slides at walls, cannot tunnel, and clamps suspended frame time',
   assert.ok(!collides(a.position));assert.ok(a.position.x<=488);assert.ok(a.position.y>340);
   const b=actor({...MAP.spawn});moveActor(b,{x:1,y:0,interact:false},10);
   assert.equal(b.position.x,MAP.spawn.x+15);
+});
+test('click-to-move walks to a target and stops there', () => {
+  const visitor = actor({ ...MAP.spawn }), target = { x: MAP.spawn.x + 120, y: MAP.spawn.y };
+  let reached = false;
+  for (let step = 0; step < 100 && !reached; step++) reached = moveToward(visitor, target, .05);
+  assert.equal(reached, true);
+  assert.ok(Math.hypot(visitor.position.x - target.x, visitor.position.y - target.y) <= 6);
+  assert.equal(visitor.movementState, 'idle');
 });
 test('visitor can pass ambient NPCs while keeping them in interaction range',()=>{
  const visitor=actor({x:100,y:100}),npc={...actor({x:140,y:100}),id:'npc-ember',type:'npc'};

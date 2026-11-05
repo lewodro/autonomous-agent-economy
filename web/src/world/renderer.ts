@@ -2,7 +2,7 @@ import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
 import type { FarmTile } from './farm.js';
-export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null }
+export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
   render(frame:WorldFrame):void;
@@ -195,7 +195,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
       if(resource.available&&resource.rarity!=='common'){const color=resource.rarity==='uncommon'?'#a9c889':resource.rarity==='rare'?'#80b9c8':'#d9a8df';c.strokeStyle=color;c.lineWidth=2;c.strokeRect(x-17,y-14,34,28);}
       if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle=resource.rarity==='very_rare'?'#efc8f2':'#f2d88a';c.fillRect(x+13,y-12,3,3);}
     }
-    for(const particle of frame.particles||[]){const remaining=Math.max(0,particle.expiresAt-frame.time),age=1-Math.min(1,remaining/650);c.fillStyle=particle.color;c.fillRect(Math.round(particle.position.x+particle.velocity.x*age),Math.round(particle.position.y+particle.velocity.y*age),3,3);}
+    for(const particle of frame.particles||[]){const life=particle.life??650;const remaining=Math.max(0,particle.expiresAt-frame.time),age=1-Math.min(1,remaining/life),size=particle.size??3;c.fillStyle=particle.color;c.fillRect(Math.round(particle.position.x+particle.velocity.x*age),Math.round(particle.position.y+particle.velocity.y*age),size,size);}
     for(const tile of frame.farmTiles||[]){
       const {x,y}=tile.position;
       if(x<frame.camera.x-70||x>frame.camera.x+width+70||y<frame.camera.y-70||y>frame.camera.y+height+70)continue;
@@ -222,6 +222,11 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     c.fillStyle=!reduced&&Math.floor(frame.time/800)%2?'#edbb69':'#ac8859';
     c.fillRect(880,645,8,10);c.fillRect(968,645,8,10);
+    if(frame.moveTarget){
+      const {x,y}=frame.moveTarget,pulse=reduced?0:Math.round(Math.sin(frame.time/150)*2);
+      c.strokeStyle='#f0cf75cc';c.lineWidth=2;c.beginPath();c.ellipse(x,y+8,14+pulse,6+pulse,0,0,Math.PI*2);c.stroke();
+      c.fillStyle='#f0cf75';c.fillRect(x-2,y-2,4,4);
+    }
     const labels:{x:number;y:number;width:number;height:number}[]=[];
     const visitor=frame.actors.find(actor=>actor.type==='human');
     for(const actor of [...frame.actors].sort((a,b)=>a.position.y-b.position.y)) {

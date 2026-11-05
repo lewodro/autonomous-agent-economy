@@ -23,6 +23,15 @@ export function moveActor(actor: WorldActor, input: WorldInput, seconds: number,
   if (direction.x || direction.y) actor.facing = Math.abs(direction.x) > Math.abs(direction.y)
     ? direction.x > 0 ? 'right' : 'left' : direction.y > 0 ? 'down' : 'up';
 }
+/** Walks one frame toward a click target and returns true once it is close enough. */
+export function moveToward(actor: WorldActor, target: Position, seconds: number, speed = 150, walls: Rect[] = WALLS): boolean {
+  const dx = target.x - actor.position.x, dy = target.y - actor.position.y, distance = Math.hypot(dx, dy);
+  if (!Number.isFinite(distance) || distance <= 6) { actor.movementState = 'idle'; return true; }
+  moveActor(actor, { x: dx / distance, y: dy / distance, interact: false }, seconds, speed, walls);
+  const reached = Math.hypot(target.x - actor.position.x, target.y - actor.position.y) <= 6;
+  if (reached) actor.movementState = 'idle';
+  return reached;
+}
 export function followCamera(camera: Position, player: Position, width: number, height: number, seconds: number): Position {
   const target = { x: Math.max(MAP.minX, Math.min(MAP.minX + MAP.width - width, player.x - width / 2)),
     y: Math.max(MAP.minY, Math.min(MAP.minY + MAP.height - height, player.y - height / 2)) };

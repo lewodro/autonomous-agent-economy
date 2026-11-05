@@ -1,7 +1,7 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
-import { moveActor, followCamera } from './movement.js';
-import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, safePosition } from './map.js';
+import { moveActor, moveToward, followCamera } from './movement.js';
+import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
@@ -26,6 +26,7 @@ else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrer
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const touchFirst=matchMedia('(pointer: coarse)').matches;
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const npcs:WorldActor[]=[];let profiles:AgentProfile[]=[];
 const agentTargets=new Map<string,{x:number;y:number}>();
 const labPinnedAgents=new Map<string,number>();
@@ -34,8 +35,7 @@ const thoughtCounts=new Map<string,number>();
 let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
-let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,lastPresenceMoveAt=0,lastPresenceMoveState='';
-let arenaOnline=false;
+let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,presenceEverConnected=false,presenceStateTimer=0,lastPresenceMoveAt=0,lastPresenceMoveState='';
 let camera=followCamera({...MAP.spawn},player.position,renderer.viewport().width,renderer.viewport().height,100);
 let requestedAgent=new URLSearchParams(location.search).get('agent');
 let nearby:Interactable|undefined,entered=false,stopped=false,raf=0,previous=performance.now(),lastSave=0,lastMoveEvent=0;
@@ -44,6 +44,7 @@ const events:WorldEvent[]=[];
 let interactionVersion=0;
 let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
 let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
+let moveTarget:{x:number;y:number}|null=null,lastFootstepAt=0,targetStuckMs=0,targetLastPosition={x:0,y:0};
 const farmClient=new FarmClient(),farmHud=new FarmHud();
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
 let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
@@ -67,13 +68,30 @@ function scheduleSavedProfile():void{
 }
 function updateWorldLabel():void {
   const others=remotePlayers.size,visitorLabel=others===1?'other visitor':'other visitors';
-  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza and ${others} ${visitorLabel} online. Agents fighting are inside the Arena. Use WASD or arrow keys to move, E to interact. Free table southwest; arena statistics south.`);
+  canvas.setAttribute('aria-label',`Agent town with ${npcs.length} visiting agents in the plaza and ${others} ${visitorLabel} online. Agents fighting are inside the Arena. Use WASD or arrow keys, or click the ground to move. Press E to interact. Free table southwest; arena statistics south.`);
 }
 function updateConnectionLabel():void {
   updateWorldLabel();
-  if(!entered){connection.textContent='WORLD LIVE · JOINING';return;}
+  if(!entered){setConnectionText('WORLD LIVE · JOINING');return;}
   const presenceText=presenceState==='connected'?'ONLINE':presenceState==='reconnecting'?'RECONNECTING':presenceState==='closed'?'OFFLINE':'CONNECTING';
-  connection.textContent=`WORLD ${presenceText} · ${remotePlayers.size+1} HERE${arenaOnline?'':' · ARENA DATA OFFLINE'}`;
+  setConnectionText(`WORLD ${presenceText} · ${remotePlayers.size+1} HERE`);
+}
+function setConnectionText(text:string):void {
+  if(connection.textContent!==text)connection.textContent=text;
+}
+function schedulePresenceReconnectLabel():void {
+  if(presenceStateTimer||stopped)return;
+  presenceStateTimer=window.setTimeout(()=>{
+    presenceStateTimer=0;
+    if(stopped||presenceState==='connected')return;
+    presenceState='reconnecting';updateConnectionLabel();
+  },1_800);
+}
+function settlePresenceState(state:'connected'|'closed'):void {
+  if(presenceStateTimer){window.clearTimeout(presenceStateTimer);presenceStateTimer=0;}
+  presenceState=state;
+  if(state==='connected')presenceEverConnected=true;
+  updateConnectionLabel();
 }
 function syncRemotePlayers(snapshot:PresenceSnapshot):void {
   const next=new Set<string>(),ownId=presenceClient?.player_id;
@@ -119,40 +137,45 @@ function syncCanonicalAgents(agents:PresenceAgent[]):void {
 }
 function presenceError(client:WorldPresenceClient):void {
   if(stopped||presenceClient!==client)return;
-  presenceState='reconnecting';updateConnectionLabel();
+  schedulePresenceReconnectLabel();
   if(presenceReconnect)return;
-  presenceReconnect=window.setTimeout(()=>{presenceReconnect=0;connectPresence(client);},1_000);
+  presenceReconnect=window.setTimeout(()=>{presenceReconnect=0;connectPresence(client);},1_200);
 }
 function connectPresence(client:WorldPresenceClient):Promise<void> {
   if(stopped||presenceClient!==client||presenceConnecting)return Promise.resolve();
-  presenceConnecting=true;presenceState='connecting';updateConnectionLabel();
-  return client.connect().then(()=>{lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
+  presenceConnecting=true;
+  // Reconnects keep the last visible ONLINE label; only the first join shows CONNECTING.
+  if(!presenceEverConnected){presenceState='connecting';updateConnectionLabel();}
+  return client.connect().then(()=>{settlePresenceState('connected');lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
     .catch(()=>presenceError(client)).finally(()=>{presenceConnecting=false;});
 }
 function startPresence():Promise<void> {
   if(!entered||stopped||presenceClient)return Promise.resolve();
-  let client:WorldPresenceClient;
+  let client:WorldPresenceClient,heartbeatFailures=0;
   client=new WorldPresenceClient({avatar:player.spriteId,position:{...player.position},direction:player.facing,activity:player.activity,
     onPlayers:syncRemotePlayers,onConnection:state=>{
       if(presenceClient!==client)return;
-      presenceState=state==='closed'?'closed':state;updateConnectionLabel();
+      if(state==='reconnecting'){schedulePresenceReconnectLabel();return;}
+      settlePresenceState(state==='closed'?'closed':'connected');
     }});
   presenceClient=client;const joined=connectPresence(client);
   presenceHeartbeat=window.setInterval(()=>{
     if(presenceClient!==client)return;
-    void client.heartbeat(player.activity).catch(()=>presenceError(client));
+    void client.heartbeat(player.activity).then(()=>{heartbeatFailures=0;},()=>{heartbeatFailures+=1;if(heartbeatFailures>=3)presenceError(client);});
   },1_000);
   return joined;
 }
 async function leavePresence():Promise<void> {
   const client=presenceClient;if(!client)return;
-  presenceClient=undefined;presenceState='closed';
+  presenceClient=undefined;
+  if(presenceStateTimer){window.clearTimeout(presenceStateTimer);presenceStateTimer=0;}
+  settlePresenceState('closed');
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);presenceHeartbeat=0;
   if(presenceReconnect)window.clearTimeout(presenceReconnect);presenceReconnect=0;
   remotePlayers.clear();updateConnectionLabel();
   try{await client.leave();}catch{client.close();}
 }
-function resetInput():void {keyboard.reset();touch.reset();}
+function resetInput():void {keyboard.reset();touch.reset();moveTarget=null;targetStuckMs=0;}
 function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
 dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
@@ -170,6 +193,24 @@ function cropLabel(crop:CropKind|null):string{return crop?crop.charAt(0).toUpper
 function growthLabel(range?:readonly[number,number]):string{const low=Math.max(1,Math.round((range?.[0]??300_000)/60_000)),high=Math.max(low,Math.round((range?.[1]??660_000)/60_000));return low===high?`${low} minute${low===1?'':'s'}`:`${low}–${high} minutes`;}
 function anchorLabel(anchor:string):string{return ANCHORS[anchor]||'the farm grounds';}
 function sparkle(position:{x:number;y:number},colors:string[],count=10):void{const time=performance.now();for(let index=0;index<count;index++){const angle=index/count*Math.PI*2,range=16+(index%3)*6;particles.push({id:`plot-${time}-${index}`,position:{...position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range-12},color:colors[index%colors.length]!,expiresAt:time+650});}}
+function clickSparkle(position:{x:number;y:number},time:number):void{
+  const colors=['#e9f7c2','#c5e28f','#8fd38f','#f0d98a'];
+  for(let index=0;index<8;index++){
+    const angle=index/8*Math.PI*2+Math.random()*.3,range=6+Math.random()*7;
+    particles.push({id:`click-${time}-${index}`,position:{...position},velocity:{x:Math.cos(angle)*range,y:Math.sin(angle)*range*.8-3},color:colors[index%colors.length]!,expiresAt:time+480,life:480,size:index%3===0?3:2});
+  }
+}
+function arrivalPuff(position:{x:number;y:number},time:number):void{
+  for(let index=0;index<4;index++)particles.push({id:`arrive-${time}-${index}`,position:{x:position.x+(Math.random()*12-6),y:position.y+7},velocity:{x:(Math.random()*2-1)*5,y:-5-Math.random()*3},color:index%2?'#c5d7af':'#e6d8a8',expiresAt:time+320,life:320,size:2});
+}
+function footstepPuff(position:{x:number;y:number},time:number):void{
+  if(reducedMotion||time-lastFootstepAt<140)return;
+  lastFootstepAt=time;
+  particles.push({id:`step-${time}`,position:{x:position.x+(Math.random()*8-4),y:position.y+7},velocity:{x:(Math.random()*2-1)*4,y:-2-Math.random()*2},color:'#b9c7a7',expiresAt:time+260,life:260,size:1});
+}
+function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
+  return {x:Math.max(WORLD_BOUNDS.minX,Math.min(WORLD_BOUNDS.maxX,position.x)),y:Math.max(WORLD_BOUNDS.minY,Math.min(WORLD_BOUNDS.maxY,position.y))};
+}
 function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
 /** Signed-in players resume the character and plaza spot tied to their account. */
@@ -571,11 +612,21 @@ character.addEventListener('close',()=>{
   });
 });
 canvas.addEventListener('pointerdown',event=>{
-  canvas.focus();if(dialog.open||character.open)return;
+  canvas.focus();if(dialog.open||character.open||stopped)return;
   const rect=canvas.getBoundingClientRect(),view=renderer.viewport();
   const point={x:camera.x+(event.clientX-rect.left)*view.width/rect.width,y:camera.y+(event.clientY-rect.top)*view.height/rect.height};
+  const time=performance.now();
   const actor=npcs.find(a=>Math.hypot(point.x-a.position.x,point.y-a.position.y)<30);
-  if(actor&&Math.hypot(player.position.x-actor.position.x,player.position.y-actor.position.y)<=72)void interact({id:actor.agentId!,type:'agent',position:actor.position,radius:72,label:`Inspect ${actor.name}`});
+  if(actor&&Math.hypot(player.position.x-actor.position.x,player.position.y-actor.position.y)<=72){
+    moveTarget=null;
+    clickSparkle(point,time);
+    void interact({id:actor.agentId!,type:'agent',position:actor.position,radius:72,label:`Inspect ${actor.name}`});
+    return;
+  }
+  // Mouse and touch both walk to the tapped point, like a classic RPG.
+  moveTarget=clampToWorld(actor?actor.position:point);
+  targetStuckMs=0;targetLastPosition={...player.position};
+  clickSparkle(moveTarget,time);
 });
 async function refreshProfiles():Promise<void> {
   if(stopped)return;
@@ -590,7 +641,7 @@ async function refreshProfiles():Promise<void> {
       if(existing)existing.recentWinner=profile.recentWinner;
     }
     updateWorldLabel();
-    arenaOnline=true;updateConnectionLabel();
+    updateConnectionLabel();
     const directory=$('agent-directory'),current=new Set<string>();
     for(const profile of profiles){
       const id='directory-agent-'+profile.id;current.add(id);
@@ -600,7 +651,7 @@ async function refreshProfiles():Promise<void> {
     }
     for(const b of directory.querySelectorAll<HTMLButtonElement>('button'))if(!current.has(b.id))b.remove();
     if(requestedAgent&&entered){showProfile(requestedAgent);requestedAgent=null;}
-  }catch{arenaOnline=false;updateConnectionLabel();}
+  }catch{updateConnectionLabel();}
   if(!stopped)setTimeout(refreshProfiles,5000);
 }
 async function refreshWorldLive():Promise<void>{
@@ -627,8 +678,18 @@ function frame(time:number):void {
   const k=keyboard.read(),t=touch.read();
   if(entered&&!dialog.open&&!character.open&&!document.hidden){
     const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);
-    // Ambient agents remain inspectable, but cannot form a moving wall across the visitor's route.
-    moveActor(player,input,dt,150,WALLS);
+    if(input.x||input.y){moveTarget=null;targetStuckMs=0;}
+    if(input.x||input.y||!moveTarget)moveActor(player,input,dt,150,WALLS);
+    else if(moveToward(player,moveTarget,dt,150,WALLS)){
+      moveTarget=null;targetStuckMs=0;
+      arrivalPuff(player.position,time);
+    }else{
+      const step=Math.hypot(player.position.x-targetLastPosition.x,player.position.y-targetLastPosition.y);
+      targetStuckMs=step>.25?0:targetStuckMs+dt*1000;
+      targetLastPosition={...player.position};
+      if(targetStuckMs>650){moveTarget=null;targetStuckMs=0;}
+    }
+    if(player.movementState==='walking')footstepPuff(player.position,time);
     for(const npc of npcs)if(npc.speech&&npc.speech.expiresAt<=time)npc.speech=undefined;
     const closeNpc=npcs.filter(npc=>Math.hypot(player.position.x-npc.position.x,player.position.y-npc.position.y)<170)
       .sort((a,b)=>Math.hypot(player.position.x-a.position.x,player.position.y-a.position.y)-Math.hypot(player.position.x-b.position.x,player.position.y-b.position.y)||a.id.localeCompare(b.id))[0];
@@ -660,7 +721,7 @@ function frame(time:number):void {
     const seconds=Math.min(30,Math.round((Date.now()-lastPlayTick)/1000));lastPlayTick=Date.now();
     void farmClient.post('heartbeat',{seconds}).then(result=>mergeFarmAccount(result.account as FarmAccount|undefined)).catch(()=>{});
   }
-  const message=nearby?`${touchFirst?'Tap Interact':'E / Interact'} · ${nearby.label}`:(touchFirst?'Use the stick to walk · tap Interact near things':'WASD / arrows to walk · E to interact');
+  const message=nearby?`${touchFirst?'Tap Interact':'E / Interact'} · ${nearby.label}`:(touchFirst?'Tap the ground to walk · tap Interact near things':'WASD / arrows or click to move · E to interact');
   if(hint.textContent!==message)hint.textContent=message;
   $<HTMLButtonElement>('interact').disabled=!nearby;
   camera=followCamera(camera,player.position,renderer.viewport().width,renderer.viewport().height,dt);
@@ -675,14 +736,14 @@ function frame(time:number):void {
     npc.position.y+=(target.y-npc.position.y)*interpolation;
   }
   for(let index=particles.length-1;index>=0;index--)if(particles[index]!.expiresAt<=time)particles.splice(index,1);
-  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuide()});raf=requestAnimationFrame(frame);
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuide(),moveTarget});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
 // The lab uses the production state and controller; no second renderer or game engine.
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
-  const teleport=async(position:{x:number;y:number})=>{await leavePresence();player.position=safePosition(position);persist();if(entered)startPresence();canvas.focus();};
+  const teleport=async(position:{x:number;y:number})=>{await leavePresence();moveTarget=null;player.position=safePosition(position);persist();if(entered)startPresence();canvas.focus();};
   for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{void teleport(landmark.position);};lab.append(b);}
   for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{void teleport(position);};lab.append(b);}
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);

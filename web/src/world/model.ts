@@ -29,7 +29,7 @@ export interface Interactable {
 }
 export type ResourceRarity='common'|'uncommon'|'rare'|'very_rare';
 export interface WorldResource {id:string;kind:'ore'|'herb';zone:string;rarity:ResourceRarity;position:Position;reward:number;respawn_ms:number;available:boolean;available_at:string}
-export interface WorldParticle {id:string;position:Position;velocity:Position;color:string;expiresAt:number}
+export interface WorldParticle {id:string;position:Position;velocity:Position;color:string;expiresAt:number;size?:number;life?:number}
 export function normalizeInput(x: number, y: number, interact = false): WorldInput {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: 0, y: 0, interact };
   const scale = Math.max(1, Math.hypot(x, y));
