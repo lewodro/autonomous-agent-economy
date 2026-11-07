@@ -2,6 +2,16 @@ import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
 import type { FarmTile } from './farm.js';
+/** Available body, depleted body, and glinting accent for each ore variant. */
+const ORE_COLORS:Record<string,[string,string,string]> = {
+  copper:['#a86434','#5f432c','#e0a15a'],
+  iron:['#8d9288','#4f5952','#c8b66d'],
+  silver:['#c3ccd4','#737d85','#f0f4f7'],
+  gold:['#c8b66d','#8a7a3f','#f6df94'],
+  obsidian:['#4a3f5c','#2b2436','#9c86c9'],
+  crystal:['#7fc7d9','#3f7d8c','#d3f4fb'],
+};
+const DEFAULT_ORE_COLORS:[string,string,string]=['#8d9288','#4f5952','#c8b66d'];
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
@@ -190,7 +200,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     for(const resource of frame.resources||[]){
       const {x,y}=resource.position;c.fillStyle='#172b2877';c.fillRect(x-15,y+8,30,6);
-      if(resource.kind==='ore'){c.fillStyle=resource.available?'#8d9288':'#4f5952';c.fillRect(x-13,y-2,26,13);c.fillRect(x-7,y-9,15,9);c.fillStyle=resource.available?'#c8b66d':'#697069';c.fillRect(x-4,y-6,6,5);c.fillRect(x+6,y+1,4,4);}
+      if(resource.kind==='ore'){const [body,depleted,accent]=ORE_COLORS[resource.variant??'iron']??DEFAULT_ORE_COLORS;c.fillStyle=resource.available?body:depleted;c.fillRect(x-13,y-2,26,13);c.fillRect(x-7,y-9,15,9);c.fillStyle=resource.available?accent:'#697069';c.fillRect(x-4,y-6,6,5);c.fillRect(x+6,y+1,4,4);}
       else{c.fillStyle=resource.available?'#548057':'#3c5542';c.fillRect(x-2,y-11,4,22);c.fillRect(x-12,y-7,10,7);c.fillRect(x+2,y-3,12,7);c.fillStyle=resource.available?'#d8c06e':'#71806a';c.fillRect(x-8,y-10,5,5);c.fillRect(x+6,y-7,5,5);}
       if(resource.available&&resource.rarity!=='common'){const color=resource.rarity==='uncommon'?'#a9c889':resource.rarity==='rare'?'#80b9c8':'#d9a8df';c.strokeStyle=color;c.lineWidth=2;c.strokeRect(x-17,y-14,34,28);}
       if(resource.available&&!reduced&&Math.floor((frame.time+x)/420)%2===0){c.fillStyle=resource.rarity==='very_rare'?'#efc8f2':'#f2d88a';c.fillRect(x+13,y-12,3,3);}
