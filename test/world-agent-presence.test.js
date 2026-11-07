@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorldAgentPresenceService, WORLD_AGENT_ROUTE } from '../service/world-agent-presence.js';
-import { NPC_WAYPOINTS } from '../web/dist/world/map.js';
+import { NPC_WAYPOINTS, collides } from '../web/dist/world/map.js';
 
 const profiles = [
   {id:'agent-1',name:'Founder',strategy:'Balanced',sprite:'assets/agents/01-founder.png',arenaStatus:'queued',recentWinner:false},
@@ -11,6 +11,17 @@ const profiles = [
 
 test('server canonical route stays aligned with the browser collision-safe route',()=>{
   assert.deepEqual(WORLD_AGENT_ROUTE,NPC_WAYPOINTS);
+});
+
+test('every canonical route segment stays outside buildings and plaza obstacles',()=>{
+  for(let index=0;index<WORLD_AGENT_ROUTE.length;index++){
+    const from=WORLD_AGENT_ROUTE[index],to=WORLD_AGENT_ROUTE[(index+1)%WORLD_AGENT_ROUTE.length];
+    const steps=Math.max(1,Math.ceil(Math.hypot(to.x-from.x,to.y-from.y)/4));
+    for(let step=0;step<=steps;step++){
+      const point={x:from.x+(to.x-from.x)*step/steps,y:from.y+(to.y-from.y)*step/steps};
+      assert.equal(collides(point),false,`route segment ${index} crosses a solid obstacle at ${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+    }
+  }
 });
 
 test('canonical agents move concurrently on one authoritative timeline',()=>{

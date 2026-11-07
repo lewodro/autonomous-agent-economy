@@ -163,7 +163,9 @@ test('canonical NPC route reaches all new districts without crossing collision',
   assert.ok(NPC_WAYPOINTS.every(point=>!collides(point)),'every route destination must be walkable');
   const npc={...actor(npcSpawnPosition(0)),type:'npc'},control=new NpcController(0,false,{id:'agent-0'});
   const visited={west:false,east:false,north:false,south:false,garden:false};
-  for(let frame=0;frame<10000;frame++){
+  // The collision-safe route adds intermediate corner points around buildings,
+  // so give the random-walking NPC enough simulated time to cover every district.
+  for(let frame=0;frame<20000;frame++){
     control.update(npc,.1);assert.equal(collides(npc.position),false);
     visited.west ||=npc.position.x<-300;visited.east ||=npc.position.x>2200;
     visited.north ||=npc.position.y<-200;visited.south ||=npc.position.y>1300;
