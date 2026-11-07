@@ -15,8 +15,8 @@ const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, agentOverride=null }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.agentOverride=agentOverride;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, agentOverride=null, onMatch=null }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.agentOverride=agentOverride;this.onMatch=onMatch;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
@@ -132,7 +132,9 @@ export class ArenaRoomPool {
       if(this.stageMs)await this.delay(this.stageMs);
     },onSave:()=>this.checkpoint(room)});
     try {await orchestrator.step(null,room.saved.game);room.status='finished';room.finishedAt=Date.now();
-      for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});}
+      for(const agentId of room.current?.players||[])this.recentFinishes.set(agentId,{roomId:id,at:room.finishedAt});
+      try{await this.onMatch?.({roomId:id,game:room.saved.game,runId:room.saved.runId,match:room.current});}
+      catch(error){console.error(JSON.stringify({event:'arena_match_record_failed',roomId:id,errorType:error instanceof Error?error.name:'UnknownError'}));}}
     catch(error){room.state=structuredClone(room.saved.state);room.current=room.state.matches.at(-1)||null;room.status='failed';throw error;}
     finally {room.running=false;}
   }

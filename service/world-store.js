@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 const TABLE = 'world_state';
-const ROW = 'main';
 
 /**
  * One durable document holds the human world: accounts, farm tiles, inventory
@@ -11,14 +10,18 @@ const ROW = 'main';
  * Render redeploys keep state; the JSON file keeps local development and tests
  * dependency-free. Writes are serialized and only ever replace the whole row,
  * which matches the existing single-process authoritative world.
+ *
+ * A second instance with a different rowId/fileName stores documents that must
+ * outlive retained match checkpoints, such as cumulative arena statistics.
  */
 export class WorldStore {
-  constructor({ directory, databaseUrl = null, logger = console } = {}) {
+  constructor({ directory, databaseUrl = null, logger = console, rowId = 'main', fileName = 'world-farm.json' } = {}) {
     this.directory = directory;
     this.databaseUrl = databaseUrl;
     this.logger = logger;
+    this.rowId = rowId;
     this.mode = databaseUrl ? 'postgres' : 'json';
-    this.file = path.join(directory, 'world-farm.json');
+    this.file = path.join(directory, fileName);
     this.pool = null;
     this.queue = Promise.resolve();
   }
@@ -49,7 +52,7 @@ export class WorldStore {
 
   async load() {
     if (this.mode === 'postgres') {
-      const result = await this.pool.query(`select state from ${TABLE} where id = $1`, [ROW]);
+      const result = await this.pool.query(`select state from ${TABLE} where id = $1`, [this.rowId]);
       return result.rows[0]?.state ?? null;
     }
     try {
@@ -67,7 +70,7 @@ export class WorldStore {
         await this.pool.query(
           `insert into ${TABLE} (id, state, updated_at) values ($1, $2::jsonb, now())
            on conflict (id) do update set state = excluded.state, updated_at = now()`,
-          [ROW, JSON.stringify(snapshot)],
+          [this.rowId, JSON.stringify(snapshot)],
         );
         return;
       }
