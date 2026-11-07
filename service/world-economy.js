@@ -10,14 +10,16 @@ const INITIAL_AVAILABLE=2;
 const INITIAL_STAGGER_MS=4*60_000;
 export const RESOURCE_NODES=Object.freeze([
   {id:'herb-north-1',kind:'herb',zone:'north_grove',rarity:'common',position:{x:300,y:-240},spawn_pool:[{x:300,y:-240},{x:180,y:-280}],reward:1,respawn_ms:18*60_000},
-  {id:'ore-west-1',kind:'ore',zone:'west_rocks',rarity:'uncommon',position:{x:-800,y:850},spawn_pool:[{x:-800,y:850},{x:-820,y:770}],reward:2,respawn_ms:30*60_000},
+  {id:'ore-west-1',kind:'ore',variant:'copper',zone:'west_rocks',rarity:'uncommon',position:{x:-800,y:850},spawn_pool:[{x:-800,y:850},{x:-820,y:770}],reward:2,respawn_ms:15*60_000},
   {id:'herb-garden-1',kind:'herb',zone:'botanical',rarity:'common',position:{x:1400,y:900},spawn_pool:[{x:1400,y:900},{x:1300,y:840}],reward:1,respawn_ms:20*60_000},
   {id:'herb-northeast-1',kind:'herb',zone:'north_ridge',rarity:'common',position:{x:1550,y:-450},spawn_pool:[{x:1550,y:-450},{x:1430,y:-430}],reward:1,respawn_ms:22*60_000},
   {id:'herb-forest-1',kind:'herb',zone:'deep_forest',rarity:'common',position:{x:1800,y:1600},spawn_pool:[{x:1800,y:1600},{x:1680,y:1560}],reward:1,respawn_ms:24*60_000},
   {id:'herb-southwest-1',kind:'herb',zone:'south_meadow',rarity:'common',position:{x:250,y:1600},spawn_pool:[{x:250,y:1600},{x:130,y:1560}],reward:1,respawn_ms:26*60_000},
-  {id:'ore-east-1',kind:'ore',zone:'east_industrial',rarity:'uncommon',position:{x:2600,y:300},spawn_pool:[{x:2600,y:300},{x:2480,y:260}],reward:2,respawn_ms:34*60_000},
-  {id:'ore-south-1',kind:'ore',zone:'south_perimeter',rarity:'rare',position:{x:2600,y:1600},spawn_pool:[{x:2600,y:1600},{x:2480,y:1560}],reward:4,respawn_ms:45*60_000},
-  {id:'ore-perimeter-1',kind:'ore',zone:'remote_perimeter',rarity:'very_rare',position:{x:-800,y:-450},spawn_pool:[{x:-800,y:-450},{x:-800,y:-370}],reward:7,respawn_ms:60*60_000},
+  {id:'ore-east-1',kind:'ore',variant:'iron',zone:'east_industrial',rarity:'uncommon',position:{x:2600,y:300},spawn_pool:[{x:2600,y:300},{x:2480,y:260}],reward:2,respawn_ms:16*60_000},
+  {id:'ore-south-1',kind:'ore',variant:'gold',zone:'south_perimeter',rarity:'rare',position:{x:2600,y:1600},spawn_pool:[{x:2600,y:1600},{x:2480,y:1560}],reward:4,respawn_ms:18*60_000},
+  {id:'ore-perimeter-1',kind:'ore',variant:'crystal',zone:'remote_perimeter',rarity:'very_rare',position:{x:-800,y:-450},spawn_pool:[{x:-800,y:-450},{x:-800,y:-370}],reward:7,respawn_ms:20*60_000},
+  {id:'ore-northwest-1',kind:'ore',variant:'silver',zone:'northwest_outcrop',rarity:'uncommon',position:{x:-490,y:210},spawn_pool:[{x:-490,y:210},{x:-420,y:170}],reward:3,respawn_ms:17*60_000},
+  {id:'ore-east-2',kind:'ore',variant:'obsidian',zone:'east_outcrop',rarity:'rare',position:{x:2080,y:820},spawn_pool:[{x:2080,y:820},{x:2040,y:760}],reward:5,respawn_ms:19*60_000},
 ]);
 
 function initialNodeState(index,now){return{generation:0,availableAt:index<INITIAL_AVAILABLE?0:now+(index-(INITIAL_AVAILABLE-1))*INITIAL_STAGGER_MS};}
