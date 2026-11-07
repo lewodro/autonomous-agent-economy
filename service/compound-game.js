@@ -101,7 +101,10 @@ export class CompoundGame{
   resetLobby(){const queued=(this.state.queue||[]).slice(0,this.capacity);this.state.participants=queued.map((value,index)=>this.makeParticipant(value,index));this.state.queue=[];this.state.phase='lobby';this.state.phaseAt=this.now();this.state.startedAt=null;this.state.endsAt=null;this.state.worldItems=freshItems();const setup=roundSetup(this.state.round+1);this.state.containers=setup.containers;this.state.roundSecrets=setup.roundSecrets;this.state.doorStates={};this.state.security='normal';this.state.routineIndex=0;}
   startRound(owner,{allowNoOwner=false}={}){
     if(this.state.phase==='finished'){
-      const returning=this.participant(owner);
+      // Automatic round rollover passes owner=null. Agents also have owner=null,
+      // so only a real visitor identity may be re-queued here; otherwise the
+      // first agent would be copied into the next lobby as a duplicate human.
+      const returning=owner?this.participant(owner):null;
       if(returning&&!(this.state.queue||[]).some(value=>value.owner===owner))this.state.queue.unshift({id:returning.id,owner:returning.owner,name:returning.name,type:'human',avatar:returning.avatar,worldPresenceId:returning.worldPresenceId||null});
       this.resetLobby();
     }

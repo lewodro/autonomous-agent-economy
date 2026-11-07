@@ -358,6 +358,25 @@ test('world visitors queue during an active round and retain their shared-world 
   await game.close();
 });
 
+test('automatic round rollover promotes queued visitors without copying an agent as a human',async()=>{
+  let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-auto-queue-')),{now:()=>now,roundSeconds:15,capacity:8});
+  game.startAgentRound();
+  const queued=game.join('owner-b',{name:'Human B',avatar:'visitor_nova',world_presence_id:'presence-b'});
+  assert.equal(queued.you,null);assert.equal(queued.queue.count,1);
+  now+=16_000;await game.tick();
+  assert.equal(game.snapshot('owner-b').phase,'finished');
+  now+=12_001;await game.tick();
+  const promoted=game.snapshot('owner-b'),humans=promoted.participants.filter(value=>value.type==='human'),agents=promoted.participants.filter(value=>value.type==='agent');
+  assert.equal(promoted.phase,'active');
+  assert.ok(promoted.you,'the queued visitor receives a seat automatically');
+  assert.equal(humans.length,1,'only the queued visitor is promoted as human');
+  assert.equal(humans[0].name,'Human B');
+  assert.equal(humans[0].world_presence_id,'presence-b');
+  assert.equal(agents.length,7);
+  assert.equal(new Set(promoted.participants.map(value=>value.id)).size,promoted.participants.length,'promotion must not duplicate an agent identity');
+  await game.close();
+});
+
 test('one human leaving or escaping does not resolve the shared round for another human',async()=>{
   let now=20_000;const game=new CompoundGame(await mkdtemp(path.join(os.tmpdir(),'compound-human-continuity-')),{now:()=>now,roundSeconds:180,minimumRoundSeconds:60});
   game.join('owner-a',{name:'Human A'});game.join('owner-b',{name:'Human B'});game.startRound('owner-a');
