@@ -33,11 +33,18 @@ test('movement, heartbeat, leave, and resource authorization resolve from visito
   service.leave('main',alice);assert.throws(()=>service.requireVisitor('main',alice),{code:'PLAYER_NOT_FOUND'});assert.equal(service.snapshot('main').players.length,1);
 });
 
-test('movement limits prevent teleporting and idle time cannot bank distance',()=>{
-  let now=1_000;const service=serviceAt({now:()=>now,minUpdateMs:50});service.join('main',alice,{position:{x:100,y:100}});now+=250;
-  assert.throws(()=>service.move('main',alice,{position:{x:150,y:100}}),{code:'INVALID_POSITION'});
-  assert.equal(service.move('main',alice,{position:{x:143.5,y:100}}).player.position.x,143.5);now+=5_000;
-  assert.throws(()=>service.move('main',alice,{position:{x:300,y:100}}),{code:'INVALID_POSITION'});
+test('movement credit absorbs a queued round trip but cannot be spent as sustained speed',()=>{
+  let now=1_000;const service=serviceAt({now:()=>now,minUpdateMs:50});service.join('main',alice,{position:{x:100,y:100}});
+  // A 500 ms round trip: the client walked 75 px before its update landed.
+  now+=500;assert.equal(service.move('main',alice,{position:{x:175,y:100},direction:'right',animation_state:'walk'}).player.position.x,175);
+  // Walking at the real 150 px/s rate keeps the credit intact.
+  now+=500;assert.equal(service.move('main',alice,{position:{x:250,y:100},direction:'right',animation_state:'walk'}).player.position.x,250);
+  // Extra distance in the same window is rejected and does not reset the budget.
+  now+=50;assert.throws(()=>service.move('main',alice,{position:{x:500,y:100}}),{code:'INVALID_POSITION'});
+  now+=50;assert.throws(()=>service.move('main',alice,{position:{x:450,y:100}}),{code:'INVALID_POSITION'});
+  // Idle time refills only the bounded credit; a long teleport is still refused.
+  now+=5_000;assert.equal(service.move('main',alice,{position:{x:399.9,y:100}}).player.position.x,399.9);
+  now+=5_000;assert.throws(()=>service.move('main',alice,{position:{x:700,y:100}}),{code:'INVALID_POSITION'});
 });
 
 test('a delayed legitimate movement update catches up without breaking interaction range',()=>{
@@ -45,7 +52,9 @@ test('a delayed legitimate movement update catches up without breaking interacti
   now+=700;
   assert.deepEqual(service.move('main',alice,{position:{x:205,y:100},direction:'right',animation_state:'walk'}).player.position,{x:205,y:100});
   now+=5_000;
-  assert.throws(()=>service.move('main',alice,{position:{x:362,y:100}}),{code:'INVALID_POSITION'},'idle time still cannot bank more than one bounded catch-up window');
+  assert.equal(service.move('main',alice,{position:{x:362,y:100},direction:'right',animation_state:'walk'}).player.position.x,362,'a lagging walker can catch up');
+  now+=5_000;
+  assert.throws(()=>service.move('main',alice,{position:{x:700,y:100}}),{code:'INVALID_POSITION'},'idle time still cannot bank an unbounded jump');
 });
 
 test('stale visitors are removed without resetting the continuous world',()=>{
