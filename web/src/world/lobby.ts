@@ -95,4 +95,51 @@ async function profiles():Promise<void>{
   }
   if(!stopped)setTimeout(profiles,5000);
 }
-setMode('survival');void refresh();void profiles();void refreshSurvival();
+const cumulativeTotals=document.getElementById('cumulative-totals') as HTMLElement;
+const cumulativeGames=document.getElementById('cumulative-games') as HTMLElement;
+const cumulativeLeaders=document.getElementById('cumulative-leaders') as HTMLElement;
+const cumulativeStatus=document.getElementById('cumulative-status') as HTMLElement;
+const formatNumber=(value:number):string=>Number(value||0).toLocaleString();
+function cumulativeCard(label:string,value:number):HTMLElement{
+  const card=document.createElement('div');card.className='cumulative-total';
+  const strong=document.createElement('strong');strong.textContent=formatNumber(value);
+  const small=document.createElement('small');small.textContent=label;
+  card.append(strong,small);return card;
+}
+async function refreshCumulative():Promise<void>{
+  if(stopped)return;
+  try{
+    const stats=await gateway.statistics();if(stopped)return;
+    cumulativeStatus.textContent=stats.cumulative
+      ?`ALL-TIME · ${stats.updated_at?`last match ${new Date(stats.updated_at).toLocaleString()}`:'updating live'}`
+      :'NO CUMULATIVE MATCHES YET · SHOWING RETAINED RUNS';
+    cumulativeTotals.replaceChildren(
+      cumulativeCard('MATCHES SETTLED',stats.totals.matches),
+      cumulativeCard('DECISIONS',stats.totals.decisions),
+      cumulativeCard('DRAWS',stats.totals.draws),
+      cumulativeCard('AGENTS RANKED',stats.agents.length),
+    );
+    cumulativeGames.replaceChildren();
+    for(const [game,title] of [['rps','ROCK PAPER SCISSORS'],['tictactoe','TIC-TAC-TOE'],['survival','SURVIVAL MELEE']] as const){
+      const summary=stats.games[game],row=document.createElement('div');row.className='cumulative-game';
+      const label=document.createElement('span');label.textContent=title;
+      const value=document.createElement('strong');value.textContent=`${formatNumber(summary.matches)} matches · ${formatNumber(summary.decisions)} decisions · ${formatNumber(summary.draws)} draws`;
+      row.append(label,value);cumulativeGames.append(row);
+    }
+    cumulativeLeaders.replaceChildren();
+    if(!stats.agents.length){const empty=document.createElement('p');empty.textContent='No completed matches yet. The first result starts the all-time board.';cumulativeLeaders.append(empty);}
+    for(const [index,agent] of stats.agents.slice(0,8).entries()){
+      const row=document.createElement('a');row.className='cumulative-agent';row.href='/world?agent='+encodeURIComponent(agent.id);
+      const rank=document.createElement('span');rank.className='cumulative-rank';rank.textContent=String(index+1).padStart(2,'0');
+      const identity=document.createElement('span');identity.className='cumulative-identity';
+      const name=document.createElement('strong');name.textContent=`${agent.recentWinner?'♛ ':''}${agent.name}`;
+      const record=document.createElement('small');record.textContent=`${formatNumber(agent.wins)}W · ${formatNumber(agent.losses)}L · ${formatNumber(agent.draws)}D · ${formatNumber(agent.matches)} matches · ${agent.win_rate}%`;
+      identity.append(name,record);
+      const survived=document.createElement('span');survived.className='cumulative-survival';
+      survived.textContent=agent.survival?.matches?`SURVIVAL ${formatNumber(agent.survival.wins)}–${formatNumber(agent.survival.losses)}`:'';
+      row.append(rank,identity,survived);cumulativeLeaders.append(row);
+    }
+  }catch{cumulativeStatus.textContent='CUMULATIVE STATISTICS UNAVAILABLE · RETRYING…';}
+  if(!stopped)setTimeout(()=>void refreshCumulative(),5000);
+}
+setMode('survival');void refresh();void profiles();void refreshSurvival();void refreshCumulative();

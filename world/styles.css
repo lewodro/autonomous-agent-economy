@@ -258,3 +258,41 @@
   #character-dialog,#interaction-dialog,.world-menu__panel,.world-legend[open] .world-legend__grid{animation:none!important}
   .world-legend[open] summary::after{animation:none!important}
 }
+
+/* Cumulative arena record */
+.arena-cumulative{margin:0 0 24px;padding:20px;border:1px solid #35433e;background:linear-gradient(155deg,#1d2c25,#17231f 55%,#1a2922);box-shadow:0 6px 0 #10201a}
+.cumulative-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:8px}
+.cumulative-heading h2{font:800 clamp(22px,3vw,32px)/1.1 system-ui,sans-serif;letter-spacing:-.5px;color:#eceee4;margin:6px 0 0}
+.cumulative-heading #cumulative-status{font:10px/1.6 ui-monospace,monospace;letter-spacing:.6px;color:#b9eb69;text-align:right;white-space:nowrap}
+.cumulative-lede{max-width:760px;margin:0 0 16px;color:#9ca9a2;font:12px/1.6 ui-monospace,monospace}
+.cumulative-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.cumulative-total{padding:14px;border:1px solid #35433e;background:#1a2722}
+.cumulative-total strong{display:block;color:#d7f3a5;font:800 clamp(22px,3vw,34px)/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.cumulative-total small{display:block;margin-top:8px;color:#96a39c;font:10px ui-monospace,monospace;letter-spacing:1.2px}
+.cumulative-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:14px}
+.cumulative-panel{border:1px solid #35433e;background:#192420;padding:14px}
+.cumulative-panel h3{margin:0 0 10px;color:#c5d7af;font:700 11px ui-monospace,monospace;letter-spacing:1.4px}
+.cumulative-games{display:grid;gap:8px}
+.cumulative-game{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid #2a3a32}
+.cumulative-game:first-child{border-top:0;padding-top:0}
+.cumulative-game span{color:#8f9c94;font:10px ui-monospace,monospace;letter-spacing:.8px}
+.cumulative-game strong{color:#e3e8dc;font:11px ui-monospace,monospace;text-align:right;font-variant-numeric:tabular-nums}
+.cumulative-leaders{display:grid}
+.cumulative-agent{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #2a3a32;color:#e3e8dc;text-decoration:none}
+.cumulative-agent:first-child{border-top:0;padding-top:0}
+.cumulative-agent:hover{text-decoration:none;background:#22332c}
+.cumulative-rank{color:#b9eb69;font:700 11px ui-monospace,monospace}
+.cumulative-identity{min-width:0}
+.cumulative-identity strong{display:block;font:700 12px system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cumulative-identity small{display:block;margin-top:2px;color:#96a39c;font:10px ui-monospace,monospace}
+.cumulative-survival{color:#8f9c94;font:9px ui-monospace,monospace;letter-spacing:.6px;white-space:nowrap}
+@media(max-width:760px){
+  .arena-cumulative{padding:14px}
+  .cumulative-heading{flex-direction:column;gap:6px}
+  .cumulative-heading #cumulative-status{text-align:left;white-space:normal}
+  .cumulative-totals{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cumulative-grid{grid-template-columns:1fr}
+  .cumulative-game{flex-direction:column;align-items:flex-start;gap:3px}
+  .cumulative-game strong{text-align:left}
+  .cumulative-survival{display:none}
+}

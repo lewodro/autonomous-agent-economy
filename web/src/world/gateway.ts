@@ -15,7 +15,7 @@ export interface MatchRecord {
   completedAt:string;logUrl:string;moves:{turn?:number;round?:number;agent:string;action:string;cell?:number[]}[];
 }
 export interface ArenaStatistics {
-  scope:string;updated_at:string|null;totals:{matches:number;decisions:number;draws:number};
+  scope:string;updated_at:string|null;cumulative?:boolean;totals:{matches:number;decisions:number;draws:number};
   games:{rps:{matches:number;draws:number;decisions:number};tictactoe:{matches:number;draws:number;decisions:number};survival:{matches:number;draws:number;decisions:number}};
   agents:(AgentProfile&{win_rate:number})[];
 }
