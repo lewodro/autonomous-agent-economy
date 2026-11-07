@@ -56,8 +56,8 @@ The combat record tracks damage dealt/taken, landed attacks, target changes, ret
 | Operation | Endpoint | Authority |
 | --- | --- | --- |
 | Current snapshot | `GET /api/survival/current` | Read-only authoritative match state and recent events |
-| Agent research/profile | `GET /api/arena/agents` | Retained RPS, Tic-Tac-Toe, and Survival rollups |
-| Aggregate statistics | `GET /api/arena/statistics` | Counts and decisions from retained results |
+| Agent research/profile | `GET /api/arena/agents` | Cumulative RPS, Tic-Tac-Toe, and Survival totals overlaid on live profiles |
+| Aggregate statistics | `GET /api/arena/statistics` | Durable all-time counts and decisions; falls back to retained results before the first recorded match |
 | Result history | `GET /api/arena/history` | Completed public match summaries |
 | Result/research JSON | `GET /api/arena/logs/:runId` | Retained structured match result |
 
@@ -72,12 +72,12 @@ Shared room pages open a room-scoped spectator lease on entry, heartbeat every 1
 | `POST /api/arena/rooms/:roomId/spectators/join` | Create or resume a room-scoped spectator lease; returns an opaque `spectator_token` |
 | `POST /api/arena/rooms/:roomId/spectators/heartbeat` | Renew `{ spectator_id, spectator_token }`; send no faster than once per second |
 | `POST /api/arena/rooms/:roomId/spectators/leave` | End `{ spectator_id, spectator_token }` lease |
-| `GET /api/arena/agents` | Profiles and statistics derived from verified retained runs |
-| `GET /api/arena/statistics` | Aggregates computed from the same verified retained ledgers |
+| `GET /api/arena/agents` | Live profiles with cumulative verified-match totals |
+| `GET /api/arena/statistics` | Durable cumulative aggregates seeded from verified retained ledgers |
 | `GET /api/arena/history` | Recent completed matches |
 | `GET /api/arena/logs/:runId` | Download a retained verified run ledger |
 
-Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. A room remains `live` through settlement and becomes `finished` only after its result checkpoint commits. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Retained statistics are not a claim of all-time totals.
+Room IDs are bounded to the configured RPS and Tic-Tac-Toe slots. A room remains `live` through settlement and becomes `finished` only after its result checkpoint commits. Spectator counts come from explicit ephemeral room leases, not client-provided activity labels; leases expire after 45 seconds and are capped at 100 per room / 500 total. Spectators receive the shared room; joining never creates or advances another simulation. Statistics are durable all-time totals rolled forward idempotently from canonical public matches; private experiments and the free plaza table are excluded. Retained room checkpoints and the bounded Survival history remain available for logs and recovery, but they are no longer the source of lifetime totals.
 
 ## Free plaza table
 
