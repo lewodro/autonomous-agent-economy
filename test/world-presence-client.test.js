@@ -5,7 +5,7 @@ import {WorldPresenceClient} from '../web/dist/world/presence-client.js';
 class EventStream {listeners=new Map();closed=false;addEventListener(type,listener){const list=this.listeners.get(type)||[];list.push(listener);this.listeners.set(type,list);}close(){this.closed=true;}emit(type,value){for(const listener of this.listeners.get(type)||[])listener({data:JSON.stringify(value)});}}
 const player=(player_id,x)=>({player_id,display_name:'Watcher 1001',avatar:'visitor_ember',position:{x,y:100},direction:'right',animation_state:'walk',activity:'Exploring',updated_at:'now'});
 const agent=(agent_id,x)=>({...player(`agent:${agent_id}`,x),agent_id,strategy:'analyst',kind:'canonical_agent'});
-function setup({now=()=>1_000,onPlayers=()=>{},fetcher}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,now});return{client,streams,requests};}
+function setup({now=()=>1_000,onPlayers=()=>{},fetcher,sleep}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,now,sleep});return{client,streams,requests};}
 
 test('client accepts a server-owned identity and never sends browser-chosen IDs or tokens',async()=>{
   const snapshots=[],{client,streams,requests}=setup({onPlayers:value=>snapshots.push(value)});await client.connect();assert.equal(client.player_id,'visitor_server-owned');assert.deepEqual(requests[0].body,{avatar:'visitor_ember',position:{x:100,y:100},direction:'down',activity:'Exploring'});assert.equal(requests[0].credentials,'same-origin');assert.equal(JSON.stringify(requests),JSON.stringify(requests).replace(/session_token/g,'session-token-not-present'));
@@ -36,6 +36,37 @@ test('resync bypasses the move throttle for a range-check retry',async()=>{
   assert.equal(await client.move({x:120,y:100},'right','walk'),false);
   assert.equal(await client.resync({x:130,y:100},'right','walk'),true);
   assert.deepEqual(requests.at(-1).body.position,{x:130,y:100});
+  await client.leave();
+});
+test('the newest position replaces older queued moves when a round trip settles',async()=>{
+  let now=1_000,release;const positions=[],resolvers=[];
+  const fetcher=async(url,init)=>{const body=JSON.parse(init.body);if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_stable',100)],agents:[],player:player('visitor_stable',100),presence_id:'visitor_stable'})};if(url.endsWith('/leave'))return{ok:true,status:200,json:async()=>({left:true})};positions.push(body.position);return new Promise(resolve=>{resolvers.push(()=>resolve({ok:true,status:200,json:async()=>({ok:true})}));});};
+  const{client}=setup({fetcher,now:()=>now});await client.connect();
+  now+=100;const first=client.move({x:110,y:100},'right','walk');
+  now+=10;assert.equal(await client.move({x:120,y:100},'right','walk'),false);
+  now+=76;assert.equal(await client.move({x:130,y:100},'right','walk'),false);
+  assert.deepEqual(positions,[{x:110,y:100}]);
+  resolvers.shift()();await first;
+  await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(positions,[{x:110,y:100},{x:130,y:100}],'the latest walked position is flushed after the in-flight request');
+  resolvers.shift()();
+  await client.leave();
+});
+test('sync waits for in-flight movement then retries a speed rejection until accepted',async()=>{
+  let now=1_000,attempts=0;const positions=[],resolvers=[];
+  const fetcher=async(url,init)=>{const body=JSON.parse(init.body);if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_stable',100)],agents:[],player:player('visitor_stable',100),presence_id:'visitor_stable'})};if(url.endsWith('/leave'))return{ok:true,status:200,json:async()=>({left:true})};positions.push(body.position);attempts+=1;if(attempts===2)return{ok:false,status:400,json:async()=>({code:'INVALID_POSITION',error:'Movement exceeded the world speed limit'})};return new Promise(resolve=>{resolvers.push(()=>resolve({ok:true,status:200,json:async()=>({ok:true})}));});};
+  const{client}=setup({fetcher,now:()=>now,sleep:async()=>{}});await client.connect();
+  now+=100;const first=client.move({x:110,y:100},'right','walk');now+=10;
+  const synced=client.sync({x:240,y:100},'right','walk');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(positions,[{x:110,y:100}],'sync must not race an in-flight move');
+  resolvers.shift()();await first;
+  for(let index=0;index<20&&attempts<3;index+=1)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(attempts,3,'the speed rejection is retried');
+  assert.equal(positions.filter(value=>value.x===240).length,2);
+  resolvers.shift()();
+  assert.equal(await synced,true);
+  assert.deepEqual(positions.at(-1),{x:240,y:100});
   await client.leave();
 });
 test('close preserves the anonymous server session for refresh while leave removes it',async()=>{const{client,streams,requests}=setup();await client.connect();client.close();assert.equal(streams[0].closed,true);assert.equal(requests.some(value=>value.url.endsWith('/leave')),false);const snapshot=await client.connect();assert.equal(snapshot.players[0].player_id,'visitor_server-owned');await client.leave();assert.equal(requests.some(value=>value.url.endsWith('/leave')),true);});

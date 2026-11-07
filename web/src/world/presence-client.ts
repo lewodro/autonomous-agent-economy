@@ -17,7 +17,7 @@ interface PresenceOptions {
   worldId?:string;avatar:string;position:PresencePosition;direction?:PresencePlayer['direction'];activity?:string;
   fetcher?:(url:string,init?:RequestInit)=>Promise<ResponseLike>;eventSource?:(url:string)=>EventSourceLike;
   onPlayers?:(snapshot:PresenceSnapshot)=>void;onConnection?:(state:'connected'|'reconnecting'|'closed')=>void;
-  now?:()=>number;moveIntervalMs?:number;heartbeatIntervalMs?:number;
+  now?:()=>number;moveIntervalMs?:number;heartbeatIntervalMs?:number;sleep?:(ms:number)=>Promise<void>;
 }
 const eventNames=['WorldJoined','PlayerJoined','PlayerMoved','PlayerUpdated','PlayerLeft','AgentJoined','AgentMoved','AgentUpdated','AgentLeft'] as const;
 
@@ -28,7 +28,8 @@ export class WorldPresenceClient {
   private moveIntervalMs:number;private heartbeatIntervalMs:number;private playerId='';private source?:EventSourceLike;private streamGeneration=0;
   private players=new Map<string,PresencePlayer>();private agents=new Map<string,PresenceAgent>();private lastMoveAt=0;private lastHeartbeatAt=0;
   private closed=false;private moveInFlight=false;private heartbeatInFlight=false;private listeners:Array<[string,(event:MessageEvent<string>)=>void]>=[];private connecting?:Promise<PresenceSnapshot>;
-  constructor(private options:PresenceOptions){this.worldId=options.worldId||'main';this.fetcher=options.fetcher||((url,init)=>fetch(url,init));this.createEventSource=options.eventSource||((url)=>new EventSource(url));this.onPlayers=options.onPlayers||(()=>{});this.onConnection=options.onConnection||(()=>{});this.now=options.now||(()=>Date.now());this.moveIntervalMs=options.moveIntervalMs||66;this.heartbeatIntervalMs=options.heartbeatIntervalMs||1_000;}
+  private pendingMove?:{position:PresencePosition;direction:PresencePlayer['direction'];animation_state:PresencePlayer['animation_state']};private moveTask?:Promise<void>;private syncing=false;private sleep:(ms:number)=>Promise<void>;
+  constructor(private options:PresenceOptions){this.worldId=options.worldId||'main';this.fetcher=options.fetcher||((url,init)=>fetch(url,init));this.createEventSource=options.eventSource||((url)=>new EventSource(url));this.onPlayers=options.onPlayers||(()=>{});this.onConnection=options.onConnection||(()=>{});this.now=options.now||(()=>Date.now());this.moveIntervalMs=options.moveIntervalMs||66;this.heartbeatIntervalMs=options.heartbeatIntervalMs||1_000;this.sleep=options.sleep||((ms)=>new Promise(resolve=>setTimeout(resolve,ms)));}
   async connect():Promise<PresenceSnapshot>{if(this.connecting){if(!this.closed)return this.connecting;await this.connecting.catch(()=>undefined);return this.connect();}this.closed=false;this.source?.close();this.source=undefined;this.listeners=[];this.streamGeneration++;const connection=this.connectAndSubscribe();this.connecting=connection;try{return await connection;}finally{if(this.connecting===connection)this.connecting=undefined;}}
   private async connectAndSubscribe():Promise<PresenceSnapshot>{
     const joined=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{avatar:this.options.avatar,position:this.options.position,direction:this.options.direction||'down',activity:this.options.activity||'Exploring'});
@@ -54,10 +55,53 @@ export class WorldPresenceClient {
     // reconnect resumes where the visitor stands instead of snapping them back to
     // the position captured when the presence session first opened.
     this.options.position={...position};this.options.direction=direction;
-    if(this.closed||!this.playerId||this.moveInFlight||this.now()-this.lastMoveAt<this.moveIntervalMs)return false;this.moveInFlight=true;this.lastMoveAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/move`,{position,direction,animation_state});return true;}finally{this.moveInFlight=false;}
+    if(this.closed||!this.playerId||this.syncing)return false;
+    const intent={position:{...position},direction,animation_state};
+    // One request is in flight at a time, but the newest position is retained and
+    // sent as soon as that request settles. Without this, a high-latency round
+    // trip leaves the authoritative position a full RTT behind the walker.
+    if(this.moveInFlight){this.pendingMove=intent;return false;}
+    if(this.now()-this.lastMoveAt<this.moveIntervalMs)return false;
+    try{await this.sendMove(intent);return true;}catch(error){this.pendingMove=intent;throw error;}
+  }
+  private sendMove(intent:{position:PresencePosition;direction:PresencePlayer['direction'];animation_state:PresencePlayer['animation_state']}):Promise<void>{
+    this.moveInFlight=true;this.lastMoveAt=this.now();
+    const task=this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/move`,{position:intent.position,direction:intent.direction,animation_state:intent.animation_state})
+      .then(()=>undefined)
+      .finally(()=>{
+        this.moveInFlight=false;if(this.moveTask===task)this.moveTask=undefined;
+        const next=this.pendingMove;this.pendingMove=undefined;
+        if(next&&!this.syncing&&!this.closed&&this.playerId&&this.now()-this.lastMoveAt>=this.moveIntervalMs)void this.sendMove(next).catch(()=>{});
+      });
+    this.moveTask=task;return task;
+  }
+  /**
+   * Confirms the server holds this exact position before a range-checked action.
+   * Waits out an in-flight update, bypasses the client throttle, and retries only
+   * the server's own speed/rate rejections while the movement credit catches up.
+   * A genuinely remote position is still rejected by the server's range check.
+   */
+  async sync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{
+    if(this.closed||!this.playerId)return false;
+    this.options.position={...position};this.options.direction=direction;
+    const intent={position:{...position},direction,animation_state},deadline=Date.now()+3_000;let waitMs=80;
+    this.syncing=true;
+    try{
+      while(this.moveTask){const task=this.moveTask;this.pendingMove=undefined;try{await task;}catch{/* send the latest position below */}}
+      for(;;){
+        this.pendingMove=undefined;
+        try{await this.sendMove(intent);return true;}
+        catch(error){
+          const code=error&&typeof error==='object'&&'code'in error?String((error as{code:unknown}).code):'';
+          if(code!=='INVALID_POSITION'&&code!=='PRESENCE_RATE_LIMITED')throw error;
+          if(Date.now()>=deadline)return false;
+          await this.sleep(waitMs);waitMs=Math.min(400,Math.round(waitMs*1.5));
+        }
+      }
+    }finally{this.syncing=false;}
   }
   /** Forces the next move through the throttle so a server-side range check can be retried immediately. */
-  async resync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{this.moveInFlight=false;this.lastMoveAt=0;return this.move(position,direction,animation_state);}
+  async resync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{return this.sync(position,direction,animation_state);}
   async heartbeat(activity?:string):Promise<boolean>{if(this.closed||!this.playerId||this.heartbeatInFlight||this.now()-this.lastHeartbeatAt<this.heartbeatIntervalMs)return false;this.heartbeatInFlight=true;this.lastHeartbeatAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/heartbeat`,activity===undefined?{}:{activity});return true;}finally{this.heartbeatInFlight=false;}}
   async leave():Promise<void>{if(this.closed)return;if(this.connecting)await this.connecting.catch(()=>undefined);if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];try{if(this.playerId)await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/leave`,{});}finally{this.playerId='';this.onConnection('closed');}}
   close():void{if(this.closed)return;this.closed=true;this.streamGeneration++;this.source?.close();this.source=undefined;this.listeners=[];this.onConnection('closed');}

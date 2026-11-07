@@ -145,8 +145,18 @@ function connectPresence(client:WorldPresenceClient):Promise<void> {
   if(stopped||presenceClient!==client||presenceConnecting)return Promise.resolve();
   presenceConnecting=true;
   // Reconnects keep the last visible ONLINE label; only the first join shows CONNECTING.
-  if(!presenceEverConnected){presenceState='connecting';updateConnectionLabel();}
-  return client.connect().then(()=>{settlePresenceState('connected');lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;})
+  const firstJoin=!presenceEverConnected;
+  if(firstJoin){presenceState='connecting';updateConnectionLabel();}
+  return client.connect().then(snapshot=>{
+    // The server position is authoritative. On a fresh page load it may be
+    // ahead of the locally saved spawn (refresh, saved profile, another tab),
+    // so adopt it instead of sending rejected catch-up moves from stale state.
+    const self=snapshot.players.find(value=>value.player_id===client.player_id);
+    if(firstJoin&&self&&Math.hypot(self.position.x-player.position.x,self.position.y-player.position.y)>1){
+      player.position={...self.position};persist();
+    }
+    settlePresenceState('connected');lastPresenceMoveState=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;
+  })
     .catch(()=>presenceError(client)).finally(()=>{presenceConnecting=false;});
 }
 function startPresence():Promise<void> {
@@ -213,22 +223,23 @@ function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
 }
 function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
-/** Pushes the live position to presence before retrying a range-checked farm action. */
-async function resyncPresence():Promise<void>{
-  const client=presenceClient;if(!client?.player_id)return;
+/** Confirms the authoritative presence position before retrying a range-checked farm action. */
+async function resyncPresence():Promise<boolean>{
+  const client=presenceClient;if(!client?.player_id)return false;
   const state=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;
-  try{
-    if(await client.resync({...player.position},player.facing,player.movementState==='walking'?'walk':'idle'))lastPresenceMoveState=state;
-  }catch{/* the next reconnect joins with the same fresh position */ }
+  const synced=await client.sync({...player.position},player.facing,player.movementState==='walking'?'walk':'idle');
+  if(synced)lastPresenceMoveState=state;
+  return synced;
 }
 async function farmPost(action:string,body:Record<string,unknown>):Promise<Record<string,unknown>>{
   try{return await farmClient.post(action,body);}
   catch(error){
     const code=error&&typeof error==='object'&&'code'in error?String((error as {code:unknown}).code):'';
     if(code!=='TOO_FAR')throw error;
-    // The server can briefly hold an older presence position after a reconnect.
-    await resyncPresence();
-    await new Promise(resolve=>window.setTimeout(resolve,220));
+    // The action raced the last presence update. Confirm that the server now
+    // holds the walked position, then retry; a genuinely distant player still
+    // fails the server's range check on the second request.
+    if(!await resyncPresence())throw error;
     return farmClient.post(action,body);
   }
 }

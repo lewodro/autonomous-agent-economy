@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { WorldFarm, FARM_ANCHORS, FARM_SCARCITY, BAZAAR, CROPS } from '../service/world-farm.js';
+import { WorldFarm, FARM_ANCHORS, FARM_SCARCITY, BAZAAR, CROPS, PLANT_RADIUS } from '../service/world-farm.js';
 import { WorldStore } from '../service/world-store.js';
 import { collides, isNaturalGround, MAP } from '../web/dist/world/map.js';
 
@@ -136,6 +136,34 @@ test('planting, growth and harvest move one crop into the inventory', async () =
     const after = farm.snapshot(guest).tiles.find(value => value.id === tile.id);
     assert.equal(after.stage, 'wild');
     assert.equal(after.mine, false);
+  } finally { await close(); }
+});
+
+test('planting and harvesting succeed when visibly adjacent and fail outside the server radius', async () => {
+  const { farm, advance, close } = await setup();
+  try {
+    const tile = farm.snapshot(guest).tiles[0];
+    const adjacent = { x: tile.position.x + PLANT_RADIUS - 8, y: tile.position.y };
+    const remote = { x: tile.position.x + PLANT_RADIUS + 8, y: tile.position.y };
+    await assert.rejects(() => farm.plant(guest, { tile_id: tile.id, crop: 'wheat' }, remote), { code: 'TOO_FAR', message: 'Walk closer to the farm plot' });
+    const planted = await farm.plant(guest, { tile_id: tile.id, crop: 'wheat' }, adjacent);
+    assert.equal(planted.tile.stage, 'growing', 'adjacency, not the plot centre, is enough to plant');
+    advance(180_001);
+    await assert.rejects(() => farm.harvest(guest, { tile_id: tile.id }, remote), { code: 'TOO_FAR' });
+    const harvested = await farm.harvest(guest, { tile_id: tile.id }, adjacent);
+    assert.equal(harvested.quantity, 1);
+  } finally { await close(); }
+});
+
+test('a remote visitor cannot plant the plot a nearby visitor can', async () => {
+  const { farm, close } = await setup();
+  try {
+    const other = { key: 'guest:visitor-b', provider: 'guest' };
+    const tile = farm.snapshot(guest).tiles[0];
+    await assert.rejects(() => farm.plant(other, { tile_id: tile.id, crop: 'wheat', request_id: 'plant-far-00001' }, { x: 0, y: 0 }), { code: 'TOO_FAR' });
+    const planted = await farm.plant(guest, { tile_id: tile.id, crop: 'wheat', request_id: 'plant-near-0001' }, tile.position);
+    assert.equal(planted.tile.stage, 'growing');
+    assert.equal(farm.state.ledger.filter(event => event.type === 'crop_planted').length, 1);
   } finally { await close(); }
 });
 
