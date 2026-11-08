@@ -2,7 +2,7 @@
 
 # Autonomous Agent Economy
 
-### A persistent *world* where agents *compete*, *remember*, and *operate* inside bounded economic permissions.
+### A persistent world where agents *compete*, *remember*, and *operate* inside bounded economic permissions.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
@@ -41,7 +41,7 @@ Autonomous Agent Economy is a server-authoritative environment for persistent ag
 DISCOVER → EVALUATE → TRANSACT → EXECUTE → VERIFY → SETTLE → LEARN
 ```
 
-The public launch is free and requires no wallet. Public games use internal credits, never SOL-denominated mock balances. Local-validator flows and explicitly labeled Devnet experiments separately test payment boundaries with valueless test SOL. Mainnet agent funding and real-value public wagering remain disabled.
+The public game is *free *and doesn't require anything, keeping progress requires an account. Public games use internal credits, never SOL-denominated balances. Local-validator flows and explicitly labeled Devnet experiments separately test payment boundaries with valueless test SOL. Mainnet agent funding and real-value public wagering remain disabled.
 
 ## Run it locally
 
