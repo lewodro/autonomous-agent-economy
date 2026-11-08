@@ -13,7 +13,8 @@ socket.addEventListener('message',event=>{const message=JSON.parse(event.data);i
 const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Browser command timed out: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>{let r;try{r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});}catch(error){throw new Error(`${error?.message||error}; expression=${expression.slice(0,240)}`);}if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
+const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,hint:document.getElementById('world-hint')?.textContent,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),nearest:(()=>{try{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return s.npcs.map(n=>({name:n.name,distance:Math.round(Math.hypot(n.position.x-s.player.x,n.position.y-s.player.y)),attention:n.attention})).sort((a,b)=>a.distance-b.distance).slice(0,3)}catch{return null}})(),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
+const waitPosition=async(x,y,tolerance=20)=>{const expression=`(()=>{try{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return Math.hypot(s.player.x-(${x}),s.player.y-(${y}))<${tolerance}}catch{return false}})()`;await wait(expression);};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
 async function connectSecondBrowser(){
  if(!secondDebug)throw new Error('Second Chrome session is required for Compound multiplayer smoke');
@@ -89,7 +90,8 @@ try{
  await delay(5200);assert.equal(await evaluate('document.activeElement?.id'),focusedAgent,'agent refresh must preserve keyboard focus');
  await evaluate(`document.getElementById(${JSON.stringify(focusedAgent)}).click()`);
  await wait('document.getElementById("interaction-dialog").open');
- assert.ok(await evaluate('document.getElementById("interaction-content").textContent.includes("retained RPS, Tic-Tac-Toe, and Survival runs")'));
+ const profileText=await evaluate('document.getElementById("interaction-content").textContent');
+ assert.ok(profileText.includes('Statistics from')&&(profileText.includes('cumulative all-time arena results')||profileText.includes('retained RPS, Tic-Tac-Toe, and Survival runs')),'agent profile must show its authoritative statistics scope');
  await screenshot('profile');await evaluate('document.getElementById("interaction-close").click()');
  // Arena and Compound are entered through their physical doors in the world.
  // The lab teleport keeps the headless path deterministic while still
@@ -98,6 +100,7 @@ try{
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
+ await waitPosition(928,674);
  await wait('!document.getElementById("interact").disabled');
  await evaluate('document.getElementById("interact").click()');
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
@@ -137,14 +140,14 @@ try{
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Open arena statistics').click()");
+ await waitPosition(560,790);
  await wait('!document.getElementById("interact").disabled');
  await evaluate("window.__researchStats=null;window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/api/arena/statistics'))window.__researchStats=await response.clone().json();if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("interact").click()');
  await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest match results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
- console.log('DEBUG research',JSON.stringify({actualMatches,stats:await evaluate('window.__researchStats.totals'),content:(await evaluate('document.getElementById("interaction-content").textContent')).slice(0,600)}));
- const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
- assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Completed record · retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
+ const researchText=await evaluate('document.getElementById("interaction-content").textContent');
+ assert.ok(researchText.includes('Completed record ·')&&researchText.includes(`${actualMatches}Completed matches`),`Research House should display the authoritative completed-match count (${actualMatches})`);
  await wait("document.querySelector('#research-live')?.textContent.includes('Survival')&&!document.querySelector('#research-live')?.textContent.includes('Loading current server match state')");
  const archiveUrl=await evaluate('document.querySelector(".archive-row a:last-child")?.getAttribute("href")');
  assert.ok(archiveUrl,'Research House must keep a downloadable match record');
@@ -171,6 +174,9 @@ try{
  await wait("(()=>{const after=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs,before=new Map(window.__npcBefore.map(n=>[n.id,n.position]));return after.filter(n=>{const old=before.get(n.id);return old&&Math.hypot(n.position.x-old.x,n.position.y-old.y)>8}).length>=2})()");
  const npcMovement=await evaluate("(()=>{const after=JSON.parse(document.querySelector('#world-lab pre').textContent).npcs,before=new Map(window.__npcBefore.map(n=>[n.id,n.position]));return after.map(n=>{const old=before.get(n.id);return {id:n.id,distance:old?Math.hypot(n.position.x-old.x,n.position.y-old.y):-1,state:n.activityState}})})()");
  assert.ok(npcMovement.filter(value=>value.distance>8).length>=2,`several canonical NPCs must change world coordinates: ${JSON.stringify(npcMovement)}`);
+ // Stand somewhere without another interactable so the nearby target is the NPC.
+ await evaluate("[...document.querySelectorAll('#world-lab button')].find(button=>button.textContent==='Walk probe: west').click()");
+ await waitPosition(90,430);
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(button=>button.textContent==='Offer nearest NPC thought').click()");
  await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.attention)");
  const talkingAgent=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.attention).name");
@@ -268,6 +274,7 @@ try{
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter detention compound').click()");
+ await waitPosition(-220,994);
  await wait('!document.getElementById("interact").disabled');
  await evaluate('document.getElementById("interact").click()');
  await wait('location.pathname==="/compound"&&document.getElementById("compound-map")');

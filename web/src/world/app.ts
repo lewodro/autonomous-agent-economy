@@ -132,7 +132,7 @@ function syncCanonicalAgents(agents:PresenceAgent[]):void {
   }
   for(let index=npcs.length-1;index>=0;index--){
     const id=npcs[index]!.agentId;
-    if(id&&!next.has(id)){agentTargets.delete(id);npcs.splice(index,1);}
+    if(id&&!next.has(id)&&(labPinnedAgents.get(id)||0)<=performance.now()){agentTargets.delete(id);npcs.splice(index,1);}
   }
 }
 function presenceError(client:WorldPresenceClient):void {
@@ -595,10 +595,10 @@ function updateIntroAccount(snapshot?:FarmSnapshot|null):void{
   setIntroNote(account
     ?authConfigured
       ?`Temporary account · ${account.display_name}. Your credits and crops save on this browser; sign in to link them to Google.`
-      :`Temporary account · ${account.display_name}. Your credits and crops save for your next visit on this browser. Google sign-in arrives later.`
+      :`Temporary account · ${account.display_name}. Your credits and crops save for your next visit on this browser. Google sign-in is not configured on this deployment.`
     :authConfigured
       ?'Sign in with Google to save your character, plaza position and farm progress on every device.'
-      :'Each browser gets a temporary account automatically. Credits and crops are saved for your next visit.',authConfigured?'info':'good');
+      :'Google sign-in is not configured on this deployment. Each browser gets a temporary account automatically; credits and crops are saved for your next visit.',authConfigured?'info':'good');
 }
 function openIntro():void{if(!character.open)character.showModal();}
 void fetch('/api/world/auth',{signal:AbortSignal.timeout(5000)}).then(response=>response.ok?response.json():null).then(config=>{
@@ -617,6 +617,9 @@ $('intro-google').onclick=async()=>{
 $('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
+// Act on the click immediately instead of waiting for the next frame's input
+// buffer, which a blur or reset can clear before it is read.
+$('interact').addEventListener('click',()=>{if(!nearby)return;touch.reset();void interact();});
 const legend=document.querySelector<HTMLDetailsElement>('.world-legend');if(legend&&matchMedia('(max-width:680px)').matches)legend.open=false;
 legend?.querySelector('[data-close-legend]')?.addEventListener('click',()=>{legend.open=false;});
 const worldMenu=document.querySelector<HTMLDetailsElement>('.world-menu');
@@ -794,8 +797,11 @@ if(location.pathname==='/labs/world'){
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);
   const thought=document.createElement('button');thought.textContent='Offer nearest NPC thought';thought.onclick=()=>{
     const actor=[...npcs].sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)-Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y))[0];
-    const profile=actor?.agentId?profiles.find(value=>value.id===actor.agentId):undefined;
-    if(actor&&profile){const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(profile.id,preview);labPinnedAgents.set(profile.id,performance.now()+25000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+24000,synthetic:speech.synthetic};}
+    if(!actor?.agentId)return;
+    // Profiles load asynchronously. Keep the lab control usable immediately by
+    // falling back to the actor identity until the canonical profile arrives.
+    const profile=profiles.find(value=>value.id===actor.agentId)??{name:actor.name,strategy:'analyst'};
+    const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(actor.agentId,preview);labPinnedAgents.set(actor.agentId,performance.now()+60000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+60000,synthetic:speech.synthetic};
   };lab.append(thought);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
