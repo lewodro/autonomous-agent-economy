@@ -397,7 +397,7 @@ async function showAccount():Promise<void>{
 function walletSection(payoutsEnabled:boolean):void{
   const account=farmSnapshot?.account;if(!account)return;
   text('h3','SOLANA WALLET');
-  text('p',`Internal credits are not SOL or wallet funds. Wallet linking proves control of a public address for a future, separately enabled payout program.`);
+  text('p','Credits are not SOL or wallet funds. Wallet linking proves control of a public address for a future, separately enabled payout program.');
   const status=text('p',account.wallet.status==='verified'&&account.wallet.address?`${account.wallet.address.slice(0,7)}…${account.wallet.address.slice(-5)} · VERIFIED`:'No verified wallet. Never enter a seed phrase or private key.');
   if(!account.signed_in){text('p','Sign in before linking a wallet.');return;}
   const connect=document.createElement('button');connect.type='button';connect.className='primary';connect.textContent=account.wallet.address?'Verify another wallet':'Connect and verify wallet';content.append(connect);
