@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#142620">
+  <title>Last Seat Treasury</title>
+  <link rel="stylesheet" href="/world/styles.css">
+</head>
+<body class="treasury-page">
+  <main class="treasury-shell">
+    <header class="treasury-header">
+      <p class="eyebrow">PUBLIC HOUSE · READ ONLY</p>
+      <h1>LAST SEAT TREASURY</h1>
+      <p>Real asset accounting is separate from in-game credits. This page never estimates or invents balances.</p>
+      <a class="world-link" href="/world">← Return to world</a>
+    </header>
+    <p id="treasury-state" class="treasury-state">Reading the public ledger…</p>
+    <section id="treasury-metrics" class="treasury-metrics" aria-live="polite"></section>
+    <section class="treasury-panel">
+      <h2>NETWORK STATUS</h2>
+      <div id="treasury-network"></div>
+    </section>
+    <section class="treasury-panel">
+      <h2>RECENT TREASURY ACTIVITY</h2>
+      <ol id="treasury-events" class="treasury-events"></ol>
+    </section>
+    <section class="treasury-panel treasury-separation">
+      <h2>INTERNAL CREDITS</h2>
+      <p>Credits are gameplay units. They are not treasury assets, SOL, or an automatic treasury liability.</p>
+    </section>
+  </main>
+  <script type="module" src="/web/dist/world/treasury.js"></script>
+</body>
+</html>

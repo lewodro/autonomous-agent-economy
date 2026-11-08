@@ -40,3 +40,11 @@ test('experiment metadata persists owner, bounds creation and prunes expired com
     assert.deepEqual(deleted,[id]);assert.equal(restored.list(alice).length,0);
   }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('guest experiments attach to the signed-in owner without weakening IDOR checks',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'aae-experiment-adopt-'));const sessionStore={delete:async()=>{}};
+  const store=new ExperimentStore(dir,sessionStore,{maxMatches:3,retentionDays:30,exportMaxBytes:32_000_000});
+  const guest='11111111-1111-4111-8111-111111111111',id='33333333-3333-4333-8333-333333333333',account='clerk:user_123',other='clerk:user_other';
+  const replay={seed:42,match_id:'seat-'+'a'.repeat(64),config:{max_turns:2,agents:[{id:'a',name:'Alice'}]},final_state:{ended:false,turn:1,agents:[]},winner:null,events:[],statistics:[]};
+  try{await store.create(id,guest,replay,1000);assert.deepEqual(await store.adopt(guest,account),{merged:1});assert.equal(store.list(guest).length,0);assert.equal(store.list(account).length,1);assert.throws(()=>store.get(id,other),{status:404});const restored=new ExperimentStore(dir,sessionStore,{maxMatches:3,retentionDays:30,exportMaxBytes:32_000_000});await restored.restore(2000);assert.equal(restored.list(account).length,1);}finally{await rm(dir,{recursive:true,force:true});}
+});

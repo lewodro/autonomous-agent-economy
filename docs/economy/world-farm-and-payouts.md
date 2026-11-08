@@ -100,7 +100,7 @@ are written to the shared `world_state` document, so reopening the site on the s
 browser resumes the same farmer even after a server restart. Clearing cookies starts a
 new temporary account. The HUD labels this state **TEMP ACCOUNT**.
 
-Clerk was chosen because it gives Google/GitHub/Apple/X sign-in with a hosted UI and a
+Clerk was chosen because it gives Google/Discord/GitHub/Email sign-in with a hosted UI and a
 single publishable key. The integration is deliberately optional:
 
 * Without `CLERK_PUBLISHABLE_KEY`, the temporary account still works. No third-party
@@ -118,21 +118,26 @@ single publishable key. The integration is deliberately optional:
   dependency.
 
 Temporary-account progress is merged into the account the first time a visitor signs
-in: credits, XP, play time, inventory, statistics and owned plots all move to
-`clerk:<subject>`. The API exposes `account.temporary` so the browser can label the
-account without guessing from the auth configuration.
+in: credits, XP, play time, inventory, statistics, owned plots, gathered-resource
+receipts and private experiments all move to `clerk:<subject>`. A durable internal
+`usr_...` ID remains the ownership identity. Merge receipts make OAuth refresh/retry
+idempotent. The API exposes `account.temporary` so the browser can label the account
+without guessing from the auth configuration.
 
 ### Setting up Clerk
 
 1. Create an application at <https://dashboard.clerk.com>.
-2. Enable the social providers you want (Google, GitHub, Apple, X).
+2. Enable the social providers you want (Google first; Discord, GitHub and Email later).
 3. Add your production URL (`https://lastseat.ing`) and, for local testing,
    `http://localhost:3000` under **Domains / Allowed origins**.
 4. Copy the **Publishable key** (`pk_test_…` or `pk_live_…`).
 5. Add it to the Render service as `CLERK_PUBLISHABLE_KEY`.
 
-No secret key is needed. If you later add webhooks or the Clerk Backend SDK, add the
-secret as a separate Render secret and never send it to the browser.
+This application verifies Clerk JWTs through public JWKS, so it does not currently read
+the Clerk secret key. If you later add webhooks or the Clerk Backend API, add that secret
+only to Render and never send it to the browser. Production Google requires custom OAuth
+credentials; follow `docs/google-auth-production.md` rather than using development
+shared credentials.
 
 ## Database on Render
 
@@ -201,21 +206,20 @@ Notes:
 
 ## Payouts and safety
 
-This pass implements a **ledger**, not a signing service.
+This pass implements **accounting and request boundaries**, not a signing service.
 
 * Play time earns `WORLD_CREDITS_PER_MINUTE` credits (default `1`/minute). Credits from
   play time are tracked separately as `time_credits`.
 * Selling produce earns credits immediately at the bazaar.
-* A signed-in account with a linked public wallet can request a payout at or above
-  `WORLD_MIN_WITHDRAWAL_CREDITS` (default `50`). Requesting deducts credits and creates
-  a `queued` payout row with the wallet address, credit amount, optional lamport value,
-  timestamp and note.
+* A public wallet is linked only after a five-minute, domain/account/address-bound
+  challenge is signed and verified. Multiple wallet links are supported; one may be
+  primary. A verified address cannot be claimed by a second account.
 * `WORLD_LAMPORTS_PER_CREDIT` is bookkeeping only in this release. With the default `0`,
   payout rows record `amount_lamports: 0` and the note says no SOL rate is configured.
-* `WORLD_SOL_PAYOUTS_ENABLED` stays `0` and the existing `WorldEconomy` treasury flow is
-  unchanged. Nothing in this feature signs a transaction, holds a keypair, or sends SOL.
-* Wallet addresses are public identifiers and are stored as self-declared. No seed
-  phrase, private key or signature is accepted anywhere in the flow.
+* `WORLD_SOL_PAYOUTS_ENABLED` stays `0`. Payout requests fail closed while it is off.
+  Nothing in this feature signs a transaction, holds a keypair, or sends SOL.
+* The wallet signs only the displayed ownership challenge. No seed phrase or private
+  key is requested or accepted.
 
 Processing the queue is a separate, reviewed operation: a treasury signer reads queued
 rows, marks them `sent` with a transaction signature, or `rejected` with a reason. Do not
@@ -227,6 +231,9 @@ enable live transfers by flipping a flag; build and audit that signer first.
 |---|---|---|
 | `DATABASE_URL` | unset | Enables Postgres storage. Unset = JSON file under `MATCHES_DIR`. |
 | `CLERK_PUBLISHABLE_KEY` | unset | Enables the sign-in button and Clerk token verification. |
+| `WORLD_PUBLIC_DOMAIN` | production uses `lastseat.ing` | Domain included in wallet challenges. |
+| `WORLD_TREASURY_ADDRESS` | unset | Optional public address; never a signer secret. |
+| `SOLANA_NETWORK` | unset | Public treasury network context. |
 | `WORLD_CREDITS_PER_MINUTE` | `1` | Play-time credits per minute (0–60). |
 | `WORLD_MIN_WITHDRAWAL_CREDITS` | `50` | Minimum payout request. |
 | `WORLD_LAMPORTS_PER_CREDIT` | `0` | Bookkeeping conversion; `0` keeps payouts ledger-only. |

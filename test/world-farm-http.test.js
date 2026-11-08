@@ -32,6 +32,8 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     assert.equal((await fetch(base + '/web/dist/world/farm.js')).status, 200);
     const auth = await (await fetch(base + '/api/world/auth')).json();
     assert.deepEqual(auth, { provider: 'clerk', configured: false, publishable_key: null });
+    const treasuryPage=await fetch(base+'/treasury');assert.equal(treasuryPage.status,200);assert.match(await treasuryPage.text(),/LAST SEAT TREASURY/);
+    const treasury=await (await fetch(base+'/api/treasury/public')).json();assert.equal(treasury.status,'not_funded');assert.equal(treasury.payouts_enabled,false);assert.equal(treasury.public_address,null);assert.equal(treasury.reserves,null);assert.equal('private_key' in treasury,false);
 
     const snapshotResponse = await fetch(base + '/api/world/farm');
     const cookie = snapshotResponse.headers.get('set-cookie')?.split(';')[0];
@@ -75,10 +77,8 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     assert.deepEqual(savedProfile.body.account.profile.position, { x: 560, y: 480 });
     assert.equal((await post('profile', { avatar: 'visitor_debug' })).status, 400);
 
-    const wallet = await post('wallet', { wallet_address: '11111111111111111111111111111111' });
-    assert.equal(wallet.status, 200);
-    assert.equal(wallet.body.account.wallet.status, 'self_declared');
-    assert.equal((await post('wallet', { wallet_address: 'not a wallet' })).status, 400);
+    const wallet = await post('wallet-challenge', { wallet_address: '11111111111111111111111111111111' });
+    assert.equal(wallet.status, 403, 'guest wallet claims are never accepted');
     assert.equal((await post('payout', { amount_credits: 500 })).status, 403, 'guests cannot request payouts');
 
     assert.equal((await post('plant', { tile_id: 'plot_missing', crop: 'wheat' })).status, 404);
@@ -89,6 +89,7 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     assert.equal(health.world_farm.storage, 'json');
     assert.equal(health.world_farm.tiles, FARM_SCARCITY.startingTiles);
     assert.equal(health.world_farm.payouts_enabled, false);
+    assert.equal(health.treasury.payouts_enabled,false);
   } finally {
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
     await rm(directory, { recursive: true, force: true });

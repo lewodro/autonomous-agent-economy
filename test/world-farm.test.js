@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { generateKeyPairSync, sign as signMessage } from 'node:crypto';
 import { WorldFarm, FARM_ANCHORS, FARM_SCARCITY, BAZAAR, CROPS, PLANT_RADIUS } from '../service/world-farm.js';
 import { WorldStore } from '../service/world-store.js';
 import { collides, isNaturalGround, MAP } from '../web/dist/world/map.js';
 
 const guest = { key: 'guest:visitor-a', provider: 'guest' };
 const wallet = '11111111111111111111111111111111';
+const BASE58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58(bytes){let value=0n;for(const byte of bytes)value=value*256n+BigInt(byte);let output='';while(value>0n){output=BASE58[Number(value%58n)]+output;value/=58n;}for(const byte of bytes){if(byte===0)output=`1${output}`;else break;}return output||'1';}
 
 async function setup(options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'world-farm-'));
@@ -274,21 +277,43 @@ test('play time accrues credits at a capped server rate', async () => {
   } finally { await close(); }
 });
 
-test('payout requests need a signed-in account, linked wallet, minimum balance and stay queued', async () => {
+test('payout requests fail closed while real payouts are disabled', async () => {
   const { farm, close } = await setup({ lamportsPerCredit: 1_000, minWithdrawalCredits: 5 });
   const member = { key: 'clerk:user_pay', provider: 'clerk', subject: 'user_pay', name: 'Miro' };
   try {
     await assert.rejects(() => farm.requestPayout(guest, { amount_credits: 10 }), { code: 'SIGN_IN_REQUIRED' });
-    await farm.linkWallet(member, { wallet_address: wallet });
-    await assert.rejects(() => farm.requestPayout(member, { amount_credits: 10 }), { code: 'INSUFFICIENT_CREDITS' });
-    for (let index = 0; index < 40; index += 1) await farm.heartbeat(member, { seconds: 30 });
-    const result = await farm.requestPayout(member, { amount_credits: 5 });
-    assert.equal(result.payout.status, 'queued');
-    assert.equal(result.payout.amount_lamports, 5_000);
-    assert.equal(result.account.credits, 15);
-    assert.equal(result.account.wallet.status, 'self_declared');
-    assert.equal('private_key' in result.account.wallet, false);
+    await assert.rejects(() => farm.requestPayout(member, { amount_credits: 10 }), { code: 'PAYOUTS_DISABLED' });
   } finally { await close(); }
+});
+
+test('wallet ownership challenges are account-bound, expiring and single use', async () => {
+  const {farm,advance,close}=await setup();
+  const member={key:'clerk:user_wallet',provider:'clerk',subject:'user_wallet',name:'Miro'};
+  const other={key:'clerk:user_other',provider:'clerk',subject:'user_other',name:'Other'};
+  const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+  const address=base58(Buffer.from(publicKey.export({format:'jwk'}).x,'base64url'));
+  try{
+    await assert.rejects(()=>farm.createWalletChallenge(guest,{wallet_address:address,domain:'lastseat.ing'}),{code:'SIGN_IN_REQUIRED'});
+    const {challenge}=await farm.createWalletChallenge(member,{wallet_address:address,domain:'lastseat.ing'});
+    const signature=base58(signMessage(null,Buffer.from(challenge.message),privateKey));
+    await assert.rejects(()=>farm.verifyWalletChallenge(other,{challenge_id:challenge.id,wallet_address:address,signature},'lastseat.ing'),{code:'CHALLENGE_NOT_FOUND'});
+    await assert.rejects(()=>farm.verifyWalletChallenge(member,{challenge_id:challenge.id,wallet_address:address,signature},'evil.example'),{code:'CHALLENGE_DOMAIN_MISMATCH'});
+    await assert.rejects(()=>farm.verifyWalletChallenge(member,{challenge_id:challenge.id,wallet_address:address,signature:base58(Buffer.alloc(64,7))},'lastseat.ing'),{code:'INVALID_SIGNATURE'});
+    const verified=await farm.verifyWalletChallenge(member,{challenge_id:challenge.id,wallet_address:address,signature},'lastseat.ing');
+    assert.equal(verified.account.wallet.status,'verified');
+    assert.equal(verified.account.wallet.links.length,1);
+    assert.equal(verified.account.wallet.links[0].primary,true);
+    await assert.rejects(()=>farm.verifyWalletChallenge(member,{challenge_id:challenge.id,wallet_address:address,signature},'lastseat.ing'),{code:'CHALLENGE_USED'});
+    const expiring=await farm.createWalletChallenge(member,{wallet_address:address,domain:'lastseat.ing'});advance(5*60_000+1);
+    await assert.rejects(()=>farm.verifyWalletChallenge(member,{challenge_id:expiring.challenge.id,wallet_address:address,signature:base58(signMessage(null,Buffer.from(expiring.challenge.message),privateKey))},'lastseat.ing'),{code:'CHALLENGE_EXPIRED'});
+    const duplicate=await farm.createWalletChallenge(other,{wallet_address:address,domain:'lastseat.ing'});const duplicateSignature=base58(signMessage(null,Buffer.from(duplicate.challenge.message),privateKey));
+    await assert.rejects(()=>farm.verifyWalletChallenge(other,{challenge_id:duplicate.challenge.id,wallet_address:address,signature:duplicateSignature},'lastseat.ing'),{code:'WALLET_ALREADY_LINKED'});
+  }finally{await close();}
+});
+
+test('guest adoption is idempotent and preserves one stable internal user', async()=>{
+  const {farm,close}=await setup();const member={key:'clerk:user_merge',provider:'clerk',subject:'user_merge',name:'Miro'};
+  try{farm.account(guest).credits=7;const first=await farm.adopt(guest.key,member);const userId=first.account.user_id;const retry=await farm.adopt(guest.key,member);assert.equal(retry.already_merged,true);assert.equal(retry.account.credits,7);assert.equal(retry.account.user_id,userId);assert.equal(farm.state.merge_receipts.length,1);}finally{await close();}
 });
 
 test('signing in merges guest progress, plots and inventory', async () => {
