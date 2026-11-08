@@ -27,6 +27,10 @@ successful Clerk authentication, farm state, resource receipts and private exper
 are adopted into the account. Merge receipts make retries idempotent. Movement frames
 are never written as durable ownership data.
 
+Clerk JWT verification checks RS256 signature, issuer, expiry/not-before and the `azp`
+authorized-party claim against `PUBLIC_ORIGIN` in production, following Clerk's manual
+verification guidance: <https://clerk.com/docs/guides/sessions/manual-jwt-verification>.
+
 ## Wallet verification
 
 Wallets are children of the Last Seat user, not user accounts themselves. The browser

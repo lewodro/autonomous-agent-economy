@@ -56,6 +56,12 @@ test('tokens with the wrong issuer, expiry or signature are rejected', async () 
   await assert.rejects(() => verifier({ publishableKey: null }).verify(token()), /not configured/);
 });
 
+test('Clerk authorized-party claims are restricted to configured origins',async()=>{
+  const check=verifier({authorizedParties:['https://lastseat.ing']});
+  assert.equal((await check.verify(token({azp:'https://lastseat.ing'}))).subject,'user_123');
+  await assert.rejects(()=>check.verify(token({azp:'https://evil.example'})),/authorized party/);
+});
+
 test('signed account cookies round-trip and reject tampering', () => {
   const stamp = 1_700_000_000_000;
   const cookie = accountCookie('clerk:user_123', env, stamp);

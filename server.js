@@ -88,7 +88,7 @@ const treasury=new TreasuryLedger(treasuryStore,{
   network:process.env.SOLANA_NETWORK||null,
   payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
 });
-const clerk=createClerkVerifier({publishableKey:process.env.CLERK_PUBLISHABLE_KEY||null});
+const clerk=createClerkVerifier({publishableKey:process.env.CLERK_PUBLISHABLE_KEY||null,authorizedParties:publicOrigins});
 const worldFarm=new WorldFarm(worldStore,{
   creditsPerMinute:Number(process.env.WORLD_CREDITS_PER_MINUTE||1),
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
