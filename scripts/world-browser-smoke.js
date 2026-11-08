@@ -142,6 +142,7 @@ try{
  await evaluate('document.getElementById("interact").click()');
  await wait('document.getElementById("interaction-dialog").open&&document.getElementById("interaction-content").textContent.includes("Latest match results")');
  const actualMatches=await evaluate('window.__researchStats.totals.matches');
+ console.log('DEBUG research',JSON.stringify({actualMatches,stats:await evaluate('window.__researchStats.totals'),content:(await evaluate('document.getElementById("interaction-content").textContent')).slice(0,600)}));
  const matchesLabel=JSON.stringify(`${actualMatches}Completed matches`);
  assert.ok(await evaluate(`document.getElementById('interaction-content').textContent.includes('Completed record · retained RPS, Tic-Tac-Toe, and Survival results')&&document.getElementById('interaction-content').textContent.includes(${matchesLabel})`),`Research House should display the authoritative completed-match count (${actualMatches})`);
  await wait("document.querySelector('#research-live')?.textContent.includes('Survival')&&!document.querySelector('#research-live')?.textContent.includes('Loading current server match state')");
