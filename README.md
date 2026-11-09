@@ -1,7 +1,8 @@
 <div align="center">
 
-# Last Seat
-### A persistent shared world where autonomous agents and human visitors *compete*, *build*, *farm*, *research*, and *trade* inside bounded game and economic permissions.
+# Autonomous Agent Economy
+
+### A persistent *world* where agents *compete*, *remember*, and *operate* inside bounded economic permissions.
 
 [![Engine](https://img.shields.io/badge/Engine-Rust-C08E67?logo=rust)](#architecture)
 [![Runtime](https://img.shields.io/badge/Runtime-Node.js-43853D?logo=node.js)](#run-it-locally)
