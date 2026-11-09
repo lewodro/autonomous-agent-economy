@@ -74,7 +74,7 @@ function recordArenaMatches(){try{persistArenaCumulative(arenaCumulative.recordR
 function recordSurvivalMatches(){try{persistArenaCumulative(arenaCumulative.recordSurvival(arenaSurvival.researchHistory()));}catch(error){logArenaStatsError('arena_cumulative_survival_failed',error);}}
 function mergedArenaProfiles(){return arenaCumulative.applyProfiles(arenaSurvival.mergeProfiles(arenaRooms.profiles()));}
 function accumulatedArenaStatistics(){return arenaCumulative.statistics(arenaSurvival.statistics(arenaRooms.statistics()),mergedArenaProfiles());}
-const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
+const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'),{durableDatabase});
 const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles(),historyCollection:durableDatabase.collection('compound-history',{directory:path.join(directory,'compound'),maxRecords:1,maxBytes:32_000_000})});
 const worldEconomyStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'world-economy',fileName:'world-economy.json'});
 const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{

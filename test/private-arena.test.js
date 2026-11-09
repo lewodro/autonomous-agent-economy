@@ -5,9 +5,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { Core } from '../service/core.js';
 import { PrivateArenaManager } from '../service/private-arena.js';
+import { DurableStateDatabase } from '../service/durable-state.js';
 
 const ownerA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ownerB='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+class MemoryPool {
+  constructor(){this.rows=new Map();}
+  async query(sql,params=[]){
+    if(sql.startsWith('create table'))return{rows:[]};
+    const key=params.length>=2?`${params[0]}:${params[1]}`:null;
+    if(sql.startsWith('select state'))return{rows:this.rows.has(key)?[{state:structuredClone(this.rows.get(key))}]:[]};
+    if(sql.startsWith('insert into')){if(sql.includes('do nothing')&&this.rows.has(key))return{rows:[]};this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
+    if(sql.startsWith('delete from')){this.rows.delete(key);return{rows:[]};}
+    if(sql.startsWith('select record_id')){const prefix=`${params[0]}:`;return{rows:[...this.rows.entries()].filter(([id])=>id.startsWith(prefix)).sort().slice(0,params[1]).map(([id,state])=>({record_id:id.slice(prefix.length),state:structuredClone(state)}))};}
+    throw new Error(`Unexpected query: ${sql}`);
+  }
+}
 
 test('private arena instances are owner-isolated and start fresh autonomous modes', { timeout: 15000 }, async () => {
   const directory=await mkdtemp(path.join(os.tmpdir(),'private-arena-'));
@@ -33,4 +47,19 @@ test('private Survival loops across rounds with isolated sessions and a persiste
     const first=await manager.view(ownerA),second=await manager.view(ownerB);assert.ok(first.history.filter(value=>value.game==='survival').length>=2,'private Survival should start the next match after a result');assert.ok(second.history.some(value=>value.game==='survival'),'another owner should advance on an isolated Rust session');assert.equal(first.custom_agent.name,'Kizaru');assert.ok(first.history.filter(value=>value.game==='survival').some(value=>value.players.some(player=>player.name==='Kizaru')));
     await manager.stop(ownerA);const restored=await manager.start(ownerA);assert.equal(restored.custom_agent.name,'Kizaru');assert.equal(restored.started,true);
   }finally{await manager.close();core.stop();await rm(directory,{recursive:true,force:true});}
+});
+
+test('private arena ownership survives a clean scratch replacement through durable storage',{timeout:15000},async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'private-arena-durable-')),pool=new MemoryPool(),core=new Core();
+  try{
+    const firstDb=new DurableStateDatabase({directory:path.join(root,'db-a'),pool});await firstDb.open();
+    const first=new PrivateArenaManager(core,path.join(root,'scratch-a'),{durableDatabase:firstDb,maxInstances:4,maxActive:2});
+    await first.setAgent(ownerA,{name:'Durable Scout',sprite:'assets/agents/04-analyst.png',strategy:'balanced',mcp:{controller_type:'builtin',endpoint:null,capabilities:[]}});
+    await first.close();await firstDb.close();
+    const secondDb=new DurableStateDatabase({directory:path.join(root,'db-b'),pool});await secondDb.open();
+    const second=new PrivateArenaManager(core,path.join(root,'scratch-b'),{durableDatabase:secondDb,maxInstances:4,maxActive:2});
+    assert.equal((await second.view(ownerA)).custom_agent.name,'Durable Scout');
+    assert.equal((await second.view(ownerB)).custom_agent,null,'another owner cannot read the durable private agent');
+    await second.close();await secondDb.close();
+  }finally{core.stop();await rm(root,{recursive:true,force:true});}
 });
