@@ -1,6 +1,6 @@
 # Security policy
 
-This is an unreleased local prototype. Security fixes target the current main branch;
+Released branch - /release. Security fixes target the current main branch;
 there are no supported release/LTS lines or published support SLA. Mainnet
 competition is disabled. Backend custody and local-validator payments are test-only;
 real-value competition is not production-ready.
