@@ -70,7 +70,7 @@ confirmation/reconciliation and an external signer boundary.
 | Auth | `HOST_SESSION_SECRET` | production | signs visitor/account cookies |
 | Auth | `PUBLIC_ORIGIN` | production | request-origin allowlist |
 | Auth | `WORLD_PUBLIC_DOMAIN` | production | binds wallet challenges to `lastseat.ing` |
-| Database | `DATABASE_URL` | durable deployment | Postgres `world_state` storage |
+| Database | `DATABASE_URL` | durable deployment | Postgres `world_state` and `durable_state` storage |
 | Treasury | `WORLD_TREASURY_ADDRESS` | no | public address only; never a signer key |
 | Solana | `SOLANA_NETWORK` | no | `devnet`, `testnet`, or `mainnet-beta` display context |
 | Feature flag | `WORLD_SOL_PAYOUTS_ENABLED` | yes | keep `0`; executor remains disabled |

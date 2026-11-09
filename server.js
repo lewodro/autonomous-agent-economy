@@ -33,6 +33,7 @@ import { CompoundGame } from './service/compound-game.js';
 import { WorldEconomy } from './service/world-economy.js';
 import { WorldFarm } from './service/world-farm.js';
 import { WorldStore } from './service/world-store.js';
+import { DurableStateDatabase } from './service/durable-state.js';
 import { createClerkVerifier, accountCookie, clearAccountCookie, accountSession } from './service/world-identity.js';
 import { TreasuryLedger } from './service/treasury.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
@@ -43,10 +44,12 @@ const { production, publicDevnet, publicOrigins, publicModelInferenceEnabled } =
 const walletVerificationDomain=process.env.WORLD_PUBLIC_DOMAIN||(production?'lastseat.ing':null);
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
-const productionStorage = await ensureProductionStorage(directory, { production });
-const replayArchive=new ReplayArchive(directory);
-const core = new Core(), runtime = new MatchRuntime(new SessionStore(path.join(directory,'sessions'))), sessions = new Map();
-const experiments=new ExperimentStore(path.join(directory,'experiments'),runtime.store,experimentLimits());
+const productionStorage = await ensureProductionStorage(directory, { production, databaseUrl:process.env.DATABASE_URL||null });
+const durableDatabase=new DurableStateDatabase({directory:path.join(directory,'durable'),databaseUrl:process.env.DATABASE_URL||null});
+const replayArchive=new ReplayArchive(directory,{collection:durableDatabase.collection('replays',{directory,maxRecords:1000,maxBytes:32_000_000,legacyIdPattern:/^seat-[a-f0-9]{64}$/})});
+const sessionStore=new SessionStore(path.join(directory,'sessions'),{collection:durableDatabase.collection('experiment-sessions',{directory:path.join(directory,'sessions'),maxRecords:100,maxBytes:32_000_000,legacyIdPattern:/^[a-f0-9-]{36}$/})});
+const core = new Core(), runtime = new MatchRuntime(sessionStore), sessions = new Map();
+const experiments=new ExperimentStore(path.join(directory,'experiments'),runtime.store,experimentLimits(),{collection:durableDatabase.collection('experiments',{directory:path.join(directory,'experiments'),maxRecords:100,maxBytes:64*1024,legacyIdPattern:/^[a-f0-9-]{36}$/})});
 const payments=new MachinePayments();
 const liveEvents=new MatchEventStream();
 const funded=new FundedRuntime(core,runtime,liveEvents,sessions);
@@ -63,16 +66,16 @@ const compoundInputs=new SlidingWindowLimiter({limit:12_000,windowMs:60_000});
 const worldEconomyCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const arenaCumulativeStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'arena-stats',fileName:'arena-stats.json'});
 const arenaCumulative=new ArenaCumulativeStats(arenaCumulativeStore);
-const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'),{onMatch:()=>recordArenaMatches()});
-const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles(),onMatch:()=>recordSurvivalMatches()});
+const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'),{onMatch:()=>recordArenaMatches(),collection:durableDatabase.collection('arena-rooms',{directory:path.join(directory,'arena'),maxRecords:4,maxBytes:32_000_000})});
+const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles(),onMatch:()=>recordSurvivalMatches(),checkpointTicks:30,collection:durableDatabase.collection('arena-survival',{directory:path.join(directory,'arena'),maxRecords:1,maxBytes:16_000_000})});
 function logArenaStatsError(event,error){console.error(JSON.stringify({event,errorType:error instanceof Error?error.name:'UnknownError'}));}
 function persistArenaCumulative(recorded){if(!recorded)return;void arenaCumulative.persist().catch(error=>logArenaStatsError('arena_cumulative_save_failed',error));}
 function recordArenaMatches(){try{persistArenaCumulative(arenaCumulative.recordRooms(arenaRooms.runs()));}catch(error){logArenaStatsError('arena_cumulative_record_failed',error);}}
 function recordSurvivalMatches(){try{persistArenaCumulative(arenaCumulative.recordSurvival(arenaSurvival.researchHistory()));}catch(error){logArenaStatsError('arena_cumulative_survival_failed',error);}}
 function mergedArenaProfiles(){return arenaCumulative.applyProfiles(arenaSurvival.mergeProfiles(arenaRooms.profiles()));}
 function accumulatedArenaStatistics(){return arenaCumulative.statistics(arenaSurvival.statistics(arenaRooms.statistics()),mergedArenaProfiles());}
-const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
-const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles()});
+const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'),{durableDatabase});
+const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles(),historyCollection:durableDatabase.collection('compound-history',{directory:path.join(directory,'compound'),maxRecords:1,maxBytes:32_000_000})});
 const worldEconomyStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'world-economy',fileName:'world-economy.json'});
 const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
   treasuryAddress:process.env.WORLD_TREASURY_ADDRESS||null,
@@ -344,7 +347,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),treasury:treasury.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized,mode:productionStorage.mode||'file',persistent_disk_required:productionStorage.persistentDiskRequired!==false}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),treasury:treasury.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -479,6 +482,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 try{
+  await durableDatabase.open();
   await replayArchive.reconcile();
   await experiments.restore();
   await runtime.restore(core,sessions);
@@ -500,6 +504,7 @@ try{
   if(arenaCumulative.recordSurvival(arenaSurvival.researchHistory()))await arenaCumulative.persist();
   await worldTable.restore();
   await compoundGame.restore();
+  await compoundGame.restoreHistory();
   await worldEconomy.restore();
   worldFarm.start();funded.start();arenaRooms.start();arenaSurvival.start();compoundGame.start();
 }catch(error){console.error(`Session recovery failed: ${error.message}`);core.stop();process.exit(1);}
@@ -518,7 +523,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),worldFarm.close(),treasury.close(),funded.close()]).then(async()=>{await arenaCumulativeStore.close();return true;});
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),worldFarm.close(),treasury.close(),funded.close()]).then(async()=>{await arenaCumulativeStore.close();await durableDatabase.close();return true;});
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

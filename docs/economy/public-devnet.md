@@ -24,7 +24,7 @@ PUBLIC_DEVNET_ACK=I_UNDERSTAND_TEST_SOL_ONLY
 SOLANA_DEVNET_RPC_URL=https://your-dedicated-devnet-rpc.example
 ```
 
-Use a dedicated Devnet RPC from an operator you trust. The app checks the returned genesis hash against Solana Devnet before generating or moving funds. Keep `MATCHES_DIR` on a persistent volume: it contains the encrypted-at-rest responsibility of your hosting provider, but the current files themselves are raw development key seeds with owner-only filesystem permissions. Back up the volume securely. Do not copy it into Git or logs.
+Use a dedicated Devnet RPC from an operator you trust. The app checks the returned genesis hash against Solana Devnet before generating or moving funds. If operator-local Devnet journals are enabled, keep `ECONOMY_DIR` on encrypted persistent storage: its files can include raw development key seeds with owner-only filesystem permissions. Back it up securely. Do not copy it into Git or logs. This is separate from Postgres game history and is disabled in normal public production.
 
 After redeploy, `/api/capabilities` must report `funded_modes: ["devnet"]` and `/api/health` must report `payments: "devnet_test_sol"`. The New/Remix dialog then offers **Solana Devnet · public test SOL**. Create a match, open each agent's Solscan link, send the exact entry amount, fund the fee sponsor with enough test SOL for entries/refunds/payout, and use each **Verify** button. Public spectators can see addresses and transaction links; only the signed host browser can change funding or settlement.
 

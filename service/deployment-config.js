@@ -41,7 +41,7 @@ export function validateDeploymentConfig(env = process.env) {
   if (publicPredictions) throw new Error('Public prediction routes and payment integration are not implemented; leave PREDICTIONS_ENABLED disabled.');
   if (production) {
     if (!publicOrigin || !publicOrigin.startsWith('https://')) throw new Error('Set PUBLIC_ORIGIN to the canonical HTTPS origin before production startup.');
-    if (!env.MATCHES_DIR || !path.isAbsolute(env.MATCHES_DIR)) throw new Error('Set MATCHES_DIR to an absolute path on persistent mounted storage.');
+    if (!env.MATCHES_DIR || !path.isAbsolute(env.MATCHES_DIR)) throw new Error('Set MATCHES_DIR to an absolute path for writable scratch data. Postgres-backed production does not require a persistent disk.');
     if (!env.HOST_SESSION_SECRET || env.HOST_SESSION_SECRET.length < 32) throw new Error('Set HOST_SESSION_SECRET to at least 32 random characters and keep it stable across redeploys.');
     if (env.ECONOMY_LAB === '1' || env.MACHINE_PAYMENTS_DEMO === '1') throw new Error('Economy labs and machine payment demos are disabled in public production.');
     if (env.ENTRY_FEE_ENABLED === 'true' && !publicDevnet) throw new Error('Paid entry production supports explicit DEVNET test SOL mode only.');

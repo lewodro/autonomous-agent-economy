@@ -3,13 +3,15 @@
 On a browser's first private-experiment request, the server issues a cryptographically
 random anonymous session in a signed HTTP-only cookie. Creating an experiment assigns
 a separate random experiment ID and seed, binds the metadata to that session, and
-stores its replay/checkpoint under the persistent `MATCHES_DIR`. The browser can list
+stores its replay/checkpoint in Postgres when `DATABASE_URL` is configured (or below
+`MATCHES_DIR` for local file mode). The browser can list
 and resume its experiments on later visits. Restart and replay retain the seed; New /
 Remix creates another owned experiment. No account is required.
 
-This is browser-local anonymous ownership, not a cross-device user account. A
-visitor using another browser, losing the signed cookie, or clearing site data receives
-a new anonymous identity. The canonical `/world`, Survival, RPS/Tic-Tac-Toe rooms,
+An anonymous experiment initially belongs to that signed visitor. After Clerk sign-in,
+the idempotent guest-to-account merge attaches it to the stable Last Seat account; a
+retry cannot copy it twice. Without sign-in, clearing the cookie still creates a new
+anonymous identity. The canonical `/world`, Survival, RPS/Tic-Tac-Toe rooms,
 public profiles, statistics, and Research House remain shared. Private Last Seat runs
 stay outside those public statistics and cannot resolve a public prediction. Existing
 public archive links remain separately addressable and read-only.

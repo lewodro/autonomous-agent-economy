@@ -42,8 +42,10 @@ standalone Node test files that import web/dist require npm run build first.
 | npm vulnerability audit | `npm audit --audit-level=low` |
 | Rust vulnerability audit | `cargo audit --file rust/Cargo.lock` (install cargo-audit separately) |
 
-Use MATCHES_DIR for session/archive storage and ECONOMY_DIR for funded journals,
-keys and validator pin. PORT changes the app port; GAME_URL must match in browser
+With `DATABASE_URL`, use `MATCHES_DIR` only for replaceable active-state scratch and
+legacy import discovery. Without Postgres it remains the authoritative JSON store and
+must use a persistent disk. `ECONOMY_DIR` is separate operator-local storage for funded
+journals, keys and validator pin. PORT changes the app port; GAME_URL must match in browser
 checks. FUNDED_AUTO_RUN=0 disables scheduling for manual tests. ECONOMY_LAB=1
 exposes test operator labs, not public hosting. MODEL_BASE_URL / MODEL_API_KEY_ENV
 approve model destinations; never put the actual credential into profiles.

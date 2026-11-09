@@ -75,7 +75,13 @@ The short activity feed is bounded independently from the evidence ledger. Evide
 
 The server owns roles, positions, collision, doors, containers, inventory, jobs, stats, Heat, Health, Stamina, security, combat, escape progress, routine timing, winners, results, and evidence. Humans send sequenced held-input state through `/api/compound/input`; stale input expires so a disconnected browser cannot keep walking. A new browser stream can safely restart its sequence. Built-in agents enter the same movement and rule simulation. Clients render frequent snapshots and interpolate sprites; they do not settle outcomes. The legacy public tile-step route is no longer exposed.
 
-State persists at `MATCHES_DIR/compound/compound.json`. Version 1 and 2 prototype files migrate to a fresh version 3 live state while retaining bounded historical results and agent memories. Completed results survive restart. Per-frame animation and movement frames are not written as history. A fresh production data volume starts with an empty Compound lobby and no visitor participants.
+Completed results and evidence-backed agent memories persist in the Postgres
+`durable_state/compound-history` record. The active round may use
+`MATCHES_DIR/compound/compound.json` as a local scratch checkpoint, but positions,
+held input and movement ticks are not production history. After a clean deploy the
+lobby starts without ghost participants while completed results still resolve. Legacy
+version 1–3 files are imported into the durable history only when no database record
+already exists.
 
 ## Local run and tests
 
