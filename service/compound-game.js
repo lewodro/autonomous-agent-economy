@@ -94,8 +94,17 @@ export class CompoundGame{
     if(durable){
       if(durable.version!==1||!Array.isArray(durable.results)||!durable.agentMemories||typeof durable.agentMemories!=='object')throw new Error('Invalid Compound completed history');
       this.state.round=Math.max(this.state.round,Number(durable.round)||0);
-      this.state.results=durable.results.slice(-30);
-      this.state.agentMemories=durable.agentMemories;
+      const results=new Map(durable.results.map(result=>[result.session_id,result]));
+      for(const result of this.state.results)if(result?.session_id&&!results.has(result.session_id))results.set(result.session_id,result);
+      this.state.results=[...results.values()].sort((a,b)=>String(a.completed_at||'').localeCompare(String(b.completed_at||''))).slice(-30);
+      const agents=new Set([...Object.keys(durable.agentMemories),...Object.keys(this.state.agentMemories)]),memories={};
+      for(const agentId of agents){
+        const values=[...(durable.agentMemories[agentId]||[]),...(this.state.agentMemories[agentId]||[])],seen=new Set();
+        memories[agentId]=values.filter(memory=>{const key=`${memory.session_id}:${memory.lesson_type}:${(memory.evidence_event_ids||[]).join(',')}`;if(seen.has(key))return false;seen.add(key);return true;}).slice(-12);
+      }
+      this.state.agentMemories=memories;
+      const reconciled=this.completedHistory();
+      if(JSON.stringify(reconciled.results)!==JSON.stringify(durable.results)||JSON.stringify(reconciled.agentMemories)!==JSON.stringify(durable.agentMemories))await this.historyCollection.put('history',reconciled);
     }else if(this.state.results.length||Object.keys(this.state.agentMemories).length){
       await this.historyCollection.put('history',this.completedHistory());
     }

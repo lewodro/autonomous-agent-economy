@@ -59,6 +59,26 @@ test('Compound persists completed history but not high-frequency active state',a
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
+test('Compound reconciles a valid local completion missing from older durable history',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'durable-compound-reconcile-')),pool=new MemoryPool();let now=20_000;
+  try{
+    const database=new DurableStateDatabase({directory:path.join(root,'db'),pool});await database.open();
+    const collection=database.collection('compound-history',{directory:path.join(root,'scratch-a'),maxRecords:1});
+    const durableGame=new CompoundGame(path.join(root,'scratch-a'),{now:()=>now,roundSeconds:60,historyCollection:collection});
+    await durableGame.restore();await durableGame.restoreHistory();durableGame.startAgentRound();durableGame.finish('timer');await durableGame.historyTail;await durableGame.close();
+
+    now+=100_000;
+    const localGame=new CompoundGame(path.join(root,'scratch-b'),{now:()=>now,roundSeconds:60});
+    await localGame.restore();localGame.state.round=1;localGame.startAgentRound();localGame.finish('timer');await localGame.close();
+
+    const recovered=new CompoundGame(path.join(root,'scratch-b'),{now:()=>now,roundSeconds:60,historyCollection:database.collection('compound-history',{directory:path.join(root,'scratch-b'),maxRecords:1})});
+    await recovered.restore();await recovered.restoreHistory();
+    assert.deepEqual(recovered.state.results.map(result=>result.session_id),['compound-1','compound-2']);
+    assert.deepEqual((await recovered.historyCollection.get('history')).results.map(result=>result.session_id),['compound-1','compound-2']);
+    await recovered.close();await database.close();
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('private experiment owner metadata and checkpoint survive restart with IDOR isolation',async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'durable-private-')),pool=new MemoryPool(),id=randomUUID();
   const owner='clerk:user_a',other='clerk:user_b';
