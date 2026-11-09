@@ -47,3 +47,15 @@ test('development storage is never marked or rejected by the production guard', 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('Postgres production treats MATCHES_DIR as replaceable scratch space', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'aae-postgres-scratch-'));
+  try {
+    await writeFile(path.join(directory, 'legacy-session.json'), '{"legacy":true}\n');
+    const result = await ensureProductionStorage(directory, { production: true, databaseUrl: 'postgres://db.example/lastseat' });
+    assert.deepEqual(result, { initialized: false, marker: null, mode: 'postgres', persistentDiskRequired: false });
+    assert.deepEqual(await readdir(directory), ['legacy-session.json']);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

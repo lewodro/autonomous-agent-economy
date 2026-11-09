@@ -111,7 +111,7 @@ export class DurableStateCollection {
     id = this.id(id);
     const snapshot = structuredClone(state);
     const json = this.encode(snapshot);
-    this.database.queue = this.database.queue.then(async () => {
+    this.database.queue = this.database.queue.catch(() => {}).then(async () => {
       if (this.database.mode === 'postgres') {
         await this.database.pool.query(
           `insert into ${TABLE} (namespace, record_id, state, updated_at) values ($1, $2, $3::jsonb, now())

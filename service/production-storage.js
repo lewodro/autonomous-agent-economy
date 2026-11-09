@@ -36,18 +36,22 @@ async function readBootstrap(directory) {
  * silently become public data. The marker contains configuration only; it does
  * not seed matches, users, balances, receipts, or private logs.
  */
-export async function ensureProductionStorage(directory, { production = false } = {}) {
+export async function ensureProductionStorage(directory, { production = false, databaseUrl = null } = {}) {
   await mkdir(directory, { recursive: true });
   if (!production) return { initialized: false, marker: null };
+  // Postgres is the durable source of truth. MATCHES_DIR is only scratch space
+  // for active simulations and a read-only source for one-time legacy imports.
+  // A clean Render filesystem must therefore never be interpreted as a reset.
+  if (databaseUrl) return { initialized: false, marker: null, mode: 'postgres', persistentDiskRequired: false };
   const existing = await readBootstrap(directory);
-  if (existing) return { initialized: false, marker: existing };
+  if (existing) return { initialized: false, marker: existing, mode: 'file', persistentDiskRequired: true };
   const entries = await readdir(directory);
   if (entries.length > 0) {
     throw new Error(`Production storage is not a clean initialized volume: ${directory}. Point MATCHES_DIR at a new persistent volume; local runtime data was not modified.`);
   }
   const marker = bootstrapRecord();
   await writeFile(path.join(directory, BOOTSTRAP_FILE), `${JSON.stringify(marker, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-  return { initialized: true, marker };
+  return { initialized: true, marker, mode: 'file', persistentDiskRequired: true };
 }
 
 export function productionBootstrapSummary() {

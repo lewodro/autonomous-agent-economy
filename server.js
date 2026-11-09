@@ -44,7 +44,7 @@ const { production, publicDevnet, publicOrigins, publicModelInferenceEnabled } =
 const walletVerificationDomain=process.env.WORLD_PUBLIC_DOMAIN||(production?'lastseat.ing':null);
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
-const productionStorage = await ensureProductionStorage(directory, { production });
+const productionStorage = await ensureProductionStorage(directory, { production, databaseUrl:process.env.DATABASE_URL||null });
 const durableDatabase=new DurableStateDatabase({directory:path.join(directory,'durable'),databaseUrl:process.env.DATABASE_URL||null});
 const replayArchive=new ReplayArchive(directory,{collection:durableDatabase.collection('replays',{directory,maxRecords:1000,maxBytes:32_000_000,legacyIdPattern:/^seat-[a-f0-9]{64}$/})});
 const sessionStore=new SessionStore(path.join(directory,'sessions'),{collection:durableDatabase.collection('experiment-sessions',{directory:path.join(directory,'sessions'),maxRecords:100,maxBytes:32_000_000,legacyIdPattern:/^[a-f0-9-]{36}$/})});
@@ -347,7 +347,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),treasury:treasury.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized,mode:productionStorage.mode||'file',persistent_disk_required:productionStorage.persistentDiskRequired!==false}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),treasury:treasury.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
