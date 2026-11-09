@@ -306,9 +306,9 @@ Current baseline: **225 tests passing, 4 intentionally skipped**. The skipped ch
 
 ## Self-hosting and public deployment
 
-The initial production shape is one long-running Node/Rust service with a persistent volume. It supports the shared continuous Arena, SSE/presence connections, private experiments, and durable research without introducing a separate process per visitor.
+The initial production shape is one long-running Node/Rust service plus Postgres. It supports the shared continuous Arena, SSE/presence connections, private experiments, and durable research without introducing a separate process per visitor. `MATCHES_DIR` is replaceable scratch space when `DATABASE_URL` is configured; movement and presence remain intentionally ephemeral.
 
-For local launch, follow [docs/local-development.md](docs/local-development.md). The maintainer deployment and domain notes are intentionally kept outside the public Git index; public production hosts should use a new persistent volume, stable session secret, HTTPS origin, and the deployment verifier.
+For local launch, follow [docs/local-development.md](docs/local-development.md). Public production hosts should use Postgres, a stable session secret, an HTTPS origin, a writable scratch directory, and the deployment verifier. A persistent disk is needed only for file-only production or explicitly enabled operator-local journals.
 
 ## Security model
 

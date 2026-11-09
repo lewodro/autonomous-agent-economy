@@ -28,7 +28,7 @@ services:
       - key: MATCHES_DIR
         value: /data/matches
       - key: DEPLOYMENT_MODE
-        value: EPHEMERAL_DEMO
+        value: POSTGRES_DURABLE
       - key: HOST_SESSION_SECRET
         generateValue: true
       - key: ECONOMY_MODE

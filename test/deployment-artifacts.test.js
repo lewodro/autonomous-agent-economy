@@ -25,7 +25,7 @@ test('production image includes every runtime-owned browser and service director
   assert.match(dockerfile, /COPY scripts\/production-init\.js \.\/scripts\/production-init\.js/);
 });
 
-test('Render free demo uses Docker, readiness checks, and safe non-payment flags', async () => {
+test('Render deployment uses Postgres, readiness checks, and safe non-payment flags', async () => {
   const render = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
   assert.match(render, /runtime: docker/);
   assert.match(render, /plan: free/);
@@ -33,7 +33,8 @@ test('Render free demo uses Docker, readiness checks, and safe non-payment flags
   assert.match(render, /PUBLIC_ORIGIN\n\s+value: https:\/\/lastseat\.ing/);
   assert.match(render, /HOST_SESSION_SECRET\n\s+generateValue: true/);
   assert.match(render, /MATCHES_DIR\n\s+value: \/data\/matches/);
-  assert.match(render, /DEPLOYMENT_MODE\n\s+value: EPHEMERAL_DEMO/);
+  assert.match(render, /DEPLOYMENT_MODE\n\s+value: POSTGRES_DURABLE/);
+  assert.match(render, /DATABASE_URL\n\s+fromDatabase:/);
   assert.match(render, /WORLD_SOL_PAYOUTS_ENABLED\n\s+value: "0"/);
   assert.doesNotMatch(render, /^\s+disk:/m);
 });

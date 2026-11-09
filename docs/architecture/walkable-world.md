@@ -33,7 +33,15 @@ flowchart TD
 - `service/world-table.js` persists the one shared free table separately. It calls `src/tictactoe.js` for every legal move and final proof. It never changes the Rust game, agent research, or wallet ledgers.
 - Agent profile totals and observations start from retained, ledger-verified completed runs, then roll into a durable cumulative document stored through `WorldStore` (the `arena-stats` row in Postgres, or `MATCHES_DIR/world/arena-stats.json` locally). Research House reads the same `/api/arena/statistics` totals as the Arena service, including completed matches, decisions, draws, game breakdowns, and agent standings. Each recording pass is idempotent: room runs continue from a per-run match cursor, Survival matches are deduplicated by match ID, and startup seeds the document from retained checkpoints without double-counting. Retained room and Survival history remains bounded; the cumulative totals do not reset on deploy or checkpoint rotation.
 
-The room and table files are written atomically under `MATCHES_DIR/arena` and `MATCHES_DIR/world`. Startup verifies saved room ledgers before exposing them. If a verification fails, startup fails closed rather than publishing corrupt results. The room scheduler retries a failed step up to three times with backoff; structured failure logs include the room, attempt, error class, and safe error code without raw messages. A persistently failing room remains marked failed and requires operator investigation/restart. Run multiple server instances only with a storage and coordination design that supports their shared writes; the current JSON room pool is a single-process design.
+Arena room and Survival checkpoints use Postgres `durable_state` records when
+`DATABASE_URL` is configured and atomic JSON under `MATCHES_DIR/arena` locally. The
+world table remains ephemeral. Startup verifies saved room ledgers before exposing
+them. If verification fails, startup fails closed rather than publishing corrupt
+results. The room scheduler retries a failed step up to three times with backoff;
+structured failure logs include the room, attempt, error class, and safe error code
+without raw messages. A persistently failing room remains marked failed and requires
+operator investigation/restart. Postgres durability does not itself provide scheduler
+leadership; run one authoritative game service until coordination is added.
 
 The local browser character moves immediately and submits bounded position intents to the authoritative presence service; other visitors and canonical agents render as interpolated remote actors. Distinct signed cookies create distinct visitors, while refresh reclaims the same public presence ID and server position. Disconnect timeouts remove ghosts without persisting every movement frame. The world remains continuous when no humans are online because canonical services run independently. Compound reuses the anonymous owner and public presence ID for handoff, while private experiments remain owner-isolated. Presence is single-process and needs coordinated shared state before horizontal scaling.
 
