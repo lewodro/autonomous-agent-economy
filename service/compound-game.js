@@ -84,11 +84,31 @@ function objectiveFor(role){return({guard:'Keep the compound secure until lockdo
 function personalObjectiveFor(role){return({guard:'secure',smuggler:'smuggle',informant:'inform',medic:'help',worker:'make_money',trader:'trade',escape_planner:'escape',prisoner:'train'})[role]||'survive';}
 
 export class CompoundGame{
-  constructor(directory,{profiles=()=>[],capacity=Number(process.env.COMPOUND_TARGET_PARTICIPANTS||CAPACITY),roundSeconds=Number(process.env.COMPOUND_ROUND_SECONDS||900),minimumRoundSeconds=Number(process.env.COMPOUND_MINIMUM_ROUND_SECONDS||300),guardSeats=Number(process.env.COMPOUND_GUARD_SEATS||2),lobbySeconds=Number(process.env.COMPOUND_LOBBY_SECONDS||30),now=()=>Date.now()}={}){this.directory=directory;this.file=path.join(directory,'compound.json');this.capacity=Math.max(4,Math.min(12,Number(capacity)||CAPACITY));this.roundSeconds=Math.max(15,Math.min(1800,Number(roundSeconds)||900));this.minimumRoundMs=Math.max(0,Math.min(this.roundSeconds-1,Number(minimumRoundSeconds)||0))*1000;this.guardSeats=Math.max(1,Math.min(Math.max(1,this.capacity-1),Number(guardSeats)||2));this.lobbySeconds=Math.max(5,Math.min(600,Number(lobbySeconds)||30));this.now=now;this.state=emptyState(this.roundSeconds);this.state.phaseAt=this.now();this.persistTail=Promise.resolve();this.timer=null;this.profiles=profiles;this.lastSimulationAt=this.now();this.lastLogicAt=this.now();}
+  constructor(directory,{profiles=()=>[],capacity=Number(process.env.COMPOUND_TARGET_PARTICIPANTS||CAPACITY),roundSeconds=Number(process.env.COMPOUND_ROUND_SECONDS||900),minimumRoundSeconds=Number(process.env.COMPOUND_MINIMUM_ROUND_SECONDS||300),guardSeats=Number(process.env.COMPOUND_GUARD_SEATS||2),lobbySeconds=Number(process.env.COMPOUND_LOBBY_SECONDS||30),now=()=>Date.now(),historyCollection=null}={}){this.directory=directory;this.file=path.join(directory,'compound.json');this.capacity=Math.max(4,Math.min(12,Number(capacity)||CAPACITY));this.roundSeconds=Math.max(15,Math.min(1800,Number(roundSeconds)||900));this.minimumRoundMs=Math.max(0,Math.min(this.roundSeconds-1,Number(minimumRoundSeconds)||0))*1000;this.guardSeats=Math.max(1,Math.min(Math.max(1,this.capacity-1),Number(guardSeats)||2));this.lobbySeconds=Math.max(5,Math.min(600,Number(lobbySeconds)||30));this.now=now;this.state=emptyState(this.roundSeconds);this.state.phaseAt=this.now();this.persistTail=Promise.resolve();this.historyTail=Promise.resolve();this.timer=null;this.profiles=profiles;this.historyCollection=historyCollection;this.lastSimulationAt=this.now();this.lastLogicAt=this.now();}
   async restore(){await mkdir(this.directory,{recursive:true});try{const saved=JSON.parse(await readFile(this.file,'utf8'));if(saved?.version===3&&Array.isArray(saved.participants))this.state=saved;else if([1,2].includes(saved?.version)){this.state={...emptyState(this.roundSeconds),round:Number(saved.round)||0,results:Array.isArray(saved.results)?saved.results:[],agentMemories:saved.agentMemories||{}};}}catch(error){if(error.code!=='ENOENT')throw error;}const fallback=roundSetup(this.state.round||1);this.state.queue??=[];this.state.agentMemories??={};this.state.containers??=fallback.containers;this.state.roundSecrets??=fallback.roundSecrets;this.state.roundSecrets.codes??=fallback.roundSecrets.codes;this.state.roundSecrets.code_source??=fallback.roundSecrets.code_source;this.state.roundSecrets.scenario??=fallback.roundSecrets.scenario;this.state.doorStates??={};this.state.evidenceEvents??=[];this.state.security??='normal';this.state.routineIndex??=0;this.state.phaseAt=Number.isFinite(this.state.phaseAt)?this.state.phaseAt:this.now();for(const participant of this.state.participants){participant.hunger??=76;participant.input??={up:false,down:false,left:false,right:false,sequence:0,at:0};participant.knowledge??={searched:[],clues:[],routes:[],knownItems:{},doors:[],guardPatterns:[],shared:[]};participant.knowledge.routes??=[];participant.knowledge.doors??=[];participant.knowledge.guardPatterns??=[];participant.knowledge.shared??=[];participant.pendingAction??=null;participant.perks??={};participant.destination??=null;}if(this.state.phase==='active'&&this.state.endsAt<=this.now())this.finish('timer');}
   async save(){for(const participant of this.state.participants)participant.knowledge.codes??={};const task=this.persistTail.then(async()=>{const tmp=`${this.file}.${randomUUID()}.tmp`;await writeFile(tmp,JSON.stringify(this.state),{mode:0o600});await rename(tmp,this.file);});this.persistTail=task.catch(()=>{});return task;}
+  completedHistory(){return{version:1,round:this.state.round,results:clone(this.state.results),agentMemories:clone(this.state.agentMemories),updated_at:new Date(this.now()).toISOString()};}
+  async restoreHistory(){
+    if(!this.historyCollection)return;
+    const durable=await this.historyCollection.get('history');
+    if(durable){
+      if(durable.version!==1||!Array.isArray(durable.results)||!durable.agentMemories||typeof durable.agentMemories!=='object')throw new Error('Invalid Compound completed history');
+      this.state.round=Math.max(this.state.round,Number(durable.round)||0);
+      this.state.results=durable.results.slice(-30);
+      this.state.agentMemories=durable.agentMemories;
+    }else if(this.state.results.length||Object.keys(this.state.agentMemories).length){
+      await this.historyCollection.put('history',this.completedHistory());
+    }
+  }
+  persistCompletedHistory(){
+    if(!this.historyCollection)return;
+    const snapshot=this.completedHistory();
+    const task=this.historyTail.catch(()=>{}).then(()=>this.historyCollection.put('history',snapshot));
+    this.historyTail=task;
+    void task.catch(error=>console.error(JSON.stringify({event:'compound_history_save_failed',errorType:error instanceof Error?error.name:'UnknownError'})));
+  }
   start(){if(!this.timer){this.lastSimulationAt=this.now();this.lastLogicAt=this.now();this.timer=setInterval(()=>{void this.tick();},50);this.timer.unref?.();}}
-  async close(){if(this.timer)clearInterval(this.timer);this.timer=null;await this.save();}
+  async close(){if(this.timer)clearInterval(this.timer);this.timer=null;await this.save();await this.historyTail;}
   participant(owner){return this.state.participants.find(value=>value.owner===owner);}
   routineIndex(){if(this.state.phase!=='active'||!this.state.startedAt)return 5;const elapsed=this.now()-Date.parse(this.state.startedAt),duration=Math.max(1,this.state.endsAt-Date.parse(this.state.startedAt));return Math.min(ROUTINE.length-1,Math.floor(elapsed/duration*ROUTINE.length));}
   routinePhase(){return ROUTINE[this.routineIndex()]?.id||'free_time';}
@@ -258,7 +278,8 @@ export class CompoundGame{
       events:clone(this.state.evidenceEvents),
     });
     if(this.state.results.length>30)this.state.results.shift();
+    this.persistCompletedHistory();
     this.record(`Round ${this.state.round} finished: ${escaped.length} escaped.`,'round_end');this.bump();
   }
-  health(){return{status:'ok',phase:this.state.phase,round:this.state.round,participants:this.state.participants.length,routine_phase:this.routinePhase(),storage:'persistent_file'};}
+  health(){return{status:'ok',phase:this.state.phase,round:this.state.round,participants:this.state.participants.length,routine_phase:this.routinePhase(),storage:this.historyCollection?'postgres_history':'local_history'};}
 }

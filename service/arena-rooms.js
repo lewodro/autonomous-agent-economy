@@ -15,14 +15,14 @@ const fresh = () => configureRun({ seed: randomInt(1, 4294967296), rounds:64 });
 const completionTime = ({run,match}) => run.state.events.find(event=>event.type==='GAME_FINISHED'&&event.data.matchId===match.id)?.time||'';
 /** Bounded, free-to-watch simulations. Never calls the Rust/funded/wallet runtimes. */
 export class ArenaRoomPool {
-  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, agentOverride=null, onMatch=null }={}) {
-    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.agentOverride=agentOverride;this.onMatch=onMatch;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
+  constructor(directory, { stageMs=1000, restMs=2500, retryMs=500, agentOverride=null, onMatch=null, collection=null }={}) {
+    this.directory=directory;this.stageMs=stageMs;this.restMs=restMs;this.retryMs=retryMs;this.agentOverride=agentOverride;this.onMatch=onMatch;this.collection=collection;this.rooms=new Map();this.recentFinishes=new Map();this.closed=false;this.waiters=new Set();this.tasks=new Set();
   }
   async restore() {
     await mkdir(this.directory,{recursive:true});
     for(const [id,game] of SLOTS) {
       let saved;
-      try { saved=JSON.parse(await readFile(path.join(this.directory,id+'.json'),'utf8')); }
+      try { saved=this.collection?await this.collection.get(id):JSON.parse(await readFile(path.join(this.directory,id+'.json'),'utf8')); }
       catch(error){if(error.code!=='ENOENT')throw error;}
       if(saved) {
         if(saved.version!==1||saved.id!==id||saved.game!==game||!Array.isArray(saved.previous)||saved.previous.length>3)throw new Error(`Invalid arena checkpoint: ${id}`);
@@ -115,6 +115,7 @@ export class ArenaRoomPool {
   }
   async checkpoint(room) {
     const saved={...room.saved,state:structuredClone(room.state)};
+    if(this.collection){await withStorageFailure('arena checkpoint',()=>this.collection.put(saved.id,saved));room.saved=saved;return;}
     const target=path.join(this.directory,saved.id+'.json'),temp=target+'.'+randomUUID()+'.tmp';
     await withStorageFailure('arena checkpoint',async()=>{await writeFile(temp,JSON.stringify(saved),{mode:0o600});await rename(temp,target);});room.saved=saved;
   }

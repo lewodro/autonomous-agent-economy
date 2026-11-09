@@ -10,16 +10,16 @@ const MAX_REPLAY_BYTES=32_000_000,MAX_ARCHIVE_RECORDS=1000,MAX_ARCHIVE_BYTES=256
 
 /** Atomically stores verified replay records with bounded newest-first retention. */
 export class ReplayArchive {
-  constructor(directory,{syncFolder=syncDirectory,maxRecords=MAX_ARCHIVE_RECORDS,maxBytes=MAX_ARCHIVE_BYTES,maxReplayBytes=MAX_REPLAY_BYTES}={}){
+  constructor(directory,{syncFolder=syncDirectory,maxRecords=MAX_ARCHIVE_RECORDS,maxBytes=MAX_ARCHIVE_BYTES,maxReplayBytes=MAX_REPLAY_BYTES,collection=null}={}){
     if(!Number.isSafeInteger(maxRecords)||maxRecords<1||maxRecords>MAX_ARCHIVE_RECORDS||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>MAX_ARCHIVE_BYTES||!Number.isSafeInteger(maxReplayBytes)||maxReplayBytes<1||maxReplayBytes>MAX_REPLAY_BYTES)throw new Error('Invalid replay archive limits');
-    this.directory=directory;this.syncFolder=syncFolder;this.maxRecords=maxRecords;this.maxBytes=maxBytes;this.maxReplayBytes=maxReplayBytes;this.pending=Promise.resolve();
+    this.directory=directory;this.syncFolder=syncFolder;this.maxRecords=maxRecords;this.maxBytes=maxBytes;this.maxReplayBytes=maxReplayBytes;this.collection=collection;this.pending=Promise.resolve();
   }
   file(matchId){if(typeof matchId!=='string'||!matchIdPattern.test(matchId))throw new Error('Invalid replay match identifier');return path.join(this.directory,`${matchId}.json`);}
   async save(replay){
     const operation=this.pending.then(()=>this.saveOne(replay));this.pending=operation.catch(()=>{});return operation;
   }
   async reconcile(){
-    const operation=this.pending.then(()=>this.pruneRecords());this.pending=operation.catch(()=>{});return operation;
+    const operation=this.pending.then(()=>this.collection?this.collection.entries():this.pruneRecords());this.pending=operation.catch(()=>{});return operation;
   }
   async saveOne(replay){
     const target=this.file(replay?.match_id),temp=`${target}.${randomUUID()}.tmp`;
@@ -27,6 +27,7 @@ export class ReplayArchive {
     if(!bytes||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive record');
     const size=Buffer.byteLength(bytes);
     if(size>this.maxReplayBytes||size>this.maxBytes)throw Object.assign(new Error('Replay exceeds the archive record limit'),{status:413,code:'REPLAY_TOO_LARGE'});
+    if(this.collection){await withStorageFailure('replay archive',()=>this.collection.put(replay.match_id,replay));return replay.match_id;}
     await withStorageFailure('replay archive',async()=>{
       await mkdir(this.directory,{recursive:true});
       try{
@@ -40,6 +41,7 @@ export class ReplayArchive {
     return target;
   }
   async pruneRecords(protectedPath=null){
+    if(this.collection)return;
     let entries;
     try{entries=await readdir(this.directory,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return;throw error;}
     const records=[];let totalBytes=0;
@@ -58,6 +60,12 @@ export class ReplayArchive {
     if(removed)await this.syncFolder(this.directory);
   }
   async load(matchId){
+    if(this.collection){
+      const replay=await this.collection.get(matchId);
+      if(replay===null)return null;
+      if(replay?.match_id!==matchId||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive');
+      return replay;
+    }
     let replay;try{replay=await readBoundedJson(this.file(matchId),{maxBytes:this.maxReplayBytes,label:'Replay archive record'});}catch(error){if(error.code==='ENOENT')return null;throw error;}
     if(replay?.match_id!==matchId||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive');
     return replay;

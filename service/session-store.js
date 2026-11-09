@@ -5,14 +5,15 @@ import {withStorageFailure} from './http-error.js';
 const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 /** Storage contains Rust-verifiable history plus orchestration metadata, never keys. */
 export class SessionStore {
-  constructor(directory){this.directory=directory;this.pending=new Map();}
+  constructor(directory,{collection=null}={}){this.directory=directory;this.collection=collection;this.pending=new Map();}
   file(session){if(!identifier.test(session))throw new Error('Invalid session identifier');return path.join(this.directory,`${session}.json`);}
   save(session,replay,budget){
-    const target=this.file(session),bytes=JSON.stringify({format:1,session,replay,budget});
+    const record={format:1,session,replay,budget},target=this.file(session),bytes=JSON.stringify(record);
     const max=Number(process.env.EVENT_LOG_MAX_SIZE||32_000_000);
     if(Buffer.byteLength(bytes)>max)throw Object.assign(new Error('Match checkpoint exceeds configured size'),{status:413});
     const prior=this.pending.get(session)||Promise.resolve();
     const writing=prior.catch(()=>{}).then(()=>withStorageFailure('match session',async()=>{
+      if(this.collection){await this.collection.put(session,record);return;}
       await mkdir(this.directory,{recursive:true});
       const temp=`${target}.${randomUUID()}.tmp`;
       try {
@@ -26,11 +27,18 @@ export class SessionStore {
     return writing;
   }
   async delete(session){
+    if(this.collection){await this.pending.get(session)?.catch(()=>{});return this.collection.delete(session);}
     const file=this.file(session);
     await this.pending.get(session)?.catch(()=>{});
     await unlink(file).catch(error=>{if(error.code!=='ENOENT')throw error;});
   }
   async load(){
+    if(this.collection){
+      const entries=await this.collection.entries();
+      const records=entries.map(([,record])=>record);
+      for(const record of records)if(record.format!==1||!identifier.test(record.session||'')||!record.replay||!record.budget)throw new Error(`Invalid checkpoint: ${record.session||'unknown'}`);
+      return records;
+    }
     let names;try{names=await readdir(this.directory);}catch(error){if(error.code==='ENOENT')return [];throw error;}
     const files=names.filter(name=>name.endsWith('.json')).sort();
     if(files.length>100)throw new Error('Stored session limit exceeded');

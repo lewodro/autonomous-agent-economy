@@ -22,18 +22,20 @@ export function experimentLimits(env=process.env){return {
 
 /** Bounded owner metadata around the existing Rust-verifiable session checkpoints. */
 export class ExperimentStore {
-  constructor(directory,sessionStore,limits=experimentLimits()){
-    this.directory=directory;this.sessionStore=sessionStore;this.limits=limits;this.records=new Map();this.pending=new Map();
+  constructor(directory,sessionStore,limits=experimentLimits(),{collection=null}={}){
+    this.directory=directory;this.sessionStore=sessionStore;this.limits=limits;this.collection=collection;this.records=new Map();this.pending=new Map();
   }
   file(id){if(!identifier.test(id))throw Object.assign(new Error('Invalid experiment ID'),{status:404});return path.join(this.directory,`${id}.json`);}
   async restore(now=Date.now()){
     await mkdir(this.directory,{recursive:true});
-    const names=(await readdir(this.directory)).filter(name=>name.endsWith('.json')).sort();
-    if(names.length>maximumRecords)throw new Error('Stored experiment metadata limit exceeded');
-    for(const name of names){
+    const entries=this.collection?await this.collection.entries():await Promise.all((await readdir(this.directory)).filter(name=>name.endsWith('.json')).sort().map(async name=>{
       const id=name.slice(0,-5),file=this.file(id),info=await lstat(file);
       if(!info.isFile()||info.size>maximumMetadataBytes)throw new Error(`Invalid experiment metadata: ${name}`);
-      const record=JSON.parse(await readFile(file,'utf8'));
+      return[id,JSON.parse(await readFile(file,'utf8'))];
+    }));
+    if(entries.length>maximumRecords)throw new Error('Stored experiment metadata limit exceeded');
+    for(const [id,record] of entries){
+      const name=`${id}.json`;
       if(record.format!==1||record.experiment_id!==id||!ownerIdentifier.test(record.owner_session_id||'')||!['active','completed'].includes(record.status)||record.game_mode!=='last-seat'||!Number.isSafeInteger(record.seed)||!record.configuration||!Number.isFinite(Date.parse(record.created_at))||!Number.isFinite(Date.parse(record.updated_at)))throw new Error(`Invalid experiment metadata: ${name}`);
       this.records.set(id,record);
     }
@@ -45,14 +47,14 @@ export class ExperimentStore {
     for(const [id,record] of this.records){
       if(record.status!=='completed'||Date.parse(record.updated_at)>=cutoff)continue;
       await this.sessionStore.delete(id);
-      await unlink(this.file(id));this.records.delete(id);removed.push(id);
+      if(this.collection)await this.collection.delete(id);else await unlink(this.file(id));this.records.delete(id);removed.push(id);
     }
     return removed;
   }
   async delete(id,owner){
     this.get(id,owner);
     await this.sessionStore.delete(id);
-    await unlink(this.file(id));
+    if(this.collection)await this.collection.delete(id);else await unlink(this.file(id));
     this.records.delete(id);
   }
   count(owner){return [...this.records.values()].filter(record=>record.owner_session_id===owner).length;}
@@ -68,6 +70,7 @@ export class ExperimentStore {
     if(Buffer.byteLength(bytes)>maximumMetadataBytes)throw new Error('Experiment metadata exceeds its storage limit');
     const prior=this.pending.get(record.experiment_id)||Promise.resolve();
     const writing=prior.catch(()=>{}).then(()=>withStorageFailure('experiment metadata',async()=>{
+      if(this.collection){await this.collection.put(record.experiment_id,record);return;}
       await mkdir(this.directory,{recursive:true});
       const temp=`${target}.${randomUUID()}.tmp`;
       try{const file=await open(temp,'wx',0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}await rename(temp,target);}
