@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {withStorageFailure} from './http-error.js';
 
 const identifier=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const ownerIdentifier=/^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|clerk:[A-Za-z0-9_-]{1,128})$/;
 const maximumRecords=100;
 const maximumMetadataBytes=64*1024;
 
@@ -33,7 +34,7 @@ export class ExperimentStore {
       const id=name.slice(0,-5),file=this.file(id),info=await lstat(file);
       if(!info.isFile()||info.size>maximumMetadataBytes)throw new Error(`Invalid experiment metadata: ${name}`);
       const record=JSON.parse(await readFile(file,'utf8'));
-      if(record.format!==1||record.experiment_id!==id||!identifier.test(record.owner_session_id||'')||!['active','completed'].includes(record.status)||record.game_mode!=='last-seat'||!Number.isSafeInteger(record.seed)||!record.configuration||!Number.isFinite(Date.parse(record.created_at))||!Number.isFinite(Date.parse(record.updated_at)))throw new Error(`Invalid experiment metadata: ${name}`);
+      if(record.format!==1||record.experiment_id!==id||!ownerIdentifier.test(record.owner_session_id||'')||!['active','completed'].includes(record.status)||record.game_mode!=='last-seat'||!Number.isSafeInteger(record.seed)||!record.configuration||!Number.isFinite(Date.parse(record.created_at))||!Number.isFinite(Date.parse(record.updated_at)))throw new Error(`Invalid experiment metadata: ${name}`);
       this.records.set(id,record);
     }
     await this.prune(now);
@@ -84,6 +85,15 @@ export class ExperimentStore {
   }
   async update(record,replay,now=Date.now()){
     return this.save({...record,updated_at:new Date(now).toISOString(),status:replay.final_state.ended?'completed':'active',match_id:replay.match_id});
+  }
+  async adopt(guestOwner,accountOwner){
+    if(!ownerIdentifier.test(accountOwner))throw new Error('Invalid experiment owner');
+    let merged=0;
+    for(const record of [...this.records.values()]){
+      if(record.owner_session_id!==guestOwner)continue;
+      await this.save({...record,owner_session_id:accountOwner});merged++;
+    }
+    return{merged};
   }
   health(){const records=[...this.records.values()];return {status:'ok',active:records.filter(record=>record.status==='active').length,completed:records.filter(record=>record.status==='completed').length,limit:maximumRecords};}
 }

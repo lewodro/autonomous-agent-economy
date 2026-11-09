@@ -10,7 +10,7 @@ import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
-import { FarmClient, FarmHud, CROPS, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
+import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -191,7 +191,7 @@ dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
-interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;wallet_address:string|null;wallet_link_status:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string;amount_lamports?:number;transaction_signature?:string|null}>}
+interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string}>}
 async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;return result;}
 const ANCHORS:Record<string,string>={
   'garden-north':'the botanical garden','garden-east':'the garden east beds','garden-south':'the garden south beds',
@@ -396,14 +396,19 @@ async function showAccount():Promise<void>{
 }
 function walletSection(payoutsEnabled:boolean):void{
   const account=farmSnapshot?.account;if(!account)return;
-  text('h3','FUTURE REWARD LINK');
-  text('p',`Time in the world earns ${farmSnapshot?.rates.credits_per_minute||1} internal credit per minute. Credits are not SOL or wallet funds. A public address can be linked for a future, separately enabled payout program.`);
-  const form=document.createElement('form');form.className='world-profile-form';
-  const wallet=document.createElement('input');wallet.placeholder='Public Solana wallet address';wallet.maxLength=44;wallet.value=account.wallet.address||'';
-  const save=document.createElement('button');save.type='submit';save.textContent=account.wallet.address?'Update wallet':'Link wallet';
-  form.append(wallet,save);content.append(form);
-  const status=text('p',account.wallet.address?'Wallet saved as self-declared. Never enter a seed phrase or private key.':'No wallet linked. Never enter a seed phrase or private key.');
-  form.onsubmit=event=>{event.preventDefault();save.disabled=true;void farmClient.post('wallet',{wallet_address:wallet.value}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);status.textContent='Public wallet saved.';farmHud.notice('Wallet linked','good');}).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet update failed';}).finally(()=>save.disabled=false);};
+  text('h3','SOLANA WALLET');
+  text('p','Credits are not SOL or wallet funds. Wallet linking proves control of a public address for a future, separately enabled payout program.');
+  const status=text('p',account.wallet.status==='verified'&&account.wallet.address?`${account.wallet.address.slice(0,7)}…${account.wallet.address.slice(-5)} · VERIFIED`:'No verified wallet. Never enter a seed phrase or private key.');
+  if(!account.signed_in){text('p','Sign in before linking a wallet.');return;}
+  const connect=document.createElement('button');connect.type='button';connect.className='primary';connect.textContent=account.wallet.address?'Verify another wallet':'Connect and verify wallet';content.append(connect);
+  connect.onclick=()=>{connect.disabled=true;status.textContent='Waiting for your wallet…';void connectAndSignWallet(async address=>{
+    const result=await farmClient.post('wallet-challenge',{wallet_address:address}) as {challenge:{id:string;message:string}};
+    return result.challenge;
+  }).then(async proof=>{
+    const result=await farmClient.post('wallet-verify',proof);mergeFarmAccount(result.account as FarmAccount|undefined);
+    status.textContent=`${proof.wallet_address.slice(0,7)}…${proof.wallet_address.slice(-5)} · VERIFIED`;
+    farmHud.notice('Wallet ownership verified','good');
+  }).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet verification failed';}).finally(()=>connect.disabled=false);};
   if(account.wallet.address&&payoutsEnabled){
     const min=farmSnapshot?.rates.min_withdrawal_credits||50;
     const button=document.createElement('button');button.type='button';button.textContent=`Request payout · ${account.credits} CR`;button.disabled=account.credits<min;
@@ -516,6 +521,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     }else showProfile(target.id);
   }else if(target.type==='research')await showResearch();else if(target.type==='zone'){
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
+    if(target.id==='treasury-house'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/treasury'),220);return;}
     if(target.id==='south-market'){await showBazaar();return;}
     if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
     if(target.id.startsWith('plot:')){

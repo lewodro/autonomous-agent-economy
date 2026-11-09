@@ -296,3 +296,11 @@
   .cumulative-game strong{text-align:left}
   .cumulative-survival{display:none}
 }
+
+.treasury-page{min-height:100vh;background:#10211c;color:#eadfbd;font-family:ui-monospace,monospace;padding:clamp(18px,4vw,56px)}
+.treasury-shell{max-width:1080px;margin:0 auto}.treasury-header{border:2px solid #6f7e62;background:#172c25;padding:clamp(20px,4vw,42px);box-shadow:10px 10px 0 #0a1713}
+.treasury-header h1{font-size:clamp(2rem,6vw,4.2rem);margin:.2em 0}.treasury-header p{max-width:720px;line-height:1.65}.treasury-header .eyebrow{color:#d8b865;letter-spacing:.18em}
+.world-link{display:inline-block;margin-top:14px;color:#f0cf75}.treasury-state{margin:28px 0 16px;color:#f0cf75;letter-spacing:.1em;font-weight:700}
+.treasury-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.treasury-metric,.treasury-panel{border:1px solid #4e675a;background:#142720;padding:18px}
+.treasury-metric strong,.treasury-metric span{display:block}.treasury-metric strong{font-size:1.15rem;color:#f4e8c3;overflow-wrap:anywhere}.treasury-metric span{margin-top:8px;color:#9eb3a5;font-size:.78rem;letter-spacing:.08em}
+.treasury-panel{margin-top:16px}.treasury-panel h2{font-size:1rem;color:#d8b865;letter-spacing:.1em}.treasury-events{padding-left:24px;line-height:1.7}.treasury-separation{border-color:#7b6d46}

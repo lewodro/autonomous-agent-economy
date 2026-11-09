@@ -66,7 +66,7 @@ function decodePart(value) {
  * npm dependency are required; the token signature is checked with node:crypto.
  * Results are cached briefly so a page load does not fetch keys per request.
  */
-export function createClerkVerifier({ publishableKey, fetcher = fetch, now = Date.now, keyTtlMs = 60 * 60_000 } = {}) {
+export function createClerkVerifier({ publishableKey, fetcher = fetch, now = Date.now, keyTtlMs = 60 * 60_000, authorizedParties = [] } = {}) {
   const frontendApi = clerkFrontendApi(publishableKey);
   const expectedIssuer = frontendApi ? `https://${frontendApi}` : null;
   let keys = null, fetchedAt = 0, pending = null;
@@ -96,6 +96,7 @@ export function createClerkVerifier({ publishableKey, fetcher = fetch, now = Dat
     const payload = decodePart(payloadPart);
     if (header.alg !== 'RS256') throw new Error('Unsupported token algorithm');
     if (payload.iss !== expectedIssuer) throw new Error('Token issuer mismatch');
+    if (payload.azp && Array.isArray(authorizedParties) && authorizedParties.length && !authorizedParties.includes(payload.azp)) throw new Error('Token authorized party mismatch');
     const seconds = Math.floor(now() / 1000);
     if (!Number.isFinite(payload.exp) || payload.exp < seconds - 30) throw new Error('Session token expired');
     if (Number.isFinite(payload.nbf) && payload.nbf > seconds + 30) throw new Error('Session token not yet valid');
@@ -113,6 +114,7 @@ export function createClerkVerifier({ publishableKey, fetcher = fetch, now = Dat
       subject: payload.sub,
       name: typeof payload.name === 'string' ? payload.name : '',
       email: typeof payload.email === 'string' ? payload.email : '',
+      session: typeof payload.sid === 'string' ? payload.sid : null,
     };
   }
 

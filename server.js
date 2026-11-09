@@ -34,11 +34,13 @@ import { WorldEconomy } from './service/world-economy.js';
 import { WorldFarm } from './service/world-farm.js';
 import { WorldStore } from './service/world-store.js';
 import { createClerkVerifier, accountCookie, clearAccountCookie, accountSession } from './service/world-identity.js';
+import { TreasuryLedger } from './service/treasury.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const avatarManifest = JSON.parse(await readFile(path.join(root, 'assets/avatars/index.json'), 'utf8'));
 const approvedAvatarIds = avatarManifest.avatars?.filter(avatar => avatar.approved === true).map(avatar => avatar.id) || [];
 const deployment = validateDeploymentConfig();
 const { production, publicDevnet, publicOrigins, publicModelInferenceEnabled } = deployment;
+const walletVerificationDomain=process.env.WORLD_PUBLIC_DOMAIN||(production?'lastseat.ing':null);
 const fundedApiEnabled=!production||process.env.ECONOMY_LAB==='1'||publicDevnet;
 const directory = path.resolve(process.env.MATCHES_DIR || path.join(root,'matches'));
 const productionStorage = await ensureProductionStorage(directory, { production });
@@ -71,20 +73,29 @@ function mergedArenaProfiles(){return arenaCumulative.applyProfiles(arenaSurviva
 function accumulatedArenaStatistics(){return arenaCumulative.statistics(arenaSurvival.statistics(arenaRooms.statistics()),mergedArenaProfiles());}
 const privateArena=new PrivateArenaManager(core,path.join(directory,'private-arena'));
 const compoundGame=new CompoundGame(path.join(directory,'compound'),{profiles:()=>arenaRooms.profiles()});
+const worldEconomyStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'world-economy',fileName:'world-economy.json'});
 const worldEconomy=new WorldEconomy(path.join(directory,'world-economy'),{
   treasuryAddress:process.env.WORLD_TREASURY_ADDRESS||null,
   payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
+  store:worldEconomyStore,
 });
 const worldTable=new TableSession(path.join(directory,'world'));
 const worldStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null});
-const clerk=createClerkVerifier({publishableKey:process.env.CLERK_PUBLISHABLE_KEY||null});
+const treasuryStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'treasury-ledger',fileName:'treasury-ledger.json'});
+const treasury=new TreasuryLedger(treasuryStore,{
+  address:process.env.WORLD_TREASURY_ADDRESS||null,
+  network:process.env.SOLANA_NETWORK||null,
+  payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
+});
+const clerk=createClerkVerifier({publishableKey:process.env.CLERK_PUBLISHABLE_KEY||null,authorizedParties:publicOrigins});
 const worldFarm=new WorldFarm(worldStore,{
   creditsPerMinute:Number(process.env.WORLD_CREDITS_PER_MINUTE||1),
   lamportsPerCredit:Number(process.env.WORLD_LAMPORTS_PER_CREDIT||0),
   minWithdrawalCredits:Number(process.env.WORLD_MIN_WITHDRAWAL_CREDITS||50),
   timeScale:process.env.WORLD_FARM_TIME_SCALE===undefined?1:Number(process.env.WORLD_FARM_TIME_SCALE),
   allowTimeScale:!production,
+  payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
 });
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
@@ -193,13 +204,14 @@ const server = http.createServer(async (req, res) => {
     }
     if(route==='/api/world/economy'||route==='/api/world/economy/profile'||route==='/api/world/economy/gather'){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
-      if(req.method==='GET'&&route==='/api/world/economy')return json(res,200,worldEconomy.snapshot(visitor.id),cookie);
+      const economyOwner=accountSession(req)||visitor.id;
+      if(req.method==='GET'&&route==='/api/world/economy')return json(res,200,worldEconomy.snapshot(economyOwner),cookie);
       if(req.method!=='POST')return json(res,405,{error:'World economy command requires POST'},cookie);
       if(!worldEconomyCommands.allow())return json(res,429,{error:'World gathering is temporarily limited'},cookie);
       const data=await body(req,4096);
-      if(route.endsWith('/profile'))return json(res,200,await worldEconomy.linkProfile(visitor.id,data),cookie);
+      if(route.endsWith('/profile'))return json(res,200,await worldEconomy.linkProfile(economyOwner,data),cookie);
       const present=worldPresence.requireVisitor('main',visitor.id);
-      return json(res,200,await worldEconomy.gather(visitor.id,data,present.position),cookie);
+      return json(res,200,await worldEconomy.gather(economyOwner,data,present.position),cookie);
     }
     if(route==='/api/world/auth'||route==='/api/world/auth/clerk'||route==='/api/world/auth/logout'){
       if(route==='/api/world/auth'){
@@ -216,6 +228,8 @@ const server = http.createServer(async (req, res) => {
       const visitor=visitorSession(req),visitorCookie=visitor.cookie;
       const name=String(verified.name||verified.email||'').split('@')[0];
       const result=await worldFarm.adopt(`guest:${visitor.id}`,{key:verified.key,provider:'clerk',subject:verified.subject,name});
+      await worldEconomy.adopt(visitor.id,verified.key);
+      await experiments.adopt(visitor.id,verified.key);
       const cookies=[visitorCookie,accountCookie(verified.key)].filter(Boolean);
       return json(res,200,result,{'Set-Cookie':cookies});
     }
@@ -231,16 +245,22 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST')return json(res,405,{error:'Farm command requires POST'},cookie);
       if(!farmCommands.allow())return json(res,429,{error:'Farm actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/farm/'.length);
-      if(!['plant','harvest','sell','heartbeat','wallet','payout','profile'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
+      if(!['plant','harvest','sell','heartbeat','wallet','wallet-challenge','wallet-verify','payout','profile'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
       const data=await body(req,4096);
       if(action==='heartbeat')return json(res,200,{...await worldFarm.heartbeat(identity,data),auth},cookie);
       if(action==='profile')return json(res,200,{...await worldFarm.saveProfile(identity,data),auth},cookie);
       if(action==='wallet')return json(res,200,{...await worldFarm.linkWallet(identity,data),auth},cookie);
+      if(action==='wallet-challenge')return json(res,200,{...await worldFarm.createWalletChallenge(identity,{...data,domain:walletVerificationDomain||req.headers.host}),auth},cookie);
+      if(action==='wallet-verify')return json(res,200,{...await worldFarm.verifyWalletChallenge(identity,data,walletVerificationDomain||req.headers.host),auth},cookie);
       if(action==='payout')return json(res,200,{...await worldFarm.requestPayout(identity,data),auth},cookie);
       const present=worldPresence.requireVisitor('main',visitor.id);
       if(action==='plant')return json(res,200,{...await worldFarm.plant(identity,data,present.position),auth},cookie);
       if(action==='harvest')return json(res,200,{...await worldFarm.harvest(identity,data,present.position),auth},cookie);
       return json(res,200,{...await worldFarm.sell(identity,data,present.position),auth},cookie);
+    }
+    if(route==='/api/treasury/public'){
+      if(req.method!=='GET')return json(res,405,{error:'Treasury transparency endpoint is read-only'});
+      return json(res,200,treasury.publicSnapshot());
     }
     const roomSpectatorRoute=route.match(/^\/api\/arena\/rooms\/(rps-[12]|ttt-[12])\/spectators\/(join|heartbeat|leave)$/);
     if(roomSpectatorRoute){
@@ -324,7 +344,7 @@ const server = http.createServer(async (req, res) => {
       const metadata=await core.request({command:'metadata'});
       await mkdir(directory,{recursive:true});
       await access(directory,constants.W_OK);
-      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
+      return json(res,200,{ok:true,application:'ready',engine:'Rust',simulation_host:'ready',storage:'ok',production_storage:production?{status:'ok',public_world_id:'main',canonical_agents:20,initialized:productionStorage.initialized}:null,experiments:experiments.health(),private_arena:privateArena.health(),compound:compoundGame.health(),world_economy:worldEconomy.health(),world_farm:worldFarm.health(),treasury:treasury.health(),session:'ready',network_mode:publicDevnet?'devnet':'simulated',public_model_inference_enabled:publicModelInferenceEnabled,presence:worldPresence.health(),arena:arenaRooms.health(),survival:arenaSurvival.health(),payments:publicDevnet?'devnet_test_sol':'disabled',...metadata});
     }
     if(req.method==='GET'&&route==='/api/capabilities')return json(res,200,{
       public_site:production,
@@ -336,28 +356,29 @@ const server = http.createServer(async (req, res) => {
     if(route==='/api/experiments'||route.startsWith('/api/experiments/')){
       const visitor=visitorSession(req);
       const cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
-      if(route==='/api/experiments'&&req.method==='GET')return json(res,200,{experiments:experiments.list(visitor.id)},cookie);
+      const experimentOwner=accountSession(req)||visitor.id;
+      if(route==='/api/experiments'&&req.method==='GET')return json(res,200,{experiments:experiments.list(experimentOwner)},cookie);
       if(route==='/api/experiments'&&req.method==='POST'){
         if(!experimentCreates.allow())return json(res,429,{error:'Experiment creation is temporarily limited'});
         const data=await body(req,64_000);
         const config=await resolveConfig(core,data.config);
-        const created=await createExperiment(visitor.id,'start',{config});
+        const created=await createExperiment(experimentOwner,'start',{config});
         return json(res,201,created,cookie);
       }
       if(route==='/api/experiments/import'&&req.method==='POST'){
         if(!experimentCreates.allow())return json(res,429,{error:'Experiment creation is temporarily limited'});
         const data=await body(req,experiments.limits.exportMaxBytes);
-        const created=await createExperiment(visitor.id,'import',{replay:data.replay});
+        const created=await createExperiment(experimentOwner,'import',{replay:data.replay});
         return json(res,201,created,cookie);
       }
       const matchRoute=route.match(/^\/api\/experiments\/([a-f0-9-]{36})(?:\/(step|export|matches\/seat-[a-f0-9]{64}\.json))?$/);
       if(!matchRoute)return json(res,404,{error:'Experiment not found'},cookie);
-      const record=experiments.get(matchRoute[1],visitor.id),session=record.experiment_id,action=matchRoute[2];
+      const record=experiments.get(matchRoute[1],experimentOwner),session=record.experiment_id,action=matchRoute[2];
       if(req.method==='DELETE'&&!action){
         if(runtime.busy.has(session))return json(res,409,{error:'Experiment turn is resolving'},cookie);
         if(deletingExperiments.has(session))return json(res,409,{error:'Experiment deletion is resolving'},cookie);
         deletingExperiments.add(session);
-        try{await experiments.delete(session,visitor.id);sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});}
+        try{await experiments.delete(session,experimentOwner);sessions.delete(session);runtime.budgets.delete(session);await core.request({command:'drop',session});}
         finally{deletingExperiments.delete(session);}
         return json(res,200,{deleted:true},cookie);
       }
@@ -447,9 +468,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     const {status,code,error:safeMessage}=publicRequestError(error,{production});
@@ -466,6 +487,9 @@ try{
   // the cumulative document before the live schedulers start.
   await worldStore.open();
   await worldFarm.restore();
+  await worldEconomyStore.open();
+  await treasuryStore.open();
+  await treasury.restore();
   await arenaCumulativeStore.open();
   await arenaCumulative.restore();
   await arenaRooms.restore();
@@ -494,7 +518,7 @@ async function shutdown(signal){
     const httpDrained=new Promise(resolve=>server.close(resolve));
     server.closeIdleConnections?.();
     let timeout;
-    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),worldFarm.close(),funded.close()]).then(async()=>{await arenaCumulativeStore.close();return true;});
+    const drained=Promise.allSettled([httpDrained,worldPresence.close(),roomSpectators.close(),arenaRooms.close(),arenaSurvival.close(),privateArena.close(),compoundGame.close(),worldEconomy.close(),worldFarm.close(),treasury.close(),funded.close()]).then(async()=>{await arenaCumulativeStore.close();return true;});
     const completed=await Promise.race([drained,new Promise(resolve=>{timeout=setTimeout(()=>resolve(false),10_000);})]);
     clearTimeout(timeout);
     if(!completed){

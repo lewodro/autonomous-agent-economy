@@ -1,9 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, verify as verifySignature } from 'node:crypto';
 import { validSolanaAddress } from './world-economy.js';
 
-const VERSION = 2;
+const VERSION = 3;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{7,95}$/;
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const WALLET_CHALLENGE_TTL_MS = 5 * 60_000;
 /** Kept in sync with the curated browser avatar catalog. */
 export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
 /** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
@@ -45,8 +47,33 @@ export const FARM_ANCHORS = Object.freeze([
 
 function fail(code, message, status = 400) { return Object.assign(new Error(message), { code, status }); }
 function publicId(key) { return `farmer_${createHash('sha256').update(key).digest('hex').slice(0, 16)}`; }
+function internalUserId() { return `usr_${randomUUID().replaceAll('-', '')}`; }
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function decodeBase58(value) {
+  if (typeof value !== 'string' || !value) throw fail('INVALID_SIGNATURE', 'Wallet signature is invalid');
+  let number = 0n;
+  for (const character of value) {
+    const digit = BASE58.indexOf(character);
+    if (digit < 0) throw fail('INVALID_SIGNATURE', 'Wallet signature is invalid');
+    number = number * 58n + BigInt(digit);
+  }
+  const bytes = [];
+  while (number > 0n) { bytes.push(Number(number & 255n)); number >>= 8n; }
+  for (const character of value) { if (character === '1') bytes.push(0); else break; }
+  return Buffer.from(bytes.reverse());
+}
+
+export function verifySolanaMessage(address, message, signature) {
+  try {
+    const publicKey = decodeBase58(address);
+    const signed = decodeBase58(signature);
+    if (publicKey.length !== 32 || signed.length !== 64) return false;
+    const key = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), publicKey]), format: 'der', type: 'spki' });
+    return verifySignature(null, Buffer.from(message, 'utf8'), key, signed);
+  } catch { return false; }
+}
 
 function levelFor(xp) {
   const level = 1 + Math.floor(Math.sqrt(Math.max(0, xp) / 40));
@@ -59,11 +86,14 @@ function defaultAccount(identity, now) {
   const suffix = createHash('sha256').update(identity.key).digest('hex').slice(0, 4).toUpperCase();
   return {
     key: identity.key,
+    user_id: internalUserId(),
+    clerk_user_id: identity.provider === 'clerk' ? identity.subject || identity.key.slice(6) : null,
     provider: identity.provider || 'guest',
     subject: identity.subject || null,
     display_name: identity.name || `Farmer ${suffix}`,
     wallet_address: null,
     wallet_status: 'unlinked',
+    wallet_links: [],
     credits: 0,
     xp: 0,
     seconds_played: 0,
@@ -72,6 +102,7 @@ function defaultAccount(identity, now) {
     stats: { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 },
     profile: { avatar: null, position: null, saved_at: null },
     created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
     last_seen: new Date(now).toISOString(),
   };
 }
@@ -95,6 +126,7 @@ export class WorldFarm {
     wildTtlMs = FARM_SCARCITY.wildTtlMs,
     timeScale = 1,
     allowTimeScale = true,
+    payoutsEnabled = false,
   } = {}) {
     if (!Number.isInteger(creditsPerMinute) || creditsPerMinute < 0 || creditsPerMinute > 60) throw new Error('Invalid creditsPerMinute');
     if (!Number.isSafeInteger(lamportsPerCredit) || lamportsPerCredit < 0) throw new Error('Invalid lamportsPerCredit');
@@ -111,7 +143,8 @@ export class WorldFarm {
     this.spawnIntervalMs = Math.max(10_000, Number(spawnIntervalMs) || FARM_SCARCITY.spawnIntervalMs);
     this.wildTtlMs = Math.max(this.spawnIntervalMs, Number(wildTtlMs) || FARM_SCARCITY.wildTtlMs);
     this.timeScale = timeScale;
-    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], ledger: [], idempotency: [], migrated_at: null, next_spawn_at: null };
+    this.payoutsEnabled = payoutsEnabled === true;
+    this.state = { version: VERSION, accounts: {}, tiles: {}, payouts: [], ledger: [], idempotency: [], merge_receipts: [], wallet_challenges: [], migrated_at: null, next_spawn_at: null };
     this.inflightCommands = new Map();
     this.timer = null;
   }
@@ -119,19 +152,21 @@ export class WorldFarm {
   async restore() {
     const saved = await this.store.load();
     if (saved) {
-      if (![1, VERSION].includes(saved.version) || typeof saved.accounts !== 'object' || typeof saved.tiles !== 'object' || !Array.isArray(saved.payouts)) {
+      if (![1, 2, VERSION].includes(saved.version) || typeof saved.accounts !== 'object' || typeof saved.tiles !== 'object' || !Array.isArray(saved.payouts)) {
         throw new Error('Invalid world farm checkpoint');
       }
       this.state = saved;
-      if (saved.version === 1) {
+      if (saved.version < VERSION) {
         this.state.version = VERSION;
-        this.state.ledger = [];
-        this.state.idempotency = [];
+        this.state.ledger ||= [];
+        this.state.idempotency ||= [];
         this.state.migrated_at = new Date(this.now()).toISOString();
       }
     }
     this.state.ledger ||= [];
     this.state.idempotency ||= [];
+    this.state.merge_receipts ||= [];
+    this.state.wallet_challenges ||= [];
     if (!Array.isArray(this.state.ledger) || !Array.isArray(this.state.idempotency)) throw new Error('Invalid world farm ledger');
     for (const key of Object.keys(this.state.accounts)) {
       const account = this.state.accounts[key];
@@ -142,6 +177,10 @@ export class WorldFarm {
       account.xp ||= 0;
       account.credits ||= 0;
       account.profile ||= { avatar: null, position: null, saved_at: null };
+      account.user_id ||= internalUserId();
+      account.clerk_user_id ??= account.provider === 'clerk' ? account.subject || key.slice(6) : null;
+      account.wallet_links ||= [];
+      account.updated_at ||= account.last_seen || account.created_at || new Date(this.now()).toISOString();
     }
     this.state.next_spawn_at ??= null;
     this.tick();
@@ -249,6 +288,7 @@ export class WorldFarm {
     const active = Object.values(this.state.tiles).filter(tile => tile.owner === identity.key && tile.stage !== 'wild').length;
     return {
       id: publicId(account.key),
+      user_id: account.user_id,
       temporary: account.provider === 'guest',
       signed_in: account.provider !== 'guest',
       provider: account.provider,
@@ -269,7 +309,11 @@ export class WorldFarm {
         position: account.profile.position ? { ...account.profile.position } : null,
         saved_at: account.profile.saved_at || null,
       } : { avatar: null, position: null, saved_at: null },
-      wallet: { address: account.wallet_address, status: account.wallet_status },
+      wallet: {
+        address: account.wallet_links.find(link => link.primary)?.address || account.wallet_address,
+        status: account.wallet_links.find(link => link.primary)?.verified_at ? 'verified' : account.wallet_status,
+        links: account.wallet_links.map(link => ({ id: link.id, chain: link.chain, address: link.address, verified_at: link.verified_at, created_at: link.created_at, primary: link.primary })),
+      },
       ledger: this.state.ledger.filter(event => event.owner === account.key).slice(-20).reverse().map(({ owner, ...event }) => event),
       payouts: this.state.payouts.filter(payout => payout.key === account.key).slice(-8).reverse().map(({ key, ...payout }) => payout),
     };
@@ -453,19 +497,65 @@ export class WorldFarm {
     return { account: this.view(identity), accepted_seconds: accepted, credits_earned: earned };
   }
 
-  async linkWallet(identity, { wallet_address, display_name } = {}) {
+  async linkWallet(identity, { display_name } = {}) {
     const account = this.account(identity);
-    const wallet = wallet_address == null || wallet_address === '' ? null : String(wallet_address).trim();
-    if (wallet && !validSolanaAddress(wallet)) throw fail('INVALID_WALLET', 'Enter a valid public Solana wallet address');
     if (display_name !== undefined) {
       const name = String(display_name).trim();
       if (!NICKNAME.test(name)) throw fail('INVALID_NAME', 'Name must be 2-24 letters, numbers, spaces, _ or -');
       account.display_name = name;
     }
-    account.wallet_address = wallet;
-    account.wallet_status = wallet ? 'self_declared' : 'unlinked';
+    account.updated_at = new Date(this.now()).toISOString();
     await this.persist();
     return { account: this.view(identity) };
+  }
+
+  async createWalletChallenge(identity, { wallet_address, domain } = {}) {
+    const account = this.account(identity);
+    if (account.provider === 'guest') throw fail('SIGN_IN_REQUIRED', 'Sign in before linking a wallet', 403);
+    const address = String(wallet_address || '').trim();
+    if (!validSolanaAddress(address)) throw fail('INVALID_WALLET', 'Connect a valid public Solana wallet');
+    const host = String(domain || '').toLowerCase();
+    if (!/^[a-z0-9.-]+(?::\d{1,5})?$/.test(host)) throw fail('INVALID_DOMAIN', 'Wallet challenge domain is invalid');
+    const now = this.now(), expires = now + WALLET_CHALLENGE_TTL_MS;
+    const challenge = {
+      id: `wch_${randomUUID()}`, user_id: account.user_id, account_key: account.key, address, domain: host,
+      nonce: randomBytes(18).toString('base64url'), issued_at: new Date(now).toISOString(), expires_at: new Date(expires).toISOString(), consumed_at: null,
+    };
+    challenge.message = [
+      'Last Seat wallet verification', `Domain: ${host}`, `Account: ${account.user_id}`, `Wallet: ${address}`,
+      `Nonce: ${challenge.nonce}`, `Issued At: ${challenge.issued_at}`, `Expiration Time: ${challenge.expires_at}`,
+      '', 'This request links a public wallet. It does not authorize a transaction.',
+    ].join('\n');
+    this.state.wallet_challenges.push(challenge);
+    this.state.wallet_challenges = this.state.wallet_challenges.filter(value => !value.consumed_at && Date.parse(value.expires_at) > now - WALLET_CHALLENGE_TTL_MS).slice(-500);
+    await this.persist();
+    return { challenge: { id: challenge.id, address, message: challenge.message, issued_at: challenge.issued_at, expires_at: challenge.expires_at } };
+  }
+
+  async verifyWalletChallenge(identity, { challenge_id, wallet_address, signature } = {}, domain) {
+    const account = this.account(identity);
+    if (account.provider === 'guest') throw fail('SIGN_IN_REQUIRED', 'Sign in before linking a wallet', 403);
+    const challenge = this.state.wallet_challenges.find(value => value.id === challenge_id);
+    if (!challenge || challenge.account_key !== account.key || challenge.user_id !== account.user_id) throw fail('CHALLENGE_NOT_FOUND', 'Wallet challenge was not issued for this account', 404);
+    if (challenge.consumed_at) throw fail('CHALLENGE_USED', 'Wallet challenge has already been used', 409);
+    if (Date.parse(challenge.expires_at) <= this.now()) throw fail('CHALLENGE_EXPIRED', 'Wallet challenge expired', 409);
+    if (challenge.domain !== String(domain || '').toLowerCase()) throw fail('CHALLENGE_DOMAIN_MISMATCH', 'Wallet challenge belongs to another domain', 403);
+    if (challenge.address !== String(wallet_address || '')) throw fail('WALLET_MISMATCH', 'The signing wallet does not match the challenge', 403);
+    if (!verifySolanaMessage(challenge.address, challenge.message, String(signature || ''))) throw fail('INVALID_SIGNATURE', 'Wallet signature could not be verified', 403);
+    const linkedElsewhere = Object.values(this.state.accounts).some(value => value.key !== account.key && value.wallet_links?.some(link => link.chain === 'solana' && link.address === challenge.address && link.verified_at));
+    if (linkedElsewhere) throw fail('WALLET_ALREADY_LINKED', 'That wallet is already verified by another account', 409);
+    challenge.consumed_at = new Date(this.now()).toISOString();
+    for (const link of account.wallet_links) link.primary = false;
+    let link = account.wallet_links.find(value => value.chain === 'solana' && value.address === challenge.address);
+    if (!link) {
+      link = { id: `wal_${randomUUID()}`, user_id: account.user_id, chain: 'solana', address: challenge.address, verified_at: challenge.consumed_at, created_at: challenge.consumed_at, primary: true };
+      account.wallet_links.push(link);
+    } else Object.assign(link, { verified_at: challenge.consumed_at, primary: true });
+    account.wallet_address = challenge.address;
+    account.wallet_status = 'verified';
+    account.updated_at = challenge.consumed_at;
+    await this.persist();
+    return { account: this.view(identity), wallet: { id: link.id, address: link.address, verified_at: link.verified_at, primary: true } };
   }
 
   /** A signed-in visitor keeps their character and plaza position across devices. */
@@ -493,7 +583,9 @@ export class WorldFarm {
   async requestPayout(identity, { amount_credits } = {}) {
     const account = this.account(identity);
     if (account.provider === 'guest') throw fail('SIGN_IN_REQUIRED', 'Sign in before requesting a payout', 403);
-    if (!account.wallet_address) throw fail('WALLET_REQUIRED', 'Link a public Solana wallet before requesting a payout', 409);
+    if (!this.payoutsEnabled) throw fail('PAYOUTS_DISABLED', 'Real payouts are disabled', 503);
+    const wallet = account.wallet_links.find(link => link.primary && link.verified_at);
+    if (!wallet) throw fail('VERIFIED_WALLET_REQUIRED', 'Verify a Solana wallet before requesting a payout', 409);
     const amount = Math.floor(Number(amount_credits || account.credits));
     if (!Number.isInteger(amount) || amount < this.minWithdrawalCredits) throw fail('PAYOUT_TOO_SMALL', `Withdraw at least ${this.minWithdrawalCredits} credits`, 409);
     if (amount > account.credits) throw fail('INSUFFICIENT_CREDITS', 'You do not have that many credits', 409);
@@ -502,7 +594,7 @@ export class WorldFarm {
       id: `payout_${randomUUID().slice(0, 8)}`,
       key: account.key,
       user_id: publicId(account.key),
-      wallet_address: account.wallet_address,
+      wallet_address: wallet.address,
       amount_credits: amount,
       amount_lamports: amount * this.lamportsPerCredit,
       status: 'queued',
@@ -519,6 +611,8 @@ export class WorldFarm {
   /** A guest's progress follows them into the account they just signed into. */
   async adopt(visitorKey, identity) {
     const target = this.account(identity);
+    const receiptKey = `${visitorKey}->${identity.key}`;
+    if (this.state.merge_receipts.some(receipt => receipt.key === receiptKey)) return { account: this.view(identity), merged: false, already_merged: true };
     const guest = visitorKey && visitorKey !== identity.key ? this.state.accounts[visitorKey] : null;
     if (!guest) return { account: this.view(identity), merged: false };
     target.credits += guest.credits;
@@ -528,6 +622,9 @@ export class WorldFarm {
     for (const kind of CROP_KINDS) target.inventory[kind] = (target.inventory[kind] || 0) + (guest.inventory[kind] || 0);
     for (const stat of Object.keys(target.stats)) target.stats[stat] += guest.stats[stat] || 0;
     for (const tile of Object.values(this.state.tiles)) if (tile.owner === visitorKey) tile.owner = identity.key;
+    this.state.merge_receipts.push({ key: receiptKey, guest_key: visitorKey, account_key: identity.key, user_id: target.user_id, merged_at: new Date(this.now()).toISOString() });
+    this.state.merge_receipts = this.state.merge_receipts.slice(-5_000);
+    target.updated_at = new Date(this.now()).toISOString();
     delete this.state.accounts[visitorKey];
     await this.persist();
     return { account: this.view(identity), merged: true };
@@ -540,7 +637,7 @@ export class WorldFarm {
       accounts: Object.keys(this.state.accounts).length,
       tiles: Object.keys(this.state.tiles).length,
       queued_payouts: this.state.payouts.filter(payout => payout.status === 'queued').length,
-      payouts_enabled: false,
+      payouts_enabled: this.payoutsEnabled,
     };
   }
 }

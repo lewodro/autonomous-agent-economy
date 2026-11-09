@@ -40,7 +40,7 @@ export const BUILDINGS: Building[] = [
   // uses fictional signage and never presents live balances or execution.
   {x:390,y:1200,width:136,height:88,name:'FOOD',color:'#8f6248',roof:'#a65f4e',accent:'#f0c36f',kind:'stall'},
   {x:610,y:1168,width:142,height:92,name:'EXCHANGE',color:'#343a37',roof:'#252a29',accent:'#e1b94d',kind:'stall'},
-  {x:1030,y:1185,width:150,height:92,name:'DATA',color:'#526b70',roof:'#40515e',accent:'#a7d5c2',kind:'stall'},
+  {x:1030,y:1185,width:150,height:92,name:'TREASURY',color:'#526b70',roof:'#40515e',accent:'#d8b865',kind:'stall'},
   {x:1210,y:1308,width:142,height:90,name:'TOOLS',color:'#6f6659',roof:'#4e5352',accent:'#c7a86f',kind:'stall'},
   {x:470,y:1490,width:150,height:90,name:'GOODS',color:'#77634f',roof:'#59624b',accent:'#d7c38b',kind:'stall'},
 ];
@@ -219,6 +219,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'botanical-garden', type: 'zone', position: { x: 1702, y:620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
   { id: 'south-market', type: 'zone', position: { x: 681, y: 1292 }, radius: 76, label: 'Open Bazaar profile terminal' },
+  { id: 'treasury-house', type: 'zone', position: { x: 1105, y: 1292 }, radius: 72, label: 'Enter Treasury House' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {

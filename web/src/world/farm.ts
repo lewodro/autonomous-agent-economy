@@ -12,7 +12,7 @@ export interface FarmProfile {
   avatar: string | null; position: FarmPosition | null; saved_at: string | null;
 }
 export interface FarmAccount {
-  id: string; temporary: boolean; signed_in: boolean; provider: string; display_name: string;
+  id: string; user_id: string; temporary: boolean; signed_in: boolean; provider: string; display_name: string;
   credits: number; xp: number; level: number; level_progress: number; xp_next: number;
   seconds_played: number; time_credits: number;
   inventory: Record<CropKind, number>;
@@ -20,8 +20,46 @@ export interface FarmAccount {
   plots_used: number; plots_limit: number;
   profile: FarmProfile;
   ledger: Array<{ id: string; type: string; timestamp: string; details: Record<string, unknown> }>;
-  wallet: { address: string | null; status: string };
+  wallet: { address: string | null; status: string; links: Array<{ id: string; chain: string; address: string; verified_at: string | null; created_at: string; primary: boolean }> };
   payouts: FarmPayout[];
+}
+
+interface WalletStandardAccount { address: string; publicKey: Uint8Array; features: readonly string[] }
+interface WalletStandardWallet {
+  name: string;
+  accounts: readonly WalletStandardAccount[];
+  features: Record<string, { connect?: () => Promise<unknown>; signMessage?: (...inputs: Array<{ account: WalletStandardAccount; message: Uint8Array }>) => Promise<Array<{ signedMessage: Uint8Array; signature: Uint8Array }>> }>;
+}
+
+function encodeBase58(bytes: Uint8Array): string {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let value = 0n;
+  for (const byte of bytes) value = value * 256n + BigInt(byte);
+  let output = '';
+  while (value > 0n) { output = alphabet[Number(value % 58n)] + output; value /= 58n; }
+  for (const byte of bytes) { if (byte === 0) output = `1${output}`; else break; }
+  return output || '1';
+}
+
+/** Discovers Wallet Standard providers without taking transaction authority. */
+export async function connectAndSignWallet(messageProvider: (address: string) => Promise<{ id: string; message: string }>): Promise<{ challenge_id: string; wallet_address: string; signature: string }> {
+  const found = new Set<WalletStandardWallet>();
+  const register = (...wallets: WalletStandardWallet[]) => wallets.forEach(wallet => found.add(wallet));
+  const listener = (event: Event) => (event as CustomEvent<(api: { register: typeof register }) => void>).detail({ register });
+  window.addEventListener('wallet-standard:register-wallet', listener);
+  window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: { register } }));
+  await new Promise(resolve => window.setTimeout(resolve, 60));
+  window.removeEventListener('wallet-standard:register-wallet', listener);
+  const wallet = [...found].find(candidate => candidate.features['standard:connect']?.connect && candidate.features['solana:signMessage']?.signMessage);
+  if (!wallet) throw new Error('Install or unlock a Solana Wallet Standard wallet first.');
+  await wallet.features['standard:connect']!.connect!();
+  const account = wallet.accounts.find(value => value.features.includes('solana:signMessage')) || wallet.accounts[0];
+  if (!account) throw new Error(`${wallet.name} did not expose a Solana account.`);
+  const challenge = await messageProvider(account.address);
+  const outputs = await wallet.features['solana:signMessage']!.signMessage!({ account, message: new TextEncoder().encode(challenge.message) });
+  const signature = outputs?.[0]?.signature;
+  if (!signature) throw new Error(`${wallet.name} did not return a signature.`);
+  return { challenge_id: challenge.id, wallet_address: account.address, signature: encodeBase58(signature) };
 }
 export interface FarmSnapshot {
   mode: 'farm_v1';

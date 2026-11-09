@@ -98,7 +98,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
         c.font='bold 9px monospace';c.textAlign='center';c.fillStyle=b.accent||'#f0d394';c.fillText(b.name,b.x+b.width/2,b.y+60);
         if(b.name==='EXCHANGE'){rect(b.x+b.width/2-5,b.y+72,10,10,b.accent||'#e1b94d');rect(b.x+b.width/2-2,b.y+75,4,4,'#343a37');}
         if(b.name==='FOOD'){rect(b.x+24,b.y+69,7,5,'#d18445');rect(b.x+34,b.y+66,6,8,'#8ba45b');rect(b.x+44,b.y+70,8,4,'#c7654f');}
-        if(b.name==='DATA'){rect(b.x+22,b.y+68,32,15,'#243d43');rect(b.x+26,b.y+72,24,3,b.accent||'#a7d5c2');}
+        if(b.name==='TREASURY'){rect(b.x+22,b.y+68,32,15,'#243d43');rect(b.x+26,b.y+72,24,3,b.accent||'#d8b865');}
       }else if(b.kind==='house'){
         rect(b.x,b.y+34,b.width,b.height-34,b.color);rect(b.x-7,b.y+24,b.width+14,18,b.roof||'#4c5148');
         rect(b.x+2,b.y+15,b.width-4,20,b.roof||'#4c5148');rect(b.x+11,b.y+9,b.width-22,9,b.roof||'#4c5148');
