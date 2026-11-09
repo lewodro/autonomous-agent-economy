@@ -158,6 +158,26 @@ export class DurableStateCollection {
     return Promise.all(ids.map(async id => [id, await this.legacy(id)]));
   }
 
+  async retain({ maxRecords = this.maxRecords, maxBytes = Number.POSITIVE_INFINITY, protectedId = null } = {}) {
+    if (this.database.mode !== 'postgres') return;
+    await this.importLegacyDirectory();
+    await this.database.queue;
+    const result = await this.database.pool.query(
+      `select record_id, pg_column_size(state)::bigint as bytes from ${TABLE}
+       where namespace = $1 order by updated_at asc, record_id asc`,
+      [this.namespace],
+    );
+    const records = result.rows.map(row => ({ id: row.record_id, bytes: Number(row.bytes) }));
+    let total = records.reduce((sum,record) => sum + record.bytes, 0);
+    while (records.length > maxRecords || total > maxBytes) {
+      const index = records.findIndex(record => record.id !== protectedId);
+      if (index < 0) throw new Error('Durable retention cannot keep the protected record');
+      const [oldest] = records.splice(index, 1);
+      await this.database.pool.query(`delete from ${TABLE} where namespace = $1 and record_id = $2`, [this.namespace, oldest.id]);
+      total -= oldest.bytes;
+    }
+  }
+
   async insertLegacy(id, state) {
     const json = this.encode(state);
     await this.database.pool.query(

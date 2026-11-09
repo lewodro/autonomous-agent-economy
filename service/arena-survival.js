@@ -14,7 +14,7 @@ function plainObject(value){return value&&typeof value==='object'&&!Array.isArra
 /** Schedules/persists the public Rust Survival simulation; it never resolves combat itself. */
 export class ArenaSurvivalService {
   constructor(core,directory,{profiles=()=>[],sessionId=SESSION,tickMs=180,checkpointTicks=6,resultMs=3500,maxRounds=1800,seedFactory=()=>randomInt(1,0xffffffff),syncFolder=syncDirectory,onMatch=null,collection=null,storageId='survival'}={}){
-    if(!Number.isInteger(tickMs)||tickMs<50||tickMs>2000||!Number.isInteger(checkpointTicks)||checkpointTicks<1||checkpointTicks>20||!Number.isInteger(resultMs)||resultMs<500||resultMs>30_000||!Number.isInteger(maxRounds)||maxRounds<20||maxRounds>5000)throw new Error('Invalid Survival scheduler settings');
+    if(!Number.isInteger(tickMs)||tickMs<50||tickMs>2000||!Number.isInteger(checkpointTicks)||checkpointTicks<1||checkpointTicks>200||!Number.isInteger(resultMs)||resultMs<500||resultMs>30_000||!Number.isInteger(maxRounds)||maxRounds<20||maxRounds>5000)throw new Error('Invalid Survival scheduler settings');
     if(typeof sessionId!=='string'||!/^[a-zA-Z0-9_-]{1,96}$/.test(sessionId))throw new Error('Invalid Survival session ID');
     this.core=core;this.directory=directory;this.file=path.join(directory,'survival.json');this.session=sessionId;this.storageId=storageId;this.profiles=profiles;this.tickMs=tickMs;this.checkpointTicks=checkpointTicks;this.resultMs=resultMs;this.maxRounds=maxRounds;this.seedFactory=seedFactory;this.syncFolder=syncFolder;this.onMatch=onMatch;this.collection=collection;this.saved=null;this.ticksSinceCheckpoint=0;this.closed=false;this.task=null;this.started=false;this.consecutiveFailures=0;this.waiters=new Set();
   }

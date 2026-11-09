@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DurableStateDatabase } from '../service/durable-state.js';
+import { ReplayArchive } from '../service/replay-archive.js';
 
 class MemoryPool {
   constructor(){this.rows=new Map();}
@@ -13,6 +14,10 @@ class MemoryPool {
     if(sql.startsWith('select state'))return{rows:this.rows.has(key)?[{state:structuredClone(this.rows.get(key))}]:[]};
     if(sql.startsWith('insert into')){if(sql.includes('do nothing')&&this.rows.has(key))return{rows:[]};this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
     if(sql.startsWith('delete from')){this.rows.delete(key);return{rows:[]};}
+    if(sql.startsWith('select record_id')&&sql.includes('pg_column_size')){
+      const prefix=`${params[0]}:`;
+      return{rows:[...this.rows.entries()].filter(([value])=>value.startsWith(prefix)).map(([value,state])=>({record_id:value.slice(prefix.length),bytes:Buffer.byteLength(JSON.stringify(state))}))};
+    }
     if(sql.startsWith('select record_id')){
       const prefix=`${params[0]}:`;
       return{rows:[...this.rows.entries()].filter(([value])=>value.startsWith(prefix)).sort().slice(0,params[1]).map(([value,state])=>({record_id:value.slice(prefix.length),state:structuredClone(state)}))};
@@ -32,6 +37,21 @@ test('durable collections survive reopen without mixing namespaces',async()=>{
     assert.deepEqual(await second.collection('arena').get('run-1'),{winner:'agent-1'});
     assert.deepEqual(await second.collection('compound').get('run-1'),{winner:'agent-2'});
     await second.close();
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('Postgres replay retention remains bounded and keeps the newest record',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'durable-retention-'));
+  try{
+    const database=new DurableStateDatabase({directory,pool:new MemoryPool()});await database.open();
+    const collection=database.collection('replays',{directory,maxRecords:2,maxBytes:10_000,legacyIdPattern:/^seat-[a-f0-9]{64}$/});
+    const archive=new ReplayArchive(directory,{collection,maxRecords:2,maxBytes:10_000,maxReplayBytes:5_000});
+    const ids=['1','2','3'].map(value=>`seat-${value.repeat(64)}`);
+    for(const id of ids)await archive.save({match_id:id,final_state:{ended:true},events:[]});
+    assert.equal(await archive.load(ids[0]),null);
+    assert.equal((await archive.load(ids[1])).match_id,ids[1]);
+    assert.equal((await archive.load(ids[2])).match_id,ids[2]);
+    await database.close();
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 

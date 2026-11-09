@@ -19,7 +19,7 @@ export class ReplayArchive {
     const operation=this.pending.then(()=>this.saveOne(replay));this.pending=operation.catch(()=>{});return operation;
   }
   async reconcile(){
-    const operation=this.pending.then(()=>this.collection?this.collection.entries():this.pruneRecords());this.pending=operation.catch(()=>{});return operation;
+    const operation=this.pending.then(async()=>{if(this.collection){await this.collection.retain({maxRecords:this.maxRecords,maxBytes:this.maxBytes});return;}await this.pruneRecords();});this.pending=operation.catch(()=>{});return operation;
   }
   async saveOne(replay){
     const target=this.file(replay?.match_id),temp=`${target}.${randomUUID()}.tmp`;
@@ -27,7 +27,7 @@ export class ReplayArchive {
     if(!bytes||!replay?.final_state||!Array.isArray(replay.events))throw new Error('Invalid replay archive record');
     const size=Buffer.byteLength(bytes);
     if(size>this.maxReplayBytes||size>this.maxBytes)throw Object.assign(new Error('Replay exceeds the archive record limit'),{status:413,code:'REPLAY_TOO_LARGE'});
-    if(this.collection){await withStorageFailure('replay archive',()=>this.collection.put(replay.match_id,replay));return replay.match_id;}
+    if(this.collection){await withStorageFailure('replay archive',async()=>{await this.collection.put(replay.match_id,replay);await this.collection.retain({maxRecords:this.maxRecords,maxBytes:this.maxBytes,protectedId:replay.match_id});});return replay.match_id;}
     await withStorageFailure('replay archive',async()=>{
       await mkdir(this.directory,{recursive:true});
       try{

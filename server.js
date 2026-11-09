@@ -67,7 +67,7 @@ const worldEconomyCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000})
 const arenaCumulativeStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'arena-stats',fileName:'arena-stats.json'});
 const arenaCumulative=new ArenaCumulativeStats(arenaCumulativeStore);
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'),{onMatch:()=>recordArenaMatches(),collection:durableDatabase.collection('arena-rooms',{directory:path.join(directory,'arena'),maxRecords:4,maxBytes:32_000_000})});
-const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles(),onMatch:()=>recordSurvivalMatches(),collection:durableDatabase.collection('arena-survival',{directory:path.join(directory,'arena'),maxRecords:1,maxBytes:16_000_000})});
+const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles(),onMatch:()=>recordSurvivalMatches(),checkpointTicks:30,collection:durableDatabase.collection('arena-survival',{directory:path.join(directory,'arena'),maxRecords:1,maxBytes:16_000_000})});
 function logArenaStatsError(event,error){console.error(JSON.stringify({event,errorType:error instanceof Error?error.name:'UnknownError'}));}
 function persistArenaCumulative(recorded){if(!recorded)return;void arenaCumulative.persist().catch(error=>logArenaStatsError('arena_cumulative_save_failed',error));}
 function recordArenaMatches(){try{persistArenaCumulative(arenaCumulative.recordRooms(arenaRooms.runs()));}catch(error){logArenaStatsError('arena_cumulative_record_failed',error);}}
