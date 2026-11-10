@@ -7,7 +7,7 @@ const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{7,95}$/;
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const WALLET_CHALLENGE_TTL_MS = 5 * 60_000;
 /** Kept in sync with the curated browser avatar catalog. */
-export const SAVED_AVATARS = Object.freeze(['visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
+export const SAVED_AVATARS = Object.freeze(['visitor_starter', 'visitor_ember', 'visitor_atlas', 'visitor_nova', 'visitor_echo']);
 /** Same walkable bounds the browser uses, so a saved instance cannot be restored inside the void. */
 const WORLD_BOUNDS = Object.freeze({ minX: -896, minY: -576, maxX: 2688, maxY: 1728 });
 // Production crop durations are exact server timestamps. Tests may apply the

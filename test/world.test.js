@@ -121,10 +121,10 @@ test('the old edge is now walkable in all four directions while the new edge blo
 test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
   assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(settings))),settings);
-  assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'visitor_ember');
-  assert.equal(new Set(SPRITES.map(s=>s.id)).size,24);
-  assert.deepEqual(SPRITES.filter(s=>s.id.startsWith('visitor_')).map(s=>s.id),['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
-  assert.deepEqual(AVATARS,['visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
+  assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'visitor_starter');
+  assert.equal(new Set(SPRITES.map(s=>s.id)).size,25);
+  assert.deepEqual(SPRITES.filter(s=>s.id.startsWith('visitor_')).map(s=>s.id),['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
+  assert.deepEqual(AVATARS,['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);
   assert.ok(AVATARS.every(id=>SPRITES.find(sprite=>sprite.id===id)?.selectable===true));
   assert.ok(!AVATARS.some(id=>['founder','trader','explorer','mentor'].includes(id)));
   const animated=SPRITES.find(s=>s.id==='visitor_ember');assert.deepEqual(animated.animations.walk_up,[9,10,11]);

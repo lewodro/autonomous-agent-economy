@@ -18,7 +18,7 @@ function chunk(type,data){
   checksum.writeUInt32BE(crc32(Buffer.concat([name,data])));
   return Buffer.concat([length,name,data,checksum]);
 }
-function encodePng(width,height,rgba){
+export function encodePng(width,height,rgba){
   const header=Buffer.alloc(13);header.writeUInt32BE(width,0);header.writeUInt32BE(height,4);header[8]=8;header[9]=6;
   const rows=Buffer.alloc(height*(width*4+1));
   for(let y=0;y<height;y++)rgba.copy(rows,y*(width*4+1)+1,y*width*4,(y+1)*width*4);

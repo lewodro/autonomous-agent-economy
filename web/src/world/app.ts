@@ -99,7 +99,7 @@ function syncRemotePlayers(snapshot:PresenceSnapshot):void {
     if(value.player_id===ownId){visitorName=value.display_name||'human';continue;}
     const id=`presence:${value.player_id}`;next.add(id);
     const facing=value.direction==='up'||value.direction==='left'||value.direction==='right'?value.direction:'down';
-    const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_ember';
+    const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_starter';
     const current=remotePlayers.get(id);
     if(current){
       current.actor.name=value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;
@@ -807,7 +807,7 @@ if(location.pathname==='/labs/world'){
     // Profiles load asynchronously. Keep the lab control usable immediately by
     // falling back to the actor identity until the canonical profile arrives.
     const profile=profiles.find(value=>value.id===actor.agentId)??{name:actor.name,strategy:'analyst'};
-    const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(actor.agentId,preview);labPinnedAgents.set(actor.agentId,performance.now()+60000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+60000,synthetic:speech.synthetic};
+    const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(actor.agentId,preview);labPinnedAgents.set(actor.agentId,performance.now()+60000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+60000,synthetic:speech.synthetic};(window as unknown as {__labThoughtAgentName?:string}).__labThoughtAgentName=actor.name;
   };lab.append(thought);
   const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }

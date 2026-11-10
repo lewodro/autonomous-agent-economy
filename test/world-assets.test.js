@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { inspectPng, validateWorldAssets } from '../scripts/validate-world-assets.js';
 
 test('registered world sprites have expected dimensions and real transparent pixels',async()=>{
-  assert.equal(await validateWorldAssets(),28);
+  assert.equal(await validateWorldAssets(),30);
 });
 
 test('sprite validator rejects malformed and unsupported PNG files',async()=>{

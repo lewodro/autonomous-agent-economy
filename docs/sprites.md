@@ -14,7 +14,7 @@ The world loads only registered sprite URLs from `web/src/world/sprites.ts`. Act
 | `assets/agents/` | Generated transparent agent PNGs used by the game and world renderer. |
 | `assets/spritesheets/` | Future exported animation sheets and frame metadata. |
 
-The 16×16 agent portraits are supplied as transparent PNGs in `assets/sprites-agent/`. Run `npm run assets:build` to create the renderer-ready derivatives in `assets/agents/`; existing transparent pixels are preserved, and only connected opaque navy edge pixels are removed. Run `npm run assets:check` to validate dimensions, alpha, metadata, picker registration and generated outputs. Run `npm run assets:world:check` to validate all 20 transparent 16×16 agent sprites plus the four visitor sheets and previews. New sprite sheets should be transparent RGBA PNGs with consistent frame dimensions and explicit row/column animation metadata. The visitor manifest currently expects a 3×4 grid of 32×32 frames and a 256×256 preview.
+The 16×16 agent portraits are supplied as transparent PNGs in `assets/sprites-agent/`. Run `npm run assets:build` to create the renderer-ready derivatives in `assets/agents/`; existing transparent pixels are preserved, and only connected opaque navy edge pixels are removed. The same command rebuilds the starter avatar from the kit's first body, outfit, hair, and accessory layer via `scripts/build-starter-avatar.js`. Run `npm run assets:check` to validate dimensions, alpha, metadata, picker registration and generated outputs. Run `npm run assets:world:check` to validate all 20 transparent 16×16 agent sprites plus the five visitor sheets and previews. New sprite sheets should be transparent RGBA PNGs with consistent frame dimensions and explicit row/column animation metadata. The visitor manifest currently expects a 3×4 grid of 32×32 frames and a 256×256 preview.
 
 ## Animated sheet format
 
@@ -29,7 +29,7 @@ The kit's [`avatar-manifest.json`](../assets/aae_avatar_kit/avatar-manifest.json
 
 The renderer reads zero-based frame indices. The manifest maps its idle direction to the first cell of each row and the walk cycle to all three cells. In a browser each frame is enlarged with nearest-neighbor pixel rendering.
 
-The source avatar layers are 96×128 transparent sheets aligned to the same grid. Compose body, outfit, hair, and accessory in that order. Their registered choices are listed by layer in the avatar kit manifest. Save preset IDs and appearance data, not executable or uploaded code.
+The source avatar layers are 96×128 transparent sheets aligned to the same grid. Compose body, outfit, hair, and accessory in that order. Their registered choices are listed by layer in the avatar kit manifest. Save preset IDs and appearance data, not executable or uploaded code. The default `visitor_starter` preset is generated from the first (starter) layer in each category and is rebuilt by `npm run assets:build`.
 
 ## Register another character
 
@@ -38,4 +38,4 @@ The source avatar layers are 96×128 transparent sheets aligned to the same grid
 3. Add a preset ID to `AVATARS` only if it is appropriate for visitor selection. Keep NPC `agentId` separate from `spriteId`.
 4. Check that an absent/invalid local avatar setting falls back to a registered preset. Run `npm test` and `npm run test:browser:world`.
 
-The current portraits are single-frame 16×16 images. They are intentionally mapped to idle and walking states until directional art is provided; the four approved visitor avatars have directional 32×32 sheets. The picker uses those four visitor assets only; agent portraits remain world/NPC art, not character-select options.
+The current portraits are single-frame 16×16 images. They are intentionally mapped to idle and walking states until directional art is provided; the five approved visitor avatars have directional 32×32 sheets. The picker uses those five visitor assets only; agent portraits remain world/NPC art, not character-select options.

@@ -66,7 +66,7 @@ export async function validateAssets(){
   assert.equal(manifest.version,1,'unsupported avatar index version');
   assert.ok(Array.isArray(manifest.avatars),'avatar index must contain an avatar list');
   const selectable=approvedAssets(manifest.avatars);
-  assert.equal(selectable.length,4,'the current picker must contain only the four approved visitor avatars');
+  assert.equal(selectable.length,5,'the current picker must contain only the five approved visitor avatars');
   assert.equal(new Set(selectable.map(asset=>asset.id)).size,selectable.length,'avatar IDs must be unique');
   const ids=new Set();
   for(const asset of selectable){

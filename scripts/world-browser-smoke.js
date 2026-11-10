@@ -45,7 +45,7 @@ try{
  const googleIntro=await evaluate("(()=>{const button=document.getElementById('intro-google'),note=document.getElementById('intro-auth-note');return {text:button?.textContent||'',disabled:button?.disabled,note:note?.textContent||''}})()");
  assert.ok(googleIntro.text.includes('Continue with Google'),'the intro must offer a Google saved-instance sign-in');
  assert.ok(googleIntro.disabled?/not configured|Checking/.test(googleIntro.note):googleIntro.note.includes('Sign in with Google'),'the Google button must explain its configured or guest-only state');
- await wait('document.querySelectorAll("#avatar-presets img").length===4&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
+ await wait('document.querySelectorAll("#avatar-presets img").length===5&&[...document.querySelectorAll("#avatar-presets img")].every(i=>i.complete&&i.naturalWidth>0)');
  const focusedPreset=await evaluate('(()=>{const b=document.querySelector("[data-avatar=visitor_atlas]");b.focus();return b.dataset.avatar})()');
  await evaluate('document.querySelector("[data-avatar=visitor_ember]").click()');
  assert.equal(await evaluate('document.activeElement?.dataset.avatar'),focusedPreset,'changing a preset must preserve keyboard focus');
@@ -178,8 +178,9 @@ try{
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(button=>button.textContent==='Walk probe: west').click()");
  await waitPosition(90,430);
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(button=>button.textContent==='Offer nearest NPC thought').click()");
- await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.attention)");
- const talkingAgent=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.find(n=>n.attention).name");
+ const talkingAgent=await evaluate("window.__labThoughtAgentName");
+ assert.ok(talkingAgent,'the lab thought control must report the agent it pinned');
+ await wait(`JSON.parse(document.querySelector('#world-lab pre').textContent).npcs.some(n=>n.name===${JSON.stringify(talkingAgent)}&&n.attention)`);
  await screenshot('npc-attention');
  await wait("!document.getElementById('interact').disabled&&document.getElementById('world-hint').textContent.includes('Talk to')");
  await evaluate("document.getElementById('interact').click()");

@@ -27,7 +27,7 @@ function drawActor(actor:CompoundParticipant,size:number,time:number):void{
  const target=tileCenter(actor.position,size),current=renderPositions.get(actor.id)||previousPositions.get(actor.id)||target,lerp=.16;current.x+=(target.x-current.x)*lerp;current.y+=(target.y-current.y)*lerp;renderPositions.set(actor.id,current);
  const x=Math.round(current.x),y=Math.round(current.y),youActor=actor.id===state?.you;
  context.fillStyle='rgba(12,24,20,.45)';context.fillRect(x-size*.3,y+size*.25,size*.6,size*.18);
- const spriteId=actor.type==='human'?(actor.avatar||'visitor_ember'):actor.name.toLowerCase().replaceAll(' ','-');
+ const spriteId=actor.type==='human'?(actor.avatar||'visitor_starter'):actor.name.toLowerCase().replaceAll(' ','-');
  if(actor.status==='escaped')context.globalAlpha=.35;
  drawActorSprite(context,spriteById.get(spriteId),spriteImages.get(spriteId),{position:{x,y},facing:(['up','down','left','right'].includes(actor.facing)?actor.facing:'down') as 'up'|'down'|'left'|'right',movementState:Math.abs(target.x-x)+Math.abs(target.y-y)>2?'walking':'idle'},time,false,Math.round(size*.72));
  context.globalAlpha=1;

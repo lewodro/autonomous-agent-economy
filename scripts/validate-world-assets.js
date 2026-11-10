@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateSync } from 'node:zlib';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const avatarNames=['ember','atlas','nova','echo'];
+const avatarNames=['starter','ember','atlas','nova','echo'];
 
 function paeth(a,b,c){const p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c;}
 

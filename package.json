@@ -38,7 +38,7 @@
     "data:reset": "node scripts/reset-demo-data.js",
     "config:check": "cargo run --manifest-path rust/Cargo.toml --locked --bin config-check --",
     "examples:check": "node scripts/validate-examples.js",
-    "assets:build": "node scripts/build-agent-sprites.js",
+    "assets:build": "node scripts/build-agent-sprites.js && node scripts/build-starter-avatar.js",
     "assets:check": "node scripts/validate-avatar-assets.js",
     "assets:world:check": "node scripts/validate-world-assets.js",
     "docs:check": "node scripts/check-docs.js",

@@ -22,7 +22,7 @@ function fail(code,message,status=400){return Object.assign(new Error(message),{
  * Anonymous visitor cookies own actors; browsers never choose public IDs or capabilities.
  */
 export class WorldPresenceService {
-  constructor({worldIds=['main'],allowedAvatars=['visitor_ember','visitor_atlas','visitor_nova','visitor_echo'],bounds=WORLD_PLAYABLE_BOUNDS,maxPlayers=40,maxViewers=100,staleMs=45_000,minUpdateMs=66,minHeartbeatMs=1_000,maxMovementCatchupMs=1_000,identitySecret='local-world-presence-identity-secret',agentPresence=null,now=()=>Date.now()}={}){
+  constructor({worldIds=['main'],allowedAvatars=['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo'],bounds=WORLD_PLAYABLE_BOUNDS,maxPlayers=40,maxViewers=100,staleMs=45_000,minUpdateMs=66,minHeartbeatMs=1_000,maxMovementCatchupMs=1_000,identitySecret='local-world-presence-identity-secret',agentPresence=null,now=()=>Date.now()}={}){
     if(!Array.isArray(worldIds)||!worldIds.length||worldIds.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(worldIds).size!==worldIds.length)throw new Error('World presence requires unique, valid configured world IDs');
     if(!Array.isArray(allowedAvatars)||!allowedAvatars.length||allowedAvatars.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(allowedAvatars).size!==allowedAvatars.length)throw new Error('World presence requires unique, valid approved avatar IDs');
     if(typeof identitySecret!=='string'||identitySecret.length<32)throw new Error('World presence identity secret must contain at least 32 characters');
@@ -36,7 +36,7 @@ export class WorldPresenceService {
   publicPlayer(player){const{visitorId,lastUpdateAt,lastMoveAt,lastHeartbeatAt,movementCredit,...value}=player;return value;}
   snapshot(worldId){this.prune(worldId);return{world_id:worldId,players:[...this.world(worldId).values()].map(player=>this.publicPlayer(player)),agents:worldId==='main'&&this.agentPresence?this.agentPresence.snapshot():[]};}
   sanitizePosition(position){const x=position?.x,y=position?.y;if(typeof x!=='number'||typeof y!=='number')throw fail('INVALID_POSITION','Position coordinates must be numbers');if(!Number.isFinite(x)||!Number.isFinite(y)||x<this.bounds.minX||y<this.bounds.minY||x>this.bounds.maxX||y>this.bounds.maxY)throw fail('INVALID_POSITION','Position is outside the world bounds');return{x:Math.round(x*10)/10,y:Math.round(y*10)/10};}
-  sanitizeAvatar(avatar){if(avatar==null)return'visitor_ember';if(typeof avatar!=='string'||!this.allowedAvatars.has(avatar))throw fail('INVALID_AVATAR','Avatar is not approved');return avatar;}
+  sanitizeAvatar(avatar){if(avatar==null)return'visitor_starter';if(typeof avatar!=='string'||!this.allowedAvatars.has(avatar))throw fail('INVALID_AVATAR','Avatar is not approved');return avatar;}
   emit(worldId,type,payload){const event={type,world_id:worldId,...payload};for(const res of this.listeners.get(worldId)||[]){if(res.destroyed||res.writableLength>1_000_000){res.destroy();continue;}try{res.write(`event: ${type}\ndata: ${JSON.stringify(event)}\n\n`);}catch{res.destroy();}}}
   join(worldId,visitorId,input={}){
     const world=this.world(worldId);this.prune(worldId);const id=this.presenceId(worldId,visitorId),existing=world.get(id);
