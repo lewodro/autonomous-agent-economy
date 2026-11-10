@@ -79,6 +79,8 @@ export const PATHS: WorldPath[] = [
   // The narrower garden trail branches from that junction and steps east.
   {x:1744,y:636,width:152,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
   {x:1832,y:802,width:210,height:64,color:'#786b55'},{x:1978,y:802,width:64,height:178,color:'#786b55'},
+  // The Treasury campfire keeps a small gravel apron just off the market road.
+  {x:1120,y:1444,width:80,height:24,color:'#786b55'},{x:1148,y:1424,width:24,height:54,color:'#786b55'},
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
 const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440}];
@@ -156,7 +158,7 @@ export const VEGETATION_GROUPS: VegetationGroup[] = [
   {district:'east',trees:[{x:2490,y:400,scale:.9,tint:2}],bushes:[{x:2440,y:445,size:22,tint:1}],flowers:[],rocks:[{x:2520,y:470}]},
   {district:'east',trees:[{x:2470,y:1210,scale:1.1}],bushes:[{x:2415,y:1250,size:24,tint:2},{x:2520,y:1270,size:18,tint:1}],flowers:[{x:2390,y:1290,width:64,height:26}],rocks:[]},
 ];
-export const CAMPFIRES: Position[] = [{x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1040,y:1320}];
+export const CAMPFIRES: Position[] = [{x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1160,y:1455}];
 // Ordered, collision-free targets provide a cheap loop through every district.
 // The NPC controller still uses the existing movement/collision code.
 export const NPC_WAYPOINTS: Position[] = [
