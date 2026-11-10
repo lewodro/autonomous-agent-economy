@@ -56,13 +56,17 @@ test('tree trunks are shared map obstacles rather than walk-through decoration',
  const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);
  assert.ok(visitor.position.x>=84,'movement must stop before crossing the first trunk');assert.ok(!collides(visitor.position));
 });
-test('farm plots and resource nodes keep a tree canopy clearing',()=>{
+test('farm plots and resource nodes always sit beside a tree, never underneath one',()=>{
   const sites=[
     ...FARM_ANCHORS.map(anchor=>({id:`farm:${anchor.id}`,x:anchor.x,y:anchor.y})),
     ...RESOURCE_NODES.flatMap(node=>node.spawn_pool.map((position,index)=>({id:`${node.id}:${index}`,x:position.x,y:position.y}))),
   ];
   assert.deepEqual(new Set(WORLD_SITES.map(point=>`${point.x},${point.y}`)),new Set(sites.map(point=>`${point.x},${point.y}`)),'browser clearings mirror every server site');
-  for(const site of sites)assert.ok(TREES.every(tree=>Math.hypot(tree.x-site.x,tree.y-site.y)>WORLD_SITE_CLEARANCE),`${site.id} keeps a canopy clearing`);
+  for(const site of sites){
+    assert.ok(TREES.every(tree=>Math.hypot(tree.x-site.x,tree.y-site.y)>WORLD_SITE_CLEARANCE),`${site.id} keeps a canopy clearing`);
+    assert.ok(TREES.some(tree=>Math.hypot(tree.x-site.x,tree.y-site.y)<=190),`${site.id} has a tree beside it`);
+  }
+  assert.ok(TREES.length>=80,'the outer world keeps a fuller tree line');
 });
 test('garden planting and campfire collision leave flower beds walkable',()=>{
   assert.ok(BUSHES.some(bush=>bush.solid));assert.ok(FLOWER_BEDS.length>=3);assert.ok(CAMPFIRES.length>=3);
