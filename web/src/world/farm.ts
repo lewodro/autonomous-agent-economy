@@ -130,29 +130,65 @@ export class FarmClient {
 interface ClerkShape {
   user: { fullName?: string | null; firstName?: string | null; primaryEmailAddress?: { emailAddress?: string } | null } | null;
   session: { getToken(): Promise<string | null> } | null;
-  load(options: { publishableKey: string }): Promise<void>;
+  load(options?: { ui?: { ClerkUI: unknown } }): Promise<void>;
   openSignIn(options?: Record<string, unknown>): unknown;
   signOut(): Promise<void>;
   addListener(listener: (state: { user: unknown }) => void): () => void;
 }
 
-function clerkFromWindow(): ClerkShape | undefined {
-  return (window as unknown as { Clerk?: ClerkShape }).Clerk;
+interface ClerkWindow extends Window {
+  Clerk?: ClerkShape;
+  __internal_ClerkUICtor?: unknown;
 }
 
-function loadClerkScript(): Promise<void> {
-  const existing = document.querySelector<HTMLScriptElement>('script[data-clerk-browser]');
-  if (existing) return Promise.resolve();
+function clerkFromWindow(): ClerkShape | undefined {
+  return (window as ClerkWindow).Clerk;
+}
+
+/** Clerk publishable keys encode the deployment-specific Frontend API hostname. */
+export function clerkFrontendApi(publishableKey: string): string | null {
+  const match = publishableKey.match(/^pk_(?:test|live)_(.+)$/);
+  const encoded = match?.[1];
+  if (!encoded) return null;
+  try {
+    const decoded = atob(encoded).replace(/\$$/, '');
+    return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(decoded) ? decoded : null;
+  } catch { return null; }
+}
+
+function appendClerkScript(src: string, marker: string, publishableKey?: string): Promise<void> {
+  const existing = document.querySelector<HTMLScriptElement>(`script[${marker}]`);
+  if (existing?.dataset.loaded === 'true') return Promise.resolve();
   return new Promise((resolve, reject) => {
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Could not load the sign-in service')), { once: true });
+      return;
+    }
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+    script.src = src;
     script.async = true;
     script.crossOrigin = 'anonymous';
-    script.dataset.clerkBrowser = '1';
-    script.onload = () => resolve();
+    script.setAttribute(marker, '1');
+    if (publishableKey) script.setAttribute('data-clerk-publishable-key', publishableKey);
+    script.onload = () => { script.dataset.loaded = 'true'; resolve(); };
     script.onerror = () => reject(new Error('Could not load the sign-in service'));
     document.head.append(script);
   });
+}
+
+let clerkScripts: Promise<void> | null = null;
+function loadClerkScript(publishableKey: string): Promise<void> {
+  if (clerkFromWindow()) return Promise.resolve();
+  if (clerkScripts) return clerkScripts;
+  clerkScripts = (async () => {
+    const frontendApi = clerkFrontendApi(publishableKey);
+    if (!frontendApi) throw new Error('The sign-in service key is invalid');
+    const origin = `https://${frontendApi}`;
+    await appendClerkScript(`${origin}/npm/@clerk/ui@1/dist/ui.browser.js`, 'data-clerk-ui');
+    await appendClerkScript(`${origin}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, 'data-clerk-browser', publishableKey);
+  })().catch(error => { clerkScripts = null; throw error; });
+  return clerkScripts;
 }
 
 export interface AuthGateway {
@@ -170,15 +206,15 @@ export function createAuth(getConfig: () => Promise<{ configured: boolean; publi
     configured: false,
     signedIn: false,
     async signIn() {
-      if (!gateway.configured) return false;
       const clerk = await ensure();
       if (!clerk.user) {
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve, reject) => {
           let settled = false;
           const finish = () => { if (settled) return; settled = true; unsubscribe(); clearInterval(poll); resolve(); };
+          const fail = (error: unknown) => { if (settled) return; settled = true; unsubscribe(); clearInterval(poll); reject(error); };
           const unsubscribe = clerk.addListener(state => { if (state.user) finish(); });
           const poll = setInterval(() => { if (clerk.user) finish(); }, 500);
-          try { clerk.openSignIn({ afterSignInUrl: location.href }); } catch { finish(); }
+          try { clerk.openSignIn(); } catch (error) { fail(error); }
         });
       }
       if (!clerk.user) return false;
@@ -203,10 +239,12 @@ export function createAuth(getConfig: () => Promise<{ configured: boolean; publi
       gateway.configured = true;
     }
     if (!pending) pending = (async () => {
-      if (!clerkFromWindow()) await loadClerkScript();
+      if (!clerkFromWindow()) await loadClerkScript(publishableKey);
       const clerk = clerkFromWindow();
       if (!clerk) throw new Error('Sign-in service unavailable');
-      await clerk.load({ publishableKey });
+      const ClerkUI = (window as ClerkWindow).__internal_ClerkUICtor;
+      if (!ClerkUI) throw new Error('Sign-in interface unavailable');
+      await clerk.load({ ui: { ClerkUI } });
       return clerk;
     })().catch(error => { pending = null; throw error; });
     return pending;

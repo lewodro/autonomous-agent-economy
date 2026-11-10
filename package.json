@@ -14,6 +14,7 @@
     "test:browser": "node scripts/browser-smoke.js",
     "test:browser:legacy": "node scripts/legacy-browser-smoke.js",
     "test:browser:world": "node scripts/world-browser-smoke.js",
+    "test:browser:clerk": "node scripts/clerk-browser-smoke.js",
     "test:browser:resources": "node scripts/world-resource-browser-smoke.js",
     "test:browser:world:ci": "node scripts/world-browser-ci.js",
     "dev": "node scripts/dev.js",
