@@ -212,6 +212,33 @@ const TREE_CANDIDATES: WorldTree[] = [
   {x:1920,y:-280,scale:1.1,tint:2},{x:2380,y:100,scale:.9},{x:2470,y:690,scale:1.2,tint:1},{x:2330,y:1250,scale:.85,tint:2},
   {x:1520,y:960,scale:1.1,tint:1},{x:1680,y:1060,scale:.85,tint:2},{x:1830,y:990,scale:1.2},
   {x:2020,y:940,scale:.9,tint:1},{x:2140,y:660,scale:1.1,tint:2},{x:2040,y:400,scale:.85},
+  // Outer woodland fills the open edges of the expanded map.
+  {x:-570,y:-470,scale:1.05,tint:2},{x:-440,y:-460,scale:.9,tint:1},
+  {x:360,y:-470,scale:1,tint:1},{x:450,y:-390,scale:.9,tint:2},{x:830,y:-450,scale:1.05,tint:1},
+  {x:1240,y:-470,scale:.9,tint:2},{x:1660,y:-470,scale:1.05,tint:1},{x:1800,y:-440,scale:.9,tint:2},
+  {x:2050,y:-450,scale:1.05,tint:1},{x:2190,y:-480,scale:.9,tint:2},{x:2470,y:-420,scale:1,tint:1},
+  {x:2600,y:-360,scale:1.1,tint:2},{x:2500,y:-120,scale:.9,tint:1},{x:2280,y:-300,scale:.9,tint:2},
+  {x:-820,y:-180,scale:1,tint:2},{x:-810,y:500,scale:.95,tint:1},{x:-830,y:1220,scale:1.05,tint:2},
+  {x:-800,y:1520,scale:.9,tint:1},{x:-610,y:1180,scale:1.05,tint:2},{x:-560,y:520,scale:.9,tint:1},
+  {x:-360,y:500,scale:1.05,tint:2},{x:-380,y:180,scale:.85,tint:2},{x:-560,y:120,scale:1,tint:1},
+  {x:-700,y:900,scale:.9,tint:2},{x:-660,y:1300,scale:.9,tint:1},
+  {x:2560,y:100,scale:1,tint:2},{x:2620,y:600,scale:.9,tint:1},{x:2580,y:1080,scale:1.05,tint:2},
+  {x:2620,y:1350,scale:.9,tint:1},{x:2540,y:1500,scale:1,tint:2},{x:2200,y:700,scale:.9,tint:1},
+  {x:2380,y:850,scale:1.05,tint:2},{x:2300,y:1050,scale:.9,tint:1},{x:2400,y:1420,scale:.85,tint:2},
+  {x:2050,y:1300,scale:1,tint:1},{x:2500,y:1000,scale:.9,tint:2},
+  {x:380,y:1600,scale:1,tint:2},{x:560,y:1600,scale:.9,tint:1},{x:1400,y:1600,scale:1.05,tint:2},
+  {x:2020,y:1620,scale:1,tint:1},{x:2300,y:1600,scale:.9,tint:2},{x:-120,y:1620,scale:.9,tint:2},
+  {x:0,y:1550,scale:1,tint:1},{x:150,y:1600,scale:.85,tint:2},
+  // Small groves inside the road loops and plaza outskirts.
+  {x:420,y:120,scale:.9,tint:1},{x:600,y:60,scale:.9,tint:1},{x:1000,y:80,scale:.9,tint:2},
+  {x:1300,y:600,scale:.9,tint:1},{x:1500,y:400,scale:.85,tint:2},{x:860,y:1000,scale:.9,tint:1},
+  {x:960,y:1320,scale:.85,tint:2},{x:180,y:780,scale:.9,tint:2},{x:40,y:640,scale:1,tint:1},
+  {x:-40,y:320,scale:.85,tint:2},
+  // Guaranteed companions for sites boxed in by roads or the map edge.
+  {x:1700,y:760,scale:1,tint:1},{x:1150,y:1640,scale:.9,tint:1},
+  {x:2590,y:1450,scale:.9,tint:2},{x:2350,y:1620,scale:.9,tint:1},
+  {x:1150,y:-360,scale:.9,tint:2},{x:1700,y:780,scale:1,tint:1},
+  {x:1150,y:1600,scale:.9,tint:1},{x:-690,y:-470,scale:.9,tint:2},{x:-680,y:-350,scale:.9,tint:1},
   ...VEGETATION_GROUPS.flatMap(group=>group.trees),
 ];
 const TREE_MIN_DISTANCE = 32;
