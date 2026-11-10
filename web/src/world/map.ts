@@ -79,6 +79,13 @@ export const PATHS: WorldPath[] = [
   // The narrower garden trail branches from that junction and steps east.
   {x:1744,y:636,width:152,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
   {x:1832,y:802,width:210,height:64,color:'#786b55'},{x:1978,y:802,width:64,height:178,color:'#786b55'},
+  // Small gravel camp clearings on the outer edges of the world.
+  {x:-620,y:-464,width:120,height:28,color:'#786b55'},{x:-574,y:-478,width:28,height:76,color:'#786b55'},
+  {x:2260,y:-444,width:120,height:28,color:'#786b55'},{x:2306,y:-468,width:28,height:76,color:'#786b55'},
+  {x:-842,y:1106,width:108,height:28,color:'#786b55'},{x:-804,y:1082,width:28,height:76,color:'#786b55'},
+  {x:2540,y:886,width:120,height:28,color:'#786b55'},{x:2586,y:862,width:28,height:76,color:'#786b55'},
+  {x:-780,y:1586,width:120,height:28,color:'#786b55'},{x:-734,y:1562,width:28,height:76,color:'#786b55'},
+  {x:2140,y:1606,width:120,height:28,color:'#786b55'},{x:2186,y:1582,width:28,height:76,color:'#786b55'},
   // The Treasury campfire keeps a small gravel apron just off the market road.
   {x:1120,y:1444,width:80,height:24,color:'#786b55'},{x:1148,y:1424,width:24,height:54,color:'#786b55'},
 ];
@@ -158,7 +165,11 @@ export const VEGETATION_GROUPS: VegetationGroup[] = [
   {district:'east',trees:[{x:2490,y:400,scale:.9,tint:2}],bushes:[{x:2440,y:445,size:22,tint:1}],flowers:[],rocks:[{x:2520,y:470}]},
   {district:'east',trees:[{x:2470,y:1210,scale:1.1}],bushes:[{x:2415,y:1250,size:24,tint:2},{x:2520,y:1270,size:18,tint:1}],flowers:[{x:2390,y:1290,width:64,height:26}],rocks:[]},
 ];
-export const CAMPFIRES: Position[] = [{x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1160,y:1455}];
+export const CAMPFIRES: Position[] = [
+  {x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1160,y:1455},
+  // Outer camps sit on gravel clearings at the edges of the shared map.
+  {x:-560,y:-450},{x:2320,y:-430},{x:-790,y:1120},{x:2600,y:900},{x:-720,y:1600},{x:2200,y:1620},
+];
 // Ordered, collision-free targets provide a cheap loop through every district.
 // The NPC controller still uses the existing movement/collision code.
 export const NPC_WAYPOINTS: Position[] = [
