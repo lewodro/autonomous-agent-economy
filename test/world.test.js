@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { FARM_ANCHORS } from '../service/world-farm.js';
+import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
@@ -54,6 +56,18 @@ test('tree trunks are shared map obstacles rather than walk-through decoration',
  const visitor=actor({x:90,y:158});moveActor(visitor,{x:-1,y:0,interact:false},.1);
  assert.ok(visitor.position.x>=84,'movement must stop before crossing the first trunk');assert.ok(!collides(visitor.position));
 });
+test('farm plots and resource nodes always sit beside a tree, never underneath one',()=>{
+  const sites=[
+    ...FARM_ANCHORS.map(anchor=>({id:`farm:${anchor.id}`,x:anchor.x,y:anchor.y})),
+    ...RESOURCE_NODES.flatMap(node=>node.spawn_pool.map((position,index)=>({id:`${node.id}:${index}`,x:position.x,y:position.y}))),
+  ];
+  assert.deepEqual(new Set(WORLD_SITES.map(point=>`${point.x},${point.y}`)),new Set(sites.map(point=>`${point.x},${point.y}`)),'browser clearings mirror every server site');
+  for(const site of sites){
+    assert.ok(TREES.every(tree=>Math.hypot(tree.x-site.x,tree.y-site.y)>WORLD_SITE_CLEARANCE),`${site.id} keeps a canopy clearing`);
+    assert.ok(TREES.some(tree=>Math.hypot(tree.x-site.x,tree.y-site.y)<=190),`${site.id} has a tree beside it`);
+  }
+  assert.ok(TREES.length>=80,'the outer world keeps a fuller tree line');
+});
 test('garden planting and campfire collision leave flower beds walkable',()=>{
   assert.ok(BUSHES.some(bush=>bush.solid));assert.ok(FLOWER_BEDS.length>=3);assert.ok(CAMPFIRES.length>=3);
   for(const bush of BUSHES.filter(item=>item.solid))assert.equal(collides({x:bush.x,y:bush.y}),true);
@@ -61,12 +75,12 @@ test('garden planting and campfire collision leave flower beds walkable',()=>{
   for(const bed of FLOWER_BEDS)assert.equal(collides({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),false,'flowers should never seal a garden path');
 });
 test('terrain-aware decoration keeps trees and planting off every road surface',()=>{
-  for(const tree of TREES)assert.equal(canPlaceTree({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)}),true);
+  for(const tree of TREES)assert.equal(canPlaceTree(tree),true);
   for(const bush of BUSHES)assert.equal(canPlaceBush(bush),true);
   for(const bed of FLOWER_BEDS)assert.equal(canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),true);
   for(const rock of ROCKS)assert.equal(canPlaceRock(rock),true);
   assert.equal(VEGETATION_GROUPS.length,17);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
-  assert.ok(VEGETATION_GROUPS.filter(group=>group.district==='north').flatMap(group=>group.trees).filter(tree=>TREES.some(placed=>placed.x===tree.x&&placed.y===tree.y)).length>=8);
+  assert.ok(TREES.filter(tree=>tree.y<-200).length>=8,'the northern belt keeps its woodland');
   for(const tree of TREES)assert.equal(isNaturalGround({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)},28),true,'tree trunk needs green terrain clear of road and buildings');
 });
 test('east road connects the plaza, Agency door, and botanical trail at walkable centers',()=>{

@@ -15,10 +15,28 @@ npm run docs:check
 ```
 
 Start a focused branch from current main. Make coherent commits with an imperative
-message; `hardening_NNN description` is used for this pass, not a mandatory project
-prefix. No empty commits or contribution-count splitting. Describe the concrete
+message. No empty commits or contribution-count splitting. Describe the concrete
 problem, resulting behavior and relevant checks in your PR. Preserve unrelated
 working-tree edits. Do not commit generated web/dist, matches, keys or node_modules.
+
+Commit subject format:
+
+```
+<topic>-<NNN>-<summary>-<importance>-<action>-<detail>
+```
+
+- `topic` is the area of work, for example `world`, `storage` or `identity`.
+- `NNN` is a three-digit sequence for the branch or pass: `001`, `002`, `003`.
+- `summary` is a short kebab-case description of the commit.
+- `importance` is `1` (trivial) through `5` (critical or player-visible).
+- `action` is one of `add`, `fix`, `order`, `revise` or `update`.
+- `detail` is the specific behavior or file group changed.
+
+Example: `world-002-treasury-campfire-5-fix-move-fire-off-the-road`.
+
+Split a multi-part change into consecutive commits in dependency order:
+foundations first, then layout/data, then UI wiring, then documentation. Rebuild
+and run the focused tests for each commit when the change affects compiled output.
 
 Game authority: `rust/src/engine.rs`, `strategy.rs`, `model.rs`, versioned rules.
 Rendering: `web/src/` projection/player/renderer/animation drivers. Transport/model

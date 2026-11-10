@@ -79,6 +79,15 @@ export const PATHS: WorldPath[] = [
   // The narrower garden trail branches from that junction and steps east.
   {x:1744,y:636,width:152,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
   {x:1832,y:802,width:210,height:64,color:'#786b55'},{x:1978,y:802,width:64,height:178,color:'#786b55'},
+  // Small gravel camp clearings on the outer edges of the world.
+  {x:-620,y:-464,width:120,height:28,color:'#786b55'},{x:-574,y:-478,width:28,height:76,color:'#786b55'},
+  {x:2260,y:-444,width:120,height:28,color:'#786b55'},{x:2306,y:-468,width:28,height:76,color:'#786b55'},
+  {x:-842,y:1106,width:108,height:28,color:'#786b55'},{x:-804,y:1082,width:28,height:76,color:'#786b55'},
+  {x:2540,y:886,width:120,height:28,color:'#786b55'},{x:2586,y:862,width:28,height:76,color:'#786b55'},
+  {x:-780,y:1586,width:120,height:28,color:'#786b55'},{x:-734,y:1562,width:28,height:76,color:'#786b55'},
+  {x:2140,y:1606,width:120,height:28,color:'#786b55'},{x:2186,y:1582,width:28,height:76,color:'#786b55'},
+  // The Treasury campfire keeps a small gravel apron just off the market road.
+  {x:1120,y:1444,width:80,height:24,color:'#786b55'},{x:1148,y:1424,width:24,height:54,color:'#786b55'},
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
 const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440}];
@@ -101,10 +110,36 @@ export function isNaturalGround(point:Position,radius=0):boolean {
   if(point.x-radius<MAP.minX+48||point.y-radius<MAP.minY+72||point.x+radius>MAP.minX+MAP.width-48||point.y+radius>MAP.minY+MAP.height-48)return false;
   return !PATHS.some(path=>overlaps(path,point,radius))&&!BUILDINGS.some(building=>overlaps(building,point,radius));
 }
-/** Natural-ground placement rules keep future decoration off roads and plazas. */
-export function canPlaceTree(point:Position):boolean { return isNaturalGround(point,28); }
+/**
+ * Authoritative sites for farm plots and resource nodes. Trees keep a clearing
+ * around every one so soil and ore grow beside a trunk, never underneath it.
+ * Kept in sync with service/world-farm.js and service/world-economy.js by
+ * test/world.test.js.
+ */
+export const WORLD_SITES: Position[] = [
+  // Farm anchors.
+  {x:-720,y:600},{x:-350,y:-450},{x:1000,y:-420},{x:2400,y:-200},{x:2500,y:680},
+  {x:1600,y:650},{x:1950,y:1450},{x:-500,y:1500},{x:1020,y:1610},
+  // Resource spawn pools.
+  {x:300,y:-240},{x:180,y:-280},{x:-800,y:850},{x:-820,y:770},{x:1400,y:900},{x:1300,y:840},
+  {x:1550,y:-450},{x:1430,y:-430},{x:1800,y:1600},{x:1680,y:1560},{x:250,y:1600},{x:130,y:1560},
+  {x:2600,y:300},{x:2480,y:260},{x:2600,y:1600},{x:2480,y:1560},{x:-800,y:-450},{x:-800,y:-370},
+  {x:-490,y:210},{x:-420,y:170},{x:2080,y:820},{x:2040,y:760},
+];
+export const WORLD_SITE_CLEARANCE = 110;
+/** Natural-ground placement rules keep decoration off roads, plazas, sites and camps. */
+export function canPlaceTree(point:Position):boolean {
+  return isNaturalGround(point,28)
+    && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>72)
+    && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>40);
+}
 export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12); }
-export function canPlaceFlower(point:Position):boolean { return isNaturalGround(point,6); }
+export function canPlaceFlower(point:Position):boolean {
+  return isNaturalGround(point,6)
+    && TREES.every(tree=>Math.hypot(tree.x-point.x,tree.y-point.y)>40)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34);
+}
 export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10); }
 
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
@@ -130,6 +165,44 @@ export const VEGETATION_GROUPS: VegetationGroup[] = [
   {district:'east',trees:[{x:2490,y:400,scale:.9,tint:2}],bushes:[{x:2440,y:445,size:22,tint:1}],flowers:[],rocks:[{x:2520,y:470}]},
   {district:'east',trees:[{x:2470,y:1210,scale:1.1}],bushes:[{x:2415,y:1250,size:24,tint:2},{x:2520,y:1270,size:18,tint:1}],flowers:[{x:2390,y:1290,width:64,height:26}],rocks:[]},
 ];
+export const CAMPFIRES: Position[] = [
+  {x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1160,y:1455},
+  // Outer camps sit on gravel clearings at the edges of the shared map.
+  {x:-560,y:-450},{x:2320,y:-430},{x:-790,y:1120},{x:2600,y:900},{x:-720,y:1600},{x:2200,y:1620},
+];
+// Ordered, collision-free targets provide a cheap loop through every district.
+// The NPC controller still uses the existing movement/collision code.
+export const NPC_WAYPOINTS: Position[] = [
+  {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:430,y:510},
+  {x:340,y:430},{x:0,y:430},{x:-300,y:430},{x:-650,y:430},{x:-650,y:760},
+  {x:-400,y:900},{x:-352,y:1184},{x:-200,y:1300},{x:176,y:1360},{x:200,y:1370},
+  {x:700,y:1450},{x:700,y:1320},{x:1000,y:1320},{x:1000,y:1100},{x:1660,y:1100},
+  {x:1660,y:1052},{x:1780,y:1052},{x:1780,y:820},{x:2050,y:820},{x:2300,y:820},
+  {x:2448,y:820},{x:2448,y:608},{x:2450,y:600},{x:2420,y:100},{x:2096,y:96},
+  {x:2100,y:100},{x:1900,y:200},{x:1888,y:304},{x:1888,y:368},{x:1900,y:400},
+  {x:1702,y:460},{x:1568,y:365},{x:1568,y:320},{x:1568,y:365},{x:1702,y:460},
+  {x:1702,y:640},{x:1870,y:668},{x:1702,y:640},{x:1702,y:460},{x:1280,y:460},
+  {x:1100,y:460},{x:1072,y:656},{x:900,y:760},{x:700,y:760},{x:608,y:768},
+  {x:432,y:768},{x:430,y:730},{x:430,y:510},{x:480,y:320},{x:576,y:0},
+  {x:576,y:-250},{x:576,y:-168},{x:790,y:-168},{x:1000,y:-168},{x:1136,y:-208},
+  {x:1140,y:-300},{x:1400,y:-180},{x:1200,y:0},{x:800,y:0},{x:576,y:0},
+  {x:-528,y:240},{x:-528,y:304},{x:-580,y:350},{x:-350,y:350},{x:-208,y:640},
+  {x:-210,y:780},{x:-100,y:680},{x:224,y:752},{x:220,y:1120},{x:368,y:1280},
+  {x:384,y:1312},{x:420,y:1390},{x:700,y:1390},{x:820,y:1280},{x:980,y:1390},
+  {x:1160,y:1410},{x:1184,y:1296},{x:1500,y:1230},{x:1552,y:1008},{x:1552,y:864},
+  {x:1568,y:340},{x:1702,y:460},{x:1872,y:496},{x:1870,y:668},{x:1344,y:624},
+  {x:1072,y:432},{x:432,y:416}
+];
+/**
+ * One companion tree is seeded beside every authoritative site. Candidate
+ * positions are deterministic, and the normal filters keep them off roads,
+ * buildings, campfires, routes, and one another.
+ */
+const SITE_COMPANION_TREES: WorldTree[] = WORLD_SITES.map((site,index)=>{
+  const angle=index*2.399963229728653;
+  const distance=126+(index%3)*12;
+  return {x:Math.round(site.x+Math.cos(angle)*distance),y:Math.round(site.y+Math.sin(angle)*distance),scale:index%4===0?1.1:.9,tint:(index%3) as 0|1|2};
+});
 const TREE_CANDIDATES: WorldTree[] = [
   {x:60,y:120},{x:65,y:280},{x:60,y:710},{x:340,y:770},{x:1060,y:180},{x:1056,y:350},{x:1030,y:770},
   {x:1160,y:190},{x:1270,y:170},{x:1375,y:230},{x:1190,y:360},{x:1330,y:410},{x:1410,y:560},{x:1160,y:650},{x:1290,y:720},{x:1380,y:760},
@@ -139,9 +212,44 @@ const TREE_CANDIDATES: WorldTree[] = [
   {x:1920,y:-280,scale:1.1,tint:2},{x:2380,y:100,scale:.9},{x:2470,y:690,scale:1.2,tint:1},{x:2330,y:1250,scale:.85,tint:2},
   {x:1520,y:960,scale:1.1,tint:1},{x:1680,y:1060,scale:.85,tint:2},{x:1830,y:990,scale:1.2},
   {x:2020,y:940,scale:.9,tint:1},{x:2140,y:660,scale:1.1,tint:2},{x:2040,y:400,scale:.85},
+  // Outer woodland fills the open edges of the expanded map.
+  {x:-570,y:-470,scale:1.05,tint:2},{x:-440,y:-460,scale:.9,tint:1},
+  {x:360,y:-470,scale:1,tint:1},{x:450,y:-390,scale:.9,tint:2},{x:830,y:-450,scale:1.05,tint:1},
+  {x:1240,y:-470,scale:.9,tint:2},{x:1660,y:-470,scale:1.05,tint:1},{x:1800,y:-440,scale:.9,tint:2},
+  {x:2050,y:-450,scale:1.05,tint:1},{x:2190,y:-480,scale:.9,tint:2},{x:2470,y:-420,scale:1,tint:1},
+  {x:2600,y:-360,scale:1.1,tint:2},{x:2500,y:-120,scale:.9,tint:1},{x:2280,y:-300,scale:.9,tint:2},
+  {x:-820,y:-180,scale:1,tint:2},{x:-810,y:500,scale:.95,tint:1},{x:-830,y:1220,scale:1.05,tint:2},
+  {x:-800,y:1520,scale:.9,tint:1},{x:-610,y:1180,scale:1.05,tint:2},{x:-560,y:520,scale:.9,tint:1},
+  {x:-360,y:500,scale:1.05,tint:2},{x:-380,y:180,scale:.85,tint:2},{x:-560,y:120,scale:1,tint:1},
+  {x:-700,y:900,scale:.9,tint:2},{x:-660,y:1300,scale:.9,tint:1},
+  {x:2560,y:100,scale:1,tint:2},{x:2620,y:600,scale:.9,tint:1},{x:2580,y:1080,scale:1.05,tint:2},
+  {x:2620,y:1350,scale:.9,tint:1},{x:2540,y:1500,scale:1,tint:2},{x:2200,y:700,scale:.9,tint:1},
+  {x:2380,y:850,scale:1.05,tint:2},{x:2300,y:1050,scale:.9,tint:1},{x:2400,y:1420,scale:.85,tint:2},
+  {x:2050,y:1300,scale:1,tint:1},{x:2500,y:1000,scale:.9,tint:2},
+  {x:380,y:1600,scale:1,tint:2},{x:560,y:1600,scale:.9,tint:1},{x:1400,y:1600,scale:1.05,tint:2},
+  {x:2020,y:1620,scale:1,tint:1},{x:2300,y:1600,scale:.9,tint:2},{x:-120,y:1620,scale:.9,tint:2},
+  {x:0,y:1550,scale:1,tint:1},{x:150,y:1600,scale:.85,tint:2},
+  // Small groves inside the road loops and plaza outskirts.
+  {x:420,y:120,scale:.9,tint:1},{x:600,y:60,scale:.9,tint:1},{x:1000,y:80,scale:.9,tint:2},
+  {x:1300,y:600,scale:.9,tint:1},{x:1500,y:400,scale:.85,tint:2},{x:860,y:1000,scale:.9,tint:1},
+  {x:960,y:1320,scale:.85,tint:2},{x:180,y:780,scale:.9,tint:2},{x:40,y:640,scale:1,tint:1},
+  {x:-40,y:320,scale:.85,tint:2},
+  // Guaranteed companions for sites boxed in by roads or the map edge.
+  {x:1700,y:760,scale:1,tint:1},{x:1150,y:1640,scale:.9,tint:1},
+  {x:2590,y:1450,scale:.9,tint:2},{x:2350,y:1620,scale:.9,tint:1},
+  {x:1150,y:-360,scale:.9,tint:2},{x:1700,y:780,scale:1,tint:1},
+  {x:1150,y:1600,scale:.9,tint:1},{x:-690,y:-470,scale:.9,tint:2},{x:-680,y:-350,scale:.9,tint:1},
   ...VEGETATION_GROUPS.flatMap(group=>group.trees),
 ];
-export const TREES: WorldTree[] = TREE_CANDIDATES.filter(tree=>canPlaceTree({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)}));
+const TREE_MIN_DISTANCE = 32;
+export const TREES: WorldTree[] = [...SITE_COMPANION_TREES,...TREE_CANDIDATES].reduce<WorldTree[]>((placed,tree)=>{
+  const scale=tree.scale||1;
+  const trunk={x:tree.x+6*scale,y:tree.y+38*scale};
+  if(canPlaceTree(tree)
+    && isNaturalGround(trunk,28)
+    && placed.every(other=>Math.hypot(other.x-tree.x,other.y-tree.y)>=TREE_MIN_DISTANCE)) placed.push(tree);
+  return placed;
+},[]);
 const BUSH_CANDIDATES: WorldBush[] = [
   {x:1460,y:680,size:28,solid:true},{x:1520,y:790,size:20,tint:1},{x:1580,y:900,size:26,solid:true,tint:2},
   {x:1690,y:550,size:22,tint:1},{x:1810,y:510,size:30,solid:true},{x:1940,y:590,size:20,tint:2},
@@ -170,30 +278,6 @@ const FLOWER_CANDIDATES: Rect[] = [
 export const FLOWER_BEDS: Rect[] = FLOWER_CANDIDATES.filter(bed=>canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}));
 const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},...VEGETATION_GROUPS.flatMap(group=>group.rocks)];
 export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
-export const CAMPFIRES: Position[] = [{x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1040,y:1320}];
-// Ordered, collision-free targets provide a cheap loop through every district.
-// The NPC controller still uses the existing movement/collision code.
-export const NPC_WAYPOINTS: Position[] = [
-  {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:430,y:510},
-  {x:340,y:430},{x:0,y:430},{x:-300,y:430},{x:-650,y:430},{x:-650,y:760},
-  {x:-400,y:900},{x:-352,y:1184},{x:-200,y:1300},{x:176,y:1360},{x:200,y:1370},
-  {x:700,y:1450},{x:700,y:1320},{x:1000,y:1320},{x:1000,y:1100},{x:1660,y:1100},
-  {x:1660,y:1052},{x:1780,y:1052},{x:1780,y:820},{x:2050,y:820},{x:2300,y:820},
-  {x:2448,y:820},{x:2448,y:608},{x:2450,y:600},{x:2420,y:100},{x:2096,y:96},
-  {x:2100,y:100},{x:1900,y:200},{x:1888,y:304},{x:1888,y:368},{x:1900,y:400},
-  {x:1702,y:460},{x:1568,y:365},{x:1568,y:320},{x:1568,y:365},{x:1702,y:460},
-  {x:1702,y:640},{x:1870,y:668},{x:1702,y:640},{x:1702,y:460},{x:1280,y:460},
-  {x:1100,y:460},{x:1072,y:656},{x:900,y:760},{x:700,y:760},{x:608,y:768},
-  {x:432,y:768},{x:430,y:730},{x:430,y:510},{x:480,y:320},{x:576,y:0},
-  {x:576,y:-250},{x:576,y:-168},{x:790,y:-168},{x:1000,y:-168},{x:1136,y:-208},
-  {x:1140,y:-300},{x:1400,y:-180},{x:1200,y:0},{x:800,y:0},{x:576,y:0},
-  {x:-528,y:240},{x:-528,y:304},{x:-580,y:350},{x:-350,y:350},{x:-208,y:640},
-  {x:-210,y:780},{x:-100,y:680},{x:224,y:752},{x:220,y:1120},{x:368,y:1280},
-  {x:384,y:1312},{x:420,y:1390},{x:700,y:1390},{x:820,y:1280},{x:980,y:1390},
-  {x:1160,y:1410},{x:1184,y:1296},{x:1500,y:1230},{x:1552,y:1008},{x:1552,y:864},
-  {x:1568,y:340},{x:1702,y:460},{x:1872,y:496},{x:1870,y:668},{x:1344,y:624},
-  {x:1072,y:432},{x:432,y:416}
-];
 export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===900&&point.y===760);
 /** Developer-only browser probes start just inside the former map edges. */
 export const EXPLORATION_PROBES = {
