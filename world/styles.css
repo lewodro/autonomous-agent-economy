@@ -101,6 +101,38 @@
 .intro-auth__note[data-tone=warn]{color:#f1be93}
 .intro-footnote{margin:10px 0 0;font-size:10px;color:#96a39c;line-height:1.5}
 
+/* Character creator: live kit preview plus compact layer controls. */
+#character-dialog{width:min(680px,calc(100vw - 24px))}
+.character-creator{display:grid;grid-template-columns:minmax(0,256px) minmax(0,1fr);gap:18px;align-items:start;margin:18px 0 20px}
+.character-stage{display:grid;justify-items:center;gap:8px;padding:12px;border:2px solid #64765e;background:#1b2823}
+.character-preview{display:block;width:100%;max-width:256px;height:auto;aspect-ratio:1;image-rendering:pixelated;border:2px solid #52624d;background-color:#3d5145;background-image:linear-gradient(45deg,#47604d 25%,transparent 25%),linear-gradient(-45deg,#47604d 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#47604d 75%),linear-gradient(-45deg,transparent 75%,#47604d 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+.character-preview-strip{display:block;width:100%;max-width:256px;height:auto;aspect-ratio:4/1;image-rendering:pixelated;opacity:.85;border:1px solid #52624d;background:#172922}
+.character-status{margin:0;min-height:1.5em;font-size:10px;line-height:1.45;color:#b9c7b4;text-align:center}
+.character-controls{display:grid;gap:8px;min-width:0}
+.character-row{display:grid;gap:6px;padding:8px 0;border-top:1px solid #40504a}
+.character-row:first-child{border-top:0;padding-top:0}
+.character-row__label{font-size:9px;letter-spacing:1.6px;color:var(--gold)}
+.character-stepper{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:6px}
+.character-stepper button{min-height:32px;padding:0;font-size:16px;line-height:1}
+.character-step-label{font:700 10px/1.2 ui-monospace,monospace;letter-spacing:1px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e8eadf}
+.character-swatches{display:flex;flex-wrap:wrap;gap:6px}
+.character-swatch{width:28px;height:28px;min-height:28px;padding:0;border:2px solid #1d2c25;background:var(--swatch,#8b9c8b);box-shadow:inset 0 0 0 1px #00000040;transition:transform .14s ease,border-color .14s ease}
+.character-swatch:hover{transform:translateY(-1px);border-color:#8b967a}
+.character-swatch[aria-pressed=true]{border-color:var(--gold);box-shadow:inset 0 0 0 1px #00000040,0 0 0 2px #e0be7f55}
+.character-actions{display:flex;gap:8px;padding-top:10px;border-top:1px solid #40504a}
+.character-actions button{flex:1;min-height:38px;padding:8px 6px;font-size:10px;letter-spacing:1px}
+#character-reset{background:#2d3b33}
+@media(max-width:680px){
+  .character-creator{grid-template-columns:1fr;gap:12px;margin:14px 0 16px}
+  .character-stage{padding:10px}
+  .character-preview{max-width:200px}
+  .character-preview-strip{max-width:200px}
+  .character-swatch{width:32px;height:32px;min-height:32px}
+  .character-stepper{grid-template-columns:40px minmax(0,1fr) 40px}
+  .character-stepper button{min-height:38px}
+  .character-actions button{min-height:44px}
+}
+
 /* Arena motion: tabs, buttons, room cards, live status and agent rows. */
 @keyframes arena-rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes arena-tab-glow{0%,100%{box-shadow:0 0 0 0 #b9eb6900}50%{box-shadow:0 0 0 3px #b9eb6933}}

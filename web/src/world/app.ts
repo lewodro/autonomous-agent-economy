@@ -4,6 +4,7 @@ import { moveActor, moveToward, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
+import { DEFAULT_APPEARANCE, appearanceSprites, layerParts, loadAppearanceCatalog, parseAppearance, type Appearance, type AppearanceCatalog } from './appearance.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
 import { HttpArenaGateway, type AgentProfile, type MatchRecord } from './gateway.js';
 import { liveMatchMessages } from './live-statistics.js';
@@ -24,7 +25,7 @@ const returnTarget=new URLSearchParams(location.search).get('return');
 if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(settings);}
 else if(returnTarget==='treasury'){settings.position={x:1105,y:1292};saveSettings(settings);}
 else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
-const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,activity:'Exploring',recentWinner:false};
+const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const touchFirst=matchMedia('(pointer: coarse)').matches;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -56,11 +57,11 @@ const auth=createAuth(async()=>{
   return await response.json() as {configured:boolean;publishable_key:string|null};
 });
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
-function persist():void {saveSettings({...settings,avatar:player.spriteId,position:player.position});savedProfileDirty=true;scheduleSavedProfile();}
+function persist():void {saveSettings({...settings,avatar:player.spriteId,appearance:player.appearance??null,position:player.position});savedProfileDirty=true;scheduleSavedProfile();}
 async function flushSavedProfile():Promise<void>{
   if(!savedProfileDirty||!farmSnapshot?.account?.signed_in)return;
   savedProfileDirty=false;
-  try{await farmClient.saveProfile(player.spriteId,{...player.position});}
+  try{await farmClient.saveProfile(player.spriteId,{...player.position},player.appearance??null);}
   catch{savedProfileDirty=true;}
 }
 function scheduleSavedProfile():void{
@@ -101,14 +102,15 @@ function syncRemotePlayers(snapshot:PresenceSnapshot):void {
     const id=`presence:${value.player_id}`;next.add(id);
     const facing=value.direction==='up'||value.direction==='left'||value.direction==='right'?value.direction:'down';
     const spriteId=AVATARS.includes(value.avatar)?value.avatar:'visitor_starter';
+    const appearance=parseAppearance(value.appearance);
     const current=remotePlayers.get(id);
     if(current){
-      current.actor.name=value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;
+      current.actor.name=value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`;current.actor.spriteId=spriteId;current.actor.appearance=appearance;
       current.actor.facing=facing;current.actor.movementState=value.animation_state==='walk'?'walking':'idle';current.actor.activity=value.activity;
       current.target={...value.position};
     }else{
       remotePlayers.set(id,{target:{...value.position},actor:{id,type:'human',name:value.display_name||`Watcher ${value.player_id.slice(-4).toUpperCase()}`,
-        position:{...value.position},facing,movementState:value.animation_state==='walk'?'walking':'idle',spriteId,activity:value.activity,recentWinner:false}});
+        position:{...value.position},facing,movementState:value.animation_state==='walk'?'walking':'idle',spriteId,appearance,activity:value.activity,recentWinner:false}});
     }
   }
   for(const id of remotePlayers.keys())if(!next.has(id))remotePlayers.delete(id);
@@ -163,7 +165,7 @@ function connectPresence(client:WorldPresenceClient):Promise<void> {
 function startPresence():Promise<void> {
   if(!entered||stopped||presenceClient)return Promise.resolve();
   let client:WorldPresenceClient,heartbeatFailures=0;
-  client=new WorldPresenceClient({avatar:player.spriteId,position:{...player.position},direction:player.facing,activity:player.activity,
+  client=new WorldPresenceClient({avatar:player.spriteId,appearance:player.appearance??null,position:{...player.position},direction:player.facing,activity:player.activity,
     onPlayers:syncRemotePlayers,onConnection:state=>{
       if(presenceClient!==client)return;
       if(state==='reconnecting'){schedulePresenceReconnectLabel();return;}
@@ -250,19 +252,28 @@ function applySavedProfile(snapshot:FarmSnapshot):void{
   savedProfileApplied=true;
   const profile=snapshot.account.profile;
   if(!profile)return;
-  let avatarChanged=false,positionChanged=false;
+  let avatarChanged=false,appearanceChanged=false,positionChanged=false;
   if(profile.avatar&&AVATARS.includes(profile.avatar)&&profile.avatar!==player.spriteId){player.spriteId=profile.avatar;avatarChanged=true;}
+  const savedAppearance=parseAppearance(profile.appearance),current=player.appearance;
+  const legacyPreset=profile.appearance===null&&Boolean(profile.avatar&&AVATARS.includes(profile.avatar));
+  if(legacyPreset&&current!==null){
+    // Accounts saved before the creator keep their approved preset sheet.
+    player.appearance=null;settings.appearance=null;appearanceChanged=true;
+  }else if(savedAppearance&&(!current||current.body!==savedAppearance.body||current.hair!==savedAppearance.hair||current.outfit!==savedAppearance.outfit||current.accessory!==savedAppearance.accessory)){
+    player.appearance=savedAppearance;settings.appearance=savedAppearance;appearanceChanged=true;
+  }
   if(profile.position){
     const next=safePosition(profile.position);
     if(Math.hypot(next.x-player.position.x,next.y-player.position.y)>2){player.position=next;positionChanged=true;}
   }
-  if(!avatarChanged&&!positionChanged)return;
-  saveSettings({...settings,avatar:player.spriteId,position:player.position});
+  if(!avatarChanged&&!appearanceChanged&&!positionChanged)return;
+  saveSettings({...settings,avatar:player.spriteId,appearance:player.appearance??null,position:player.position});
   const client=presenceClient;
   if(client){
-    const update=avatarChanged?client.updateAvatar(player.spriteId):Promise.resolve();
+    const update=appearanceChanged?client.updateAppearance(player.appearance??null).then(()=>avatarChanged?client.updateAvatar(player.spriteId):undefined):avatarChanged?client.updateAvatar(player.spriteId):Promise.resolve();
     void update.then(()=>{if(presenceClient===client&&positionChanged)return client.move(player.position,player.facing,'idle');}).catch(()=>presenceError(client));
   }
+  if(appearanceChanged){updateCharacterControls();drawCharacterPreview();}
   farmHud.notice('Restored your saved world instance','good');
 }
 async function loadFarm():Promise<void>{
@@ -539,54 +550,112 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
   }
   else {const version=show('Free Tic-Tac-Toe table');mountTable(content,()=>dialog.open&&interactionVersion===version);}
 }
-interface AvatarAsset {id:string;name:string;sheet:string;preview:string;frameWidth:number;frameHeight:number;columns:number;rows:number;approved:boolean;placeholder?:boolean;debug?:boolean}
-let approvedAvatarAssets:AvatarAsset[]|null=null;
-async function transparentImage(url:string,width:number,height:number):Promise<boolean>{
-  const image=new Image();image.src=url;await image.decode();
-  if(image.naturalWidth!==width||image.naturalHeight!==height)return false;
-  const sample=document.createElement('canvas');sample.width=width;sample.height=height;
-  const context=sample.getContext('2d',{willReadFrequently:true});if(!context)return false;
-  context.drawImage(image,0,0);const pixels=context.getImageData(0,0,width,height).data;
-  let transparent=0,visible=0;
-  for(let alpha=3;alpha<pixels.length;alpha+=4){if(pixels[alpha]===0)transparent++;else visible++;}
-  return visible>0&&transparent/(width*height)>=0.01;
+const SKIN_SWATCH:Record<string,string>={body_porcelain:'#f2d8c4',body_light:'#e6b78d',body_tan:'#c98f5f',body_brown:'#9c6640',body_deep:'#74492f',body_ebony:'#4e2f20'};
+const HAIR_SWATCH:Record<string,string>={black:'#1b1919',blonde:'#e3c06a',blue:'#4b7fd0',brown:'#7b4a2c',red:'#b8432f',silver:'#c9cdd2'};
+const OUTFIT_SWATCH:Record<string,string>={charcoal:'#363b42',cream:'#e6dcc2',forest:'#2f5d3a',navy:'#2d3f6b',rust:'#a55b33',violet:'#6c4b91'};
+let characterCatalog:AppearanceCatalog|null=null;
+let characterBound=false;
+function appearanceOf():Appearance { return player.appearance??settings.appearance??DEFAULT_APPEARANCE; }
+function categoryStyles(ids:string[],prefix:string):string[] {
+  return [...new Set(ids.map(id=>layerParts(id,prefix)?.style).filter((value):value is string=>Boolean(value)))];
 }
-async function avatarCatalog():Promise<AvatarAsset[]> {
-  if(approvedAvatarAssets)return approvedAvatarAssets;
-  const response=await fetch('/assets/avatars/index.json',{signal:AbortSignal.timeout(5000)});
-  if(!response.ok)throw new Error('Avatar catalog unavailable');
-  const catalog=await response.json() as {version?:number;avatars?:AvatarAsset[]};
-  if(catalog.version!==1||!Array.isArray(catalog.avatars))throw new Error('Avatar catalog invalid');
-  const eligible=catalog.avatars.filter(asset=>asset.approved===true&&asset.placeholder!==true&&asset.debug!==true
-    &&!/(placeholder|debug|invalid)/i.test(asset.id)&&AVATARS.includes(asset.id)
-    &&SPRITES.some(sprite=>sprite.id===asset.id&&sprite.selectable===true&&sprite.sheet===asset.sheet&&sprite.preview===asset.preview
-      &&sprite.frameWidth===asset.frameWidth&&sprite.frameHeight===asset.frameHeight));
-  const checked:AvatarAsset[]=[];
-  for(const asset of eligible){
-    try{
-      const sheetOk=await transparentImage(asset.sheet,asset.frameWidth*asset.columns,asset.frameHeight*asset.rows);
-      const previewOk=await transparentImage(asset.preview,256,256);
-      if(sheetOk&&previewOk)checked.push(asset);
-    }catch{/* Broken previews stay out of the character picker. */}
-  }
-  approvedAvatarAssets=checked;return checked;
+function categoryColors(ids:string[],prefix:string):string[] {
+  return [...new Set(ids.map(id=>layerParts(id,prefix)?.color).filter((value):value is string=>Boolean(value)))];
 }
-async function presetButtons():Promise<void> {
-  const presets=$('avatar-presets');
-  let assets:AvatarAsset[];
-  try{assets=await avatarCatalog();}catch{assets=[];}
-  const valid=new Set(assets.map(asset=>asset.id));
-  for(const button of presets.querySelectorAll<HTMLButtonElement>('button'))if(!valid.has(button.dataset.avatar||''))button.remove();
-  for(const asset of assets){
-    const {id,name,preview}=asset;
-    let button=presets.querySelector<HTMLButtonElement>(`[data-avatar="${id}"]`);
-    if(!button){
-      button=document.createElement('button');button.type='button';button.dataset.avatar=id;
-      const image=document.createElement('img');image.src=preview;image.alt='';button.append(image,document.createTextNode(name.toUpperCase()));
-      button.onclick=()=>{player.spriteId=id;presetButtons();persist();if(presenceClient)void presenceClient.updateAvatar(id).catch(()=>presenceClient&&presenceError(presenceClient));};presets.append(button);
-    }
-    button.setAttribute('aria-pressed',String(player.spriteId===id));
+function layerFor(ids:string[],prefix:string,style:string,color:string):string|undefined {
+  return ids.find(id=>{const parts=layerParts(id,prefix);return parts?.style===style&&parts?.color===color;});
+}
+function rebuildSwatches(container:HTMLElement|null,values:string[],selected:string,colors:Record<string,string>,label:string,pick:(value:string)=>void):void {
+  if(!container)return;
+  const hadFocus=container.contains(document.activeElement);
+  container.replaceChildren();
+  values.forEach((value,index)=>{
+    const button=document.createElement('button');button.type='button';button.className='character-swatch';
+    button.style.setProperty('--swatch',colors[value]||'#8b9c8b');button.dataset.value=value;
+    button.setAttribute('aria-label',`${label} ${index+1}`);button.setAttribute('aria-pressed',String(value===selected));
+    button.onclick=()=>pick(value);container.append(button);
+  });
+  // Re-rendering a swatch row must not drop keyboard focus mid-selection.
+  if(hadFocus)[...container.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.dataset.value===selected)?.focus();
+}
+function setAppearance(next:Appearance):void {
+  player.appearance=next;settings.appearance=next;appearanceSprites.preload(next);
+  persist();updateCharacterControls();drawCharacterPreview();
+  const client=presenceClient;
+  if(client)void client.updateAppearance(next).catch(()=>presenceClient===client&&presenceError(client));
+}
+function patchAppearance(patch:Partial<Appearance>):void {setAppearance({...appearanceOf(),...patch,version:1});}
+function cycleStyle(ids:string[],prefix:string,currentStyle:string,currentColor:string,delta:number):string {
+  const styles=categoryStyles(ids,prefix),index=Math.max(0,styles.indexOf(currentStyle));
+  const style=styles[(index+delta+styles.length)%styles.length]??styles[0]??currentStyle;
+  return layerFor(ids,prefix,style,currentColor)??layerFor(ids,prefix,style,categoryColors(ids,prefix)[0]??currentColor)??`${prefix}_${style}`;
+}
+function cycleAccessory(delta:number):void {
+  const catalog=characterCatalog;if(!catalog)return;
+  const options:(string|null)[]=[null,...catalog.accessory],current=appearanceOf().accessory;
+  const index=Math.max(0,options.indexOf(current));
+  patchAppearance({accessory:options[(index+delta+options.length)%options.length]??null});
+}
+function randomAppearance():Appearance {
+  const catalog=characterCatalog;
+  if(!catalog)return {...DEFAULT_APPEARANCE};
+  const pick=<T,>(values:T[]):T=>values[Math.floor(Math.random()*values.length)]!;
+  return {version:1,body:pick(catalog.body),hair:pick(catalog.hair),outfit:pick(catalog.outfit),accessory:Math.random()<0.35?null:pick(catalog.accessory)};
+}
+function updateCharacterControls():void {
+  const status=$('character-status'),appearance=appearanceOf();
+  if(!characterCatalog){
+    if(status)status.textContent='Character kit unavailable — refresh to try again.';
+    return;
   }
+  if(status)status.textContent='Changes save automatically.';
+  const catalog=characterCatalog;
+  rebuildSwatches($('character-body-swatches'),catalog.body,appearance.body,SKIN_SWATCH,'Skin tone',body=>patchAppearance({body}));
+  const hair=layerParts(appearance.hair,'hair')??{style:'bob',color:'black'};
+  const hairLabel=$('character-hair-label');if(hairLabel)hairLabel.textContent=hair.style.toUpperCase();
+  rebuildSwatches($('character-hair-colors'),categoryColors(catalog.hair,'hair'),hair.color,HAIR_SWATCH,'Hair colour',color=>{
+    patchAppearance({hair:layerFor(catalog.hair,'hair',hair.style,color)??appearance.hair});
+  });
+  const outfit=layerParts(appearance.outfit,'outfit')??{style:'hoodie',color:'charcoal'};
+  const outfitLabel=$('character-outfit-label');if(outfitLabel)outfitLabel.textContent=outfit.style.toUpperCase();
+  rebuildSwatches($('character-outfit-colors'),categoryColors(catalog.outfit,'outfit'),outfit.color,OUTFIT_SWATCH,'Outfit colour',color=>{
+    patchAppearance({outfit:layerFor(catalog.outfit,'outfit',outfit.style,color)??appearance.outfit});
+  });
+  const accessoryLabel=$('character-accessory-label');
+  if(accessoryLabel)accessoryLabel.textContent=appearance.accessory?appearance.accessory.replace(/^accessory_/,'').toUpperCase():'NONE';
+}
+function drawCharacterPreview(attempt=0):void {
+  const appearance=appearanceOf();appearanceSprites.preload(appearance);
+  const sheet=appearanceSprites.sheet(appearance);
+  if(!sheet){if(attempt<180)requestAnimationFrame(()=>drawCharacterPreview(attempt+1));return;}
+  const preview=$<HTMLCanvasElement>('character-preview'),context=preview?.getContext('2d');
+  if(preview&&context){context.imageSmoothingEnabled=false;context.clearRect(0,0,preview.width,preview.height);context.drawImage(sheet,0,0,32,32,0,0,preview.width,preview.height);}
+  const strip=$<HTMLCanvasElement>('character-preview-strip'),stripContext=strip?.getContext('2d');
+  if(strip&&stripContext){
+    stripContext.imageSmoothingEnabled=false;stripContext.clearRect(0,0,strip.width,strip.height);
+    [0,3,6,9].forEach((frame,index)=>{stripContext.drawImage(sheet,(frame%3)*32,Math.floor(frame/3)*32,32,32,index*64,0,64,64);});
+  }
+}
+function bindCharacterControls():void {
+  if(characterBound)return;characterBound=true;
+  const stepHair=(delta:number):void=>{const catalog=characterCatalog;if(!catalog)return;const hair=layerParts(appearanceOf().hair,'hair')??{style:'bob',color:'black'};patchAppearance({hair:cycleStyle(catalog.hair,'hair',hair.style,hair.color,delta)});};
+  const stepOutfit=(delta:number):void=>{const catalog=characterCatalog;if(!catalog)return;const outfit=layerParts(appearanceOf().outfit,'outfit')??{style:'hoodie',color:'charcoal'};patchAppearance({outfit:cycleStyle(catalog.outfit,'outfit',outfit.style,outfit.color,delta)});};
+  const hairPrev=$<HTMLButtonElement>('character-hair-prev'),hairNext=$<HTMLButtonElement>('character-hair-next');
+  const outfitPrev=$<HTMLButtonElement>('character-outfit-prev'),outfitNext=$<HTMLButtonElement>('character-outfit-next');
+  const accessoryPrev=$<HTMLButtonElement>('character-accessory-prev'),accessoryNext=$<HTMLButtonElement>('character-accessory-next');
+  if(hairPrev)hairPrev.onclick=()=>stepHair(-1);if(hairNext)hairNext.onclick=()=>stepHair(1);
+  if(outfitPrev)outfitPrev.onclick=()=>stepOutfit(-1);if(outfitNext)outfitNext.onclick=()=>stepOutfit(1);
+  if(accessoryPrev)accessoryPrev.onclick=()=>cycleAccessory(-1);if(accessoryNext)accessoryNext.onclick=()=>cycleAccessory(1);
+  const randomize=$<HTMLButtonElement>('character-randomize'),reset=$<HTMLButtonElement>('character-reset');
+  if(randomize)randomize.onclick=()=>setAppearance(randomAppearance());
+  if(reset)reset.onclick=()=>setAppearance({...DEFAULT_APPEARANCE});
+}
+async function setupCharacterCreator():Promise<void> {
+  bindCharacterControls();
+  try{characterCatalog=await loadAppearanceCatalog();}
+  catch{characterCatalog=null;}
+  if(characterCatalog){appearanceSprites.preload(appearanceOf());updateCharacterControls();drawCharacterPreview();}
+  else updateCharacterControls();
 }
 function setIntroNote(message:string,tone:'info'|'good'|'warn'='info'):void{
   const note=$('intro-auth-note');if(!note)return;note.textContent=message;note.dataset.tone=tone;
@@ -621,9 +690,9 @@ $('intro-google').onclick=async()=>{
   }catch(error){setIntroNote(error instanceof Error?error.message:'Sign-in failed','warn');}
   finally{if(!farmSnapshot?.account?.signed_in){button.disabled=false;button.textContent='Continue with Google';}}
 };
-$('avatar-change').onclick=()=>{resetInput();void presetButtons().then(()=>character.showModal());};
+$('avatar-change').onclick=()=>{resetInput();updateCharacterControls();drawCharacterPreview();character.showModal();};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
-$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
+$('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();void flushSavedProfile();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
 // Act on the click immediately instead of waiting for the next frame's input
 // buffer, which a blur or reset can clear before it is read.
 $('interact').addEventListener('click',()=>{if(!nearby)return;touch.reset();void interact();});
@@ -820,7 +889,7 @@ if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');
 // entry.js exposes a gate that resolves when the shared page-entry animation
 // has finished. Wait for it so the character card does not cover the animation;
 // if the loader is missing or reduced motion is enabled, open immediately.
-void presetButtons();canvas.focus();
+void setupCharacterCreator();canvas.focus();
 void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(()=>openIntro(),()=>openIntro());
 const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
