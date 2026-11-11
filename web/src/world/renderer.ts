@@ -1,5 +1,6 @@
 import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
+import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
 import type { FarmTile } from './farm.js';
 /** Available body, depleted body, and glinting accent for each ore variant. */
@@ -22,12 +23,15 @@ export function isActorNearVisitor(actor:WorldActor,visitor:WorldActor|undefined
   return actor.type==='human'||!!visitor&&Math.hypot(actor.position.x-visitor.position.x,actor.position.y-visitor.position.y)<distance;
 }
 /** Shared world sprite frame selection for the plaza and the read-only Arena. */
-export function drawActorSprite(c:CanvasRenderingContext2D,sprite:SpriteDefinition|undefined,image:HTMLImageElement|undefined,actor:Pick<WorldActor,'position'|'facing'|'movementState'>,time:number,reduced:boolean,size=48):number {
+export function drawActorSprite(c:CanvasRenderingContext2D,sprite:SpriteDefinition|undefined,image:HTMLImageElement|undefined,actor:Pick<WorldActor,'position'|'facing'|'movementState'>,time:number,reduced:boolean,size=48,composed?:HTMLCanvasElement):number {
   const {x,y}=actor.position;
   const animation=sprite?.animations[`${actor.movementState==='walking'?'walk':'idle'}_${actor.facing}`]||[0];
   const frame=animation[Math.floor(time/150)%animation.length]||0;
   const bob=actor.movementState==='walking'&&!reduced?Math.floor(time/140)%2*2:0;
-  if(image?.complete&&image.naturalWidth&&sprite){
+  if(composed){
+    const column=((frame%3)+3)%3,row=Math.max(0,Math.floor(frame/3))%4;
+    c.drawImage(composed,column*32,row*32,32,32,Math.round(x-size/2),Math.round(y-size*5/6-bob),size,size);
+  }else if(image?.complete&&image.naturalWidth&&sprite){
     const columns=Math.max(1,Math.floor(image.naturalWidth/sprite.frameWidth));
     c.drawImage(image,frame%columns*sprite.frameWidth,Math.floor(frame/columns)*sprite.frameHeight,sprite.frameWidth,sprite.frameHeight,Math.round(x-size/2),Math.round(y-size*5/6-bob),size,size);
   }else{c.fillStyle='#d5b882';c.fillRect(x-size*5/24,y-size*7/12,size*5/12,size*7/12);}
@@ -286,8 +290,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
   }
   private renderActor(actor:WorldActor,time:number,reduced:boolean,showName:boolean):void {
     const c=this.ctx,{x,y}=actor.position;const sprite=SPRITES.find(s=>s.id===actor.spriteId);const image=this.images.get(actor.spriteId);
+    const composed=actor.appearance?appearanceSprites.sheet(actor.appearance)??undefined:undefined;
     c.fillStyle='#172b2880';c.beginPath();c.ellipse(x,y+7,18,7,0,0,Math.PI*2);c.fill();
-    const bob=drawActorSprite(c,sprite,image,actor,time,reduced);
+    const bob=drawActorSprite(c,sprite,image,actor,time,reduced,48,composed);
     if(actor.type==='human'){c.strokeStyle='#c4dfbd';c.lineWidth=2;c.beginPath();c.ellipse(x,y+9,20,8,0,0,Math.PI*2);c.stroke();}
     if(showName){c.textAlign='center';c.font='bold 10px monospace';const name=actor.name.toUpperCase();
       c.fillStyle='#1a2928e0';c.fillRect(x-name.length*3.2-5,y-57-bob,name.length*6.4+10,14);

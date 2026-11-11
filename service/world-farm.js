@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, randomBytes, randomUUID, verify as verifySignature } from 'node:crypto';
 import { validSolanaAddress } from './world-economy.js';
+import { sanitizeAppearance } from './avatar-appearance.js';
 
 const VERSION = 3;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
@@ -100,7 +101,7 @@ function defaultAccount(identity, now) {
     time_credits: 0,
     inventory: { wheat: 0, carrot: 0, pumpkin: 0 },
     stats: { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 },
-    profile: { avatar: null, position: null, saved_at: null },
+    profile: { avatar: null, appearance: null, position: null, saved_at: null },
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
     last_seen: new Date(now).toISOString(),
@@ -176,7 +177,7 @@ export class WorldFarm {
       account.time_credits ||= 0;
       account.xp ||= 0;
       account.credits ||= 0;
-      account.profile ||= { avatar: null, position: null, saved_at: null };
+      account.profile ||= { avatar: null, appearance: null, position: null, saved_at: null };
       account.user_id ||= internalUserId();
       account.clerk_user_id ??= account.provider === 'clerk' ? account.subject || key.slice(6) : null;
       account.wallet_links ||= [];
@@ -306,9 +307,10 @@ export class WorldFarm {
       plots_limit: this.maxPlotsPerPlayer,
       profile: account.profile ? {
         avatar: account.profile.avatar || null,
+        appearance: account.profile.appearance ? { ...account.profile.appearance } : null,
         position: account.profile.position ? { ...account.profile.position } : null,
         saved_at: account.profile.saved_at || null,
-      } : { avatar: null, position: null, saved_at: null },
+      } : { avatar: null, appearance: null, position: null, saved_at: null },
       wallet: {
         address: account.wallet_links.find(link => link.primary)?.address || account.wallet_address,
         status: account.wallet_links.find(link => link.primary)?.verified_at ? 'verified' : account.wallet_status,
@@ -559,12 +561,17 @@ export class WorldFarm {
   }
 
   /** A signed-in visitor keeps their character and plaza position across devices. */
-  async saveProfile(identity, { avatar, position } = {}) {
+  async saveProfile(identity, { avatar, appearance, position } = {}) {
     const account = this.account(identity);
-    const profile = account.profile || { avatar: null, position: null, saved_at: null };
+    const profile = account.profile || { avatar: null, appearance: null, position: null, saved_at: null };
     if (avatar !== undefined) {
       if (!SAVED_AVATARS.includes(avatar)) throw fail('INVALID_AVATAR', 'That character is not available');
       profile.avatar = avatar;
+    }
+    if (appearance !== undefined) {
+      const normalized = sanitizeAppearance(appearance);
+      if (normalized) profile.appearance = normalized;
+      else delete profile.appearance;
     }
     if (position !== undefined) {
       const x = Number(position?.x), y = Number(position?.y);
@@ -573,7 +580,7 @@ export class WorldFarm {
       }
       profile.position = { x: Math.round(x), y: Math.round(y) };
     }
-    if (avatar === undefined && position === undefined) throw fail('EMPTY_PROFILE', 'Nothing to save');
+    if (avatar === undefined && appearance === undefined && position === undefined) throw fail('EMPTY_PROFILE', 'Nothing to save');
     profile.saved_at = new Date(this.now()).toISOString();
     account.profile = profile;
     await this.persist();

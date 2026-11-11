@@ -21,7 +21,23 @@ test('signed visitors receive stable server-derived public identities and distin
   const reconnect=service.join('main',alice,{position:{x:900,y:100}});
   assert.equal(reconnect.player.player_id,a.player.player_id);assert.deepEqual(reconnect.player.position,{x:100,y:100},'refresh keeps the authoritative server position');
   assert.equal(reconnect.players.length,2);
-  assert.deepEqual(service.identityContext('main',alice),{world_id:'main',presence_id:a.player.player_id,display_name:a.player.display_name,avatar:'visitor_atlas',active:true,return_position:{x:-220,y:930}});
+  assert.deepEqual(service.identityContext('main',alice),{world_id:'main',presence_id:a.player.player_id,display_name:a.player.display_name,avatar:'visitor_atlas',appearance:null,active:true,return_position:{x:-220,y:930}});
+});
+
+test('modular appearance joins presence and broadcasts without moving the player',()=>{
+  const service=serviceAt(),appearance={version:1,body:'body_tan',hair:'hair_curly_red',outfit:'outfit_hoodie_forest',accessory:'accessory_headphones'};
+  const events=[],emit=service.emit.bind(service);service.emit=(worldId,type,payload)=>{events.push({type,...payload});emit(worldId,type,payload);};
+  const joined=service.join('main',alice,{avatar:'visitor_nova',appearance,position:{x:100,y:100}});
+  assert.deepEqual(joined.player.appearance,appearance);
+  assert.deepEqual(service.snapshot('main').players[0].appearance,appearance);
+  const updated=service.updateAppearance('main',alice,{version:1,body:'body_tan',hair:'hair_bob_black',outfit:'outfit_hoodie_forest',accessory:null});
+  assert.deepEqual(updated.player.appearance,{version:1,body:'body_tan',hair:'hair_bob_black',outfit:'outfit_hoodie_forest',accessory:null});
+  assert.deepEqual(updated.player.position,{x:100,y:100},'appearance never changes position');
+  assert.ok(events.some(event=>event.type==='PlayerUpdated'&&event.player.appearance?.hair==='hair_bob_black'));
+  assert.throws(()=>service.updateAppearance('main',alice,{version:1,body:'body_alien',hair:'hair_bob_black',outfit:'outfit_hoodie_forest',accessory:null}),{code:'INVALID_APPEARANCE'});
+  const plain=service.join('main',bob,{position:{x:120,y:100}});
+  assert.equal(plain.player.appearance,null,'preset join defaults to the preset sheet');
+  assert.equal(service.join('main',bob,{position:{x:120,y:100}}).player.appearance,null,'join keeps an existing appearance when omitted');
 });
 
 test('movement, heartbeat, leave, and resource authorization resolve from visitor ownership',()=>{
