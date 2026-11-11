@@ -6,6 +6,7 @@ import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FL
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
+import { DEFAULT_APPEARANCE } from '../web/dist/world/appearance.js';
 import { NpcController, npcSpawnPosition, selectPlazaAgents, MAX_PLAZA_AGENTS } from '../web/dist/world/npc.js';
 import { HttpArenaGateway } from '../web/dist/world/gateway.js';
 import { isActorNearVisitor } from '../web/dist/world/renderer.js';
@@ -134,7 +135,11 @@ test('the old edge is now walkable in all four directions while the new edge blo
 });
 test('avatar settings allow registered presets only and survive a JSON roundtrip',()=>{
   const settings=parseSettings({avatar:'mentor',position:MAP.spawn,muted:false});
+  assert.equal(settings.appearance,null,'settings saved before the creator keep their preset sheet');
   assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(settings))),settings);
+  assert.deepEqual(parseSettings(null).appearance,DEFAULT_APPEARANCE,'fresh visitors receive the starter kit appearance');
+  assert.equal(parseSettings({appearance:{version:1,body:'body_tan',hair:'hair_bob_red',outfit:'outfit_tee_cream',accessory:null}}).appearance.body,'body_tan');
+  assert.equal(parseSettings({appearance:{version:1,body:'../../secrets',hair:'hair_bob_red',outfit:'outfit_tee_cream',accessory:null}}).appearance,null,'unsafe saved layer IDs fall back to the preset sheet');
   assert.equal(parseSettings({avatar:'../../secrets'}).avatar,'visitor_starter');
   assert.equal(new Set(SPRITES.map(s=>s.id)).size,25);
   assert.deepEqual(SPRITES.filter(s=>s.id.startsWith('visitor_')).map(s=>s.id),['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo']);

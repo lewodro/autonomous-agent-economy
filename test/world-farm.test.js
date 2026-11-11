@@ -339,16 +339,25 @@ test('a signed-in account saves the character and plaza position as its instance
   const { farm, advance, close } = await setup();
   const member = { key: 'clerk:user_saved', provider: 'clerk', subject: 'user_saved', name: 'Miro' };
   try {
-    assert.deepEqual(farm.snapshot(member).account.profile, { avatar: null, position: null, saved_at: null });
-    const saved = await farm.saveProfile(member, { avatar: 'visitor_nova', position: { x: 640.4, y: 1000.6 } });
+    assert.deepEqual(farm.snapshot(member).account.profile, { avatar: null, appearance: null, position: null, saved_at: null });
+    const appearance = { version: 1, body: 'body_tan', hair: 'hair_curly_red', outfit: 'outfit_hoodie_forest', accessory: 'accessory_headphones' };
+    const saved = await farm.saveProfile(member, { avatar: 'visitor_nova', appearance, position: { x: 640.4, y: 1000.6 } });
     assert.deepEqual(saved.saved.position, { x: 640, y: 1001 });
     assert.equal(saved.account.profile.avatar, 'visitor_nova');
+    assert.deepEqual(saved.account.profile.appearance, appearance);
     assert.ok(saved.account.profile.saved_at);
     advance(10_000);
     const updated = await farm.saveProfile(member, { position: { x: -220, y: 930 } });
     assert.equal(updated.account.profile.avatar, 'visitor_nova', 'saving a position keeps the saved character');
+    assert.deepEqual(updated.account.profile.appearance, appearance, 'saving a position keeps the saved appearance');
     assert.deepEqual(farm.snapshot(member).account.profile.position, { x: -220, y: 930 });
+    const bare = await farm.saveProfile(member, { appearance: { version: 1, body: 'body_deep', hair: 'hair_buzz_blue', outfit: 'outfit_tee_cream', accessory: null } });
+    assert.deepEqual(bare.account.profile.appearance, { version: 1, body: 'body_deep', hair: 'hair_buzz_blue', outfit: 'outfit_tee_cream', accessory: null });
+    await farm.saveProfile(member, { appearance: null });
+    assert.equal(farm.snapshot(member).account.profile.appearance, null, 'null restores the preset sheet');
     await assert.rejects(() => farm.saveProfile(member, { avatar: 'visitor_debug' }), { code: 'INVALID_AVATAR' });
+    await assert.rejects(() => farm.saveProfile(member, { appearance: { version: 1, body: 'body_alien', hair: 'hair_bob_red', outfit: 'outfit_hoodie_forest', accessory: null } }), { code: 'INVALID_APPEARANCE' });
+    await assert.rejects(() => farm.saveProfile(member, { appearance: 'body_tan' }), { code: 'INVALID_APPEARANCE' });
     await assert.rejects(() => farm.saveProfile(member, { position: { x: 999_999, y: 0 } }), { code: 'INVALID_POSITION' });
     await assert.rejects(() => farm.saveProfile(member, {}), { code: 'EMPTY_PROFILE' });
   } finally { await close(); }

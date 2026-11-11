@@ -1,4 +1,5 @@
 import {createHmac} from 'node:crypto';
+import {appearanceEqual,sanitizeAppearance as sanitizeAvatarAppearance} from './avatar-appearance.js';
 
 const IDENTIFIER=/^[a-zA-Z0-9_-]{1,64}$/;
 const VISITOR_ID=/^[a-f0-9-]{36}$/;
@@ -37,17 +38,26 @@ export class WorldPresenceService {
   snapshot(worldId){this.prune(worldId);return{world_id:worldId,players:[...this.world(worldId).values()].map(player=>this.publicPlayer(player)),agents:worldId==='main'&&this.agentPresence?this.agentPresence.snapshot():[]};}
   sanitizePosition(position){const x=position?.x,y=position?.y;if(typeof x!=='number'||typeof y!=='number')throw fail('INVALID_POSITION','Position coordinates must be numbers');if(!Number.isFinite(x)||!Number.isFinite(y)||x<this.bounds.minX||y<this.bounds.minY||x>this.bounds.maxX||y>this.bounds.maxY)throw fail('INVALID_POSITION','Position is outside the world bounds');return{x:Math.round(x*10)/10,y:Math.round(y*10)/10};}
   sanitizeAvatar(avatar){if(avatar==null)return'visitor_starter';if(typeof avatar!=='string'||!this.allowedAvatars.has(avatar))throw fail('INVALID_AVATAR','Avatar is not approved');return avatar;}
+  sanitizeAppearance(appearance){return sanitizeAvatarAppearance(appearance);}
   emit(worldId,type,payload){const event={type,world_id:worldId,...payload};for(const res of this.listeners.get(worldId)||[]){if(res.destroyed||res.writableLength>1_000_000){res.destroy();continue;}try{res.write(`event: ${type}\ndata: ${JSON.stringify(event)}\n\n`);}catch{res.destroy();}}}
   join(worldId,visitorId,input={}){
     const world=this.world(worldId);this.prune(worldId);const id=this.presenceId(worldId,visitorId),existing=world.get(id);
     if(!existing&&world.size>=this.maxPlayers)throw fail('WORLD_FULL','This world is full',429);
     const position=existing?existing.position:this.sanitizePosition(input.position||{x:160,y:180}),now=this.now();
-    const player={player_id:id,visitorId,display_name:existing?.display_name||this.displayName(id),avatar:input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar),position,direction:DIRECTIONS.has(input.direction)?input.direction:existing?.direction||'down',animation_state:'idle',activity:typeof input.activity==='string'?input.activity.slice(0,80):existing?.activity||'Exploring',updated_at:new Date(now).toISOString(),lastUpdateAt:now,lastMoveAt:existing?.lastMoveAt??existing?.lastUpdateAt??now,lastHeartbeatAt:existing?.lastHeartbeatAt??now-this.minHeartbeatMs,movementCredit:existing?.movementCredit??this.movementCreditCap};
+    const player={player_id:id,visitorId,display_name:existing?.display_name||this.displayName(id),avatar:input.avatar===undefined&&existing?existing.avatar:this.sanitizeAvatar(input.avatar),appearance:input.appearance===undefined?existing?.appearance??null:this.sanitizeAppearance(input.appearance),position,direction:DIRECTIONS.has(input.direction)?input.direction:existing?.direction||'down',animation_state:'idle',activity:typeof input.activity==='string'?input.activity.slice(0,80):existing?.activity||'Exploring',updated_at:new Date(now).toISOString(),lastUpdateAt:now,lastMoveAt:existing?.lastMoveAt??existing?.lastUpdateAt??now,lastHeartbeatAt:existing?.lastHeartbeatAt??now-this.minHeartbeatMs,movementCredit:existing?.movementCredit??this.movementCreditCap};
     world.set(id,player);this.emit(worldId,existing?'PlayerUpdated':'PlayerJoined',{player:this.publicPlayer(player)});
     return{...this.snapshot(worldId),player:this.publicPlayer(player),presence_id:id};
   }
+  /** Appearance is presentation state; it never changes position, bounds or movement credit. */
+  updateAppearance(worldId,visitorId,appearance){
+    const player=this.requireVisitor(worldId,visitorId),next=this.sanitizeAppearance(appearance);
+    if(appearanceEqual(player.appearance,next))return{player:this.publicPlayer(player)};
+    player.appearance=next;player.updated_at=new Date(this.now()).toISOString();
+    this.emit(worldId,'PlayerUpdated',{player:this.publicPlayer(player)});
+    return{player:this.publicPlayer(player)};
+  }
   requireVisitor(worldId,visitorId){const id=this.presenceId(worldId,visitorId),player=this.world(worldId).get(id);if(!player)throw fail('PLAYER_NOT_FOUND','World presence has expired; reconnect to the world',404);return player;}
-  identityContext(worldId,visitorId){const presence_id=this.presenceId(worldId,visitorId),player=this.world(worldId).get(presence_id);return{world_id:worldId,presence_id,display_name:player?.display_name||this.displayName(presence_id),avatar:player?.avatar||null,active:Boolean(player),return_position:{x:-220,y:930}};}
+  identityContext(worldId,visitorId){const presence_id=this.presenceId(worldId,visitorId),player=this.world(worldId).get(presence_id);return{world_id:worldId,presence_id,display_name:player?.display_name||this.displayName(presence_id),avatar:player?.avatar||null,appearance:player?.appearance||null,active:Boolean(player),return_position:{x:-220,y:930}};}
   move(worldId,visitorId,{position,direction,animation_state}){
     const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastMoveAt<this.minUpdateMs)throw fail('PRESENCE_RATE_LIMITED','Move updates are limited',429);const next=this.sanitizePosition(position),elapsed=Math.min(Math.max(0,now-player.lastMoveAt),this.maxMovementCatchupMs),distance=Math.hypot(next.x-player.position.x,next.y-player.position.y),available=(Number.isFinite(player.movementCredit)?player.movementCredit:this.movementCreditCap)+elapsed*MOVEMENT_RATE;if(distance>available)throw fail('INVALID_POSITION','Movement exceeded the world speed limit');const nextDirection=DIRECTIONS.has(direction)?direction:player.direction,nextAnimation=ANIMATIONS.has(animation_state)?animation_state:'idle',changed=next.x!==player.position.x||next.y!==player.position.y||nextDirection!==player.direction||nextAnimation!==player.animation_state;player.position=next;player.direction=nextDirection;player.animation_state=nextAnimation;player.lastUpdateAt=now;player.lastMoveAt=now;player.movementCredit=Math.max(0,Math.min(this.movementCreditCap,available-distance));player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerMoved',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};
   }

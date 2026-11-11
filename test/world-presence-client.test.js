@@ -18,6 +18,22 @@ test('avatar updates reconnect the same cookie-owned actor',async()=>{const requ
 
 test('avatar update waits for an in-flight join then sends the newly selected avatar',async()=>{const requests=[],resolvers=[],fetcher=(url,init)=>{const body=JSON.parse(init.body);requests.push(body);if(url.endsWith('/leave'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});return new Promise(resolve=>resolvers.push(()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[{...player('visitor_stable',100),avatar:body.avatar}],agents:[],player:{...player('visitor_stable',100),avatar:body.avatar},presence_id:'visitor_stable'})})));};const{client}=setup({fetcher});const initial=client.connect(),updated=client.updateAvatar('visitor_atlas');assert.equal(requests.length,1);resolvers.shift()();await initial;await new Promise(resolve=>setImmediate(resolve));assert.equal(requests.length,2);resolvers.shift()();const snapshot=await updated;assert.deepEqual(requests.slice(0,2).map(value=>value.avatar),['visitor_ember','visitor_atlas']);assert.equal(snapshot.players[0].avatar,'visitor_atlas');await client.leave();});
 
+test('appearance joins the payload and updates live without reconnecting',async()=>{
+  const skin={version:1,body:'body_tan',hair:'hair_curly_red',outfit:'outfit_hoodie_forest',accessory:'accessory_headphones'};
+  const requests=[],streams=[],fetcher=async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body});return{ok:true,status:url.endsWith('/join')?201:200,json:async()=>url.endsWith('/join')?{world_id:'main',players:[{...player('visitor_stable',100),appearance:body.appearance??null}],agents:[],player:{...player('visitor_stable',100),appearance:body.appearance??null},presence_id:'visitor_stable'}:url.endsWith('/appearance')?{player:{...player('visitor_stable',100),appearance:body.appearance}}:{ok:true}};};
+  const client=new WorldPresenceClient({avatar:'visitor_starter',appearance:skin,position:{x:100,y:100},fetcher,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;}});
+  const joined=await client.connect();
+  assert.deepEqual(requests[0].body.appearance,skin);
+  assert.deepEqual(joined.players[0].appearance,skin);
+  const next={...skin,hair:'hair_bob_black',accessory:null};
+  const updated=await client.updateAppearance(next);
+  assert.ok(requests.at(-1).url.endsWith('/presence/appearance'));
+  assert.deepEqual(requests.at(-1).body,{appearance:next});
+  assert.deepEqual(updated.players[0].appearance,next);
+  assert.equal(streams.length,1,'appearance updates do not reconnect the presence stream');
+  await client.leave();
+});
+
 test('concurrent connects share one join and one stream',async()=>{let finish;const requests=[];const fetcher=(url,init)=>{requests.push(url);if(url.endsWith('/leave'))return Promise.resolve({ok:true,status:200,json:async()=>({left:true})});return new Promise(resolve=>{finish=()=>resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_one',100)],agents:[],player:player('visitor_one',100),presence_id:'visitor_one'})});});};const{client,streams}=setup({fetcher});const first=client.connect(),second=client.connect();assert.equal(requests.length,1);finish();assert.deepEqual(await first,await second);assert.equal(streams.length,1);await client.leave();});
 
 test('movement and heartbeat are throttled and contain only state intent',async()=>{let now=1_000;const{client,requests}=setup({now:()=>now});await client.connect();assert.equal(await client.move({x:101,y:100},'right','walk'),false);now+=66;assert.equal(await client.move({x:110,y:100},'right','walk'),true);assert.equal(await client.heartbeat('Exploring'),false);now+=1_000;assert.equal(await client.heartbeat('Exploring'),true);assert.deepEqual(requests.slice(1).map(({url,body})=>[url.split('/').at(-1),Object.keys(body).sort()]),[['move',['animation_state','direction','position']],['heartbeat',['activity']]]);await client.leave();});

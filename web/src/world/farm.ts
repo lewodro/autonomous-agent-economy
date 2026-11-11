@@ -9,7 +9,7 @@ export interface FarmPayout {
   requested_at: string; wallet_address: string; note: string;
 }
 export interface FarmProfile {
-  avatar: string | null; position: FarmPosition | null; saved_at: string | null;
+  avatar: string | null; appearance: unknown; position: FarmPosition | null; saved_at: string | null;
 }
 export interface FarmAccount {
   id: string; user_id: string; temporary: boolean; signed_in: boolean; provider: string; display_name: string;
@@ -122,8 +122,8 @@ export class FarmClient {
     throw failure instanceof Error ? failure : new Error('The farm did not respond');
   }
 
-  async saveProfile(avatar: string, position: FarmPosition): Promise<Record<string, unknown>> {
-    return this.post('profile', { avatar, position });
+  async saveProfile(avatar: string, position: FarmPosition, appearance: unknown = undefined): Promise<Record<string, unknown>> {
+    return this.post('profile', { avatar, position, ...(appearance === undefined ? {} : { appearance }) });
   }
 }
 

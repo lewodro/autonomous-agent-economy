@@ -175,7 +175,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});return res.end(await readFile(path.join(root,'labs/funded.html')));
     }
     if(route==='/labs/world'&&(production||process.env.WORLD_LAB!=='1'))return json(res,404,{error:'World lab disabled'});
-    const presenceRoute=route.match(/^\/api\/worlds\/([a-zA-Z0-9_-]{1,64})\/presence(?:\/(join|move|heartbeat|leave|events))?$/);
+    const presenceRoute=route.match(/^\/api\/worlds\/([a-zA-Z0-9_-]{1,64})\/presence(?:\/(join|move|heartbeat|leave|appearance|events))?$/);
     if(presenceRoute) {
       const [,worldId,action]=presenceRoute;
       if(req.method==='GET'&&!action)return json(res,200,worldPresence.snapshot(worldId));
@@ -183,11 +183,11 @@ const server = http.createServer(async (req, res) => {
         if(!worldPresence.connect(worldId,res))return json(res,429,{error:'Too many world spectators. Try again shortly.'});
         return;
       }
-      if(req.method!=='POST'||!['join','move','heartbeat','leave'].includes(action))return json(res,405,{error:'Method not allowed'});
+      if(req.method!=='POST'||!['join','move','heartbeat','leave','appearance'].includes(action))return json(res,405,{error:'Method not allowed'});
       if(action==='join'&&!presenceJoins.allow())return json(res,429,{error:'Presence joins are temporarily limited'});
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const data=await body(req,4096);
-      const result=action==='join'?worldPresence.join(worldId,visitor.id,data):action==='move'?worldPresence.move(worldId,visitor.id,data):action==='heartbeat'?worldPresence.heartbeat(worldId,visitor.id,data):worldPresence.leave(worldId,visitor.id);
+      const result=action==='join'?worldPresence.join(worldId,visitor.id,data):action==='move'?worldPresence.move(worldId,visitor.id,data):action==='heartbeat'?worldPresence.heartbeat(worldId,visitor.id,data):action==='appearance'?worldPresence.updateAppearance(worldId,visitor.id,data.appearance):worldPresence.leave(worldId,visitor.id);
       return json(res,action==='join'?201:200,result,cookie);
     }
     if(req.method==='GET'&&route==='/api/funded-matches'){
@@ -473,7 +473,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
     const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/aae_avatar_kit\/(avatar-manifest\.json|layers\/(body|hair|outfits|accessories)\/[\w-]+\.png)|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     const {status,code,error:safeMessage}=publicRequestError(error,{production});

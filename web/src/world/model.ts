@@ -1,3 +1,4 @@
+import type { Appearance } from './appearance.js';
 export interface Position { x: number; y: number }
 export type Facing = 'down' | 'up' | 'left' | 'right';
 export type WorldActivityState = 'idle' | 'wander' | 'walk_to_arena' | 'inside_arena' | 'exit_arena' | 'walk_to_poi' | 'studying' | 'attention' | 'talking' | 'cooldown';
@@ -11,6 +12,7 @@ export interface WorldActor {
   facing: Facing;
   movementState: 'idle' | 'walking';
   spriteId: string;
+  appearance?: Appearance | null;
   activity: string;
   activityState?: WorldActivityState;
   speech?: WorldSpeech;

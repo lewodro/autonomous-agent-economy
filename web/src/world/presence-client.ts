@@ -1,6 +1,8 @@
+import type { Appearance } from './appearance.js';
+
 export interface PresencePosition {x:number;y:number}
 export interface PresencePlayer {
-  player_id:string;display_name:string;avatar:string;position:PresencePosition;direction:'up'|'down'|'left'|'right';
+  player_id:string;display_name:string;avatar:string;appearance?:Appearance|null;position:PresencePosition;direction:'up'|'down'|'left'|'right';
   animation_state:'idle'|'walk';activity:string;updated_at:string;
 }
 export interface PresenceAgent extends PresencePlayer {agent_id:string;strategy:string;sprite:string;recent_winner:boolean;kind:'canonical_agent'}
@@ -14,7 +16,7 @@ export type PresenceEvent=
 interface ResponseLike {ok:boolean;status:number;json():Promise<unknown>}
 interface EventSourceLike {addEventListener(type:string,listener:(event:MessageEvent<string>)=>void):void;close():void}
 interface PresenceOptions {
-  worldId?:string;avatar:string;position:PresencePosition;direction?:PresencePlayer['direction'];activity?:string;
+  worldId?:string;avatar:string;appearance?:Appearance|null;position:PresencePosition;direction?:PresencePlayer['direction'];activity?:string;
   fetcher?:(url:string,init?:RequestInit)=>Promise<ResponseLike>;eventSource?:(url:string)=>EventSourceLike;
   onPlayers?:(snapshot:PresenceSnapshot)=>void;onConnection?:(state:'connected'|'reconnecting'|'closed')=>void;
   now?:()=>number;moveIntervalMs?:number;heartbeatIntervalMs?:number;sleep?:(ms:number)=>Promise<void>;
@@ -32,7 +34,7 @@ export class WorldPresenceClient {
   constructor(private options:PresenceOptions){this.worldId=options.worldId||'main';this.fetcher=options.fetcher||((url,init)=>fetch(url,init));this.createEventSource=options.eventSource||((url)=>new EventSource(url));this.onPlayers=options.onPlayers||(()=>{});this.onConnection=options.onConnection||(()=>{});this.now=options.now||(()=>Date.now());this.moveIntervalMs=options.moveIntervalMs||66;this.heartbeatIntervalMs=options.heartbeatIntervalMs||1_000;this.sleep=options.sleep||((ms)=>new Promise(resolve=>setTimeout(resolve,ms)));}
   async connect():Promise<PresenceSnapshot>{if(this.connecting){if(!this.closed)return this.connecting;await this.connecting.catch(()=>undefined);return this.connect();}this.closed=false;this.source?.close();this.source=undefined;this.listeners=[];this.streamGeneration++;const connection=this.connectAndSubscribe();this.connecting=connection;try{return await connection;}finally{if(this.connecting===connection)this.connecting=undefined;}}
   private async connectAndSubscribe():Promise<PresenceSnapshot>{
-    const joined=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{avatar:this.options.avatar,position:this.options.position,direction:this.options.direction||'down',activity:this.options.activity||'Exploring'});
+    const joined=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/join`,{avatar:this.options.avatar,...(this.options.appearance!==undefined?{appearance:this.options.appearance}:{}),position:this.options.position,direction:this.options.direction||'down',activity:this.options.activity||'Exploring'});
     const snapshot=joined as PresenceSnapshot&{player?:PresencePlayer;presence_id?:string};
     if(!snapshot||snapshot.world_id!==this.worldId||!Array.isArray(snapshot.players)||!Array.isArray(snapshot.agents)||!snapshot.player||typeof snapshot.presence_id!=='string'||snapshot.player.player_id!==snapshot.presence_id)throw new Error('World presence returned an invalid join response');
     this.playerId=snapshot.presence_id;this.lastMoveAt=this.now();this.lastHeartbeatAt=this.now();this.replace(snapshot);
@@ -49,6 +51,15 @@ export class WorldPresenceClient {
     this.options.avatar=avatar;
     if(this.connecting)await this.connecting.catch(()=>undefined);
     return this.connect();
+  }
+  /** Appearance changes do not reconnect the presence stream or move the actor. */
+  async updateAppearance(appearance:Appearance|null):Promise<PresenceSnapshot>{
+    this.options.appearance=appearance;
+    if(this.closed||!this.playerId)return this.snapshot();
+    const result=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/appearance`,{appearance}) as {player?:PresencePlayer};
+    if(result?.player)this.players.set(this.playerId,result.player);
+    this.publish();
+    return this.snapshot();
   }
   async move(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{
     // The latest local position is also the join payload, so an SSE or heartbeat
