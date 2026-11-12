@@ -245,6 +245,13 @@ try{
  await wait(`(()=>{const local=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const remote=s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)});return !!remote&&Math.hypot(remote.position.x-local.x,remote.position.y-local.y)<20})})()`);
  await screenshot('agency-walk-in');
  await teleportProbe('agency',1568,340,'agency');
+ // Generated cave mouths are ordinary interaction zones on the outer loop.
+ await teleportProbe('caveNorth',-700,-736,'north-cave');
+ await wait("!document.getElementById('interact').disabled");
+ await evaluate("document.getElementById('interact').click()");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='Northern cave'&&document.getElementById('interaction-content').textContent.includes('crystal')");
+ await evaluate("document.getElementById('interaction-close').click()");
+ await wait("!document.getElementById('interaction-dialog').open");
  const eastGuest=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_atlas',position:{x:1300,y:460}})}).then(async r=>({status:r.status,...await r.json()}))");
  assert.equal(eastGuest.status,201,'a second visitor can enter the east road');
  await delay(80);

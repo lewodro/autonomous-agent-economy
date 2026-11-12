@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -178,9 +178,61 @@ export class CanvasWorldRenderer implements WorldRenderer {
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
     }
+    // Generated caves and stone landmarks are painted into the same static map;
+    // only their small ambient glints animate per frame.
+    for(const [index,site] of EXPLORATION_SITES.entries()){
+      const {x,y}=site.position;
+      if(site.kind==='cave')this.paintCave(c,x,y,index);
+      else this.paintRuin(c,x,y,index,site.kind);
+    }
+    c.font='bold 9px monospace';c.textAlign='center';
+    for(const site of EXPLORATION_SITES){
+      const label=site.label.toUpperCase(),labelWidth=label.length*5.4+8;
+      rect(site.position.x-labelWidth/2,site.position.y+32,labelWidth,12,'#172823bb');
+      c.fillStyle='#d8cf9f';c.fillText(label,site.position.x,site.position.y+41);
+    }
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('WORLD BAZAAR',900,1088);
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
+  }
+  private paintCave(c:CanvasRenderingContext2D,x:number,y:number,index:number):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+20,48,13,0,0,Math.PI*2);c.fill();
+    const stones:Array<[number,number,number,number]>=[
+      [-36,2,18,18],[-27,-12,17,14],[27,-12,20,15],[37,2,16,18],
+      [-12,-24,20,11],[13,-24,20,11],[-42,-8,10,20],[42,-8,10,20],
+    ];
+    for(const [stoneIndex,[dx,dy,w,h]] of stones.entries()){
+      const stone=stoneIndex%3===index%3?'#666d5e':'#585f53';
+      rect(dx-w/2,dy-h/2,w,h,stone);
+      rect(dx-w/2+2,dy-h/2,w-4,3,'#84836d');
+      if(stoneIndex%2===0)rect(dx-w/2+3,dy+h/2-4,5,4,'#4c6548');
+    }
+    c.fillStyle='#0d1816';c.beginPath();c.ellipse(x,y+3,25,17,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#263a32';c.beginPath();c.ellipse(x,y-5,17,8,0,0,Math.PI*2);c.fill();
+    rect(-20,15,40,4,'#3f4a3e');rect(-15,6,6,4,'#35463b');rect(9,9,4,3,'#35463b');
+  }
+  private paintRuin(c:CanvasRenderingContext2D,x:number,y:number,index:number,kind:'ruin'|'shrine'):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+18,42,12,0,0,Math.PI*2);c.fill();
+    const stones:Array<[number,number,number,number,number]>=[
+      [-36,6,13,22,1],[-22,-8,15,12,0],[0,-16,12,28,0],[22,-6,16,14,1],
+      [36,8,12,20,0],[-30,22,18,9,1],[14,24,20,8,0],
+    ];
+    for(const [stoneIndex,[dx,dy,w,h,fallen]] of stones.entries()){
+      if((stoneIndex+index)%6===0)continue;
+      rect(dx-w/2,fallen?dy:dy-h/2,w,fallen?Math.max(7,Math.round(h/3)):h,stoneIndex%2?'#777a67':'#686f5f');
+      if(!fallen)rect(dx-w/2+2,dy-h/2,w-4,3,'#8a8971');
+      if(stoneIndex%2===0)rect(dx-w/2+2,fallen?dy+3:dy+h/2-4,4,4,'#55704b');
+    }
+    rect(-20,8,40,7,'#464f46');
+    if(kind==='shrine'){
+      rect(-7,-16,14,28,'#7e806b');rect(-4,-13,8,4,'#a29d7b');rect(-2,-5,4,11,'#4c5e4b');
+      rect(-28,-6,6,4,'#d29dbb');rect(24,2,5,4,'#dce4a0');
+    }else{
+      rect(-17,2,34,6,'#565d50');rect(-8,-6,17,10,'#6c7161');rect(9,-2,5,5,'#8a8971');
+      rect(-30,14,6,4,'#dce4a0');rect(27,14,5,4,'#d29dbb');
+    }
   }
   render(frame:WorldFrame):void {
     const {width,height}=this.viewport();const ratio=Math.min(2,window.devicePixelRatio||1);
@@ -201,6 +253,15 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#8b3e2c';c.fillRect(x-9,y-3,18,11);
       c.fillStyle='#e68039';c.fillRect(x+flame[0],y+flame[1],flame[2],flame[3]);
       c.fillStyle='#f3c46b';c.fillRect(x-3,y-9,6,12);c.fillRect(x-1,y-14,3,8);
+    }
+    if(!reduced)for(const site of EXPLORATION_SITES){
+      if(site.kind!=='cave')continue;
+      const {x,y}=site.position;
+      if(x<frame.camera.x-60||x>frame.camera.x+width+60||y<frame.camera.y-60||y>frame.camera.y+height+60)continue;
+      const pulse=Math.floor((frame.time+x*3)/520)%3;
+      c.fillStyle='#8fcfbd22';c.fillRect(x-18,y-8,36,10);
+      if(pulse===0){c.fillStyle='#bce7d6';c.fillRect(x-2,y-10,2,2);c.fillRect(x+9,y-5,2,2);}
+      else if(pulse===1){c.fillStyle='#7fb9ad';c.fillRect(x-11,y-4,2,2);c.fillRect(x+4,y-8,2,2);}
     }
     for(const resource of frame.resources||[]){
       const {x,y}=resource.position;c.fillStyle='#172b2877';c.fillRect(x-15,y+8,30,6);
