@@ -10,8 +10,9 @@ const serviceAt=(options={})=>new WorldPresenceService({identitySecret:'test-wor
 test('server presence bounds match the walkable avatar-center map bounds',()=>{
   assert.deepEqual(WORLD_PLAYABLE_BOUNDS,{minX:MAP.minX+52,minY:MAP.minY+76,maxX:MAP.minX+MAP.width-52,maxY:MAP.minY+MAP.height-52});
   const service=serviceAt();
-  for(const [index,position] of [{x:-844,y:-500},{x:2636,y:-500},{x:-844,y:1676},{x:2636,y:1676}].entries())assert.deepEqual(service.join('main',`${index}`.repeat(8)+'-1111-4111-8111-111111111111',{position}).player.position,position);
-  assert.throws(()=>service.join('main','99999999-9999-4999-8999-999999999999',{position:{x:2637,y:1676}}),{code:'INVALID_POSITION'});
+  const bounds=WORLD_PLAYABLE_BOUNDS;
+  for(const [index,position] of [{x:bounds.minX,y:bounds.minY},{x:bounds.maxX,y:bounds.minY},{x:bounds.minX,y:bounds.maxY},{x:bounds.maxX,y:bounds.maxY}].entries())assert.deepEqual(service.join('main',`${index}`.repeat(8)+'-1111-4111-8111-111111111111',{position}).player.position,position);
+  assert.throws(()=>service.join('main','99999999-9999-4999-8999-999999999999',{position:{x:bounds.maxX+1,y:bounds.maxY}}),{code:'INVALID_POSITION'});
 });
 
 test('signed visitors receive stable server-derived public identities and distinct browser sessions',()=>{

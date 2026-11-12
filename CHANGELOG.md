@@ -4,6 +4,9 @@
 
 ### World
 
+- Expand the shared map to `4800 × 3456` with a deterministic outer ring of
+  woodland, bushes, flowers, rocks, campfire clearings, caves and stone
+  landmarks linked by a new dirt loop and four connectors.
 - Mark the farm loop as live in the world UI and lengthen crop growth to
   4–11 minutes so fields stay a reason to return.
 

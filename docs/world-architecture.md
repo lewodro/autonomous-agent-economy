@@ -4,7 +4,7 @@ The walkable world is one shared multiplayer namespace. Visitors see the same ca
 
 ## Map and coordinates
 
-The original plaza stays at its existing coordinates. The canvas now spans `3584 × 2304` world pixels, exactly four times the previous `1792 × 1152` area. Its origin is `(-896, -576)`, so old saved positions and every existing entrance still point to the same place. The playable avatar-center bounds are `x=-844..2636` and `y=-500..1676`. A new visitor still spawns at `(560, 480)`.
+The original plaza stays at its existing coordinates. The canvas now spans `4800 × 3456` world pixels, roughly double the previous `3584 × 2304` area, and stays below the 16.7M-pixel canvas ceiling used by mobile Safari. Its origin is `(-1504, -1152)`, so old saved positions and every existing entrance still point to the same place. The playable avatar-center bounds are `x=-1452..3244` and `y=-1076..2252`. A new visitor still spawns at `(560, 480)`.
 
 ```text
                   North meadow and path
@@ -21,6 +21,12 @@ The existing left-side table and training/public space, Arena, Research House, A
 ## Nature areas
 
 The botanical garden connects to the original forest trail within the same map. Irregular ground patches, several flower beds, bushes, differently sized trees, and four campfire clearings use the existing canvas primitives. Tree trunks, larger bushes, rocks, buildings, and fire pits share the normal collision rectangles. Flowers and smaller bushes remain walkable. Flame animation uses four tiny pixel frames and pauses with reduced-motion settings.
+
+## Outer ring
+
+A deterministic generator in `map.ts` fills the band outside the old map with woodland clusters, low bushes, flower beds and rocks. It uses a fixed-seed PRNG and the same terrain, site, campfire and route filters as the hand-authored town, so generated content never covers a road, farm anchor, resource pool or NPC route. The generated data is recomputed from code on every load; there is no bulk coordinate table or extra image weight.
+
+An outer dirt loop links four generated cave mouths and four stone landmarks (two ruins and two shrines) to the existing road network. Eight seeded campfire clearings sit just off the loop. Each cave or landmark is a normal interaction zone with its own deterministic discovery text. The loop and its four connectors are ordinary path rectangles, so camera, collision and click-to-move behavior stay unchanged. The renderer paints the cave arches and stone rings once into the static map and only animates tiny cave glints per frame.
 
 ## Village and market
 

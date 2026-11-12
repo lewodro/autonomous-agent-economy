@@ -14,7 +14,7 @@ const ANIMATIONS=new Set(['idle','walk']);
  */
 const MOVEMENT_RATE=0.15;
 const MOVEMENT_CREDIT_MS=1_000;
-export const WORLD_PLAYABLE_BOUNDS=Object.freeze({minX:-844,minY:-500,maxX:2636,maxY:1676});
+export const WORLD_PLAYABLE_BOUNDS=Object.freeze({minX:-1452,minY:-1076,maxX:3244,maxY:2252});
 
 function fail(code,message,status=400){return Object.assign(new Error(message),{code,status});}
 

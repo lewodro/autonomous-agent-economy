@@ -1,9 +1,57 @@
 import type { Interactable, Position, Rect } from './model.js';
 // World coordinates retain the original plaza coordinates. The canvas extends
 // around them, so saved positions and every existing entrance remain valid.
-export const MAP = { minX: -896, minY: -576, width: 3584, height: 2304, tile: 32, spawn: { x: 560, y: 480 } };
+// The outer ring doubles the walkable area while staying below the 16.7M pixel
+// canvas ceiling used by mobile Safari.
+export const MAP = { minX: -1504, minY: -1152, maxX: 3296, maxY: 2304, width: 4800, height: 3456, tile: 32, spawn: { x: 560, y: 480 } };
 export const WORLD_BOUNDS = { minX: MAP.minX + 52, minY: MAP.minY + 76,
   maxX: MAP.minX + MAP.width - 52, maxY: MAP.minY + MAP.height - 52 };
+/** The hand-authored town inside the procedural outer ring. */
+export const CORE_BOUNDS = { minX: -896, minY: -576, maxX: 2688, maxY: 1728 };
+export type RingSide = 'north' | 'south' | 'east' | 'west';
+/** Dirt loop through the outer districts. Caves and ruins branch from it. */
+export const OUTER_LOOP = { left: CORE_BOUNDS.minX - 160, right: CORE_BOUNDS.maxX + 160,
+  top: CORE_BOUNDS.minY - 160, bottom: CORE_BOUNDS.maxY + 160 };
+export interface ExplorationSite {
+  id:string; kind:'cave'|'ruin'|'shrine'; facing:RingSide; radius:number; position:Position;
+  label:string; description:string; discovery:string;
+}
+/**
+ * Generated landmarks sit on the outer dirt loop. They add destinations and
+ * interaction text without another map or a second renderer. The coordinates
+ * are deterministic and remain outside every hand-authored path and building.
+ */
+export const EXPLORATION_SITES: ExplorationSite[] = [
+  {id:'cave-north',kind:'cave',facing:'south',position:{x:-700,y:OUTER_LOOP.top},radius:78,label:'Northern cave',
+    description:'A cold draft slips from a crack in the hillside. Stacked stones mark the entrance.',
+    discovery:'Pale crystal glints just inside the mouth, too deep to reach without a light.'},
+  {id:'cave-east',kind:'cave',facing:'west',position:{x:OUTER_LOOP.right,y:300},radius:78,label:'Tideworn cave',
+    description:'Warm air breathes from the eastern cave and carries a faint smell of iron.',
+    discovery:'Old tool marks score the walls near the entrance, as if someone once mined here.'},
+  {id:'cave-south',kind:'cave',facing:'north',position:{x:1250,y:OUTER_LOOP.bottom},radius:78,label:'Rootbound cave',
+    description:'Tree roots stitch the ceiling of this low cave together above the southern trail.',
+    discovery:'A shallow pool at the threshold reflects daylight back into the dark.'},
+  {id:'cave-west',kind:'cave',facing:'east',position:{x:OUTER_LOOP.left,y:900},radius:78,label:'West hollow',
+    description:'A wide, dry cave used by travellers as a windbreak on the western trail.',
+    discovery:'Charcoal and a child-sized spiral carving remain on the back wall.'},
+  {id:'sunken-shrine',kind:'shrine',facing:'east',position:{x:OUTER_LOOP.left-204,y:420},radius:74,label:'Sunken shrine',
+    description:'Broken pillars lean out of the moss beside the outer loop.',
+    discovery:'A mossy offering bowl rests at the centre of the stones, long since empty.'},
+  {id:'mossy-ruin',kind:'ruin',facing:'west',position:{x:OUTER_LOOP.right+192,y:OUTER_LOOP.top},radius:74,label:'Mossy ruin',
+    description:'The collapsed footing of an old watchpost blends into the northern trees.',
+    discovery:'A weather-beaten marker still points back toward the plaza.'},
+  {id:'old-watchtower',kind:'ruin',facing:'north',position:{x:560,y:OUTER_LOOP.bottom+202},radius:74,label:'Old watchtower',
+    description:'A wide stone footing is all that remains of a tower above the southern trail.',
+    discovery:'From the fallen lintel the whole outer trail is visible in both directions.'},
+  {id:'whispering-grove',kind:'shrine',facing:'west',position:{x:OUTER_LOOP.right+192,y:1250},radius:74,label:'Whispering grove',
+    description:'A ring of old trees surrounds a small standing stone east of the loop.',
+    discovery:'A wind chime of bone and tin hangs from a branch, moving without wind.'},
+];
+/** Small deterministic PRNG keeps generated content stable between sessions. */
+function seededRandom(seed:number):()=>number {
+  let state=seed>>>0;
+  return ()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
+}
 export type WorldZone = 'plaza'|'arena'|'research'|'table_area'|'forest'|'forest_edge'|'garden'|'agency'|'market'|'path_north'|'path_east'|'west_expansion'|'east_expansion'|'north_expansion'|'south_expansion'|'campfire_clearing';
 export const ZONES: Record<WorldZone, Rect> = {
   plaza:{x:320,y:300,width:880,height:620}, arena:{x:780,y:96,width:300,height:620}, research:{x:680,y:96,width:300,height:230},
@@ -56,7 +104,44 @@ export const TERRAIN_AREAS: GroundArea[] = [
   {x:1570,y:820,width:580,height:220,color:'#3d6047'},{x:1660,y:1040,width:490,height:150,color:'#3d6047'},
   {x:1780,y:530,width:440,height:520,color:'#3d6047'},
 ];
+// Three stepped bands per side darken the outer ring without one giant
+// vector-like rectangle. The old map remains untouched underneath.
+export const OUTER_TERRAIN_AREAS: GroundArea[] = [
+  {x:MAP.minX+40,y:MAP.minY+40,width:MAP.width-80,height:220,color:'#2b4a38'},
+  {x:MAP.minX+96,y:MAP.minY+200,width:MAP.width-192,height:200,color:'#33503e'},
+  {x:MAP.minX+180,y:MAP.minY+340,width:MAP.width-360,height:150,color:'#2d4c39'},
+  {x:MAP.minX+40,y:MAP.maxY-260,width:MAP.width-80,height:220,color:'#2b4a38'},
+  {x:MAP.minX+96,y:MAP.maxY-400,width:MAP.width-192,height:200,color:'#33503e'},
+  {x:MAP.minX+180,y:MAP.maxY-490,width:MAP.width-360,height:150,color:'#2d4c39'},
+  {x:MAP.minX+40,y:MAP.minY+360,width:200,height:MAP.height-760,color:'#2d4c39'},
+  {x:MAP.minX+160,y:MAP.minY+400,width:180,height:MAP.height-840,color:'#34513f'},
+  {x:MAP.minX+280,y:MAP.minY+440,width:160,height:MAP.height-920,color:'#2d4c39'},
+  {x:MAP.maxX-240,y:MAP.minY+360,width:200,height:MAP.height-760,color:'#2d4c39'},
+  {x:MAP.maxX-340,y:MAP.minY+400,width:180,height:MAP.height-840,color:'#34513f'},
+  {x:MAP.maxX-440,y:MAP.minY+440,width:160,height:MAP.height-920,color:'#2d4c39'},
+];
+TERRAIN_AREAS.push(...OUTER_TERRAIN_AREAS);
 export interface WorldPath extends Rect {color?:string}
+/** Dirt spurs from the loop to the generated shrines and outer camps. */
+export const OUTER_EXPLORATION_PATHS: WorldPath[] = [
+  {x:OUTER_LOOP.left-204,y:420,width:204,height:56,color:'#786b55'},
+  {x:OUTER_LOOP.right,y:OUTER_LOOP.top-28,width:192,height:56,color:'#786b55'},
+  {x:532,y:OUTER_LOOP.bottom-28,width:56,height:202,color:'#786b55'},
+  {x:OUTER_LOOP.right,y:1222,width:192,height:56,color:'#786b55'},
+];
+export const OUTER_LOOP_PATHS: WorldPath[] = [
+  {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
+  {x:OUTER_LOOP.left-28,y:OUTER_LOOP.bottom-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
+  {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:56,height:OUTER_LOOP.bottom-OUTER_LOOP.top+56,color:'#786b55'},
+  {x:OUTER_LOOP.right-28,y:OUTER_LOOP.top-28,width:56,height:OUTER_LOOP.bottom-OUTER_LOOP.top+56,color:'#786b55'},
+  // Four short connectors join the old road network to the outer loop.
+  {x:548,y:OUTER_LOOP.top-28,width:56,height:384,color:'#786b55'},
+  {x:OUTER_LOOP.left-28,y:420,width:354,height:56,color:'#786b55'},
+  {x:1222,y:1540,width:56,height:376,color:'#786b55'},
+  // This east connector leaves from the lower edge of the east road so the
+  // ore-east-2 grass patch just north of it stays natural ground.
+  {x:1978,y:866,width:898,height:56,color:'#786b55'},
+];
 export const PATHS: WorldPath[] = [
   {x:392,y:300,width:760,height:560},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},
   {x:140,y:494,width:148,height:152},{x:480,y:688,width:160,height:140},{x:-730,y:420,width:802,height:84},
@@ -88,6 +173,9 @@ export const PATHS: WorldPath[] = [
   {x:2140,y:1606,width:120,height:28,color:'#786b55'},{x:2186,y:1582,width:28,height:76,color:'#786b55'},
   // The Treasury campfire keeps a small gravel apron just off the market road.
   {x:1120,y:1444,width:80,height:24,color:'#786b55'},{x:1148,y:1424,width:24,height:54,color:'#786b55'},
+  // The outer loop and its connectors create one continuous exploration route
+  // through every generated district.
+  ...OUTER_LOOP_PATHS,...OUTER_EXPLORATION_PATHS,
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
 const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440}];
@@ -127,20 +215,55 @@ export const WORLD_SITES: Position[] = [
   {x:-490,y:210},{x:-420,y:170},{x:2080,y:820},{x:2040,y:760},
 ];
 export const WORLD_SITE_CLEARANCE = 110;
+/**
+ * Eight deterministic camps sit just outside the dirt loop. Their positions
+ * are seeded from fixed anchors, so every visitor sees the same clearings.
+ */
+export interface OuterCamp extends Position { side:RingSide }
+const OUTER_CAMP_ANCHORS: Array<[number,number,RingSide]> = [
+  [-300,-980,'north'],[1700,-990,'north'],[-650,2120,'south'],[1850,2100,'south'],
+  [-1330,-100,'west'],[-1310,720,'west'],[3140,100,'east'],[3120,1580,'east'],
+];
+const CAMP_JITTER=seededRandom(0x0ca3f1);
+export const OUTER_CAMPS: OuterCamp[] = OUTER_CAMP_ANCHORS.map(([x,y,side])=>({
+  x:Math.round(x+(CAMP_JITTER()-.5)*18),y:Math.round(y+(CAMP_JITTER()-.5)*18),side,
+}));
+function campApron(camp:Position):WorldPath[] {
+  return [
+    {x:camp.x-60,y:camp.y-14,width:120,height:28,color:'#786b55'},
+    {x:camp.x-14,y:camp.y-38,width:28,height:76,color:'#786b55'},
+  ];
+}
+function campSpur(camp:OuterCamp):WorldPath {
+  if(camp.side==='north')return {x:camp.x-28,y:camp.y-28,width:56,height:OUTER_LOOP.top+28-(camp.y-28),color:'#786b55'};
+  if(camp.side==='south')return {x:camp.x-28,y:OUTER_LOOP.bottom-28,width:56,height:camp.y+28-(OUTER_LOOP.bottom-28),color:'#786b55'};
+  if(camp.side==='west')return {x:camp.x-28,y:camp.y-28,width:OUTER_LOOP.left+28-(camp.x-28),height:56,color:'#786b55'};
+  return {x:OUTER_LOOP.right-28,y:camp.y-28,width:camp.x+28-(OUTER_LOOP.right-28),height:56,color:'#786b55'};
+}
+export const OUTER_CAMP_PATHS: WorldPath[] = OUTER_CAMPS.flatMap(camp=>[...campApron(camp),campSpur(camp)]);
+PATHS.push(...OUTER_CAMP_PATHS);
+/** Landmarks keep their interaction circles clear of generated vegetation. */
+function clearsExploration(point:Position,extra=0):boolean {
+  return EXPLORATION_SITES.every(site=>Math.hypot(site.position.x-point.x,site.position.y-point.y)>site.radius+extra);
+}
 /** Natural-ground placement rules keep decoration off roads, plazas, sites and camps. */
 export function canPlaceTree(point:Position):boolean {
   return isNaturalGround(point,28)
     && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE)
     && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>72)
-    && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>40);
+    && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>40)
+    && clearsExploration(point,40);
 }
-export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12); }
+export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12)&&clearsExploration(point,24); }
 export function canPlaceFlower(point:Position):boolean {
   return isNaturalGround(point,6)
-    && TREES.every(tree=>Math.hypot(tree.x-point.x,tree.y-point.y)>40)
-    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34);
+    && TREES.every(tree=>{const scale=tree.scale||1;return Math.hypot(tree.x+6*scale-point.x,tree.y+38*scale-point.y)>30;})
+    && ROCKS.every(rock=>Math.hypot(rock.x-point.x,rock.y-point.y)>26)
+    && BUSHES.every(bush=>!bush.solid||Math.hypot(bush.x-point.x,bush.y-point.y)>bush.size/2+16)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34)
+    && clearsExploration(point,20);
 }
-export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10); }
+export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10)&&clearsExploration(point,24); }
 
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
 export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
@@ -169,6 +292,8 @@ export const CAMPFIRES: Position[] = [
   {x:1760,y:740},{x:2180,y:1060},{x:-470,y:970},{x:1160,y:1455},
   // Outer camps sit on gravel clearings at the edges of the shared map.
   {x:-560,y:-450},{x:2320,y:-430},{x:-790,y:1120},{x:2600,y:900},{x:-720,y:1600},{x:2200,y:1620},
+  // Deterministic camps around the new outer loop.
+  ...OUTER_CAMPS,
 ];
 // Ordered, collision-free targets provide a cheap loop through every district.
 // The NPC controller still uses the existing movement/collision code.
@@ -193,6 +318,82 @@ export const NPC_WAYPOINTS: Position[] = [
   {x:1568,y:340},{x:1702,y:460},{x:1872,y:496},{x:1870,y:668},{x:1344,y:624},
   {x:1072,y:432},{x:432,y:416}
 ];
+export interface OuterVegetation { trees:WorldTree[]; bushes:WorldBush[]; flowers:Rect[]; rocks:Position[] }
+interface RingBand { x0:number;x1:number;y0:number;y1:number;count:number }
+/**
+ * Deterministic outer-ring generator. It seeds woodland clusters outside the
+ * dirt loop, then scatters low planting and rocks through the fringe. The
+ * normal placement filters still run over every candidate, so roads, sites,
+ * camps and cave approaches stay open.
+ */
+function generateOuterVegetation():OuterVegetation {
+  const rand=seededRandom(0x0d1e5eed);
+  const result:OuterVegetation={trees:[],bushes:[],flowers:[],rocks:[]};
+  const bands:RingBand[]=[
+    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:MAP.minY+140,y1:OUTER_LOOP.top-80,count:20},
+    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:OUTER_LOOP.bottom+80,y1:MAP.maxY-140,count:20},
+    {x0:MAP.minX+140,x1:OUTER_LOOP.left-80,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:16},
+    {x0:OUTER_LOOP.right+80,x1:MAP.maxX-140,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:16},
+  ];
+  const clusters:Position[]=[];
+  const acceptable=(point:Position,clearance:number):boolean=>
+    isNaturalGround(point,clearance)
+    && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE+18)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>110)
+    && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>80)
+    && clearsExploration(point,92)
+    && clusters.every(cluster=>Math.hypot(cluster.x-point.x,cluster.y-point.y)>140);
+  for(const band of bands){
+    for(let index=0;index<band.count;index++){
+      for(let attempt=0;attempt<32;attempt++){
+        const point={x:Math.round(band.x0+rand()*(band.x1-band.x0)),y:Math.round(band.y0+rand()*(band.y1-band.y0))};
+        if(acceptable(point,72)){clusters.push(point);break;}
+      }
+    }
+  }
+  for(const [index,center] of clusters.entries()){
+    const tint=(index%3) as 0|1|2;
+    result.trees.push({x:center.x+Math.round((rand()-.5)*24),y:center.y+Math.round((rand()-.5)*22),
+      scale:.85+Math.round(rand()*30)/100,tint});
+    if(rand()>.58)result.trees.push({x:center.x+Math.round((rand()-.5)*92),y:center.y+Math.round((rand()-.5)*80),
+      scale:.8+Math.round(rand()*25)/100,tint:((index+1)%3) as 0|1|2});
+    const bushCount=2+Math.floor(rand()*3);
+    for(let bush=0;bush<bushCount;bush++){
+      const angle=rand()*Math.PI*2,distance=24+rand()*54;
+      result.bushes.push({x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance),
+        size:17+Math.round(rand()*12),tint:((index+bush)%3) as 0|1|2,solid:rand()>.76});
+    }
+    if(rand()>.3)result.flowers.push({x:center.x-24-Math.round(rand()*30),y:center.y+18+Math.round(rand()*24),
+      width:44+Math.round(rand()*26),height:20+Math.round(rand()*10)});
+    const rockCount=1+(rand()>.55?1:0);
+    for(let rock=0;rock<rockCount;rock++){
+      const angle=rand()*Math.PI*2,distance=30+rand()*46;
+      result.rocks.push({x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance)});
+    }
+  }
+  // Low planting and stones fill the fringe between the loop and the old town.
+  for(let index=0;index<120;index++){
+    const side=Math.floor(rand()*4);
+    const point:RingBand=side===0
+      ?{x0:MAP.minX+120,x1:MAP.maxX-120,y0:MAP.minY+120,y1:CORE_BOUNDS.minY-40,count:1}
+      :side===1
+      ?{x0:MAP.minX+120,x1:MAP.maxX-120,y0:CORE_BOUNDS.maxY+40,y1:MAP.maxY-120,count:1}
+      :side===2
+      ?{x0:MAP.minX+120,x1:CORE_BOUNDS.minX-40,y0:MAP.minY+120,y1:MAP.maxY-120,count:1}
+      :{x0:CORE_BOUNDS.maxX+40,x1:MAP.maxX-120,y0:MAP.minY+120,y1:MAP.maxY-120,count:1};
+    const sample={x:Math.round(point.x0+rand()*(point.x1-point.x0)),y:Math.round(point.y0+rand()*(point.y1-point.y0))};
+    if(!isNaturalGround(sample,18)||!clearsExploration(sample,55))continue;
+    if(CAMPFIRES.some(fire=>Math.hypot(fire.x-sample.x,fire.y-sample.y)<90))continue;
+    if(WORLD_SITES.some(site=>Math.hypot(site.x-sample.x,site.y-sample.y)<80))continue;
+    if(clusters.some(cluster=>Math.hypot(cluster.x-sample.x,cluster.y-sample.y)<20))continue;
+    result.bushes.push({x:sample.x,y:sample.y,size:16+Math.round(rand()*12),tint:(index%3) as 0|1|2,solid:rand()>.86});
+    if(rand()>.62)result.flowers.push({x:sample.x-16-Math.round(rand()*24),y:sample.y+16+Math.round(rand()*18),
+      width:38+Math.round(rand()*22),height:18+Math.round(rand()*10)});
+    if(rand()>.58)result.rocks.push({x:sample.x+Math.round((rand()-.5)*46),y:sample.y+Math.round((rand()-.5)*34)});
+  }
+  return result;
+}
+export const OUTER_VEGETATION=generateOuterVegetation();
 /**
  * One companion tree is seeded beside every authoritative site. Candidate
  * positions are deterministic, and the normal filters keep them off roads,
@@ -240,6 +441,7 @@ const TREE_CANDIDATES: WorldTree[] = [
   {x:1150,y:-360,scale:.9,tint:2},{x:1700,y:780,scale:1,tint:1},
   {x:1150,y:1600,scale:.9,tint:1},{x:-690,y:-470,scale:.9,tint:2},{x:-680,y:-350,scale:.9,tint:1},
   ...VEGETATION_GROUPS.flatMap(group=>group.trees),
+  ...OUTER_VEGETATION.trees,
 ];
 const TREE_MIN_DISTANCE = 32;
 export const TREES: WorldTree[] = [...SITE_COMPANION_TREES,...TREE_CANDIDATES].reduce<WorldTree[]>((placed,tree)=>{
@@ -265,8 +467,11 @@ const BUSH_CANDIDATES: WorldBush[] = [
   {x:1480,y:1110,size:20,tint:1},{x:1870,y:1180,size:28,solid:true,tint:2},
   {x:-700,y:545,size:20,tint:1},{x:-330,y:345,size:22,tint:2},{x:-95,y:745,size:18,tint:1},
   ...VEGETATION_GROUPS.flatMap(group=>group.bushes),
+  ...OUTER_VEGETATION.bushes,
 ];
 export const BUSHES: WorldBush[] = BUSH_CANDIDATES.filter(canPlaceBush);
+const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},...VEGETATION_GROUPS.flatMap(group=>group.rocks),...OUTER_VEGETATION.rocks];
+export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
 const FLOWER_CANDIDATES: Rect[] = [
   {x:1510,y:600,width:90,height:42},{x:1620,y:830,width:98,height:46},{x:1770,y:570,width:96,height:40},
   {x:1900,y:845,width:102,height:44},{x:2050,y:970,width:94,height:40},
@@ -274,15 +479,18 @@ const FLOWER_CANDIDATES: Rect[] = [
   {x:2220,y:290,width:86,height:32},{x:180,y:1360,width:76,height:30},{x:1260,y:1440,width:82,height:30},
   {x:-715,y:550,width:62,height:26},{x:-355,y:350,width:58,height:24},
   ...VEGETATION_GROUPS.flatMap(group=>group.flowers),
+  ...OUTER_VEGETATION.flowers,
 ];
 export const FLOWER_BEDS: Rect[] = FLOWER_CANDIDATES.filter(bed=>canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}));
-const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},...VEGETATION_GROUPS.flatMap(group=>group.rocks)];
-export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
 export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===900&&point.y===760);
 /** Developer-only browser probes start just inside the former map edges. */
 export const EXPLORATION_PROBES = {
   west:{x:90,y:430},east:{x:1702,y:460},north:{x:576,y:-250},south:{x:700,y:1060},
   garden:{x:1870,y:668},campfire:{x:1702,y:740},market:{x:820,y:1320},agency:{x:1568,y:340},eastRoad:{x:1300,y:460},
+  caveNorth:{x:-700,y:OUTER_LOOP.top},caveEast:{x:OUTER_LOOP.right,y:300},
+  caveSouth:{x:1250,y:OUTER_LOOP.bottom},caveWest:{x:OUTER_LOOP.left,y:900},
+  outerNorth:{x:-300,y:OUTER_LOOP.top},outerSouth:{x:1850,y:OUTER_LOOP.bottom},
+  shrineWest:{x:OUTER_LOOP.left-204,y:420},ruinEast:{x:OUTER_LOOP.right+192,y:1250},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
@@ -305,6 +513,8 @@ export const LANDMARKS: Interactable[] = [
   { id: 'south-market', type: 'zone', position: { x: 681, y: 1292 }, radius: 76, label: 'Open Bazaar profile terminal' },
   { id: 'treasury-house', type: 'zone', position: { x: 1105, y: 1292 }, radius: 72, label: 'Enter Treasury House' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
+  ...EXPLORATION_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},
+    radius:site.radius, label:site.label })),
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < MAP.minX + 40 + radius || position.y < MAP.minY + 64 + radius

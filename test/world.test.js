@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_VEGETATION, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
@@ -109,6 +109,21 @@ test('Agency and market landmarks are real reachable map locations',()=>{
   for(const building of BUILDINGS)assert.equal(collides({x:building.x+building.width/2,y:building.y+building.height/2}),true,`${building.name} should block movement`);
   for(const well of MARKET_PROPS.filter(prop=>prop.kind==='well'))assert.equal(collides(well),true);
 });
+test('procedural outer ring adds deterministic woodland, camps, caves and ruins',()=>{
+  assert.ok(OUTER_VEGETATION.trees.length>=60,'the outer woodland keeps a dense tree line');
+  assert.ok(OUTER_VEGETATION.bushes.length>=120,'bushes fill the outer fringe');
+  assert.ok(OUTER_VEGETATION.flowers.length>=30,'generated flower beds break up the forest floor');
+  assert.ok(OUTER_VEGETATION.rocks.length>=60,'generated rocks add small landmarks');
+  const caves=EXPLORATION_SITES.filter(site=>site.kind==='cave');
+  assert.ok(caves.length>=4,'caves ring the expanded world');
+  assert.equal(new Set(EXPLORATION_SITES.map(site=>site.id)).size,EXPLORATION_SITES.length);
+  for(const site of EXPLORATION_SITES){
+    assert.equal(collides(site.position),false,`${site.label} must stay walkable`);
+    assert.ok(LANDMARKS.some(landmark=>landmark.id===site.id),`${site.label} must be discoverable`);
+  }
+  const outerCamps=CAMPFIRES.filter(fire=>fire.y<WORLD_BOUNDS.minY+300||fire.y>WORLD_BOUNDS.maxY-300||fire.x<WORLD_BOUNDS.minX+300||fire.x>WORLD_BOUNDS.maxX-300);
+  assert.ok(outerCamps.length>=6,'outer camps provide rest points beyond the old edge');
+});
 test('all plaza interactions remain reachable from the visitor spawn',()=>{
  const step=8,start={x:Math.round(MAP.spawn.x/step),y:Math.round(MAP.spawn.y/step)};
  const seen=new Set([`${start.x},${start.y}`]),queue=[start];
@@ -129,7 +144,8 @@ test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:9999,y:9999},600,400,100),{x:MAP.minX+MAP.width-600,y:MAP.minY+MAP.height-400});
 });
 test('the old edge is now walkable in all four directions while the new edge blocks',()=>{
-  assert.equal(MAP.width*MAP.height,4*1792*1152);
+  assert.equal(MAP.width*MAP.height,4800*3456);
+  assert.ok(MAP.width*MAP.height>4*1792*1152,'the outer ring grows the walkable world');
   for(const point of [{x:-200,y:600},{x:2020,y:600},{x:600,y:-200},{x:600,y:1400}])assert.equal(collides(point),false,`extension ${JSON.stringify(point)} should be walkable`);
   for(const point of [{x:WORLD_BOUNDS.minX-1,y:600},{x:WORLD_BOUNDS.maxX+1,y:600},{x:600,y:WORLD_BOUNDS.minY-1},{x:600,y:WORLD_BOUNDS.maxY+1}])assert.equal(collides(point),true,'the new edge should block movement');
 });

@@ -1,7 +1,7 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, moveToward, followCamera } from './movement.js';
-import { EXPLORATION_PROBES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition } from './map.js';
+import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { DEFAULT_APPEARANCE, appearanceSprites, layerParts, loadAppearanceCatalog, parseAppearance, type Appearance, type AppearanceCatalog } from './appearance.js';
@@ -539,6 +539,14 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     if(target.id.startsWith('plot:')){
       const tile=farmSnapshot?.tiles.find(value=>value.id===target.id.slice('plot:'.length));
       if(tile)showFarmPlot(tile);
+      return;
+    }
+    const site=EXPLORATION_SITES.find(value=>value.id===target.id);
+    if(site){
+      show(site.label);
+      text('p',site.description);
+      text('p',site.discovery);
+      text('p','Follow the outer loop to find the other caves and stone markers.');
       return;
     }
     const zones:Record<string,[string,string]>={
