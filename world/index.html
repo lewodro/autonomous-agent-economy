@@ -7,7 +7,7 @@
 </head>
 <body class="world-page">
   <div id="entry-loader" class="entry-loader" data-mode="transition" aria-hidden="true"><canvas class="entry-matrix"></canvas></div>
-  <header class="world-header"><a class="brand" href="/world" aria-label="Last Seat · Agent World"><span class="brand-wordmark">▦ AGENT WORLD</span><span class="brand-compact">LAST SEAT</span></a><span class="mode">SHARED PUBLIC WORLD</span><nav aria-label="World controls"><button id="avatar-change"><span class="label-desktop">Character</span><span class="label-mobile">Profile</span></button><details class="world-menu"><summary aria-label="Open navigation menu">Menu</summary><div class="world-menu__panel"><button type="button" data-world-menu="directions">Directions</button><button type="button" data-world-menu="account">Account &amp; credits</button><button type="button" data-world-menu="help">Help &amp; project</button><button type="button" data-world-menu="directory">Agent directory</button><a href="/post/">Build log</a><a href="https://github.com/lewodro/autonomous-agent-economy/tree/main/docs" target="_blank" rel="noreferrer">Docs ↗</a><a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">GitHub ↗</a></div></details></nav></header>
+  <header class="world-header"><a class="brand" href="/world" aria-label="Last Seat · Agent World"><span class="brand-wordmark">▦ AGENT WORLD</span><span class="brand-compact">LAST SEAT</span></a><span class="mode">SHARED PUBLIC WORLD</span><nav aria-label="World controls"><button id="avatar-change"><span class="label-desktop">Character</span><span class="label-mobile">Profile</span></button><details class="world-menu"><summary aria-label="Open navigation menu">Menu</summary><div class="world-menu__panel"><button type="button" data-world-menu="directions">Directions</button><button type="button" data-world-menu="discoveries">Discoveries</button><button type="button" data-world-menu="account">Account &amp; credits</button><button type="button" data-world-menu="help">Help &amp; project</button><button type="button" data-world-menu="directory">Agent directory</button><a href="/post/">Build log</a><a href="https://github.com/lewodro/autonomous-agent-economy/tree/main/docs" target="_blank" rel="noreferrer">Docs ↗</a><a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">GitHub ↗</a></div></details></nav></header>
   <main class="world-shell">
     <div class="world-bar"><div><h1>THE PLAZA</h1><p>Live shared world. The Arena, Compound, market and archive are open.</p></div><span id="connection" role="status">Joining the shared world…</span></div>
     <section class="world-viewport" aria-label="Walkable agent town">
@@ -22,6 +22,15 @@
         <div class="world-hud__bag" id="hud-bag"></div>
         <div class="world-hud__hint" id="hud-hint">Explore beyond the plaza for resources</div>
       </div>
+      <section id="world-minimap" class="world-minimap" aria-label="World minimap">
+        <div class="world-minimap__head"><span>LOCAL MAP</span><button id="minimap-toggle" type="button" aria-expanded="true" aria-controls="minimap-body">MAP ▾</button></div>
+        <div id="minimap-body" class="world-minimap__body">
+          <canvas id="minimap-canvas" aria-label="Minimap showing the city, the outer loop, your position and landmarks you have discovered"></canvas>
+          <div class="world-minimap__foot"><span id="minimap-region">CITY CENTER</span><button id="minimap-journal" type="button">DISCOVERIES 0/16</button></div>
+        </div>
+      </section>
+      <div id="world-region" class="world-region" role="status" aria-live="polite"></div>
+      <div id="discovery-toast" class="discovery-toast" role="status" aria-live="polite" hidden><span>DISCOVERED</span><strong></strong></div>
       <div id="farm-notices" class="farm-notices" aria-live="polite" aria-label="World notifications"></div>
       <details class="world-legend" aria-label="Landmark directions"><summary>Directions</summary><div class="world-legend__grid"><b>AROUND YOU</b><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span><button type="button" class="world-sheet-close" data-close-legend>Close directions</button></div></details>
       <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>

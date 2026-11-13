@@ -28,6 +28,16 @@ A deterministic generator in `map.ts` fills the band outside the old map with wo
 
 An outer dirt loop links four generated cave mouths and four stone landmarks (two ruins and two shrines) to the existing road network. Eight seeded campfire clearings sit just off the loop. Each cave or landmark is a normal interaction zone with its own deterministic discovery text. The loop and its four connectors are ordinary path rectangles, so camera, collision and click-to-move behavior stay unchanged. The renderer paints the cave arches and stone rings once into the static map and only animates tiny cave glints per frame.
 
+The four loop connectors and eight camp spurs are now marked by lighter gravel crossings. Small junction signposts, spread ash circles, three split-log benches per fire and rising embers make the outer route and its rest points easier to read without adding collision geometry or new gameplay. Large biome fills keep the map's shared 32-pixel dither texture, retinting the same light/dark palette from each terrain area's base colour instead of painting a flat solid block. Region names (`CITY CENTER`, `NORTH OUTCROP`, `WEST WOODS`, `EAST INDUSTRIAL`, `SOUTH PERIMETER`) are derived from how far a position extends beyond `CORE_BOUNDS`.
+
+## Exploration layer
+
+`explore.ts` holds the pure minimap projection, region lookup, discovery grouping and visitor-local storage helpers. `minimap.ts` paints one cached terrain bitmap (world boundary, city footprint, outer loop and connectors) and then redraws only a bounded marker layer at roughly 8 fps. Major city destinations are always visible. Outer caves, ruins, shrines and camps appear only after the visitor interacts with them.
+
+The discovery journal is opened from the minimap footer or the header menu and groups entries into `CAVES`, `RUINS`, `SHRINES` and `CAMPS` with discovered names and `???` placeholders. A first discovery shows a short `DISCOVERED` toast and a brief region badge when the visitor crosses a boundary. These are non-modal, take no keyboard focus, and respect `prefers-reduced-motion`.
+
+Discovery state is stored under `agent-world-discoveries-v1` in `localStorage`, the same visitor-local mechanism used by world settings. It follows this browser, not a signed-in public-world account; linking discoveries to account persistence is explicitly out of scope for this pass. The minimap plots nearby humans only (within 760 world pixels) and never canonical agents or exact resource spawns.
+
 ## Village and market
 
 The expanded ground is organized as a small settlement rather than a set of disconnected decorative strips. A centralized path list joins the original plaza to west cottages, northern homes, the Agency, botanical garden and south market. The renderer computes the visible edge of the combined road network, so overlapping path rectangles form one road and never draw seams through the plaza. Eleven compact houses sit near road endpoints while preserving open multiplayer space.

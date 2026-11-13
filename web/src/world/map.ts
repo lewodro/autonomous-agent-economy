@@ -16,6 +16,10 @@ export interface ExplorationSite {
   id:string; kind:'cave'|'ruin'|'shrine'; facing:RingSide; radius:number; position:Position;
   label:string; description:string; discovery:string;
 }
+/** Action wording is intentionally literal: only interactions that exist. */
+export const EXPLORATION_PROMPTS = {
+  cave:'Enter cave',ruin:'Inspect ruins',shrine:'Visit shrine',camp:'Rest at camp',
+} as const;
 /**
  * Generated landmarks sit on the outer dirt loop. They add destinations and
  * interaction text without another map or a second renderer. The coordinates
@@ -228,6 +232,32 @@ const CAMP_JITTER=seededRandom(0x0ca3f1);
 export const OUTER_CAMPS: OuterCamp[] = OUTER_CAMP_ANCHORS.map(([x,y,side])=>({
   x:Math.round(x+(CAMP_JITTER()-.5)*18),y:Math.round(y+(CAMP_JITTER()-.5)*18),side,
 }));
+export interface CampSite {
+  id:string; kind:'camp'; facing:RingSide; radius:number; position:Position;
+  label:string; description:string; discovery:string;
+}
+/**
+ * Camps are discoverable rest points, not new gameplay. Their names describe
+ * the actual trail or nearby landmark so the journal never needs invented lore.
+ */
+const CAMP_LABELS:Record<RingSide,[string,string]>={
+  north:['North overlook camp','North ruin camp'],south:['South perimeter camp','South trail camp'],
+  west:['West wood camp','West hollow camp'],east:['East ridge camp','East workshop camp'],
+};
+const CAMP_NOTES:Record<RingSide,[string,string]>={
+  north:['A gravel clearing and low fire sit above the northern trail.','The northern ruin road keeps a sheltered fire at its edge.'],
+  south:['A quiet fire marks the far southern edge of the world.','The southern trail ends at a small, well-used camp.'],
+  west:['A fire and split-log seats sit inside the western tree line.','The western hollow camp rests below the cave trail.'],
+  east:['A windbreak and fire overlook the eastern ridge.','The east workshop road passes a low campfire and log seats.'],
+};
+export const CAMP_SITES:CampSite[]=OUTER_CAMPS.map((camp,index)=>{
+  const sideIndex=OUTER_CAMPS.slice(0,index).filter(other=>other.side===camp.side).length;
+  return {
+    id:`camp-${camp.side}-${sideIndex+1}`,kind:'camp',facing:camp.side,position:{x:camp.x,y:camp.y},radius:76,
+    label:CAMP_LABELS[camp.side][sideIndex]!,description:CAMP_NOTES[camp.side][sideIndex]!,
+    discovery:'The outer loop is in sight and the fire is still warm. Rest here before the walk back.',
+  };
+});
 function campApron(camp:Position):WorldPath[] {
   return [
     {x:camp.x-60,y:camp.y-14,width:120,height:28,color:'#786b55'},
@@ -491,6 +521,7 @@ export const EXPLORATION_PROBES = {
   caveSouth:{x:1250,y:OUTER_LOOP.bottom},caveWest:{x:OUTER_LOOP.left,y:900},
   outerNorth:{x:-300,y:OUTER_LOOP.top},outerSouth:{x:1850,y:OUTER_LOOP.bottom},
   shrineWest:{x:OUTER_LOOP.left-204,y:420},ruinEast:{x:OUTER_LOOP.right+192,y:1250},
+  campNorth:{x:OUTER_CAMPS[0]!.x,y:OUTER_CAMPS[0]!.y+64},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
@@ -514,7 +545,9 @@ export const LANDMARKS: Interactable[] = [
   { id: 'treasury-house', type: 'zone', position: { x: 1105, y: 1292 }, radius: 72, label: 'Enter Treasury House' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
   ...EXPLORATION_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},
-    radius:site.radius, label:site.label })),
+    radius:site.radius, label:site.label, prompt:EXPLORATION_PROMPTS[site.kind] })),
+  ...CAMP_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},
+    radius:site.radius, label:site.label, prompt:EXPLORATION_PROMPTS.camp })),
 ];
 export function collides(position: Position, walls: Rect[] = WALLS, radius = 12): boolean {
   if (position.x < MAP.minX + 40 + radius || position.y < MAP.minY + 64 + radius

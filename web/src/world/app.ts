@@ -1,8 +1,10 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, moveToward, followCamera } from './movement.js';
-import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition } from './map.js';
+import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition, CAMP_SITES } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
+import { DISCOVERY_SITES, REGIONS, discoveryGroups, loadDiscoveries, minimapMarkers, nearbyHumans, regionAt, saveDiscoveries } from './explore.js';
+import { WorldMinimap } from './minimap.js';
 import { AVATARS, SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { DEFAULT_APPEARANCE, appearanceSprites, layerParts, loadAppearanceCatalog, parseAppearance, type Appearance, type AppearanceCatalog } from './appearance.js';
 import { publicSpeech, SpeechLimiter, thoughtSeed } from './speech.js';
@@ -27,6 +29,11 @@ else if(returnTarget==='treasury'){settings.position={x:1105,y:1292};saveSetting
 else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
+const minimap=new WorldMinimap($<HTMLCanvasElement>('minimap-canvas'),$<HTMLButtonElement>('minimap-toggle'),$('minimap-body'),$('minimap-region'),$<HTMLButtonElement>('minimap-journal'));
+const discoveries=new Set(loadDiscoveries());
+let currentRegion=regionAt(player.position),discoveryMarkers=minimapMarkers(discoveries);
+let discoveryToastTimer=0,regionLabelTimer=0;
+const discoveryToast=$<HTMLDivElement>('discovery-toast'),regionBadge=$<HTMLDivElement>('world-region');
 const touchFirst=matchMedia('(pointer: coarse)').matches;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const npcs:WorldActor[]=[];let profiles:AgentProfile[]=[];
@@ -58,6 +65,59 @@ const auth=createAuth(async()=>{
 });
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,appearance:player.appearance??null,position:player.position});savedProfileDirty=true;scheduleSavedProfile();}
+function updateDiscoverySummary():void {minimap.setSummary(`DISCOVERIES ${discoveries.size}/${DISCOVERY_SITES.length}`);}
+function showDiscoveryToast(label:string):void {
+  const title=discoveryToast.querySelector('strong');
+  if(title)title.textContent=label.toUpperCase();
+  if(discoveryToastTimer)window.clearTimeout(discoveryToastTimer);
+  discoveryToast.hidden=false;
+  discoveryToast.classList.remove('is-visible');
+  requestAnimationFrame(()=>discoveryToast.classList.add('is-visible'));
+  discoveryToastTimer=window.setTimeout(()=>{
+    discoveryToast.classList.remove('is-visible');
+    discoveryToastTimer=window.setTimeout(()=>{discoveryToast.hidden=true;discoveryToastTimer=0;},220);
+  },1_350);
+}
+function showRegionBadge(id:keyof typeof REGIONS):void {
+  if(regionLabelTimer)window.clearTimeout(regionLabelTimer);
+  regionBadge.textContent=REGIONS[id];
+  regionBadge.classList.remove('is-visible');
+  requestAnimationFrame(()=>regionBadge.classList.add('is-visible'));
+  regionLabelTimer=window.setTimeout(()=>{regionBadge.classList.remove('is-visible');regionLabelTimer=0;},1_500);
+}
+function syncRegion(announce:boolean):void {
+  const next=regionAt(player.position);
+  minimap.setRegion(REGIONS[next]);
+  if(next===currentRegion)return;
+  currentRegion=next;
+  if(announce)showRegionBadge(next);
+}
+function recordDiscovery(id:string):void {
+  if(discoveries.has(id))return;
+  const site=DISCOVERY_SITES.find(value=>value.id===id);
+  if(!site)return;
+  discoveries.add(id);
+  saveDiscoveries(discoveries);
+  discoveryMarkers=minimapMarkers(discoveries);
+  updateDiscoverySummary();
+  showDiscoveryToast(site.label);
+}
+function showDiscoveries():void {
+  show('DISCOVERIES');
+  text('p',`${discoveries.size} of ${DISCOVERY_SITES.length} landmarks recorded. Interact with caves, ruins, shrines and camps to add them to this journal and the minimap.`);
+  const grid=document.createElement('div');grid.className='discovery-groups';content.append(grid);
+  for(const group of discoveryGroups(discoveries)){
+    const section=document.createElement('section');section.className='discovery-group';
+    section.dataset.kind=group.kind;section.dataset.count=`${group.discoveredCount}/${group.total}`;
+    text('h3',`${group.label} · ${group.discoveredCount} / ${group.total}`,section);
+    for(const entry of group.entries){
+      const row=text('p',entry.discovered?`✓ ${entry.label}`:'??? · undiscovered',section);
+      row.className=entry.discovered?'discovery-entry is-found':'discovery-entry is-unknown';
+    }
+    grid.append(section);
+  }
+  text('p','Discoveries are saved in this browser only. They are not yet linked to a signed-in world account.',content).className='world-discovery-note';
+}
 async function flushSavedProfile():Promise<void>{
   if(!savedProfileDirty||!farmSnapshot?.account?.signed_in)return;
   savedProfileDirty=false;
@@ -543,10 +603,20 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     }
     const site=EXPLORATION_SITES.find(value=>value.id===target.id);
     if(site){
+      recordDiscovery(site.id);
       show(site.label);
       text('p',site.description);
       text('p',site.discovery);
       text('p','Follow the outer loop to find the other caves and stone markers.');
+      return;
+    }
+    const camp=CAMP_SITES.find(value=>value.id===target.id);
+    if(camp){
+      recordDiscovery(camp.id);
+      show(camp.label);
+      text('p',camp.description);
+      text('p',camp.discovery);
+      text('p','The camp is a rest point on the outer loop. The road back to the city is always within sight.');
       return;
     }
     const zones:Record<string,[string,string]>={
@@ -718,6 +788,7 @@ if(worldMenu){
     item.addEventListener('click',()=>{
       const action=item.dataset.worldMenu;closeWorldMenu();
       if(action==='directions'){if(legend)legend.open=true;}
+      else if(action==='discoveries')showDiscoveries();
       else if(action==='help')revealFooterPanel('world-help');
       else if(action==='directory')revealFooterPanel('world-directory');
       else if(action==='account')void showAccount();
@@ -728,6 +799,9 @@ if(worldMenu){
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeWorldMenu();});
 }
 $('hud-account').onclick=()=>{void showAccount();};
+$('minimap-journal').onclick=()=>{showDiscoveries();};
+updateDiscoverySummary();
+syncRegion(false);
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
   resetInput();
@@ -853,9 +927,18 @@ function frame(time:number):void {
     const seconds=Math.min(30,Math.round((Date.now()-lastPlayTick)/1000));lastPlayTick=Date.now();
     void farmClient.post('heartbeat',{seconds}).then(result=>mergeFarmAccount(result.account as FarmAccount|undefined)).catch(()=>{});
   }
-  const message=nearby?`${touchFirst?'Tap Interact':'E / Interact'} · ${nearby.label}`:(touchFirst?'Tap the ground to walk · tap Interact near things':'WASD / arrows or click to move · E to interact');
+  const message=nearby
+    ? nearby.prompt
+      ? `${touchFirst?'TAP':'E'} · ${nearby.prompt.toUpperCase()}`
+      : `${touchFirst?'Tap Interact':'E / Interact'} · ${nearby.label}`
+    : (touchFirst?'Tap the ground to walk · tap Interact near things':'WASD / arrows or click to move · E to interact');
   if(hint.textContent!==message)hint.textContent=message;
   $<HTMLButtonElement>('interact').disabled=!nearby;
+  if(entered)syncRegion(!dialog.open&&!character.open);
+  minimap.update({
+    player:player.position,facing:player.facing,markers:discoveryMarkers,
+    humans:nearbyHumans(player.position,[...remotePlayers.values()].map(remote=>remote.actor.position)),
+  },time);
   camera=followCamera(camera,player.position,renderer.viewport().width,renderer.viewport().height,dt);
   const interpolation=1-Math.exp(-14*Math.max(0,dt));
   for(const remote of remotePlayers.values()){
@@ -887,7 +970,7 @@ if(location.pathname==='/labs/world'){
     const profile=profiles.find(value=>value.id===actor.agentId)??{name:actor.name,strategy:'analyst'};
     const preview={x:player.position.x+42,y:player.position.y};actor.position={...preview};agentTargets.set(actor.agentId,preview);labPinnedAgents.set(actor.agentId,performance.now()+60000);const speech=publicSpeech(profile,actor.activityState||'wander',7);actor.speech={text:speech.text,expiresAt:performance.now()+60000,synthetic:speech.synthetic};(window as unknown as {__labThoughtAgentName?:string}).__labThoughtAgentName=actor.name;
   };lab.append(thought);
-  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
+  const log=document.createElement('pre');lab.append(log);setInterval(()=>log.textContent=JSON.stringify({player:{...player.position,movementState:player.movementState,facing:player.facing},entered,interactionOpen:dialog.open,characterOpen:character.open,hidden:document.hidden,region:REGIONS[currentRegion],discovered:[...discoveries],minimap:{open:!minimap.isCollapsed(),markers:discoveryMarkers.length,outer:discoveryMarkers.filter(marker=>marker.kind!=='city').length},npcs:npcs.map(actor=>({id:actor.id,name:actor.name,position:{...actor.position},movementState:actor.movementState,activityState:actor.activityState,attention:!!actor.speech})),events},null,2),250);
 }
 try{entered=sessionStorage.getItem('agent-world-entered')==='1';}catch{}
 // The plaza is the landing page: agents, matches and presence start immediately.
