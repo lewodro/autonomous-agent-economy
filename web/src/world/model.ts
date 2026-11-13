@@ -28,6 +28,8 @@ export interface Rect extends Position { width: number; height: number }
 export interface Interactable {
   id: string; position: Position; radius: number;
   type: 'arena' | 'table' | 'agent' | 'research' | 'zone'; label: string;
+  /** Short action used by the contextual prompt, e.g. "Enter cave". */
+  prompt?: string;
 }
 export type ResourceRarity='common'|'uncommon'|'rare'|'very_rare';
 export type OreVariant='copper'|'iron'|'silver'|'gold'|'obsidian'|'crystal';
