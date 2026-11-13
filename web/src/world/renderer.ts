@@ -13,6 +13,14 @@ const ORE_COLORS:Record<string,[string,string,string]> = {
   crystal:['#7fc7d9','#3f7d8c','#d3f4fb'],
 };
 const DEFAULT_ORE_COLORS:[string,string,string]=['#8d9288','#4f5952','#c8b66d'];
+/** Shift a hex colour by a fixed amount per channel, clamped to 0..255. */
+function shiftColor(hex:string,amount:number):string {
+  const value=parseInt(hex.slice(1),16);
+  const r=Math.max(0,Math.min(255,((value>>16)&255)+amount));
+  const g=Math.max(0,Math.min(255,((value>>8)&255)+amount));
+  const b=Math.max(0,Math.min(255,(value&255)+amount));
+  return `#${((r<<16)|(g<<8)|b).toString(16).padStart(6,'0')}`;
+}
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
@@ -56,6 +64,21 @@ export class CanvasWorldRenderer implements WorldRenderer {
   private paintMap():void {
     const c=this.map.getContext('2d')!;c.imageSmoothingEnabled=false;
     const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
+    // Terrain areas keep the shared 32px dither pattern, retinted from their
+    // own base colour so biomes never collapse into one flat solid fill.
+    const ground=(x:number,y:number,w:number,h:number,base:string)=>{
+      const light=shiftColor(base,6),dark=shiftColor(base,-6),detail=shiftColor(base,24);
+      const right=x+w,bottom=y+h,startX=Math.floor(x/32)*32,startY=Math.floor(y/32)*32;
+      for(let gy=startY;gy<bottom;gy+=32)for(let gx=startX;gx<right;gx+=32){
+        const px=Math.max(x,gx),py=Math.max(y,gy);
+        const pw=Math.min(right,gx+32)-px,ph=Math.min(bottom,gy+32)-py;
+        if(pw<=0||ph<=0)continue;
+        const sample=Math.abs(gx*7+gy*13)%55;
+        c.fillStyle=sample===0?dark:(sample%5===0?light:base);
+        c.fillRect(px,py,pw,ph);
+        if(pw>12&&ph>26&&(gx+gy)%96===0){c.fillStyle=detail;c.fillRect(px+8,py+20,4,3);}
+      }
+    };
     c.translate(-MAP.minX,-MAP.minY);
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
@@ -64,8 +87,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     // Large vegetation regions use stepped, overlapping pixel blocks. This
     // avoids the vector-like diagonal wedges created by arbitrary polygons.
-    for(const area of TERRAIN_AREAS)rect(area.x,area.y,area.width,area.height,area.color);
-    rect(1088,128,360,780,'#294b3a');rect(1160,220,350,780,'#294b3a');rect(1260,340,290,620,'#294b3a');
+    for(const area of TERRAIN_AREAS)ground(area.x,area.y,area.width,area.height,area.color);
+    ground(1088,128,360,780,'#294b3a');ground(1160,220,350,780,'#294b3a');ground(1260,340,290,620,'#294b3a');
     for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
     // Widen the four city-to-loop junctions with a lighter gravel cap so the
     // connection reads as an intentional crossing rather than two path seams.
@@ -187,9 +210,11 @@ export class CanvasWorldRenderer implements WorldRenderer {
       for(const [dx,dy] of [[-19,0],[-13,-9],[-2,-12],[10,-9],[17,0],[10,10],[-2,12],[-13,10]] as [number,number][])rect(x+dx-4,y+dy-3,8,6,'#8a8673');
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
-      rect(x-33,y+14,24,7,'#5c4634');rect(x-31,y+13,20,3,'#7d5c40');
-      rect(x+11,y+17,25,7,'#5c4634');rect(x+13,y+16,21,3,'#7d5c40');
-      rect(x-36,y+19,4,4,'#3d3c30');rect(x+33,y+20,4,4,'#3d3c30');
+      // Three small split-log benches face the fire so every clearing, including
+      // the path-end camp spurs, reads as a place to sit.
+      this.paintBench(c,x-48,y-4,'left');
+      this.paintBench(c,x+28,y-4,'right');
+      this.paintBench(c,x-11,y+24,'down');
       rect(x-22,y-19,3,3,'#6a6f5c');rect(x+19,y-17,2,2,'#6a6f5c');
     }
     // Generated caves and stone landmarks are painted into the same static map;
@@ -253,6 +278,21 @@ export class CanvasWorldRenderer implements WorldRenderer {
     if(direction==='right'){rect(16,-34,5,4,'#796047');rect(21,-33,3,2,'#796047');}
     else{rect(-21,-34,5,4,'#796047');rect(-24,-33,3,2,'#796047');}
     rect(-8,12,5,4,'#3f3d31');rect(4,20,4,4,'#3f3d31');
+  }
+  /** Small split-log bench with legs and a backrest, oriented around a fire. */
+  private paintBench(c:CanvasRenderingContext2D,x:number,y:number,facing:'left'|'right'|'down'):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    if(facing==='down'){
+      rect(0,0,22,8,'#5c4634');rect(2,-1,18,3,'#7d5c40');
+      rect(2,8,3,3,'#3d3c30');rect(17,8,3,3,'#3d3c30');
+      rect(0,11,22,3,'#6b5138');rect(2,12,18,2,'#7d5c40');
+    }else{
+      rect(0,0,20,8,'#5c4634');rect(2,-1,16,3,'#7d5c40');
+      rect(2,8,3,3,'#3d3c30');rect(15,8,3,3,'#3d3c30');
+      rect(4,2,12,2,'#6b5138');
+      if(facing==='left'){rect(-2,-2,3,12,'#6b5138');rect(-2,-2,2,3,'#7d5c40');}
+      else{rect(19,-2,3,12,'#6b5138');rect(20,-2,2,3,'#7d5c40');}
+    }
   }
   private paintRuin(c:CanvasRenderingContext2D,x:number,y:number,index:number,kind:'ruin'|'shrine'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
