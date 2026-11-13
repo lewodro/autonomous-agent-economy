@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -67,6 +67,12 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(const area of TERRAIN_AREAS)rect(area.x,area.y,area.width,area.height,area.color);
     rect(1088,128,360,780,'#294b3a');rect(1160,220,350,780,'#294b3a');rect(1260,340,290,620,'#294b3a');
     for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
+    // Widen the four city-to-loop junctions with a lighter gravel cap so the
+    // connection reads as an intentional crossing rather than two path seams.
+    for(const junction of [{x:576,y:OUTER_LOOP.top},{x:OUTER_LOOP.left,y:460},{x:1250,y:OUTER_LOOP.bottom},{x:OUTER_LOOP.right,y:900}]){
+      rect(junction.x-38,junction.y-38,76,76,'#7c6f58');
+      rect(junction.x-28,junction.y-28,56,56,'#897b62');
+    }
     // Draw depth only on the exposed boundary of the combined road network.
     // Outlining each overlapping rectangle separately created chaotic seams
     // through the middle of the plaza and market.
@@ -174,17 +180,31 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     for(const {x,y} of ROCKS){rect(x-12,y-8,24,16,'#696b60');rect(x-6,y-13,12,7,'#858474');}
     for(const {x,y} of CAMPFIRES){
+      // A worn ash circle, stone ring and split-log seats make every seeded
+      // clearing read as a deliberate rest point rather than a lone flame.
+      c.fillStyle='#2d352b88';c.beginPath();c.ellipse(x,y+8,37,16,0,0,Math.PI*2);c.fill();
+      c.fillStyle='#423f32';c.beginPath();c.ellipse(x,y+5,24,10,0,0,Math.PI*2);c.fill();
       for(const [dx,dy] of [[-19,0],[-13,-9],[-2,-12],[10,-9],[17,0],[10,10],[-2,12],[-13,10]] as [number,number][])rect(x+dx-4,y+dy-3,8,6,'#8a8673');
       rect(x-14,y+4,28,6,'#604934');rect(x-11,y-2,22,6,'#795639');
       rect(x-14,y+1,5,4,'#a17b4f');rect(x+8,y-4,5,4,'#a17b4f');
+      rect(x-33,y+14,24,7,'#5c4634');rect(x-31,y+13,20,3,'#7d5c40');
+      rect(x+11,y+17,25,7,'#5c4634');rect(x+13,y+16,21,3,'#7d5c40');
+      rect(x-36,y+19,4,4,'#3d3c30');rect(x+33,y+20,4,4,'#3d3c30');
+      rect(x-22,y-19,3,3,'#6a6f5c');rect(x+19,y-17,2,2,'#6a6f5c');
     }
     // Generated caves and stone landmarks are painted into the same static map;
     // only their small ambient glints animate per frame.
     for(const [index,site] of EXPLORATION_SITES.entries()){
       const {x,y}=site.position;
-      if(site.kind==='cave')this.paintCave(c,x,y,index);
+      if(site.kind==='cave')this.paintCave(c,x,y,index,site.facing);
       else this.paintRuin(c,x,y,index,site.kind);
     }
+    // Junction signposts give the four city-to-loop connectors a readable
+    // landmark without adding collision geometry or another UI surface.
+    this.paintSignpost(c,576,OUTER_LOOP.top-76,'right');
+    this.paintSignpost(c,OUTER_LOOP.left-78,560,'right');
+    this.paintSignpost(c,1320,OUTER_LOOP.bottom+78,'left');
+    this.paintSignpost(c,OUTER_LOOP.right+70,980,'left');
     c.font='bold 9px monospace';c.textAlign='center';
     for(const site of EXPLORATION_SITES){
       const label=site.label.toUpperCase(),labelWidth=label.length*5.4+8;
@@ -192,29 +212,51 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#d8cf9f';c.fillText(label,site.position.x,site.position.y+41);
     }
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('FOREST TRAIL',1280,180);c.fillText('CLEARING',1280,540);c.fillText('BOTANICAL GARDEN',1870,490);c.fillText('WORLD BAZAAR',900,1088);
+    // Sparse outer-region lettering supports the short region badge without
+    // turning the map into a debug overlay.
+    c.fillStyle='#96a486';c.font='bold 10px monospace';c.globalAlpha=.72;
+    c.fillText('NORTH OUTCROP',-700,MAP.minY+154);c.fillText('SOUTH PERIMETER',1500,MAP.maxY-104);
+    c.fillText('WEST WOODS',MAP.minX+140,1200);c.fillText('EAST INDUSTRIAL',MAP.maxX-170,1100);
+    c.globalAlpha=1;
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
   }
-  private paintCave(c:CanvasRenderingContext2D,x:number,y:number,index:number):void {
+  private paintCave(c:CanvasRenderingContext2D,x:number,y:number,index:number,facing:'north'|'south'|'east'|'west'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
-    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+20,48,13,0,0,Math.PI*2);c.fill();
+    const [fx,fy]=facing==='south'?[0,4]:facing==='north'?[0,-4]:facing==='west'?[-4,0]:[4,0];
+    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+24,54,15,0,0,Math.PI*2);c.fill();
+    // Taller, irregular shoulders make the outcrop read before the dark mouth.
     const stones:Array<[number,number,number,number]>=[
-      [-36,2,18,18],[-27,-12,17,14],[27,-12,20,15],[37,2,16,18],
-      [-12,-24,20,11],[13,-24,20,11],[-42,-8,10,20],[42,-8,10,20],
+      [-44,6,14,24],[-37,-9,17,22],[-30,-24,18,14],[-16,-31,20,12],[4,-31,20,12],
+      [21,-24,18,15],[31,-10,18,21],[42,6,15,24],[49,-2,10,18],
+      [-24,14,12,12],[14,16,13,11],
     ];
     for(const [stoneIndex,[dx,dy,w,h]] of stones.entries()){
-      const stone=stoneIndex%3===index%3?'#666d5e':'#585f53';
+      const stone=stoneIndex%4===index%4?'#666d5e':'#585f53';
       rect(dx-w/2,dy-h/2,w,h,stone);
       rect(dx-w/2+2,dy-h/2,w-4,3,'#84836d');
       if(stoneIndex%2===0)rect(dx-w/2+3,dy+h/2-4,5,4,'#4c6548');
     }
-    c.fillStyle='#0d1816';c.beginPath();c.ellipse(x,y+3,25,17,0,0,Math.PI*2);c.fill();
-    c.fillStyle='#263a32';c.beginPath();c.ellipse(x,y-5,17,8,0,0,Math.PI*2);c.fill();
-    rect(-20,15,40,4,'#3f4a3e');rect(-15,6,6,4,'#35463b');rect(9,9,4,3,'#35463b');
+    // Layered thresholds create depth; the interior is unlit rock, not a portal.
+    c.fillStyle='#465246';c.beginPath();c.ellipse(x+fx*.4,y+3+fy*.4,28,19,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#101b18';c.beginPath();c.ellipse(x+fx,y+3+fy,25,17,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#050b09';c.beginPath();c.ellipse(x+fx*1.6,y+4+fy*1.6,17,12,0,0,Math.PI*2);c.fill();
+    rect(-23,fy>0?17:15,46,4,'#3f4a3e');rect(-17,7+fy,6,4,'#35463b');rect(11,9+fy,4,3,'#35463b');
+    rect(-31,18,7,4,'#706f5d');rect(26,20,6,3,'#706f5d');
+    rect(-33,-20,3,5,'#4c6548');rect(28,-18,3,4,'#4c6548');
+  }
+  private paintSignpost(c:CanvasRenderingContext2D,x:number,y:number,direction:'left'|'right'):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172b2855';c.beginPath();c.ellipse(x,y+30,17,6,0,0,Math.PI*2);c.fill();
+    rect(-3,-2,6,34,'#5b4938');rect(-2,-2,3,34,'#7a6047');
+    rect(-16,-34,32,12,'#796047');rect(-13,-31,26,3,'#d2ba7c');
+    if(direction==='right'){rect(16,-34,5,4,'#796047');rect(21,-33,3,2,'#796047');}
+    else{rect(-21,-34,5,4,'#796047');rect(-24,-33,3,2,'#796047');}
+    rect(-8,12,5,4,'#3f3d31');rect(4,20,4,4,'#3f3d31');
   }
   private paintRuin(c:CanvasRenderingContext2D,x:number,y:number,index:number,kind:'ruin'|'shrine'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
-    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+18,42,12,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+21,50,14,0,0,Math.PI*2);c.fill();
     const stones:Array<[number,number,number,number,number]>=[
       [-36,6,13,22,1],[-22,-8,15,12,0],[0,-16,12,28,0],[22,-6,16,14,1],
       [36,8,12,20,0],[-30,22,18,9,1],[14,24,20,8,0],
@@ -228,11 +270,16 @@ export class CanvasWorldRenderer implements WorldRenderer {
     rect(-20,8,40,7,'#464f46');
     if(kind==='shrine'){
       rect(-7,-16,14,28,'#7e806b');rect(-4,-13,8,4,'#a29d7b');rect(-2,-5,4,11,'#4c5e4b');
-      rect(-28,-6,6,4,'#d29dbb');rect(24,2,5,4,'#dce4a0');
+      c.fillStyle='#5f6654';c.beginPath();c.ellipse(x,y+15,20,7,0,0,Math.PI*2);c.fill();
+      rect(-9,13,18,5,'#777a67');rect(-7,11,14,2,'#8e8d74');
+      rect(-28,-6,6,4,'#d29dbb');rect(24,2,5,4,'#dce4a0');rect(29,-12,3,4,'#55704b');
     }else{
       rect(-17,2,34,6,'#565d50');rect(-8,-6,17,10,'#6c7161');rect(9,-2,5,5,'#8a8971');
       rect(-30,14,6,4,'#dce4a0');rect(27,14,5,4,'#d29dbb');
+      rect(-45,20,12,5,'#5c6455');rect(36,18,10,5,'#5c6455');
+      rect(12,-21,4,5,'#55704b');rect(-25,-18,3,4,'#55704b');
     }
+    rect(-41,27,9,3,'#4c574a');rect(30,27,8,3,'#4c574a');
   }
   render(frame:WorldFrame):void {
     const {width,height}=this.viewport();const ratio=Math.min(2,window.devicePixelRatio||1);
@@ -253,15 +300,25 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#8b3e2c';c.fillRect(x-9,y-3,18,11);
       c.fillStyle='#e68039';c.fillRect(x+flame[0],y+flame[1],flame[2],flame[3]);
       c.fillStyle='#f3c46b';c.fillRect(x-3,y-9,6,12);c.fillRect(x-1,y-14,3,8);
+      if(!reduced){
+        const emberPhase=Math.floor((frame.time+x*5+y*3)/380)%4;
+        for(let ember=0;ember<3;ember++){
+          const rise=emberPhase*3+ember*4;
+          const drift=((ember+emberPhase)%3-1)*3;
+          c.fillStyle=ember===1?'#f3c46b':'#df8b4a';
+          c.fillRect(x-7+drift,y-15-rise,ember===2?1:2,1+(ember%2));
+        }
+      }
     }
     if(!reduced)for(const site of EXPLORATION_SITES){
       if(site.kind!=='cave')continue;
       const {x,y}=site.position;
       if(x<frame.camera.x-60||x>frame.camera.x+width+60||y<frame.camera.y-60||y>frame.camera.y+height+60)continue;
       const pulse=Math.floor((frame.time+x*3)/520)%3;
-      c.fillStyle='#8fcfbd22';c.fillRect(x-18,y-8,36,10);
-      if(pulse===0){c.fillStyle='#bce7d6';c.fillRect(x-2,y-10,2,2);c.fillRect(x+9,y-5,2,2);}
-      else if(pulse===1){c.fillStyle='#7fb9ad';c.fillRect(x-11,y-4,2,2);c.fillRect(x+4,y-8,2,2);}
+      // Faint mineral catches at the rim, never a glowing portal.
+      if(pulse===0){c.fillStyle='#9fcabd';c.fillRect(x-2,y+2,2,2);c.fillRect(x+9,y+3,2,2);}
+      else if(pulse===1){c.fillStyle='#7fb9ad';c.fillRect(x-11,y+4,2,2);c.fillRect(x+4,y-1,2,2);}
+      else{c.fillStyle='#74958c';c.fillRect(x+13,y+7,2,1);}
     }
     for(const resource of frame.resources||[]){
       const {x,y}=resource.position;c.fillStyle='#172b2877';c.fillRect(x-15,y+8,30,6);
