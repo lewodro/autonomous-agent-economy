@@ -7,6 +7,11 @@
 - Expand the shared map to `4800 × 3456` with a deterministic outer ring of
   woodland, bushes, flowers, rocks, campfire clearings, caves and stone
   landmarks linked by a new dirt loop and four connectors.
+- Add a collapsible pixel minimap, region feedback and a per-browser discovery
+  journal for caves, ruins, shrines and the eight seeded camps. Undiscovered
+  outer landmarks stay hidden until visited.
+- Polish outer caves, ruins, shrines, camp clearings, loop junctions and
+  city-to-ring signposts; campfires gain log seats and tiny embers.
 - Mark the farm loop as live in the world UI and lengthen crop growth to
   4–11 minutes so fields stay a reason to return.
 
