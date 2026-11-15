@@ -59,14 +59,45 @@
 <strong id="treasury-total">0 CR</strong>
 </div>
 </section>
+<section class="bout-stage" aria-label="Active head-to-head match">
+<div class="bout-rig" aria-hidden="true">
+<span class="bout-banner bout-banner--left"><i></i></span>
+<span class="bout-banner bout-banner--right"><i></i></span>
+<span class="bout-torch bout-torch--left"><i></i></span>
+<span class="bout-torch bout-torch--right"><i></i></span>
+</div>
+<header class="bout-head">
+<div>
+<p class="eyebrow">ACTIVE MATCH <span class="scope scope--live">LIVE</span></p>
+<h2 id="match-title">Waiting for rivals</h2>
+</div>
+<span id="run-status" class="chip">READY</span>
+</header>
+<div class="bout-grid">
+<div id="duel" class="duel">
+<div class="duelist" data-side="a"><span class="duelist__empty">?</span></div>
+<span class="bout-vs" aria-hidden="true">VS</span>
+<div class="duelist" data-side="b"><span class="duelist__empty">?</span></div>
+</div>
+<div class="bout-center">
+<div id="ttt-board" class="ttt-board" aria-label="Tic-tac-toe board" hidden></div>
+<div id="phases" class="phases">
+<span data-phase="evaluate">EVALUATE</span>
+<span data-phase="commit">COMMIT</span>
+<span data-phase="reveal">REVEAL</span>
+<span data-phase="settle">SETTLE</span>
+</div>
+<p id="match-result">Moves stay hidden until both commitments are locked.</p>
+</div>
+</div>
+</section>
 <section class="arena-layout" id="arena">
 <div class="arena-panel">
 <div class="panel-heading">
 <div>
-<p class="eyebrow">LIVE FIELD</p>
+<p class="eyebrow">ARENA FLOOR</p>
 <h2>The proving ground</h2>
 </div>
-<span id="run-status" class="chip">READY</span>
 </div>
 <div class="field">
 <div class="field-line">
@@ -82,21 +113,9 @@
 </div>
 </div>
 <aside class="match-panel">
-<p class="eyebrow">MATCH MONITOR</p>
-<h2 id="match-title">Waiting for rivals</h2>
-<div id="duel" class="duel">
-<b>?</b>
-<span>VS</span>
-<b>?</b>
-</div>
-<div id="ttt-board" class="ttt-board" aria-label="Tic-tac-toe board" hidden></div>
-<div id="phases" class="phases">
-<span data-phase="evaluate">EVALUATE</span>
-<span data-phase="commit">COMMIT</span>
-<span data-phase="reveal">REVEAL</span>
-<span data-phase="settle">SETTLE</span>
-</div>
-<p id="match-result">Moves stay hidden until both commitments are locked.</p>
+<p class="eyebrow">MATCH CONTROL</p>
+<h2>Run the experiment</h2>
+<p class="muted" id="match-scope">Server rules settle every match. Your controls only choose the next contest.</p>
 <div class="play-controls">
 <button id="run" class="primary">▶ Start watching</button>
 <button id="step">Next match →</button>

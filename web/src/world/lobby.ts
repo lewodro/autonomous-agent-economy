@@ -1,8 +1,12 @@
-import { HttpArenaGateway } from './gateway.js';
-import { acceptsSurvivalUpdate, loadSurvivalSnapshot, SurvivalRenderer, hitTest, type Selection, type SurvivalSnapshot } from './survival.js';
+import { HttpArenaGateway, type ArenaRoom } from './gateway.js';
+import { acceptsSurvivalUpdate, loadSurvivalSnapshot, SurvivalRenderer, hitTest, type Selection, type SurvivalEvent, type SurvivalSnapshot } from './survival.js';
 const gateway=new HttpArenaGateway(),rooms=document.getElementById('rooms')!,status=document.getElementById('lobby-status')!,agents=document.getElementById('arena-agents')!;
+const survivalView=document.getElementById('survival-view')!,roomsView=document.getElementById('rooms-view')!;
+const survivalRoster=document.getElementById('survival-roster')!,survivalResult=document.getElementById('survival-result')!;
+const feedList=document.getElementById('arena-feed-list')!,feedStatus=document.getElementById('arena-feed-status')!;
+const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
 let stopped=false;window.addEventListener('pagehide',()=>stopped=true);
-let gameMode='survival',snapshot:SurvivalSnapshot|undefined,selection:Selection|undefined,survivalRenderer:SurvivalRenderer|undefined;
+let gameMode='survival',modeReady=false,snapshot:SurvivalSnapshot|undefined,selection:Selection|undefined,survivalRenderer:SurvivalRenderer|undefined;
 const survivalCanvas=document.getElementById('survival-field') as HTMLCanvasElement;
 const survivalStatus=document.getElementById('survival-status')!;
 const lastStatValues=new Map<string,string>();
@@ -12,12 +16,181 @@ function flashStat(id:string,value:string):void{
   if(before!==undefined&&before!==value){node.classList.remove('is-flashing');void node.offsetWidth;node.classList.add('is-flashing');}
   lastStatValues.set(id,value);
 }
-function setMode(mode:string):void{
-  gameMode=mode;for(const button of document.querySelectorAll<HTMLButtonElement>('[data-game-mode]'))button.setAttribute('aria-pressed',String(button.dataset.gameMode===mode));
-  const survival=mode==='survival';document.getElementById('survival-view')!.hidden=!survival;document.getElementById('rooms-view')!.hidden=survival;
+
+/* ---------------------------------------------------------------
+   Motion helpers. Everything is bounded: CSS transitions do the
+   work, no permanent animation loop is created here.
+   --------------------------------------------------------------- */
+function withFlip(container:HTMLElement,key:string,mutate:()=>void):void{
+  if(reduceMotion.matches){mutate();return;}
+  const before=new Map<string,DOMRect>();
+  for(const child of Array.from(container.children)){
+    if(!(child instanceof HTMLElement))continue;
+    const value=child.dataset[key];if(value)before.set(value,child.getBoundingClientRect());
+  }
+  mutate();
+  for(const child of Array.from(container.children)){
+    if(!(child instanceof HTMLElement))continue;
+    const value=child.dataset[key],previous=value?before.get(value):undefined;
+    if(!previous)continue;
+    const now=child.getBoundingClientRect(),dy=previous.top-now.top,dx=previous.left-now.left;
+    if(!dx&&!dy)continue;
+    child.style.transition='none';child.style.transform=`translate(${dx}px,${dy}px)`;
+    requestAnimationFrame(()=>{child.style.transition='';child.style.transform='';});
+  }
+}
+
+/* ---------------------------------------------------------------
+   Live feed. Only real server events and observed room transitions
+   are rendered; nothing is invented to keep the Arena busy.
+   --------------------------------------------------------------- */
+type FeedKind='event'|'fight'|'elimination'|'result'|'room';
+interface FeedEntry{key:string;kind:FeedKind;tag:string;round:string;text:string}
+const feedEntries:FeedEntry[]=[];
+const feedKeys=new Set<string>();
+const FEED_LIMIT=8;
+function feedKindFor(type:SurvivalEvent['type']):FeedKind{
+  if(type==='DamageTaken'||type==='AttackLanded'||type==='AttackStarted')return 'fight';
+  if(type==='AgentEliminated')return 'elimination';
+  if(type==='WinnerDeclared'||type==='SurvivalMatchCompleted')return 'result';
+  return 'event';
+}
+const EVENT_TAGS:Record<string,string>={
+  SurvivalMatchStarted:'START',SurvivalMatchCompleted:'RESULT',AgentSpawned:'SPAWN',TargetSelected:'TARGET',
+  TargetChanged:'TARGET',ChaseStarted:'CHASE',AttackStarted:'ATTACK',AttackLanded:'HIT',DamageTaken:'DAMAGE',
+  RetreatStarted:'RETREAT',AgentCornered:'CORNER',AgentEscaped:'ESCAPE',AgentEliminated:'OUT',
+  WinnerDeclared:'WINNER',ResearchUpdated:'RESEARCH',
+};
+function pushFeed(entry:FeedEntry):void{
+  if(feedKeys.has(entry.key))return;
+  feedKeys.add(entry.key);feedEntries.unshift(entry);
+  while(feedEntries.length>FEED_LIMIT){const dropped=feedEntries.pop();if(dropped)feedKeys.delete(dropped.key);}
+}
+function renderFeed():void{
+  const desired=feedEntries.map(entry=>entry.key);
+  const desiredSet=new Set(desired);
+  withFlip(feedList,'feedKey',()=>{
+    // Retire items that fell out of the retained history with a real exit phase.
+    for(const child of Array.from(feedList.children)){
+      if(!(child instanceof HTMLElement)||!child.dataset.feedKey)continue;
+      if(desiredSet.has(child.dataset.feedKey)||child.classList.contains('is-leaving'))continue;
+      child.classList.add('is-leaving');
+      const remove=()=>child.remove();
+      child.addEventListener('transitionend',remove,{once:true});
+      window.setTimeout(remove,reduceMotion.matches?0:260);
+    }
+    // Fill in missing items newest-first at the top of the log.
+    const existing=new Set(Array.from(feedList.children).filter(node=>node instanceof HTMLElement&&node.dataset.feedKey).map(node=>(node as HTMLElement).dataset.feedKey));
+    let anchor:Element|null=feedList.firstElementChild;
+    for(let index=desired.length-1;index>=0;index--){
+      const entry=feedEntries[index]!;
+      if(existing.has(entry.key))continue;
+      const item=document.createElement('li');item.className='feed-item';item.dataset.feedKey=entry.key;item.dataset.kind=entry.kind;
+      const tag=document.createElement('span');tag.className='feed-item__tag';tag.textContent=entry.tag;
+      const round=document.createElement('span');round.className='feed-item__round';round.textContent=entry.round;
+      const text=document.createElement('span');text.className='feed-item__text';text.textContent=entry.text;
+      item.append(tag,round,text);
+      if(!reduceMotion.matches){item.classList.add('is-entering');requestAnimationFrame(()=>requestAnimationFrame(()=>item.classList.remove('is-entering')));}
+      feedList.insertBefore(item,anchor);
+      anchor=item;
+    }
+    if(!feedEntries.length&&!feedList.querySelector('.feed-empty')){
+      const empty=document.createElement('li');empty.className='feed-empty';empty.textContent='Waiting for the next authoritative event…';
+      feedList.append(empty);
+    }
+    if(feedEntries.length)feedList.querySelector('.feed-empty')?.remove();
+  });
+}
+function observeSurvivalEvents(s:SurvivalSnapshot):void{
+  for(const event of s.events){
+    pushFeed({key:`surv-${s.match_id}-${event.seq}`,kind:feedKindFor(event.type),tag:EVENT_TAGS[event.type]||'EVENT',round:`R${event.round}`,text:event.summary});
+  }
+  renderFeed();
+}
+
+/* ---------------------------------------------------------------
+   Survival participant strip: real sprites, health and eliminations.
+   --------------------------------------------------------------- */
+const rosterChips=new Map<string,HTMLElement>();
+let rosterSignature='';
+function paintRoster(s:SurvivalSnapshot):void{
+  const signature=`${s.match_id}|${s.agents.map(agent=>`${agent.id}:${agent.status}:${agent.hp}`).join(',')}`;
+  if(signature===rosterSignature)return;
+  rosterSignature=signature;
+  const seen=new Set<string>();
+  withFlip(survivalRoster,'rosterAgent',()=>{
+    for(const agent of s.agents){
+      seen.add(agent.id);let chip=rosterChips.get(agent.id);
+      if(!chip){
+        chip=document.createElement('div');chip.className='roster-chip is-entering';chip.dataset.rosterAgent=agent.id;
+        const img=document.createElement('img');img.src='/'+agent.sprite;img.alt='';img.width=30;img.height=30;img.decoding='async';
+        const body=document.createElement('div');body.className='roster-chip__body';
+        const name=document.createElement('span');const bar=document.createElement('i');const fill=document.createElement('b');
+        bar.append(fill);body.append(name,bar);chip.append(img,body);
+        survivalRoster.append(chip);rosterChips.set(agent.id,chip);
+        if(!reduceMotion.matches)requestAnimationFrame(()=>requestAnimationFrame(()=>chip!.classList.remove('is-entering')));
+      }
+      chip.querySelector('span')!.textContent=agent.name;
+      const ratio=Math.max(0,Math.min(1,agent.hp/agent.max_hp));
+      chip.querySelector<HTMLElement>('i b')!.style.width=`${Math.round(ratio*100)}%`;
+      chip.classList.toggle('is-eliminated',agent.status==='eliminated'||agent.status==='spectating');
+      chip.classList.toggle('is-hurt',agent.status!=='eliminated'&&ratio<=.3);
+      chip.setAttribute('aria-label',`${agent.name}: ${agent.status}, ${agent.hp} of ${agent.max_hp} HP`);
+      chip.title=`${agent.name} · ${agent.status} · ${agent.hp}/${agent.max_hp} HP`;
+    }
+    for(const [id,chip] of rosterChips)if(!seen.has(id)){chip.remove();rosterChips.delete(id);}
+  });
+}
+
+/* ---------------------------------------------------------------
+   Result banner. Driven only by a finished authoritative snapshot.
+   --------------------------------------------------------------- */
+let resultHideTimer=0;
+function paintResult(s:SurvivalSnapshot):void{
+  window.clearTimeout(resultHideTimer);
+  if(s.status==='finished'){
+    const winner=s.agents.find(agent=>agent.id===s.leader_id);
+    survivalResult.replaceChildren();
+    const title=document.createElement('strong');title.textContent=winner?`WINNER · ${winner.name.toUpperCase()}`:'MATCH COMPLETE';
+    const note=document.createElement('span');note.textContent=winner?`${winner.wins} WINS · ${winner.losses} LOSSES`:`MATCH ${s.match_id}`;
+    survivalResult.append(title,note);
+    survivalResult.hidden=false;
+    requestAnimationFrame(()=>survivalResult.classList.add('is-visible'));
+    return;
+  }
+  if(!survivalResult.hidden){
+    survivalResult.classList.remove('is-visible');
+    resultHideTimer=window.setTimeout(()=>{survivalResult.hidden=true;},reduceMotion.matches?0:260);
+  }
+}
+
+/* ---------------------------------------------------------------
+   Mode switching with a genuine exit phase before the next view.
+   --------------------------------------------------------------- */
+function applyMode(mode:string):void{
+  const survival=mode==='survival';
+  survivalView.hidden=!survival;roomsView.hidden=survival;
   survivalRenderer?.setActive(survival);
   if(!survival){for(const card of rooms.querySelectorAll<HTMLElement>('.room-card'))card.hidden=!card.id.startsWith(mode==='rps'?'room-rps-':'room-ttt-');}
   else if(snapshot)paintSurvival();
+}
+function setMode(mode:string):void{
+  const survival=mode==='survival';
+  const nextView=survival?survivalView:roomsView;
+  const previousView=survival?roomsView:survivalView;
+  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-game-mode]'))button.setAttribute('aria-pressed',String(button.dataset.gameMode===mode));
+  const changed=mode!==gameMode;
+  gameMode=mode;
+  if(!changed||!modeReady||reduceMotion.matches){applyMode(mode);modeReady=true;return;}
+  modeReady=true;
+  previousView.classList.remove('is-entering');
+  previousView.classList.add('is-leaving');
+  window.setTimeout(()=>{
+    previousView.hidden=true;previousView.classList.remove('is-leaving');
+    applyMode(mode);
+    nextView.hidden=false;nextView.classList.add('is-entering');
+    requestAnimationFrame(()=>{nextView.classList.remove('is-entering');nextView.classList.add('is-entered');requestAnimationFrame(()=>nextView.classList.remove('is-entered'));});
+  },150);
 }
 for(const button of document.querySelectorAll<HTMLButtonElement>('[data-game-mode]'))button.addEventListener('click',()=>setMode(button.dataset.gameMode||'survival'));
 function inspector(title:string,paragraphs:string[],href?:string,label='VIEW FULL PROFILE'):void{
@@ -32,6 +205,7 @@ function paintSurvival():void{
   flashStat('survival-leader',leader?.name||'—');flashStat('survival-eliminated',String(snapshot.agents.filter(a=>a.status==='eliminated').length));
   const overlay=document.getElementById('survival-overlay')!;overlay.hidden=true;survivalStatus.textContent=`${snapshot.status.toUpperCase()}${snapshot.status==='finished'&&leader?' · WINNER '+leader.name:''} · MATCH ${snapshot.match_id} · SEQ ${snapshot.sequence}`;
   survivalRenderer??=new SurvivalRenderer(survivalCanvas);survivalRenderer.render(snapshot,selection);
+  paintRoster(snapshot);paintResult(snapshot);observeSurvivalEvents(snapshot);
   if(selection?.kind==='agent'){
     const a=snapshot.agents.find(agent=>agent.id===selection!.id);if(!a){selection=undefined;return;}
     const engagement=snapshot.engagements.find(e=>e.attacker_id===a.id||e.target_id===a.id);const target=engagement&&snapshot.agents.find(v=>v.id===(engagement.attacker_id===a.id?engagement.target_id:engagement.attacker_id));
@@ -45,38 +219,69 @@ function paintSurvival():void{
 survivalCanvas.addEventListener('pointerdown',event=>{if(!snapshot)return;const p=survivalRenderer?.point(event,snapshot);if(!p)return;selection=hitTest(snapshot,p.x,p.y,survivalRenderer?.positions());paintSurvival();});
 async function refreshSurvival():Promise<void>{
   if(stopped)return;
-  try{const next=await loadSurvivalSnapshot();if(acceptsSurvivalUpdate(snapshot,next)){snapshot=next;if(gameMode==='survival')paintSurvival();}}
+  try{const next=await loadSurvivalSnapshot();if(acceptsSurvivalUpdate(snapshot,next)){snapshot=next;if(gameMode==='survival')paintSurvival();else{observeSurvivalEvents(next);paintRoster(next);paintResult(next);}}}
   catch(error){if(!snapshot){document.getElementById('survival-overlay')!.hidden=false;survivalStatus.textContent=error instanceof Error&&error.message.includes('404')?'SURVIVAL FEED NOT AVAILABLE':'SURVIVAL FEED UNAVAILABLE';}else survivalStatus.textContent='CONNECTION INTERRUPTED · LAST SERVER SNAPSHOT SHOWN';}
   if(!stopped)window.setTimeout(()=>void refreshSurvival(),1500);
 }
 function node(tag:string,text:string,parent:HTMLElement):HTMLElement{const n=document.createElement(tag);n.textContent=text;parent.append(n);return n;}
 function roomLabel(status:string):string{return status==='live'||status==='starting'?'FIGHTING':status==='finished'?'JUST FINISHED':status==='failed'?'ROOM PAUSED':status==='resetting'?'RESETTING':'QUEUED';}
+const roomSignatures=new Map<string,string>();
+function createRoomCard(room:ArenaRoom):HTMLElement{
+  const card=document.createElement('article');card.id='room-'+room.id;card.className='room-card';
+  const head=document.createElement('header');head.className='room-card__head';
+  const eyebrow=document.createElement('p');eyebrow.className='eyebrow';eyebrow.textContent=room.id.toUpperCase();
+  const state=document.createElement('p');state.className='room-state';
+  head.append(eyebrow,state);
+  const title=document.createElement('h2');title.textContent=room.game==='rps'?'Rock Paper Scissors':'Tic-Tac-Toe';
+  const players=document.createElement('div');players.className='room-players room-stage';
+  const link=document.createElement('a');link.href=gateway.watchMatch(room);link.textContent='Watch this room →';link.className='button room-watch';
+  card.append(head,title,players,link);rooms.append(card);return card;
+}
 async function refresh():Promise<void>{
   if(stopped)return;
   try{
     const list=await gateway.listRooms();
     // Preserve focused room links between polls.
     for(const room of list){
-      let card=document.getElementById('room-'+room.id);
-      if(!card){card=node('article','',rooms);card.id='room-'+room.id;card.className='room-card';node('p',room.id.toUpperCase(),card).className='eyebrow';node('h2',room.game==='rps'?'Rock Paper Scissors':'Tic-Tac-Toe',card);node('p','',card).className='room-state';node('div','',card).className='room-players';const a=document.createElement('a');a.href=gateway.watchMatch(room);a.textContent='Watch this room →';a.className='button';card.append(a);}
+      let card=document.getElementById('room-'+room.id) as HTMLElement|null;
+      if(!card){card=createRoomCard(room);if(!reduceMotion.matches)card.classList.add('is-entering');}
       card.dataset.status=room.status;
       card.querySelector('.room-state')!.textContent=`${roomLabel(room.status)} · ${room.phase.toUpperCase()} · ${room.spectators||0} WATCHING`;
       card.hidden=gameMode!=='survival'&&!card.id.startsWith(gameMode==='rps'?'room-rps-':'room-ttt-');
-      const players=card.querySelector<HTMLElement>('.room-players')!;players.replaceChildren();
-      if(room.participants.length===2){
-        for(const [index,agent] of room.participants.entries()){
-          const box=node('div','',players);box.className=`room-player${room.status==='live'||room.status==='starting'?' fighting':''}`;box.setAttribute('aria-label',`${agent.name}${room.status==='live'||room.status==='starting'?', fighting':''}`);
-          const img=document.createElement('img');img.src='/'+agent.sprite;img.alt='';box.append(img);node('span',agent.name,box);
-          if(index===0)node('span','VS',players).className='room-versus';
-        }
-      }else node('p',room.status==='failed'?'This room paused after an error.':'Pairing the next agents…',players).className='room-empty';
+      const players=card.querySelector<HTMLElement>('.room-players')!;
+      const signature=room.participants.map(agent=>`${agent.id}:${agent.sprite}:${agent.name}`).join('|')+`|${room.status==='live'||room.status==='starting'}`;
+      if(signature!==roomSignatures.get(room.id)){
+        roomSignatures.set(room.id,signature);players.replaceChildren();
+        if(room.participants.length===2){
+          for(const [index,agent] of room.participants.entries()){
+            const box=node('div','',players);box.className=`room-player${room.status==='live'||room.status==='starting'?' fighting':''}`;box.setAttribute('aria-label',`${agent.name}${room.status==='live'||room.status==='starting'?', fighting':''}`);
+            const img=document.createElement('img');img.src='/'+agent.sprite;img.alt='';img.width=58;img.height=58;img.decoding='async';box.append(img);node('span',agent.name,box);
+            if(index===0)node('span','VS',players).className='room-versus';
+          }
+        }else node('p',room.status==='failed'?'This room paused after an error.':'Pairing the next agents…',players).className='room-empty';
+      }
+      const previous=card.dataset.feedState;
+      const feedState=`${room.status}|${room.phase}`;
+      card.dataset.feedState=feedState;
+      if(previous&&previous!==feedState&&room.participants.length===2){
+        const names=room.participants.map(agent=>agent.name).join(' vs ');
+        pushFeed({key:`room-${room.id}-${feedState}-${Date.now()}`,kind:'room',tag:room.id.toUpperCase(),round:room.phase.toUpperCase(),text:`${names} · ${roomLabel(room.status)}`});
+      }
     }
     const fighting=list.filter(room=>room.status==='live'||room.status==='starting').length;
     const queued=list.filter(room=>room.status==='waiting'||room.status==='resetting').length;
     const finished=list.filter(room=>room.status==='finished').length;
     status.textContent=`${fighting} fighting · ${queued} queued · ${finished} just finished · pairings update live`;
+    updateFeedStatus(fighting);
+    renderFeed();
   }catch{status.textContent='The Arena is unavailable. Reconnecting… Existing room links remain available.';}
   if(!stopped)setTimeout(refresh,1500);
+}
+let liveRooms=0;
+function updateFeedStatus(fighting?:number):void{
+  if(typeof fighting==='number')liveRooms=fighting;
+  const parts=[`SEQ ${snapshot?.sequence??'—'}`,liveRooms?`${liveRooms} FIGHTING`:'NO LIVES NOW',snapshot?`${snapshot.agents.filter(agent=>agent.status==='alive').length} ALIVE`:'CONNECTING'];
+  feedStatus.textContent=`SERVER EVENT STREAM · ${parts.join(' · ')}`;
 }
 async function profiles():Promise<void>{
   if(stopped)return;
@@ -142,4 +347,5 @@ async function refreshCumulative():Promise<void>{
   }catch{cumulativeStatus.textContent='CUMULATIVE STATISTICS UNAVAILABLE · RETRYING…';}
   if(!stopped)setTimeout(()=>void refreshCumulative(),5000);
 }
+updateFeedStatus();
 setMode('survival');void refresh();void profiles();void refreshSurvival();void refreshCumulative();

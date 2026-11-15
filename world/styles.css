@@ -379,3 +379,188 @@
 @media(prefers-reduced-motion:reduce){
   .world-minimap,.world-minimap__body,.world-region,.discovery-toast{transition:none!important}
 }
+
+/* ============================================================
+   Arena presentation layer (frontend only).
+   Reusable motion language + a physical pixel arena stage.
+   No game rules, settlement, or statistics live here.
+   ============================================================ */
+:root{
+  --motion-enter:cubic-bezier(.16,.84,.32,1);
+  --motion-exit:cubic-bezier(.4,0,.9,.35);
+  --motion-interactive:cubic-bezier(.4,0,.2,1);
+  --motion-quick:120ms;
+  --motion-base:180ms;
+  --motion-slow:240ms;
+}
+
+.arena-stage h1{font:800 clamp(34px,5vw,64px)/1.04 system-ui,sans-serif;letter-spacing:-2px;color:#e8eadf;margin:12px 0 8px}
+.arena-stage{position:relative;margin:0 0 18px;padding:0 0 18px;border:2px solid #3f5348;background:linear-gradient(#1c2d27,#172620 58%,#101d19);box-shadow:6px 6px 0 #0d1a16;overflow:hidden}
+.arena-stage__intro{position:relative;z-index:2;padding:24px 92px 0}
+.arena-stage .arena-intro{margin:0 0 18px}
+.arena-stage__pit{position:relative;z-index:2;margin:0 14px;border:2px solid #435a4c;background:#14231e;box-shadow:inset 0 0 0 2px #0d1a16,0 4px 0 #0e1c17}
+.arena-stage__pit .survival-view{border:0;background:#14231e}
+.arena-stage__pit .rooms-view{border:0;background:none}
+
+/* Ambient rig: crowd, banners, torches, floor strip. Purely decorative. */
+.arena-rig{position:absolute;inset:0 0 auto;height:124px;z-index:0;pointer-events:none;overflow:hidden}
+.arena-crowd{position:absolute;left:0;right:0;top:0;display:flex;justify-content:center;gap:11px;padding-top:26px;opacity:.62}
+.arena-crowd i{position:relative;width:10px;height:15px;background:#33503f;animation:arena-crowd-idle 2.9s steps(2,end) infinite}
+.arena-crowd i::before{content:"";position:absolute;left:2px;top:-7px;width:6px;height:6px;background:#3c5c49}
+.arena-crowd i:nth-child(2n){background:#2c4636;animation-delay:-.7s}
+.arena-crowd i:nth-child(3n){background:#3a5847;animation-delay:-1.4s;height:13px}
+.arena-crowd i:nth-child(4n){animation-delay:-2.1s}
+@keyframes arena-crowd-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+
+.arena-banner{position:absolute;top:0;width:44px;height:96px;display:flex;justify-content:center}
+.arena-banner::before{content:"";position:absolute;top:0;left:50%;width:2px;height:16px;background:#6d7f62;transform:translateX(-50%)}
+.arena-banner::after{content:"";position:absolute;top:14px;left:50%;width:32px;height:62px;transform:translateX(-50%);background:linear-gradient(#d7b675,#a9863f 62%,#8d6c31);clip-path:polygon(0 0,100% 0,100% 100%,50% 84%,0 100%);box-shadow:0 0 0 2px #3a2c16;transform-origin:50% 0;animation:arena-banner-sway 4.6s steps(2,end) infinite}
+.arena-banner span{position:relative;z-index:1;margin-top:24px;color:#3a2c16;font:800 8px/1 ui-monospace,monospace;letter-spacing:.14em;writing-mode:vertical-rl;text-orientation:mixed}
+.arena-banner--left{left:16px}
+.arena-banner--right{right:16px}
+.arena-banner--right::after{animation-delay:-2.3s}
+@keyframes arena-banner-sway{0%,100%{transform:translateX(-50%) rotate(0)}50%{transform:translateX(-50%) rotate(1.2deg)}}
+
+.arena-torch{position:absolute;bottom:14px;width:12px;height:52px}
+.arena-torch::before{content:"";position:absolute;left:50%;bottom:0;width:6px;height:30px;transform:translateX(-50%);background:linear-gradient(#6b533a,#4a3826);box-shadow:0 0 0 2px #2a2118}
+.arena-torch::after{content:"";position:absolute;left:50%;bottom:26px;width:14px;height:5px;transform:translateX(-50%);background:#2f261c}
+.arena-torch i{position:absolute;left:50%;bottom:30px;width:8px;height:12px;transform:translateX(-50%);background:#f6c56a;box-shadow:0 -4px 0 #ffd98a,0 -8px 0 #ff9f43,0 -12px 0 #ff7b3d;animation:arena-torch-flicker .9s steps(2,end) infinite alternate}
+.arena-torch--left{left:20px}
+.arena-torch--right{right:20px}
+.arena-torch--right i{animation-delay:-.45s}
+@keyframes arena-torch-flicker{0%{transform:translateX(-50%) scaleY(1);opacity:.95}50%{transform:translateX(-50%) scaleY(1.12);opacity:1}100%{transform:translateX(-50%) scaleY(.94);opacity:.9}}
+
+.arena-floor{position:absolute;left:0;right:0;bottom:0;height:16px;background:repeating-linear-gradient(90deg,#2b4038 0 14px,#26382f 14px 28px);border-top:2px solid #40594b}
+
+/* Live / lifetime / roster scope markers keep data sources obvious. */
+.scope{display:inline-block;margin-left:7px;padding:2px 5px;border:1px solid currentColor;font:700 8px/1 ui-monospace,monospace;letter-spacing:.14em;vertical-align:2px}
+.scope--live{color:#b9eb69;background:#b9eb6914;border-color:#b9eb6977}
+.scope--live::before{content:"● ";animation:arena-live-pulse 1.6s ease-in-out infinite}
+.scope--lifetime{color:#d7b675;background:#d7b67512;border-color:#d7b67577}
+.scope--roster{color:#a8c8dd;background:#a8c8dd10;border-color:#a8c8dd66}
+
+/* Rooms become head-to-head tables with a real floor under the fighters. */
+.rooms-view{padding:16px}
+.rooms-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:2px 4px 14px}
+.rooms-heading h2{font:700 18px ui-monospace,monospace;letter-spacing:1.6px;margin:6px 0 0;color:#e8eadf}
+.rooms-heading #lobby-status{font:10px/1.6 ui-monospace,monospace;letter-spacing:.6px;color:#b9eb69;text-align:right;margin:0}
+.room-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.room-card{position:relative;margin:0;padding:14px;border:2px solid #3f5348;background:linear-gradient(#233a31,#1a2b25);box-shadow:4px 4px 0 #0d1a16;display:grid;gap:10px;align-content:start;transition:border-color var(--motion-base) var(--motion-interactive),transform var(--motion-base) var(--motion-interactive),box-shadow var(--motion-base) var(--motion-interactive)}
+.room-card__head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.room-card__head .eyebrow{margin:0}
+.room-card .room-state{margin:0;font-size:10px;letter-spacing:1px;color:#d7b675;text-align:right;min-height:0}
+.room-card h2{margin:0;font:700 15px ui-monospace,monospace;letter-spacing:.6px;color:#e8eadf}
+.room-players.room-stage{position:relative;display:flex;align-items:stretch;gap:9px;padding:12px 10px 16px;border:2px solid #40594b;background-color:#1d2f28;background-image:linear-gradient(90deg,#2a4236 1px,transparent 1px),linear-gradient(#2a4236 1px,transparent 1px);background-size:16px 16px;box-shadow:inset 0 -6px 0 #16251f}
+.room-stage::after{content:"";position:absolute;left:0;right:0;bottom:6px;border-top:1px dashed #4d6a56;opacity:.7}
+.room-player{position:relative;flex:1;min-width:0;display:grid;justify-items:center;align-content:end;gap:6px;padding:10px 5px;border:2px solid #4c6656;background:#1b2c26d9;text-align:center;min-height:124px;transition:border-color var(--motion-base) var(--motion-interactive),background var(--motion-base) var(--motion-interactive),transform var(--motion-base) var(--motion-interactive)}
+.room-player::after{content:"";position:absolute;bottom:12px;left:50%;width:44px;height:7px;transform:translateX(-50%);border-radius:50%;background:#0a1712;opacity:.65}
+.room-player img{position:relative;z-index:1;width:58px;height:58px;image-rendering:pixelated;filter:drop-shadow(0 5px 0 #0a1511);animation:arena-sprite-idle 2.6s steps(2,end) infinite;transition:filter var(--motion-base) var(--motion-interactive)}
+.room-player span{position:relative;z-index:1;font-size:10px;overflow-wrap:anywhere;color:#e3e8dc}
+.room-player.fighting{border-color:#d7b675;background:#3b3a2b;box-shadow:inset 0 0 0 2px #e0be7f22}
+.room-player.fighting img{filter:drop-shadow(0 5px 0 #0a1511) drop-shadow(0 0 8px #d7b67555)}
+.room-versus{align-self:center;display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;border:2px solid #d7b675;background:#2b2114;color:#f0d67b;font:800 10px/1 ui-monospace,monospace;letter-spacing:.06em;box-shadow:0 0 0 2px #d7b6751f}
+.room-empty{align-self:center;flex:1;color:#9fb0a3;font-size:11px;text-align:center;margin:0}
+.room-watch{justify-self:start;font-size:11px;padding:8px 12px}
+@keyframes arena-sprite-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
+
+/* Living participant strip above the authoritative Survival canvas. */
+.survival-roster{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;border-bottom:1px solid #35433e;scrollbar-width:thin;scrollbar-color:#4c6656 transparent;min-height:52px}
+.survival-roster:empty{display:none}
+.roster-chip{display:grid;grid-template-columns:30px auto;align-items:center;gap:7px;flex:0 0 auto;padding:3px 9px 3px 3px;border:1px solid #40594b;background:#1b2c26;transition:opacity var(--motion-base) var(--motion-enter),transform var(--motion-base) var(--motion-enter),border-color var(--motion-base) var(--motion-interactive)}
+.roster-chip img{width:30px;height:30px;image-rendering:pixelated}
+.roster-chip__body{display:grid;gap:3px;min-width:0}
+.roster-chip span{font:9px/1.2 ui-monospace,monospace;letter-spacing:.05em;color:#e3e8dc;white-space:nowrap;max-width:96px;overflow:hidden;text-overflow:ellipsis}
+.roster-chip i{display:block;width:54px;height:3px;background:#0d1a16;overflow:hidden}
+.roster-chip i b{display:block;height:100%;background:#b9eb69;transition:width var(--motion-slow) var(--motion-interactive)}
+.roster-chip.is-hurt i b{background:#ed6d65}
+.roster-chip.is-eliminated{opacity:.34}
+.roster-chip.is-eliminated img{filter:grayscale(1)}
+.roster-chip.is-entering{opacity:0;transform:translateY(-4px)}
+
+/* Result banner over the field. Shown only from real finished snapshots. */
+.survival-result{position:absolute;z-index:4;left:50%;bottom:58px;padding:10px 20px;border:2px solid #d7b675;background:#14231ef2;box-shadow:5px 5px 0 #0a1511;text-align:center;pointer-events:none;opacity:0;transform:translate(-50%,6px);transition:opacity var(--motion-slow) var(--motion-enter),transform var(--motion-slow) var(--motion-enter)}
+.survival-result.is-visible{opacity:1;transform:translate(-50%,0)}
+.survival-result strong{display:block;font:800 clamp(16px,2.4vw,24px)/1.1 ui-monospace,monospace;letter-spacing:.06em;color:#f0d67b}
+.survival-result span{display:block;margin-top:5px;font:9px/1.4 ui-monospace,monospace;letter-spacing:.22em;color:#c5d7af}
+
+/* Live feed: real server events, newest first. */
+.arena-feed{margin:0 0 18px;border:2px solid #3f5348;background:#14231e;box-shadow:4px 4px 0 #0d1a16}
+.arena-feed__head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:12px 16px;border-bottom:1px solid #35433e}
+.arena-feed__head .eyebrow{margin:0}
+.arena-feed__hint{margin:5px 0 0;color:#8f9c94;font:10px/1.5 ui-monospace,monospace}
+.arena-feed__status{font:10px/1.5 ui-monospace,monospace;letter-spacing:.5px;color:#b9eb69;text-align:right;margin:0}
+.arena-feed__list{list-style:none;margin:0;padding:8px 10px;display:grid;gap:4px;min-height:88px;max-height:214px;overflow:auto;scrollbar-width:thin;scrollbar-color:#4c6656 transparent}
+.feed-item{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:baseline;gap:8px;padding:6px 9px;border-left:3px solid #506052;background:#1a2b24;color:#d6ddce;font:10.5px/1.5 ui-monospace,monospace;opacity:1;transform:none;transition:opacity var(--motion-base) var(--motion-enter),transform var(--motion-base) var(--motion-enter)}
+.feed-item.is-entering{opacity:0;transform:translateY(-4px)}
+.feed-item.is-leaving{opacity:0;transform:translateY(-4px);transition-timing-function:var(--motion-exit)}
+.feed-item__tag{font:700 8px/1 ui-monospace,monospace;letter-spacing:.14em;padding:3px 5px;border:1px solid currentColor}
+.feed-item__round{color:#8f9c94;font-size:9px;white-space:nowrap}
+.feed-item__text{min-width:0;overflow-wrap:anywhere}
+.feed-item[data-kind=fight]{border-left-color:#ff7b63}
+.feed-item[data-kind=fight] .feed-item__tag{color:#ffb07b}
+.feed-item[data-kind=elimination]{border-left-color:#ed6d65}
+.feed-item[data-kind=elimination] .feed-item__tag{color:#f19a90}
+.feed-item[data-kind=result]{border-left-color:#d7b675}
+.feed-item[data-kind=result] .feed-item__tag{color:#f0d67b}
+.feed-item[data-kind=room]{border-left-color:#9fc6df}
+.feed-item[data-kind=room] .feed-item__tag{color:#b7d6e6}
+.feed-empty{margin:0;padding:14px 10px;color:#8f9c94;font:10.5px/1.6 ui-monospace,monospace}
+
+/* Arena agent roster heading. */
+.arena-agents-panel{margin:24px 0 8px}
+.arena-agents-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:12px}
+.arena-agents-heading h2{margin:6px 0 0}
+.arena-agents-heading>p{max-width:560px;margin:0;color:#9ca9a2;font:11px/1.6 ui-monospace,monospace}
+.arena-exit{margin:16px 0 28px}
+
+/* Mode switching: real exit phase before the next view appears. */
+.arena-stage__pit .survival-view,.arena-stage__pit .rooms-view{opacity:1;transform:none;transition:opacity var(--motion-base) var(--motion-exit),transform var(--motion-base) var(--motion-exit)}
+.arena-stage__pit .survival-view.is-leaving,.arena-stage__pit .rooms-view.is-leaving{opacity:0;transform:translateY(-4px)}
+.arena-stage__pit .survival-view.is-entering,.arena-stage__pit .rooms-view.is-entering{opacity:0;transform:translateY(6px);transition-timing-function:var(--motion-enter)}
+.arena-stage__pit .survival-view.is-entered,.arena-stage__pit .rooms-view.is-entered{opacity:1;transform:none;transition-timing-function:var(--motion-enter)}
+
+.rooms-view .room-card{opacity:1;transform:none;transition:opacity var(--motion-base) var(--motion-enter),transform var(--motion-base) var(--motion-enter),border-color var(--motion-base) var(--motion-interactive),box-shadow var(--motion-base) var(--motion-interactive)}
+.rooms-view .room-card.is-entering{opacity:0;transform:translateY(6px)}
+
+@media(max-width:900px){
+  .room-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:760px){
+  .arena-stage{margin:0 0 14px;box-shadow:4px 4px 0 #0d1a16}
+  .arena-stage__intro{padding:16px 42px 0}
+  .arena-stage h1{letter-spacing:-1.4px;margin-top:10px}
+  .arena-stage .arena-intro{font-size:14px;margin-bottom:14px}
+  .arena-stage__pit{margin:0 8px}
+  .arena-banner{width:30px;height:74px;opacity:.8}
+  .arena-banner::after{width:24px;height:48px}
+  .arena-banner span{font-size:6px;margin-top:20px}
+  .arena-banner--left{left:6px}
+  .arena-banner--right{right:6px}
+  .arena-torch{display:none}
+  .arena-crowd{gap:8px;padding-top:22px;opacity:.5}
+  .arena-crowd i:nth-child(n+9){display:none}
+  .rooms-view{padding:10px}
+  .rooms-heading{flex-direction:column;align-items:flex-start;gap:6px;padding:2px 2px 10px}
+  .rooms-heading #lobby-status{text-align:left}
+  .room-card{padding:11px}
+  .room-player{min-height:112px}
+  .room-player img{width:52px;height:52px}
+  .survival-roster{padding:8px 8px}
+  .roster-chip span{max-width:78px}
+  .survival-result{bottom:44px;padding:8px 12px}
+  .arena-feed{margin-bottom:14px}
+  .arena-feed__head{flex-direction:column;align-items:flex-start;gap:6px;padding:10px 12px}
+  .arena-feed__status{text-align:left}
+  .arena-feed__list{max-height:190px;padding:6px 8px}
+  .feed-item{grid-template-columns:auto minmax(0,1fr);gap:3px 7px}
+  .feed-item__round{grid-column:1/-1;order:-1}
+  .arena-agents-heading{flex-direction:column;align-items:flex-start;gap:8px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .arena-crowd i,.arena-banner::after,.arena-torch i,.room-player img,.scope--live::before{animation:none!important}
+  .arena-stage__pit .survival-view,.arena-stage__pit .rooms-view,.rooms-view .room-card,.room-card,.room-player,.room-player img,.survival-result,.feed-item,.roster-chip,.roster-chip i b,.arena-feed__list,.arena-feed__status{transition:none!important}
+  .feed-item.is-entering,.feed-item.is-leaving,.roster-chip.is-entering,.rooms-view .room-card.is-entering,.arena-stage__pit .survival-view.is-entering,.arena-stage__pit .rooms-view.is-entering{opacity:1!important;transform:none!important}
+  .survival-result{transform:translate(-50%,0)}
+}

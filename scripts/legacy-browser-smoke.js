@@ -23,8 +23,6 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await evaluate("sessionStorage.removeItem('last-seat-entry-seen-v1')");
   await send('Page.navigate', { url: `${process.env.GAME_URL || 'http://localhost:3000'}/rps` });
-  await wait("document.getElementById('entry-loader')?.open===true");
-  await evaluate("document.querySelector('.entry-loader__skip').click()");
   await wait("!document.getElementById('entry-loader')");
   await wait("document.getElementById('run-status')?.textContent==='READY'");
   await evaluate("localStorage.removeItem('agent-arena-v1');location.reload()");
@@ -36,6 +34,10 @@ try {
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:stepPoint.x,y:stepPoint.y,button:'left',clickCount:1});
   await wait("document.querySelector('#history-list .history-card')?.textContent.includes('TIC-TAC-TOE')");
   assert.equal(await evaluate("document.querySelectorAll('#ttt-board span').length"), 9);
+  assert.equal(await evaluate("document.querySelectorAll('.bout-stage .duelist img[src*=\"/assets/agents/\"]').length"), 2, 'both duelists must show agent sprites');
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.duelist img')).imageRendering"), 'pixelated');
+  assert.equal(await evaluate("[...document.querySelectorAll('#ttt-board span')].every(cell=>['','X','O'].includes(cell.textContent))"), true, 'board cells must render only real marks');
+  assert.ok(await evaluate("['winner','draw'].includes(document.getElementById('match-result').dataset.state)"), 'a settled match must expose its result state');
   assert.equal(await evaluate("document.getElementById('match-result').textContent.includes('settled')||document.getElementById('match-result').textContent.includes('wins')||document.getElementById('match-result').textContent.includes('Draw')"), true);
   await evaluate("document.querySelector('#history-list .history-card').click()");
   await wait("!document.getElementById('proof').hidden");

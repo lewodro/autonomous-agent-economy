@@ -125,18 +125,39 @@ try{
  assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
+ assert.ok(await evaluate('document.querySelector(".arena-stage")&&document.querySelector(".arena-stage").compareDocumentPosition(document.getElementById("cumulative-stats"))&Node.DOCUMENT_POSITION_FOLLOWING'),'the live Arena stage must precede lifetime statistics');
+ assert.ok(await evaluate('document.querySelector(".arena-stage .scope--live")&&document.querySelector(".arena-cumulative .scope--lifetime")'),'live and lifetime scopes must be labelled distinctly');
+ assert.ok(await evaluate('document.querySelectorAll(".room-card img[src*=\\"/assets/agents/\\"]").length>=4'),'room cards must show real agent sprites');
+ assert.ok(await evaluate('getComputedStyle(document.querySelector(".room-card img")).imageRendering==="pixelated"'),'agent sprites must stay pixel-crisp');
  await wait('!document.getElementById("survival-view").hidden&&document.getElementById("survival-overlay").hidden&&document.getElementById("survival-status").textContent.includes("LIVE")');
  await wait("fetch('/api/survival/current').then(r=>r.json()).then(s=>s.agents.length===20&&s.events.some(e=>e.type==='AttackLanded'))");
  await evaluate("fetch('/api/survival/current').then(r=>r.json()).then(s=>{const a=s.agents[0],c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height),x=r.left+(r.width-s.map.width*scale)/2+a.x*scale,y=r.top+(r.height-s.map.height*scale)/2+a.y*scale;c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}))})");
  await wait('document.getElementById("survival-inspector-title").textContent.length>0&&document.getElementById("survival-inspector-body").textContent.includes("HP:")');
  assert.ok(await evaluate('document.getElementById("survival-inspector-body").textContent.includes("Strategy:")'),'Survival inspection must use server-authoritative agent state');
+ await wait('document.querySelectorAll("#survival-roster .roster-chip").length>=2');
+ assert.ok(await evaluate('[...document.querySelectorAll("#survival-roster .roster-chip")].every(chip=>chip.querySelector("img")?.src.includes("/assets/agents/")&&chip.querySelector("i b"))'),'living participant chips must show real sprites and health bars');
+ await wait('document.querySelectorAll("#arena-feed-list .feed-item").length>0');
+ assert.ok(await evaluate('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>item.dataset.kind&&item.querySelector(".feed-item__text")?.textContent.trim().length>0)'),'the live feed must only render real server events');
+ await wait('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>!item.classList.contains("is-entering")&&getComputedStyle(item).opacity==="1")');
+ assert.ok(await evaluate('getComputedStyle(document.querySelector("#arena-feed-list .feed-item")).opacity==="1"'),'feed items must settle at full opacity after entering');
+ assert.ok(await evaluate('document.querySelectorAll("#arena-feed-list .feed-item").length<=8'),'the feed must keep a bounded history');
+ assert.ok(await evaluate('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")'),'the result banner may only appear for a finished snapshot');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
   await wait('document.getElementById("match-title").textContent.includes("game-")');
   const spectatorCount=`fetch('/api/arena/rooms').then(r=>r.json()).then(v=>v.rooms.find(room=>room.id===${JSON.stringify(id)})?.spectators)`;
   await wait(`${spectatorCount}.then(count=>count===1)`);
-  if(game==='tictactoe'){await wait('document.querySelectorAll("#ttt-board span").length===9');await screenshot('tictactoe');}
+  assert.ok(await evaluate('document.querySelector(".bout-stage")?.contains(document.getElementById("match-title"))'),'the active match must own the central bout stage');
+  assert.equal(await evaluate('document.querySelectorAll(".bout-stage .duelist img[src*=\\"/assets/agents/\\"]").length'),2,'both duelists must show their real sprites');
+  assert.equal(await evaluate('getComputedStyle(document.querySelector(".duelist img")).imageRendering'),'pixelated');
+  assert.equal(await evaluate('document.querySelectorAll("#phases [data-phase]").length'),4,'the RPS/TTT phase strip must stay intact');
+  assert.ok(await evaluate('["live","winner","draw"].includes(document.getElementById("match-result").dataset.state)'),'the result area must always expose a real match state');
+  if(game==='tictactoe'){
+    await wait('document.querySelectorAll("#ttt-board span").length===9');
+    assert.ok(await evaluate('document.getElementById("ttt-board").getBoundingClientRect().width>=300'),'the tic-tac-toe board must be large enough to read');
+    await screenshot('tictactoe');
+  }
   else{assert.ok(await evaluate('document.getElementById("duel").textContent.includes("VS")'));await screenshot('rps');}
   assert.equal(await evaluate('getComputedStyle(document.querySelector(".play-controls")).display'),'none','shared room controls must be hidden');
   assert.equal(await evaluate('[...document.querySelectorAll(".play-controls button")].every(button=>button.disabled)'),true,'read-only spectators cannot trigger local moves');
@@ -147,6 +168,25 @@ try{
   await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
   await wait(`${spectatorCount}.then(count=>count===0)`);
  }
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await send('Page.navigate',{url:base+'/arena'});
+ await wait('document.querySelectorAll(".room-card").length===4');
+ assert.equal(await evaluate('document.documentElement.scrollWidth<=390'),true,'390px Arena must not overflow horizontally');
+ assert.ok(await evaluate('document.querySelector(".arena-stage").getBoundingClientRect().top<document.getElementById("cumulative-stats").getBoundingClientRect().top'),'mobile keeps the live match above lifetime stats');
+ await screenshot('arena-mobile-390');
+ await send('Emulation.setDeviceMetricsOverride',{width:430,height:932,deviceScaleFactor:1,mobile:true});
+ assert.equal(await evaluate('document.documentElement.scrollWidth<=430'),true,'430px Arena must not overflow horizontally');
+ await screenshot('arena-mobile-430');
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ await send('Page.reload');
+ await wait('document.querySelectorAll(".room-card").length===4');
+ await wait('document.querySelectorAll("#arena-feed-list .feed-item").length>0');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".arena-crowd i")).animationName'),'none','reduced motion must stop the ambient Arena rig');
+ assert.ok(await evaluate('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>getComputedStyle(item).transform==="none")'),'reduced motion must not offset feed items');
+ await send('Emulation.setEmulatedMedia',{features:[]});
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Page.navigate',{url:base+'/arena'});
+ await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
  assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
  await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
  await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
