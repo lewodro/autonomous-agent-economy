@@ -18,15 +18,17 @@ const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
 const settings=loadSettings(),gateway=new HttpArenaGateway();
-// A world visit from Last Seat, Arena, or an external link starts in the
-// plaza again. Reloading the world itself keeps the visitor's saved position.
+// Reloading the world keeps the saved position, and so does returning from a
+// world venue (Arena, Treasury, Compound): each venue persists the visitor on
+// the way out. A visit from Last Seat or any other external link starts in the
+// plaza again.
 const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming|undefined;
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
 const returnTarget=new URLSearchParams(location.search).get('return');
-if(returnTarget==='compound'){settings.position={x:-220,y:930};saveSettings(settings);}
-else if(returnTarget==='treasury'){settings.position={x:1105,y:1292};saveSettings(settings);}
-else if(navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
+const venueReturns=new Set(['arena','treasury','compound']);
+const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
+if(!returningFromVenue&&navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const minimap=new WorldMinimap($<HTMLCanvasElement>('minimap-canvas'),$<HTMLButtonElement>('minimap-toggle'),$('minimap-body'),$('minimap-region'),$<HTMLButtonElement>('minimap-journal'));
