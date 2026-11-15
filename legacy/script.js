@@ -3,7 +3,7 @@ import { SOL } from '../src/policy.js';
 import { configureRun } from '../src/config.js';
 import { Orchestrator, eligibility } from '../src/orchestrator.js';
 import { verifyProof } from '../src/rps.js';
-import { verifyTicTacToeProof } from '../src/tictactoe.js';
+import { verifyTicTacToeProof, WIN_LINES } from '../src/tictactoe.js';
 import { loadState, saveState } from '../src/storage.js';
 import { receiveRevenue, allocateTreasury } from '../src/treasury.js';
 import { startTournament, nextTournamentPair, scoreTournament } from '../src/tournament.js';
@@ -86,6 +86,144 @@ function connect() {
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
   } });
 }
+/* ---------------------------------------------------------------
+   Presentation state for the bout stage. Everything below only
+   reads existing match data; no rule or settlement code lives here.
+   --------------------------------------------------------------- */
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const duelNodes=new Map(),spriteTokens=new Map(),historyCards=new Map();
+let boardCells=[],lastBoard=Array(9).fill(null),lastRevealed=false,lastSettled=false,lastMatchId=null;
+function restartClass(node,className,ms){if(!node)return;node.classList.remove(className);void node.offsetWidth;node.classList.add(className);setTimeout(()=>node.classList.remove(className),ms);}
+function moveLabel(move){return move==='rock'?'ROCK':move==='paper'?'PAPER':move==='scissors'?'SCISSORS':'';}
+function ensureDuelist(side){
+  if(duelNodes.has(side))return duelNodes.get(side);
+  const placeholder=document.querySelector(`#duel .duelist[data-side="${side}"]`);
+  const node=document.createElement('div');node.className='duelist';node.dataset.side=side;
+  node.innerHTML=`<div class="duelist__platform"><img alt="" width="96" height="96" decoding="async"></div><span class="duelist__tag"></span><strong class="duelist__name">?</strong><div class="duelist__move"><span class="move-icon" aria-hidden="true"><i></i></span><b>…</b></div>`;
+  if(placeholder)placeholder.replaceWith(node);else $('duel').append(node);
+  duelNodes.set(side,node);return node;
+}
+function ensureBoard(){
+  if(boardCells.length)return;
+  for(let index=0;index<9;index++){const cell=document.createElement('span');cell.dataset.cell=String(index);boardCells.push(cell);}
+  $('ttt-board').replaceChildren(...boardCells);
+}
+function renderDuel(){
+  const ttt=current?.type==='tictactoe';
+  if(!current){
+    for(const side of ['a','b']){
+      const node=ensureDuelist(side);
+      node.querySelector('img').removeAttribute('src');
+      node.querySelector('.duelist__name').textContent='?';
+      node.querySelector('.duelist__tag').textContent='';
+      node.querySelector('.duelist__move').hidden=true;
+      node.classList.remove('is-winner','is-defeated','is-revealed','is-draw');
+    }
+    return;
+  }
+  const revealed=ttt||phase==='reveal'||phase==='settle'||current.status==='settled';
+  const settled=current.status==='settled',draw=settled&&current.result==='draw';
+  current.players.forEach((id,index)=>{
+    const side=index===0?'a':'b',node=ensureDuelist(side),info=agent(id);
+    const img=node.querySelector('img'),src='/'+info.sprite;
+    if(img.getAttribute('src')!==src)img.src=src;
+    img.alt=`${info.name} pixel sprite`;
+    node.querySelector('.duelist__name').textContent=info.name;
+    node.querySelector('.duelist__tag').textContent=ttt?(index===0?'PLAYS X':'PLAYS O'):`SEAT ${index===0?'A':'B'}`;
+    const slot=node.querySelector('.duelist__move'),icon=slot.querySelector('.move-icon'),label=slot.querySelector('b');
+    slot.hidden=false;
+    if(ttt){
+      icon.hidden=true;label.textContent=index===0?'X':'O';slot.dataset.mark=index===0?'x':'o';
+    }else{
+      const move=revealed?(current.reveals?.[id]?.move||''):'';
+      icon.hidden=!revealed;slot.dataset.mark='';
+      icon.dataset.move=move;
+      label.textContent=revealed?(moveLabel(move)||'…'):'LOCKED';
+    }
+    node.classList.toggle('is-winner',settled&&!draw&&current.result===side);
+    node.classList.toggle('is-defeated',settled&&!draw&&current.result!==side);
+    node.classList.toggle('is-draw',draw);
+    node.classList.toggle('is-revealed',!ttt&&revealed);
+  });
+  if(!ttt&&revealed&&!lastRevealed)restartClass($('duel'),'is-impact',460);
+  if(settled&&!lastSettled)restartClass(document.querySelector('.bout-stage'),'is-impact',460);
+  lastRevealed=!ttt&&revealed;lastSettled=settled;
+}
+function renderBoard(){
+  const boardEl=$('ttt-board'),ttt=current?.type==='tictactoe';
+  if(!ttt){boardEl.hidden=true;lastBoard=Array(9).fill(null);return;}
+  boardEl.hidden=false;ensureBoard();
+  const board=current.board||Array(9).fill(null),settled=current.status==='settled';
+  const winner=settled&&(current.result==='a'||current.result==='b')?current.result:null;
+  const winning=new Set();
+  if(winner)for(const line of WIN_LINES){if(line.every(index=>board[index]===winner)){line.forEach(index=>winning.add(index));break;}}
+  for(let index=0;index<9;index++){
+    const cell=board[index],node=boardCells[index],newCell=!!cell&&!lastBoard[index];
+    node.textContent=cell==='a'?'X':cell==='b'?'O':'';
+    node.className='';
+    if(cell)node.classList.add('is-filled',cell==='a'?'is-x':'is-o');
+    if(winning.has(index))node.classList.add('is-win');
+    if(settled&&current.result==='draw'&&cell)node.classList.add('is-tied');
+    if(newCell&&!reduceMotion.matches){node.classList.add('is-placed');node.addEventListener('animationend',()=>node.classList.remove('is-placed'),{once:true});}
+  }
+  lastBoard=board.slice();
+}
+function renderResult(){
+  const node=$('match-result'),ttt=current?.type==='tictactoe';
+  let text,state='idle';
+  if(!current)text='Moves stay hidden until both commitments are locked.';
+  else if(current.status==='settled'){
+    text=current.result==='draw'?'Draw. Both credit commitments returned.':`${agent(current.players[current.result==='a'?0:1]).name} wins. ${fmt(current.stake*2)} pool settled.`;
+    state=current.result==='draw'?'draw':'winner';
+  }else{
+    text=ttt?`Move ${current.moves.length+1} · ${agent(current.players[current.moves.length%2]).name} to play.`:phase==='commit'?'Both SHA-256 commitments are locked.':phase==='reveal'?'Both reveals verified. Preparing settlement.':'Entry intents passed policy. Internal credits held in game escrow.';
+    state='live';
+  }
+  node.textContent=text;
+  if(node.dataset.state!==state){node.dataset.state=state;if(state==='winner'||state==='draw')restartClass(node,'is-flash',720);}
+}
+function renderSpriteField(){
+  const seen=new Set();
+  for(const a of state.agents){
+    seen.add(a.id);
+    let token=spriteTokens.get(a.id);
+    if(!token){
+      token=document.createElement('button');token.className='sprite-token';token.dataset.agent=a.id;token.setAttribute('aria-label',`Inspect ${a.name}`);
+      const img=document.createElement('img');img.alt='';img.decoding='async';
+      const label=document.createElement('span');
+      token.append(img,label);$('sprite-field').append(token);spriteTokens.set(a.id,token);
+    }
+    const img=token.querySelector('img'),src='/'+a.sprite;
+    if(img.getAttribute('src')!==src)img.src=src;
+    token.querySelector('span').textContent=a.name.toUpperCase();
+    const fighting=busy&&current?.players.includes(a.id);
+    token.classList.toggle('selected',a.id===selected);
+    token.classList.toggle('out',!eligibility(state,a).eligible);
+    token.classList.toggle('fighting',!!fighting);
+  }
+  for(const [id,token] of spriteTokens)if(!seen.has(id)){token.remove();spriteTokens.delete(id);}
+}
+function renderHistory(settled){
+  const list=$('history-list');
+  if(!settled.length){list.replaceChildren();const empty=document.createElement('p');empty.className='empty';empty.textContent='The story begins with the first match.';list.append(empty);historyCards.clear();return;}
+  list.querySelector('.empty')?.remove();
+  const wanted=[...settled].reverse().slice(0,40),wantedIds=new Set(wanted.map(match=>match.id));
+  for(const [id,card] of historyCards){
+    if(wantedIds.has(id))continue;
+    historyCards.delete(id);card.classList.add('is-leaving');
+    const remove=()=>card.remove();card.addEventListener('transitionend',remove,{once:true});setTimeout(remove,260);
+  }
+  wanted.forEach((match,index)=>{
+    let card=historyCards.get(match.id);
+    if(!card){
+      card=document.createElement('button');card.className='history-card is-new';card.dataset.match=match.id;
+      card.innerHTML=`<span class="history-card__id">${esc(match.id.toUpperCase())} · ${match.type==='tictactoe'?'TIC-TAC-TOE':'RPS'}</span><strong>${esc(agent(match.players[0]).name)} vs ${esc(agent(match.players[1]).name)}</strong><span class="history-card__result">${match.result==='draw'?'DRAW · RETURNED':`${esc(agent(match.players[match.result==='a'?0:1]).name.toUpperCase())} WINS`}</span><span class="tiny">${fmt(match.stake*2)} internal pool · view proof ↗</span>`;
+      historyCards.set(match.id,card);
+      if(!reduceMotion.matches)requestAnimationFrame(()=>requestAnimationFrame(()=>card.classList.remove('is-new')));
+    }
+    if(list.children[index]!==card)list.insertBefore(card,list.children[index]||null);
+  });
+}
 function render() {
   const settled = state.matches.filter(m => m.status === 'settled');
   const available = state.agents.filter(a => eligibility(state, a).eligible);
@@ -102,20 +240,12 @@ function render() {
   $('pause').textContent = state.paused ? 'Resume economy' : 'Pause economy';
   document.querySelectorAll('#new-run input,#new-run select,#new-run button').forEach(el => el.disabled = busy || watching);
   document.querySelectorAll('#treasury-controls input,#treasury-controls button').forEach(el => el.disabled = busy || watching || state.paused);
-  $('sprite-field').innerHTML = state.agents.map(a => `<button class="sprite-token ${a.id === selected ? 'selected' : ''} ${!eligibility(state, a).eligible ? 'out' : ''} ${busy && current?.players.includes(a.id) ? 'fighting' : ''}" data-agent="${a.id}" aria-label="Inspect ${a.name}"><img src="/${a.sprite}" alt=""><span>${a.name.toUpperCase()}</span></button>`).join('');
-  if (current) {
-    const ttt = current.type === 'tictactoe';
-    $('match-title').textContent = `${current.id} · ${ttt ? 'TIC-TAC-TOE' : 'RPS'} · ${fmt(current.stake)} risk each`;
-    $('duel').innerHTML = current.players.map((id, i) => `${i ? '<span>VS</span>' : ''}<div class="duelist"><img src="/${agent(id).sprite}" alt="">${agent(id).name}<b>${ttt ? i ? 'O' : 'X' : ['reveal', 'settle'].includes(phase) ? esc(current.reveals[id]?.move || '…') : '?'}</b></div>`).join('');
-    $('ttt-board').hidden = !ttt;
-    if (ttt) $('ttt-board').innerHTML = current.board.map(cell => `<span>${cell === 'a' ? 'X' : cell === 'b' ? 'O' : '·'}</span>`).join('');
-    $('match-result').textContent = current.status === 'settled' ? current.result === 'draw' ? 'Draw. Both credit commitments returned.' : `${agent(current.players[current.result === 'a' ? 0 : 1]).name} wins. ${fmt(current.stake * 2)} pool settled.` : ttt ? `Move ${current.moves.length + 1} · ${agent(current.players[current.moves.length % 2]).name} to play.` : phase === 'commit' ? 'Both SHA-256 commitments are locked.' : phase === 'reveal' ? 'Both reveals verified. Preparing settlement.' : 'Entry intents passed policy. Internal credits held in game escrow.';
-  } else {
-    $('match-title').textContent = 'Waiting for rivals';
-    $('duel').innerHTML = '<b>?</b><span>VS</span><b>?</b>';
-    $('match-result').textContent = 'Moves stay hidden until both commitments are locked.';
-    $('ttt-board').hidden = true;
-  }
+  if(current?.id!==lastMatchId){lastMatchId=current?.id??null;lastBoard=Array(9).fill(null);lastRevealed=false;lastSettled=current?.status==='settled';}
+  renderSpriteField();
+  renderDuel();
+  renderBoard();
+  renderResult();
+  $('match-title').textContent = current ? `${current.id} · ${current.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'} · ${fmt(current.stake)} risk each` : 'Waiting for rivals';
   const tttPhases = current?.type === 'tictactoe' ? ['evaluate', 'play', 'verify', 'settle'] : ['evaluate', 'commit', 'reveal', 'settle'];
   document.querySelectorAll('[data-phase]').forEach((el, i) => { el.dataset.phase = tttPhases[i]; el.textContent = tttPhases[i].toUpperCase(); el.classList.toggle('active', el.dataset.phase === phase); });
   const sort = $('sort').value;
@@ -124,19 +254,25 @@ function render() {
   renderDetail();
   const t = state.tournament;
   if ($('tournament-status')) $('tournament-status').textContent = t ? `${t.status.toUpperCase()} · ${t.matchIds.length}/${t.schedule.length} matches · ${Object.entries(t.points).map(([id, points]) => `${agent(id).name} ${points}pt`).join(' / ')}${t.skipped ? ` · ${t.skipped} skipped by policy` : ''}` : 'Four eligible rivals · round robin · win 3pt / draw 1pt';
-  $('history-list').innerHTML = settled.length ? [...settled].reverse().slice(0, 40).map(m => `<button class="history-card" data-match="${m.id}">${m.id.toUpperCase()} · ${m.type === 'tictactoe' ? 'TIC-TAC-TOE' : 'RPS'}<strong>${agent(m.players[0]).name} vs ${agent(m.players[1]).name}</strong>${m.result === 'draw' ? 'DRAW · RETURNED' : `${agent(m.players[m.result === 'a' ? 0 : 1]).name.toUpperCase()} WINS`}<span class="tiny">${fmt(m.stake * 2)} internal pool · view proof ↗</span></button>`).join('') : '<p class="empty">The story begins with the first match.</p>';
+  renderHistory(settled);
   if(sharedRoom){
     document.body.classList.add('shared-room');
     $('run-status').textContent='LIVE · SHARED ROOM';
+    $('match-scope').textContent='Spectator view. The server runs the existing rules and settles every move.';
     document.querySelectorAll('.play-controls,.speed-label,#new-run,#treasury-controls').forEach(el=>el.hidden=true);
     document.querySelectorAll('.play-controls button,.speed-label input,.speed-label select,#new-run button,#new-run input,#new-run select,#treasury-controls button,#treasury-controls input').forEach(el=>el.disabled=true);
     $('share').hidden=true;
   }
 }
+let detailSignature='';
 function renderDetail() {
   const a = agent(selected) || state.agents[0]; selected = a.id;
   const count = games(a);
+  const signature=[a.id,count,a.balance,a.pnl,a.wins,a.losses,a.draws,a.memory.length,a.memory.at(-1)?.matchId,a.memory.at(-1)?.delta].join('|');
+  if(signature===detailSignature)return;
+  detailSignature=signature;
   $('agent-detail').innerHTML = `<div class="agent-head"><img src="/${a.sprite}" alt="${a.name} pixel sprite"><div><h2>${a.name}</h2><span class="muted">${a.strategy}</span></div></div><p class="muted">${eligibility(state, a).eligible ? 'Ready for the next opportunity.' : `Out of play: ${esc(eligibility(state, a).reason)}.`}</p><dl class="detail-grid"><div><dt>WIN RATE / ALL GAMES</dt><dd>${count ? (a.wins / count * 100).toFixed(1) : '0.0'}%</dd></div><div><dt>MAX RISK DRAWDOWN</dt><dd>${fmt(a.drawdown)}</dd></div><div><dt>AVERAGE RISK</dt><dd>${fmt(count ? a.staked / count : 0)}</dd></div><div><dt>GAMES PLAYED</dt><dd>${count}</dd></div></dl><h3>Deterministic limits</h3><p class="muted">Max risk ${fmt(a.policy.maxStake)} · reserve ${fmt(a.policy.reserve)} · exposure ${a.policy.maxExposureBps / 100}% · loss budget ${fmt(a.policy.maxLoss)}.</p><h3>What this agent learns</h3><p class="muted">RPS move frequencies inform counter-moves; tic-tac-toe records board outcomes. Exploration ${(a.exploration * 100).toFixed(0)}%. Memory comes only from settled matches.</p>${a.memory.slice(-4).reverse().map(m => `<div class="memory-item">${m.matchId} · ${agent(m.opponent).name} played ${m.observed}<br>${m.delta >= 0 ? '+' : ''}${fmt(m.delta)} internal change</div>`).join('') || '<p class="muted">No opponent observations yet.</p>'}`;
+  restartClass($('agent-detail'),'is-updated',320);
 }
 async function playOne() {
   if (busy) return;
