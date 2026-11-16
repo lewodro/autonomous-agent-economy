@@ -65,7 +65,10 @@ record are durable. The cumulative document fails startup if it cannot be loaded
 validated; it never converts a storage outage or corrupt row into an empty lifetime
 record. A reported transient cumulative-write failure does not poison later writes,
 and startup reconciliation can reconstruct the missed delta from retained verified
-checkpoints.
+checkpoints. `/api/health` exposes this boundary as `arena_lifetime`, including the
+durable and in-memory match totals, reconciliation lag, pending writes, and the last
+successful and failed write timestamps. The health payload reports only counters and
+timestamps, never match contents or storage errors.
 
 ## Compound boundary
 
