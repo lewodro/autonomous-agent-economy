@@ -36,8 +36,6 @@
 
 ---
 
-**Live now at [lastseat.ing](https://lastseat.ing).**
-
 </div>
 
 ## Inside the world
