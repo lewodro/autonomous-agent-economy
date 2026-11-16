@@ -94,6 +94,46 @@ try{
  await secondBrowser.wait("document.getElementById('connection')?.textContent.includes('2 HERE')");
  await wait("document.getElementById('connection').textContent.includes('2 HERE')");
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.length)"),2,'a refresh reuses the visitor identity instead of leaving a ghost');
+ // Both real browsers are now in the plaza. Browser B gets a character so its
+ // own quick-chat selector can be exercised too.
+ await secondBrowser.wait('document.getElementById("character-dialog")?.open',8000);
+ await secondBrowser.evaluate("document.getElementById('enter-world').click()");
+ await secondBrowser.wait('!document.getElementById("character-dialog").open');
+ await wait('!document.getElementById("quick-chat-prompt").hidden');
+ // A holds E: the directional selector appears instead of interacting.
+ await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await delay(520);
+ await wait('!document.getElementById("quick-chat").hidden&&document.querySelectorAll(".quick-chat__option").length===4');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['arena','right'],['follow','down'],['nice','left']],'the selector offers the four approved directions');
+ assert.ok(await evaluate('(()=>{const r=document.getElementById("quick-chat-wheel").getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})()'),'the desktop selector stays inside the viewport');
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+ await wait('document.getElementById("quick-chat").hidden');
+ await wait('document.getElementById("quick-chat-bubbles").textContent.includes("follow me")');
+ await secondBrowser.wait('document.getElementById("quick-chat-bubbles").textContent.includes("follow me")',8000);
+ await wait('!document.querySelector(".quick-chat__bubble")',6000);
+ await secondBrowser.wait('!document.querySelector(".quick-chat__bubble")',6000);
+ // B holds E and answers with the left direction.
+ await secondBrowser.wait("document.getElementById('connection').textContent.includes('WORLD ONLINE')",8000);
+ await secondBrowser.wait("!document.getElementById('quick-chat-prompt').hidden",8000);
+ await secondBrowser.evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await secondBrowser.wait('!document.getElementById("quick-chat").hidden',5000);
+ await secondBrowser.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
+ await wait('document.getElementById("quick-chat-bubbles").textContent.includes("nice one")',8000);
+ // Rapid second send inside the cooldown is rejected and must not stack bubbles.
+ const spamQuickChat=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/quick-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phrase_id:'nice'})}).then(async response=>({status:response.status,...await response.json()}))");
+ assert.equal(spamQuickChat.status,429,'quick chat spam must be rate limited');
+ assert.equal(spamQuickChat.code,'QUICK_CHAT_RATE_LIMITED');
+ assert.equal(await evaluate('document.querySelectorAll(".quick-chat__bubble").length'),1,'a rejected send must not create another bubble');
+ await wait('!document.querySelector(".quick-chat__bubble")',6000);
+ // Rejoin B far away: the affordance disappears and the server refuses the send.
+ assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200);
+ const farJoin=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_atlas',position:{x:2000,y:1600},direction:'down',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))");
+ assert.equal(farJoin.status,201);
+ await wait('document.getElementById("quick-chat-prompt").hidden&&document.getElementById("quick-chat-open").hidden',8000);
+ const distantQuickChat=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/quick-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phrase_id:'nice'})}).then(async response=>({status:response.status,...await response.json()}))");
+ assert.equal(distantQuickChat.status,409,'a distant visitor cannot quick chat');
+ assert.equal(distantQuickChat.code,'NO_NEARBY_HUMAN');
+ assert.equal(await evaluate('document.querySelectorAll(".quick-chat__bubble").length'),0,'a distant quick chat is never rendered');
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200,'the second visitor should be able to leave');
  await secondBrowser.send('Page.navigate',{url:base+'/post'});await secondBrowser.wait('location.pathname.startsWith("/post")');
  await wait("document.getElementById('connection').textContent.includes('1 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('0 other visitors online')");
@@ -313,6 +353,16 @@ try{
  await evaluate("document.getElementById('interaction-close').click()");
  await wait("!document.getElementById('interaction-dialog').open");
  await wait('document.activeElement?.id==="world-canvas"');
+ // A short E tap still takes the ordinary interaction path after the hold
+ // semantics were added; only a hold near another human opens quick chat.
+ await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await delay(60);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='Northern cave'",5000);
+ assert.equal(await evaluate('document.getElementById("quick-chat").hidden'),true,'a short E tap must not open quick chat');
+ await evaluate("document.getElementById('interaction-close').click()");
+ await wait("!document.getElementById('interaction-dialog').open");
+ await wait('document.activeElement?.id==="world-canvas"');
  await delay(180);
  const caveMarkerBefore=await evaluate("document.getElementById('minimap-canvas').dataset.player");
  await holdWorldKey('s',480);
@@ -372,6 +422,25 @@ try{
  assert.ok(Math.abs((await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position.x'))-released)<1,'released joystick must stop movement');
  await wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const p=s.players.find(v=>v.player_id===${JSON.stringify(localPlayerId)}),local=JSON.parse(localStorage.getItem('agent-world-settings-v1')).position;window.__lastPresenceState={server:p,local};return !!p&&Math.abs(p.position.x-local.x)<2&&p.animation_state==='idle'})`);
  await screenshot('mobile');
+ // Touch gets a contextual CHAT control instead of a hold gesture. The four
+ // options stay large, and tap-outside/cancel closes without sending.
+ const mobilePosition=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+ const mobileGuest=await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:${mobilePosition.x+36},y:${mobilePosition.y}},direction:'left',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))`);
+ assert.equal(mobileGuest.status,201,'a nearby guest can join the mobile visitor');
+ await wait('!document.getElementById("quick-chat-open").hidden',8000);
+ assert.ok(await evaluate('(()=>{const b=document.getElementById("quick-chat-open"),r=b.getBoundingClientRect();return getComputedStyle(b).display!=="none"&&r.width>=44&&r.height>=40})()'),'mobile exposes a usable CHAT control');
+ await evaluate('document.getElementById("quick-chat-open").click()');
+ await wait('!document.getElementById("quick-chat").hidden');
+ assert.equal(await evaluate('document.querySelectorAll(".quick-chat__option").length'),4);
+ assert.ok(await evaluate('(()=>{const options=[...document.querySelectorAll(".quick-chat__option")],wheel=document.getElementById("quick-chat-wheel").getBoundingClientRect();return options.every(option=>{const r=option.getBoundingClientRect();return r.width>=44&&r.height>=44})&&wheel.left>=0&&wheel.right<=390&&wheel.top>=0&&wheel.bottom<=844})()'),'mobile quick-chat options are large and stay inside a 390px viewport');
+ await evaluate('document.getElementById("quick-chat-cancel").click()');
+ await wait('document.getElementById("quick-chat").hidden');
+ await evaluate('document.getElementById("quick-chat-open").click()');
+ await wait('!document.getElementById("quick-chat").hidden');
+ await evaluate('document.querySelector(".quick-chat__option[data-phrase=follow]").click()');
+ await wait('document.getElementById("quick-chat").hidden&&document.getElementById("quick-chat-bubbles").textContent.includes("follow me")',5000);
+ await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
+ await wait('document.getElementById("quick-chat-open").hidden&&document.getElementById("quick-chat-prompt").hidden',8000);
  await evaluate("document.getElementById('minimap-journal').click()");
  await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DISCOVERIES'");
  assert.ok(await evaluate('(()=>{const d=document.getElementById("interaction-dialog"),r=d.getBoundingClientRect(),c=document.getElementById("interaction-content");return r.width<=390&&r.right<=390&&r.left>=0&&c.scrollWidth<=c.clientWidth+1&&document.documentElement.scrollWidth<=390})()'),'discovery journal must fit a 390px bottom sheet without horizontal overflow');
