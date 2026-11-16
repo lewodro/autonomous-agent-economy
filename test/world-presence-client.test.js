@@ -5,7 +5,7 @@ import {WorldPresenceClient} from '../web/dist/world/presence-client.js';
 class EventStream {listeners=new Map();closed=false;addEventListener(type,listener){const list=this.listeners.get(type)||[];list.push(listener);this.listeners.set(type,list);}close(){this.closed=true;}emit(type,value){for(const listener of this.listeners.get(type)||[])listener({data:JSON.stringify(value)});}}
 const player=(player_id,x)=>({player_id,display_name:'Watcher 1001',avatar:'visitor_ember',position:{x,y:100},direction:'right',animation_state:'walk',activity:'Exploring',updated_at:'now'});
 const agent=(agent_id,x)=>({...player(`agent:${agent_id}`,x),agent_id,strategy:'analyst',kind:'canonical_agent'});
-function setup({now=()=>1_000,onPlayers=()=>{},fetcher,sleep}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,now,sleep});return{client,streams,requests};}
+function setup({now=()=>1_000,onPlayers=()=>{},onQuickChat=()=>{},fetcher,sleep}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,onQuickChat,now,sleep});return{client,streams,requests};}
 
 test('client accepts a server-owned identity and never sends browser-chosen IDs or tokens',async()=>{
   const snapshots=[],{client,streams,requests}=setup({onPlayers:value=>snapshots.push(value)});await client.connect();assert.equal(client.player_id,'visitor_server-owned');assert.deepEqual(requests[0].body,{avatar:'visitor_ember',position:{x:100,y:100},direction:'down',activity:'Exploring'});assert.equal(requests[0].credentials,'same-origin');assert.equal(JSON.stringify(requests),JSON.stringify(requests).replace(/session_token/g,'session-token-not-present'));
@@ -90,5 +90,29 @@ test('close preserves the anonymous server session for refresh while leave remov
 test('invalid join responses and structured API errors fail closed',async()=>{const bad=setup({fetcher:async()=>({ok:true,status:200,json:async()=>({world_id:'main',players:[],agents:[]})})}).client;await assert.rejects(()=>bad.connect(),/invalid join response/i);const denied=setup({fetcher:async()=>({ok:false,status:404,json:async()=>({code:'PLAYER_NOT_FOUND',error:'World presence expired'})})}).client;await assert.rejects(()=>denied.connect(),/World presence expired/);});
 
 test('late events from replaced streams cannot contaminate the active snapshot',async()=>{const{client,streams}=setup();await client.connect();await client.connect();streams[0].emit('PlayerJoined',{world_id:'main',player:player('visitor_stale',200)});assert.equal(client.snapshot().players.some(value=>value.player_id==='visitor_stale'),false);streams[1].emit('PlayerJoined',{world_id:'main',player:player('visitor_current',220)});assert.equal(client.snapshot().players.some(value=>value.player_id==='visitor_current'),true);await client.leave();});
+
+test('quick chat sends only a phrase ID and surfaces relayed phrases as ephemeral events',async()=>{
+  const chats=[],requests=[];
+  const fetcher=async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};if(url.endsWith('/quick-chat'))return{ok:true,status:200,json:async()=>({quick_chat:{player_id:'visitor_server-owned',phrase_id:body.phrase_id,text:'follow me',direction:'down',sent_at:'now'}})};return{ok:true,status:200,json:async()=>({left:true})};};
+  const{client,streams}=setup({fetcher,onQuickChat:value=>chats.push(value)});
+  await client.connect();
+  const sent=await client.sendQuickChat('follow');
+  assert.ok(requests.at(-1).url.endsWith('/presence/quick-chat'));
+  assert.deepEqual(requests.at(-1).body,{phrase_id:'follow'},'the browser never sends display text');
+  assert.equal(sent.text,'follow me');
+  streams[0].emit('PlayerQuickChat',{world_id:'main',quick_chat:{player_id:'visitor_other',phrase_id:'arena',text:'arena?',direction:'right',sent_at:'now'}});
+  streams[0].emit('PlayerQuickChat',{world_id:'other',quick_chat:{player_id:'visitor_other',phrase_id:'nice',text:'nice one',direction:'left',sent_at:'now'}});
+  streams[0].emit('PlayerQuickChat',{world_id:'main',quick_chat:{player_id:'visitor_other',phrase_id:'nice',text:'',direction:'left',sent_at:'now'}});
+  assert.deepEqual(chats.map(value=>value.text),['arena?'],'only a well-formed relay reaches the world layer');
+  assert.equal(client.snapshot().players.length,1,'quick chat never becomes player state');
+  await client.leave();
+});
+
+test('quick chat fails closed when the server returns text the client cannot trust',async()=>{
+  const fetcher=async(url,init)=>{const body=JSON.parse(init.body);if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};if(url.endsWith('/quick-chat'))return{ok:true,status:200,json:async()=>({quick_chat:{player_id:'visitor_server-owned',phrase_id:body.phrase_id,text:'',direction:'down',sent_at:'now'}})};return{ok:true,status:200,json:async()=>({left:true})};};
+  const{client}=setup({fetcher});await client.connect();
+  await assert.rejects(()=>client.sendQuickChat('follow'),/invalid quick chat response/i);
+  await client.leave();
+});
 
 test('default fetcher is not invoked as a client method',async()=>{const original=globalThis.fetch,contexts=[];globalThis.fetch=function(){contexts.push(this);return Promise.resolve({ok:true,status:201,json:async()=>({world_id:'main',players:[],agents:[],player:player('visitor_self',100),presence_id:'visitor_self'})});};const stream=new EventStream();const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},eventSource:()=>stream});try{await client.connect();}finally{globalThis.fetch=original;client.close();}assert.ok(contexts.length>0);assert.ok(contexts.every(context=>context!==client),'the native fetch must not receive the client as this');});

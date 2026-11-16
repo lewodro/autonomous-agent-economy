@@ -1,17 +1,58 @@
 import { normalizeInput, type InputSource, type WorldInput } from './model.js';
+export interface KeyboardInputHooks {
+  /** How long E must stay down before the hold action is offered. */
+  holdDelayMs?: number;
+  /** Return true when the hold took over (for example, opened the quick-chat wheel). */
+  onHold?: () => boolean;
+  /** Called on release or reset after a hold took over, so the owner can cancel. */
+  onHoldEnd?: () => void;
+}
 export class KeyboardInput implements InputSource {
   private keys = new Set<string>();
   private interaction = false;
+  private holdTimer = 0;
+  private holdActive = false;
+  private holdDelayMs: number;
+  private onHold?: () => boolean;
+  private onHoldEnd?: () => void;
   private down = (event: KeyboardEvent) => {
     if (event.target instanceof HTMLElement && (event.target.matches('input,select,textarea') || event.target.isContentEditable)) return;
     const key = event.key.toLowerCase();
     if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','e'].includes(key)) return;
     event.preventDefault(); this.keys.add(key);
-    if (key === 'e' && !event.repeat) this.interaction = true;
+    if (key === 'e' && !event.repeat) {
+      this.holdActive = false;
+      this.holdTimer = window.setTimeout(() => {
+        this.holdTimer = 0;
+        if (!this.keys.has('e')) return;
+        // A tap still interacts. Only a hold that a nearby human can consume
+        // becomes quick chat; otherwise the normal E action happens at the
+        // threshold instead of the release.
+        const taken = this.onHold?.() === true;
+        this.holdActive = taken;
+        if (!taken) this.interaction = true;
+      }, this.holdDelayMs);
+    }
   };
-  private up = (event: KeyboardEvent) => { this.keys.delete(event.key.toLowerCase()); };
+  private up = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase();
+    this.keys.delete(key);
+    if (key !== 'e') return;
+    if (this.holdTimer) {
+      window.clearTimeout(this.holdTimer); this.holdTimer = 0;
+      // Short press: preserve the original immediate interaction.
+      this.interaction = true;
+    }
+    if (this.holdActive) {
+      this.holdActive = false;
+      this.onHoldEnd?.();
+    }
+  };
   private blur = () => this.reset();
-  constructor(private target: HTMLElement) {
+  constructor(private target: HTMLElement, hooks: KeyboardInputHooks = {}) {
+    this.holdDelayMs = hooks.holdDelayMs ?? 380;
+    this.onHold = hooks.onHold;
+    this.onHoldEnd = hooks.onHoldEnd;
     target.addEventListener('keydown', this.down); window.addEventListener('keyup', this.up);
     window.addEventListener('blur', this.blur); document.addEventListener('visibilitychange', this.blur);
   }
@@ -20,7 +61,11 @@ export class KeyboardInput implements InputSource {
     const result = normalizeInput(pressed('d','arrowright') - pressed('a','arrowleft'), pressed('s','arrowdown') - pressed('w','arrowup'), this.interaction);
     this.interaction = false; return result;
   }
-  reset(): void { this.keys.clear(); this.interaction = false; }
+  reset(): void {
+    this.keys.clear(); this.interaction = false;
+    if (this.holdTimer) { window.clearTimeout(this.holdTimer); this.holdTimer = 0; }
+    if (this.holdActive) { this.holdActive = false; this.onHoldEnd?.(); }
+  }
   destroy(): void {
     this.target.removeEventListener('keydown', this.down); window.removeEventListener('keyup', this.up);
     window.removeEventListener('blur', this.blur); document.removeEventListener('visibilitychange', this.blur); this.reset();
