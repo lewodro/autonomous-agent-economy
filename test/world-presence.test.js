@@ -100,12 +100,13 @@ test('presence capacity is bounded and health exposes counts without identities'
 
 test('quick chat vocabulary is identical on the server and in the client selector',()=>{
   assert.deepEqual(
-    QUICK_CHAT_OPTIONS.map(option=>[option.id,option.direction,option.text]),
-    Object.entries(QUICK_CHAT_PHRASES).map(([id,phrase])=>[id,phrase.direction,phrase.text]),
+    QUICK_CHAT_OPTIONS.map(option=>[option.id,option.direction,option.text,option.challenge]),
+    Object.entries(QUICK_CHAT_PHRASES).map(([id,phrase])=>[id,phrase.direction,phrase.text,phrase.challenge]),
   );
   assert.equal(QUICK_CHAT_COOLDOWN_MS,1_500);
   assert.equal(CLIENT_QUICK_CHAT_RADIUS,QUICK_CHAT_RADIUS);
-  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.id),['ttt','arena','follow','nice']);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.id),['ttt','rps','follow','nice']);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.filter(option=>option.challenge).map(option=>option.id),['ttt','rps']);
 });
 
 test('quick chat relays an allowlisted phrase to nearby humans with a cooldown',()=>{
@@ -119,7 +120,7 @@ test('quick chat relays an allowlisted phrase to nearby humans with a cooldown',
   assert.throws(()=>service.quickChat('main',alice,{phrase_id:'ttt',text:'free text'}),{code:'INVALID_QUICK_CHAT'});
   assert.throws(()=>service.quickChat('main',alice,[]),{code:'INVALID_QUICK_CHAT'});
   const sent=service.quickChat('main',alice,{phrase_id:'ttt'});
-  assert.deepEqual(sent.quick_chat,{player_id:owner.player.player_id,phrase_id:'ttt',text:'run tic-tac-toe?',direction:'up',sent_at:new Date(now).toISOString()});
+  assert.deepEqual(sent.quick_chat,{player_id:owner.player.player_id,phrase_id:'ttt',text:'tic-tac-toe?',direction:'up',sent_at:new Date(now).toISOString()});
   const event=events.find(value=>value.type==='PlayerQuickChat');
   assert.deepEqual(event.quick_chat,sent.quick_chat);
   assert.equal('lastQuickChatAt' in service.snapshot('main').players[0],false,'the cooldown clock is private');

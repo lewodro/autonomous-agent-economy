@@ -65,6 +65,25 @@ export class WorldPresenceService {
     const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastMoveAt<this.minUpdateMs)throw fail('PRESENCE_RATE_LIMITED','Move updates are limited',429);const next=this.sanitizePosition(position),elapsed=Math.min(Math.max(0,now-player.lastMoveAt),this.maxMovementCatchupMs),distance=Math.hypot(next.x-player.position.x,next.y-player.position.y),available=(Number.isFinite(player.movementCredit)?player.movementCredit:this.movementCreditCap)+elapsed*MOVEMENT_RATE;if(distance>available)throw fail('INVALID_POSITION','Movement exceeded the world speed limit');const nextDirection=DIRECTIONS.has(direction)?direction:player.direction,nextAnimation=ANIMATIONS.has(animation_state)?animation_state:'idle',changed=next.x!==player.position.x||next.y!==player.position.y||nextDirection!==player.direction||nextAnimation!==player.animation_state;player.position=next;player.direction=nextDirection;player.animation_state=nextAnimation;player.lastUpdateAt=now;player.lastMoveAt=now;player.movementCredit=Math.max(0,Math.min(this.movementCreditCap,available-distance));player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerMoved',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};
   }
   heartbeat(worldId,visitorId,{activity}={}){const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastHeartbeatAt<this.minHeartbeatMs)throw fail('PRESENCE_RATE_LIMITED','Heartbeat updates are limited',429);if(activity!==undefined&&(typeof activity!=='string'||activity.length>80))throw fail('INVALID_ACTIVITY','Activity is invalid');const changed=activity!==undefined&&activity!==player.activity;if(changed)player.activity=activity;player.lastHeartbeatAt=now;player.lastUpdateAt=now;player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerUpdated',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};}
+  /** Internal presence record by public ID; callers keep visitor ownership server-side. */
+  player(worldId,playerId){return this.world(worldId).get(playerId);}
+  /**
+   * Nearest other human inside the social radius. Canonical agents are not in
+   * this map, so they can never be challenge or quick-chat recipients.
+   */
+  nearestHuman(worldId,playerId,radius=this.quickChatRadius){
+    const me=this.world(worldId).get(playerId);if(!me)return null;
+    let nearest=null;
+    for(const other of this.world(worldId).values()){
+      if(other.player_id===me.player_id)continue;
+      const distance=Math.hypot(other.position.x-me.position.x,other.position.y-me.position.y);
+      if(distance>radius)continue;
+      if(!nearest||distance<nearest.distance||(distance===nearest.distance&&other.player_id<nearest.player.player_id))nearest={player:other,distance};
+    }
+    return nearest;
+  }
+  /** Broadcast an ephemeral social event on the existing world presence stream. */
+  broadcast(worldId,type,payload){this.emit(worldId,type,payload);}
   /**
    * Relays one allowlisted phrase to the world. Identity comes from the visitor
    * session, the text from the server catalog, and the event is ephemeral: it is
@@ -77,13 +96,13 @@ export class WorldPresenceService {
     for(const key of Object.keys(input))if(key!=='phrase_id')throw fail('INVALID_QUICK_CHAT','Quick chat accepts an approved phrase ID only');
     this.prune(worldId);
     const player=this.requireVisitor(worldId,visitorId),now=this.now(),phrase=QUICK_CHAT_PHRASES[phraseId];
-    const nearHuman=[...this.world(worldId).values()].some(other=>other.player_id!==player.player_id&&Math.hypot(other.position.x-player.position.x,other.position.y-player.position.y)<=this.quickChatRadius);
-    if(!nearHuman)throw fail('NO_NEARBY_HUMAN','Move closer to another visitor to use quick chat',409);
+    const nearest=this.nearestHuman(worldId,player.player_id);
+    if(!nearest)throw fail('NO_NEARBY_HUMAN','Move closer to another visitor to use quick chat',409);
     if(Number.isFinite(player.lastQuickChatAt)&&now-player.lastQuickChatAt<this.quickChatCooldownMs)throw fail('QUICK_CHAT_RATE_LIMITED','Quick chat is limited',429);
     player.lastQuickChatAt=now;
     const quick_chat={player_id:player.player_id,phrase_id:phraseId,text:phrase.text,direction:phrase.direction,sent_at:new Date(now).toISOString()};
     this.emit(worldId,'PlayerQuickChat',{quick_chat});
-    return{quick_chat};
+    return{quick_chat,target_player_id:nearest.player.player_id};
   }
   leave(worldId,visitorId){const player=this.requireVisitor(worldId,visitorId);this.world(worldId).delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id});return{left:true};}
   prune(worldId){const world=this.world(worldId),cutoff=this.now()-this.staleMs;for(const player of world.values())if(player.lastUpdateAt<=cutoff){world.delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id,reason:'stale'});}}
