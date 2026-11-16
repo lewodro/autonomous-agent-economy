@@ -61,7 +61,11 @@ charged. This is conservative accounting, not exactly-once provider execution.
 Arena and Survival retain bounded verified histories used by Research House and the
 cumulative statistics document. Match IDs and evidence references continue resolving
 after a deployment because both the source checkpoint and the derived cumulative
-record are durable.
+record are durable. The cumulative document fails startup if it cannot be loaded or
+validated; it never converts a storage outage or corrupt row into an empty lifetime
+record. A reported transient cumulative-write failure does not poison later writes,
+and startup reconciliation can reconstruct the missed delta from retained verified
+checkpoints.
 
 ## Compound boundary
 

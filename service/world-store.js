@@ -15,13 +15,14 @@ const TABLE = 'world_state';
  * outlive retained match checkpoints, such as cumulative arena statistics.
  */
 export class WorldStore {
-  constructor({ directory, databaseUrl = null, logger = console, rowId = 'main', fileName = 'world-farm.json' } = {}) {
+  constructor({ directory, databaseUrl = null, logger = console, rowId = 'main', fileName = 'world-farm.json', continueAfterWriteFailure = false } = {}) {
     this.directory = directory;
     this.databaseUrl = databaseUrl;
     this.logger = logger;
     this.rowId = rowId;
     this.mode = databaseUrl ? 'postgres' : 'json';
     this.file = path.join(directory, fileName);
+    this.continueAfterWriteFailure = continueAfterWriteFailure;
     this.pool = null;
     this.queue = Promise.resolve();
   }
@@ -65,7 +66,11 @@ export class WorldStore {
 
   save(state) {
     const snapshot = structuredClone(state);
-    this.queue = this.queue.then(async () => {
+    // Some derived stores can reconstruct a missed write from their durable
+    // source records. Let those stores resume after a reported transient
+    // failure instead of leaving every later save chained to a rejected promise.
+    const ready = this.continueAfterWriteFailure ? this.queue.catch(() => {}) : this.queue;
+    this.queue = ready.then(async () => {
       if (this.mode === 'postgres') {
         await this.pool.query(
           `insert into ${TABLE} (id, state, updated_at) values ($1, $2::jsonb, now())

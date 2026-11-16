@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ArenaCumulativeStats } from '../service/arena-stats.js';
 import { WorldStore } from '../service/world-store.js';
 import { createState } from '../src/economy.js';
+import { ArenaRoomPool } from '../service/arena-rooms.js';
 
 const baseState = () => createState();
 
@@ -23,6 +24,17 @@ const rpsMatch = (id, result) => ({
 const tttMatch = (id, result, decisions = 5) => ({
   id, status: 'settled', type: 'tictactoe', players: ['agent-1', 'agent-3'], result,
   moves: Array.from({ length: decisions }, (_, index) => ({ agentId: index % 2 ? 'agent-3' : 'agent-1', cell: index % 9 })),
+});
+const survivalResult = (id = 'survival-1', winner = 'agent-1', completedAt = '2026-01-02T00:00:00.000Z') => ({
+  match_id: id, completed_at: completedAt, winner_id: winner,
+  agents: Array.from({ length: 20 }, (_, index) => {
+    const agentId = `agent-${index + 1}`;
+    return {
+      id: agentId, name: `Agent ${index + 1}`, sprite: `assets/${agentId}.png`, strategy: 'analyst', won: agentId === winner,
+      research: `Research ${index + 1}`,
+      metrics: { attacks_landed: index + 1, target_changes: 1, damage_dealt: 10, damage_taken: 5, retreat_count: 0, time_alive: 20, eliminations: 0, times_cornered: 0, escapes: 0, final_placement: index + 1 },
+    };
+  }),
 });
 
 async function setup() {
@@ -177,6 +189,108 @@ test('only settled public matches contribute to the cumulative record', async ()
     assert.equal(stats.snapshot().games.rps.matches, 1);
     assert.equal(stats.snapshot().agents['agent-1'].arena.matches, 1);
   } finally { await close(); }
+});
+
+test('duplicate delivery and reconciliation preserve cross-game totals, agent records, and leaderboard order', async () => {
+  const { directory, store, stats } = await setup();
+  const rooms = [
+    run({ runId: 'rps-public', matches: [rpsMatch('rps-win', 'a'), rpsMatch('rps-draw', 'draw')] }),
+    run({ runId: 'ttt-public', game: 'tictactoe', matches: [tttMatch('ttt-win', 'b', 7)] }),
+  ];
+  const survival = [survivalResult()];
+  try {
+    assert.equal(stats.recordRooms(rooms), 3);
+    assert.equal(stats.recordSurvival(survival), 1);
+    assert.equal(stats.recordRooms(rooms), 0, 'duplicate settlement delivery is ignored');
+    assert.equal(stats.recordSurvival(survival), 0, 'duplicate Survival delivery is ignored');
+    await stats.persist(); await store.close();
+
+    const reopenedStore = new WorldStore({ directory, rowId: 'arena-stats', fileName: 'arena-stats.json' });
+    await reopenedStore.open();
+    const reconciled = new ArenaCumulativeStats(reopenedStore);
+    await reconciled.restore();
+    assert.equal(reconciled.recordRooms(rooms), 0, 'reconciliation rerun does not recount room matches');
+    assert.equal(reconciled.recordSurvival(survival), 0, 'reconciliation rerun does not recount Survival');
+    const statistics = reconciled.statistics({ scope: 'retained', updated_at: null, totals: { matches: 0, decisions: 0, draws: 0 }, games: {}, agents: [] });
+    assert.equal(statistics.totals.matches, 4);
+    assert.equal(statistics.totals.matches, statistics.games.rps.matches + statistics.games.tictactoe.matches + statistics.games.survival.matches);
+    assert.deepEqual({ rps: statistics.games.rps.matches, ttt: statistics.games.tictactoe.matches, survival: statistics.games.survival.matches }, { rps: 2, ttt: 1, survival: 1 });
+    for (const agent of statistics.agents) assert.equal(agent.wins + agent.losses + agent.draws, agent.matches, `${agent.id} W/L/D must reconcile`);
+    assert.equal(statistics.agents[0].id, 'agent-1', 'leaderboard is derived from the durable all-time records');
+    assert.deepEqual({ matches: statistics.agents[0].matches, wins: statistics.agents[0].wins, losses: statistics.agents[0].losses, draws: statistics.agents[0].draws }, { matches: 4, wins: 2, losses: 1, draws: 1 });
+    await reopenedStore.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('actual public room settlements survive service recreation while private room results remain isolated', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'arena-stats-service-restart-'));
+  const publicDirectory = path.join(root, 'public');
+  const privateDirectory = path.join(root, 'private');
+  const statsDirectory = path.join(root, 'statistics');
+  const openStats = async () => {
+    const store = new WorldStore({ directory: statsDirectory, rowId: 'arena-stats', fileName: 'arena-stats.json' });
+    await store.open();
+    const stats = new ArenaCumulativeStats(store); await stats.restore();
+    return { store, stats };
+  };
+  let publicRooms, privateRooms;
+  try {
+    publicRooms = new ArenaRoomPool(publicDirectory, { stageMs: 0 }); await publicRooms.restore();
+    await publicRooms.step('rps-1'); await publicRooms.step('ttt-1');
+    const first = await openStats();
+    assert.equal(first.stats.recordRooms(publicRooms.runs()), 2);
+    await first.stats.persist();
+    const lifetimeBefore = first.stats.statistics(publicRooms.statistics()).totals;
+    await first.store.close(); await publicRooms.close();
+
+    publicRooms = new ArenaRoomPool(publicDirectory, { stageMs: 0 }); await publicRooms.restore();
+    const restarted = await openStats();
+    assert.deepEqual(restarted.stats.statistics(publicRooms.statistics()).totals, lifetimeBefore);
+    assert.equal(restarted.stats.recordRooms(publicRooms.runs()), 0, 'boot reconciliation is idempotent');
+
+    privateRooms = new ArenaRoomPool(privateDirectory, { stageMs: 0 }); await privateRooms.restore();
+    const publicBeforePrivate = restarted.stats.snapshot();
+    await privateRooms.step('rps-1');
+    assert.equal(privateRooms.history().length, 1, 'private result exists in its owner-scoped service');
+    assert.deepEqual(restarted.stats.snapshot(), publicBeforePrivate, 'private result changes no public agent record or leaderboard input');
+    assert.deepEqual(restarted.stats.statistics(publicRooms.statistics()).totals, lifetimeBefore, 'private result never enters public totals');
+
+    await publicRooms.step('rps-1');
+    assert.equal(restarted.stats.recordRooms(publicRooms.runs()), 1);
+    assert.equal(restarted.stats.recordRooms(publicRooms.runs()), 0);
+    assert.equal(restarted.stats.statistics(publicRooms.statistics()).totals.matches, lifetimeBefore.matches + 1);
+    await restarted.stats.persist(); await restarted.store.close();
+
+    const final = await openStats();
+    assert.equal(final.stats.statistics(publicRooms.statistics()).totals.matches, lifetimeBefore.matches + 1);
+    await final.store.close();
+  } finally {
+    await publicRooms?.close(); await privateRooms?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cumulative statistics fail closed on load errors or malformed durable state', async () => {
+  const loadFailure = new ArenaCumulativeStats({ load: async () => { throw new Error('database unavailable'); } });
+  await assert.rejects(() => loadFailure.restore(), /database unavailable/);
+  const malformed = new ArenaCumulativeStats({ load: async () => ({ version: 1, games: {}, agents: {}, cursors: { rooms: {}, survival: [] } }) });
+  await assert.rejects(() => malformed.restore(), /Invalid Arena cumulative rps totals/);
+});
+
+test('the Arena cumulative store can save again after a reported transient write failure', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'arena-stats-write-recovery-'));
+  const blockingTarget = path.join(directory, 'arena-stats.json');
+  try {
+    await mkdir(blockingTarget);
+    const store = new WorldStore({ directory, rowId: 'arena-stats', fileName: 'arena-stats.json', continueAfterWriteFailure: true });
+    await store.open();
+    await assert.rejects(() => store.save({ attempt: 1 }));
+    await rm(blockingTarget, { recursive: true });
+    await store.save({ attempt: 2 });
+    await store.close();
+    const reopened = new WorldStore({ directory, rowId: 'arena-stats', fileName: 'arena-stats.json' });
+    await reopened.open(); assert.deepEqual(await reopened.load(), { attempt: 2 }); await reopened.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('the cumulative document uses its own durable row and file', async () => {
