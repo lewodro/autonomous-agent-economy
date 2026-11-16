@@ -24,6 +24,7 @@ import { ArenaCumulativeStats } from './service/arena-stats.js';
 import { TableSession, visitorIdentity } from './service/world-table.js';
 import { publicRequestError } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
+import { WorldChallengeService } from './service/world-challenges.js';
 import { WorldAgentPresenceService } from './service/world-agent-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
@@ -102,9 +103,16 @@ const worldFarm=new WorldFarm(worldStore,{
 });
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+const challengeCommands=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+const duelCommands=new SlidingWindowLimiter({limit:600,windowMs:60_000});
 let shuttingDown=false;
 const worldAgents=new WorldAgentPresenceService({profiles:()=>arenaRooms.profiles()});
 const worldPresence=new WorldPresenceService({allowedAvatars:approvedAvatarIds,identitySecret:process.env.HOST_SESSION_SECRET||'local-world-presence-identity-secret',agentPresence:worldAgents});
+const worldChallenges=new WorldChallengeService({
+  presence:worldPresence,
+  challengeTtlMs:Number(process.env.WORLD_CHALLENGE_TTL_MS||15_000),
+  challengeCooldownMs:Number(process.env.WORLD_CHALLENGE_COOLDOWN_MS||4_000),
+});
 worldAgents.setEmitter((type,payload)=>worldPresence.emit('main',type,payload));
 worldAgents.start();
 const roomSpectators=new RoomSpectators();
@@ -187,8 +195,40 @@ const server = http.createServer(async (req, res) => {
       if(action==='join'&&!presenceJoins.allow())return json(res,429,{error:'Presence joins are temporarily limited'});
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const data=await body(req,4096);
-      const result=action==='join'?worldPresence.join(worldId,visitor.id,data):action==='move'?worldPresence.move(worldId,visitor.id,data):action==='heartbeat'?worldPresence.heartbeat(worldId,visitor.id,data):action==='appearance'?worldPresence.updateAppearance(worldId,visitor.id,data.appearance):action==='quick-chat'?worldPresence.quickChat(worldId,visitor.id,data):worldPresence.leave(worldId,visitor.id);
+      if(action==='quick-chat'){
+        const {target_player_id,...chat}=worldPresence.quickChat(worldId,visitor.id,data);
+        const challenge=worldChallenges.create(worldId,visitor.id,data.phrase_id,target_player_id);
+        return json(res,200,{...chat,...(challenge?{challenge}:{})},cookie);
+      }
+      if(action==='leave'){
+        const result=worldPresence.leave(worldId,visitor.id);
+        worldChallenges.playerLeft(worldId,visitor.id);
+        return json(res,200,result,cookie);
+      }
+      const result=action==='join'?worldPresence.join(worldId,visitor.id,data):action==='move'?worldPresence.move(worldId,visitor.id,data):action==='heartbeat'?worldPresence.heartbeat(worldId,visitor.id,data):worldPresence.updateAppearance(worldId,visitor.id,data.appearance);
       return json(res,action==='join'?201:200,result,cookie);
+    }
+    const challengeRoute=route.match(/^\/api\/worlds\/([a-zA-Z0-9_-]{1,64})\/presence\/challenges\/(chal-[a-f0-9-]{36})\/(accept|decline|cancel)$/);
+    if(challengeRoute){
+      if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+      if(!challengeCommands.allow())return json(res,429,{error:'Challenge invites are temporarily limited'});
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      await body(req,1024);
+      const [,worldId,challengeId,action]=challengeRoute;
+      const result=action==='accept'?worldChallenges.accept(worldId,visitor.id,challengeId):action==='decline'?worldChallenges.decline(worldId,visitor.id,challengeId):worldChallenges.cancel(worldId,visitor.id,challengeId);
+      return json(res,200,result,cookie);
+    }
+    const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick))?$/);
+    if(duelRoute){
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      if(!duelRoute[2]){
+        if(req.method!=='GET')return json(res,405,{error:'Match state is read-only'},cookie);
+        return json(res,200,worldChallenges.view('main',visitor.id,duelRoute[1]),cookie);
+      }
+      if(req.method!=='POST')return json(res,405,{error:'Method not allowed'},cookie);
+      if(!duelCommands.allow())return json(res,429,{error:'Match actions are temporarily limited'},cookie);
+      const data=await body(req,2048);
+      return json(res,200,worldChallenges.command('main',visitor.id,duelRoute[1],duelRoute[2],data),cookie);
     }
     if(req.method==='GET'&&route==='/api/funded-matches'){
       if(!fundedApiEnabled)return json(res,404,{error:'Funded match API disabled'});
@@ -471,9 +511,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : /^\/duel\/duel-[a-f0-9-]{36}$/.test(pathname) ? '/world/duel.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/aae_avatar_kit\/(avatar-manifest\.json|layers\/(body|hair|outfits|accessories)\/[\w-]+\.png)|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|duel.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/aae_avatar_kit\/(avatar-manifest\.json|layers\/(body|hair|outfits|accessories)\/[\w-]+\.png)|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     const {status,code,error:safeMessage}=publicRequestError(error,{production});
