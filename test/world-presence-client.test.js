@@ -5,7 +5,7 @@ import {WorldPresenceClient} from '../web/dist/world/presence-client.js';
 class EventStream {listeners=new Map();closed=false;addEventListener(type,listener){const list=this.listeners.get(type)||[];list.push(listener);this.listeners.set(type,list);}close(){this.closed=true;}emit(type,value){for(const listener of this.listeners.get(type)||[])listener({data:JSON.stringify(value)});}}
 const player=(player_id,x)=>({player_id,display_name:'Watcher 1001',avatar:'visitor_ember',position:{x,y:100},direction:'right',animation_state:'walk',activity:'Exploring',updated_at:'now'});
 const agent=(agent_id,x)=>({...player(`agent:${agent_id}`,x),agent_id,strategy:'analyst',kind:'canonical_agent'});
-function setup({now=()=>1_000,onPlayers=()=>{},onQuickChat=()=>{},fetcher,sleep}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,onQuickChat,now,sleep});return{client,streams,requests};}
+function setup({now=()=>1_000,onPlayers=()=>{},onQuickChat=()=>{},onChallenge=()=>{},fetcher,sleep}={}){const streams=[],requests=[];const request=fetcher||(async(url,init)=>{const body=JSON.parse(init.body);requests.push({url,body,credentials:init.credentials});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};return{ok:true,status:200,json:async()=>({ok:true})};});const client=new WorldPresenceClient({avatar:'visitor_ember',position:{x:100,y:100},fetcher:request,eventSource:()=>{const stream=new EventStream();streams.push(stream);return stream;},onPlayers,onQuickChat,onChallenge,now,sleep});return{client,streams,requests};}
 
 test('client accepts a server-owned identity and never sends browser-chosen IDs or tokens',async()=>{
   const snapshots=[],{client,streams,requests}=setup({onPlayers:value=>snapshots.push(value)});await client.connect();assert.equal(client.player_id,'visitor_server-owned');assert.deepEqual(requests[0].body,{avatar:'visitor_ember',position:{x:100,y:100},direction:'down',activity:'Exploring'});assert.equal(requests[0].credentials,'same-origin');assert.equal(JSON.stringify(requests),JSON.stringify(requests).replace(/session_token/g,'session-token-not-present'));
@@ -99,11 +99,12 @@ test('quick chat sends only a phrase ID and surfaces relayed phrases as ephemera
   const sent=await client.sendQuickChat('follow');
   assert.ok(requests.at(-1).url.endsWith('/presence/quick-chat'));
   assert.deepEqual(requests.at(-1).body,{phrase_id:'follow'},'the browser never sends display text');
-  assert.equal(sent.text,'follow me');
-  streams[0].emit('PlayerQuickChat',{world_id:'main',quick_chat:{player_id:'visitor_other',phrase_id:'arena',text:'arena?',direction:'right',sent_at:'now'}});
+  assert.equal(sent.chat.text,'follow me');
+  assert.equal(sent.challenge,null);
+  streams[0].emit('PlayerQuickChat',{world_id:'main',quick_chat:{player_id:'visitor_other',phrase_id:'rps',text:'rps?',direction:'right',sent_at:'now'}});
   streams[0].emit('PlayerQuickChat',{world_id:'other',quick_chat:{player_id:'visitor_other',phrase_id:'nice',text:'nice one',direction:'left',sent_at:'now'}});
   streams[0].emit('PlayerQuickChat',{world_id:'main',quick_chat:{player_id:'visitor_other',phrase_id:'nice',text:'',direction:'left',sent_at:'now'}});
-  assert.deepEqual(chats.map(value=>value.text),['arena?'],'only a well-formed relay reaches the world layer');
+  assert.deepEqual(chats.map(value=>value.text),['rps?'],'only a well-formed relay reaches the world layer');
   assert.equal(client.snapshot().players.length,1,'quick chat never becomes player state');
   await client.leave();
 });
@@ -112,6 +113,38 @@ test('quick chat fails closed when the server returns text the client cannot tru
   const fetcher=async(url,init)=>{const body=JSON.parse(init.body);if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};if(url.endsWith('/quick-chat'))return{ok:true,status:200,json:async()=>({quick_chat:{player_id:'visitor_server-owned',phrase_id:body.phrase_id,text:'',direction:'down',sent_at:'now'}})};return{ok:true,status:200,json:async()=>({left:true})};};
   const{client}=setup({fetcher});await client.connect();
   await assert.rejects(()=>client.sendQuickChat('follow'),/invalid quick chat response/i);
+  await client.leave();
+});
+
+test('a challenge phrase returns the server invite and accepts without any browser-chosen identity',async()=>{
+  const challenge={challenge_id:'chal-11111111-1111-4111-8111-111111111111',game:'tictactoe',from_player_id:'visitor_server-owned',from_name:'Watcher 1001',to_player_id:'visitor_other',expires_at:'1970-01-01T00:00:16.000Z'};
+  const duelId='duel-22222222-2222-4222-8222-222222222222';
+  const calls=[];
+  const fetcher=async(url,init)=>{const body=JSON.parse(init.body);calls.push({url,body});if(url.endsWith('/join'))return{ok:true,status:201,json:async()=>({world_id:'main',players:[player('visitor_server-owned',100)],agents:[],player:player('visitor_server-owned',100),presence_id:'visitor_server-owned'})};if(url.endsWith('/quick-chat'))return{ok:true,status:200,json:async()=>({quick_chat:{player_id:'visitor_server-owned',phrase_id:'ttt',text:'tic-tac-toe?',direction:'up',sent_at:'now'},challenge})};if(url.endsWith('/accept'))return{ok:true,status:200,json:async()=>({challenge_id:challenge.challenge_id,duel_id:duelId,game:'tictactoe'})};if(url.endsWith('/decline'))return{ok:true,status:200,json:async()=>({declined:true})};if(url.endsWith('/cancel'))return{ok:true,status:200,json:async()=>({cancelled:true})};return{ok:true,status:200,json:async()=>({left:true})};};
+  const{client}=setup({fetcher});await client.connect();
+  const sent=await client.sendQuickChat('ttt');
+  assert.equal(sent.chat.text,'tic-tac-toe?');
+  assert.deepEqual(sent.challenge,challenge);
+  assert.deepEqual(await client.acceptChallenge(challenge.challenge_id),{challenge_id:challenge.challenge_id,duel_id:duelId,game:'tictactoe'});
+  await client.declineChallenge(challenge.challenge_id);
+  await client.cancelChallenge(challenge.challenge_id);
+  assert.deepEqual(calls.filter(value=>value.url.includes('/challenges/')).map(value=>[value.url.split('/').at(-1),value.body]),[['accept',{}],['decline',{}],['cancel',{}]]);
+  assert.ok(calls.every(value=>!value.url.includes('visitor_other')),'the browser never names the other visitor');
+  await client.leave();
+});
+
+test('challenge events are validated, world-scoped and surfaced through one callback',async()=>{
+  const updates=[];const{client,streams}=setup({onChallenge:value=>updates.push(value)});await client.connect();
+  const challenge={challenge_id:'chal-11111111-1111-4111-8111-111111111111',game:'rps',from_player_id:'visitor_other',from_name:'Watcher 1001',to_player_id:'visitor_server-owned',expires_at:'1970-01-01T00:00:16.000Z'};
+  streams[0].emit('PlayerChallenged',{world_id:'main',challenge});
+  streams[0].emit('ChallengeAccepted',{world_id:'main',challenge_id:challenge.challenge_id,duel_id:'duel-22222222-2222-4222-8222-222222222222',game:'rps',from_player_id:'visitor_other',to_player_id:'visitor_server-owned'});
+  streams[0].emit('ChallengeDeclined',{world_id:'main',challenge_id:challenge.challenge_id,by_player_id:'visitor_server-owned'});
+  streams[0].emit('ChallengeCancelled',{world_id:'main',challenge_id:challenge.challenge_id,by_player_id:'visitor_other'});
+  streams[0].emit('ChallengeExpired',{world_id:'main',challenge_id:challenge.challenge_id});
+  streams[0].emit('PlayerChallenged',{world_id:'other',challenge:{...challenge,game:'malformed'}});
+  streams[0].emit('ChallengeAccepted',{world_id:'main',challenge_id:'x',duel_id:'not-a-duel',game:'rps'});
+  assert.deepEqual(updates.map(value=>value.type),['challenged','accepted','declined','cancelled','expired']);
+  assert.equal(updates[0].challenge.game,'rps');
   await client.leave();
 });
 
