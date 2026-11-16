@@ -12,6 +12,16 @@ npm run demo:wallet
 
 `npm test` builds Rust and TypeScript first, so service tests cannot silently skip on a clean clone. The Rust engine tests replay every default 2/4/8/20-agent match, compare serialized bytes, test invalid decisions and atomicity, and reject changed events/winners. Existing JS economy tests remain active.
 
+The production persistence integration suite is intentionally separate and requires a
+disposable Postgres server. It fails clearly when `DATABASE_URL` is missing:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres npm run test:postgres
+```
+
+The suite creates and drops unique databases below that server. Never point it at a
+production or shared database server. CI supplies an isolated Postgres service.
+
 ## Browser check
 
 Run `npm start`. In another terminal start a dedicated Chrome process (macOS example; use your platform's Chrome executable elsewhere):

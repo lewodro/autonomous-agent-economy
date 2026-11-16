@@ -3,6 +3,18 @@ import assert from 'node:assert/strict';
 import { configureRun } from '../src/config.js';
 import { validateState } from '../src/storage.js';
 
+const canonicalJsonb = value => {
+  if (Array.isArray(value)) return value.map(canonicalJsonb);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalJsonb(value[key])]));
+  return value;
+};
+
+test('verified Arena checkpoints survive jsonb object-key canonicalization', async () => {
+  const saved = canonicalJsonb(configureRun({ agents: 20, seed: 78123 }));
+  const restored = await validateState(saved);
+  assert.deepEqual(canonicalJsonb(restored), saved);
+});
+
 test('verified Arena checkpoints migrate only the known legacy agent sprite paths', async () => {
   const saved = configureRun({ agents: 20, seed: 78123 });
   for (const agent of saved.agents) agent.sprite = agent.sprite.replace('assets/agents/', 'assets/sprites-agent/');

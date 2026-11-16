@@ -42,7 +42,14 @@ Services still validate their own record schema before exposing recovered data.
 On the first Postgres boot after this migration, a service looks for its legacy
 JSON record only when no matching database row exists. The importer uses
 `ON CONFLICT DO NOTHING`, so restarts and retries cannot duplicate or replace a
-record already accepted by Postgres. Legacy files are not deleted automatically.
+record already accepted by Postgres. Keyed records also retain their import receipt
+in `durable_state_imports`; retention may delete an old replay or checkpoint without
+letting the still-present legacy file resurrect it. Receipt creation and initial
+insert are one SQL statement, so interrupted imports safely resume. Single-document
+`world_state` stores use their stable row IDs as receipts and import the matching
+legacy farm, world-economy, Arena statistics or treasury document only when that row
+is absent.
+Legacy files are not deleted automatically.
 Back them up, verify database recovery, and remove them only as an explicit operator
 action.
 
@@ -87,3 +94,15 @@ Render may replace it during deploy; durable ownership and history reload from P
 Without `DATABASE_URL`, JSON files remain authoritative and `MATCHES_DIR` must be on a
 persistent disk. File-only production keeps the bootstrap marker guard so an unmarked
 developer directory cannot silently become public data.
+
+## Real Postgres validation
+
+`npm run test:postgres` requires `DATABASE_URL` and deliberately has no JSON fallback.
+It creates isolated temporary databases, starts independent writer and reader Node
+processes with different scratch directories, and verifies durable farm/account state,
+Arena totals and checkpoints, Compound completed history, private experiment ownership,
+treasury events and replay retention. It also proves presence, quick-chat/challenge and
+active Compound state remain ephemeral. A second scenario imports legacy JSON into a
+partially populated database twice and asserts unchanged row counts and domain values.
+CI provisions a disposable Postgres service for this dedicated job; production
+credentials are never used.

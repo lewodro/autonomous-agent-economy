@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test && node scripts/test-mcp-bridge.js",
+    "test:postgres": "node --test scripts/postgres-persistence-ci.js",
     "check": "node scripts/check.js",
     "simulate": "node scripts/simulate.js",
     "verify": "node scripts/verify-audit.js",
