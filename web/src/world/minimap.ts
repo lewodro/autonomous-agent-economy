@@ -9,6 +9,10 @@ const PIXEL_RATIO = 2;
 export interface MinimapFrame {
   player: Position; facing: Facing; markers: ReadonlyArray<MapMarker>; humans: ReadonlyArray<Position>;
 }
+/** Public city names stay visible even when the minimap is rendered compactly. */
+export function visibleMinimapLocationLabels(markers: ReadonlyArray<MapMarker>): MapMarker[] {
+  return markers.filter(marker => marker.kind === 'city' && Boolean(marker.label));
+}
 /**
  * A cached pixel minimap. The terrain layer is painted once; each update only
  * blits that small bitmap and plots a bounded set of markers and nearby people.
@@ -116,19 +120,21 @@ export class WorldMinimap {
     this.canvas.dataset.player = `${Math.round(frame.player.x)},${Math.round(frame.player.y)}`;
     this.canvas.dataset.markers = String(frame.markers.length);
     this.canvas.dataset.outer = String(frame.markers.filter(marker => marker.kind !== 'city').length);
+    const labeledLocations = visibleMinimapLocationLabels(frame.markers);
+    const labeledLocationIds = new Set(labeledLocations.map(marker => marker.id));
+    this.canvas.dataset.locationLabels = labeledLocations.map(marker => marker.label).join(',');
     const c = this.ctx;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, this.canvas.width, this.canvas.height);
     c.drawImage(this.base, 0, 0);
     c.scale(PIXEL_RATIO, PIXEL_RATIO);
     c.imageSmoothingEnabled = false;
-    const compact = this.canvas.clientWidth > 0 && this.canvas.clientWidth < 180;
     for (const human of frame.humans) {
       const point = minimapPoint(human);
       c.fillStyle = '#a7d7c8';
       c.fillRect(Math.round(point.x) - 1, Math.round(point.y) - 1, 2, 2);
     }
-    c.font = '6px ui-monospace, SFMono-Regular, monospace';
+    c.font = 'bold 7px ui-monospace, SFMono-Regular, monospace';
     c.textAlign = 'center';
     for (const marker of frame.markers) {
       const point = minimapPoint(marker.position);
@@ -138,7 +144,7 @@ export class WorldMinimap {
         c.fillRect(x - 2, y - 2, 5, 5);
         c.fillStyle = '#d7b675';
         c.fillRect(x - 1, y - 1, 3, 3);
-        if (!compact && marker.label) {
+        if (labeledLocationIds.has(marker.id)) {
           const [offsetX, offsetY] = marker.labelOffset ?? [0, -4];
           c.fillStyle = '#d8cf9f';
           c.fillText(marker.label, x + offsetX, y + offsetY);

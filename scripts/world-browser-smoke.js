@@ -305,6 +305,8 @@ try{
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open&&document.activeElement?.id==="world-canvas"');
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect();return r.width>0&&r.width<=160})()'),'the desktop local map must stay compact');
+ await wait("document.getElementById('minimap-canvas').dataset.locationLabels?.includes('ARENA')");
+ assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map must keep its public location names');
  assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:928,y:674},'returning from Arena must restore the saved world position');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');

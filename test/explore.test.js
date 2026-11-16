@@ -6,6 +6,7 @@ import {
   discoveryGroups, loadDiscoveries, minimapMarkers, minimapPoint, nearbyHumans,
   parseDiscoveryList, regionAt, regionLabel, saveDiscoveries,
 } from '../web/dist/world/explore.js';
+import { visibleMinimapLocationLabels } from '../web/dist/world/minimap.js';
 
 function memoryStorage(initial = null) {
   const values = new Map();
@@ -87,6 +88,11 @@ test('minimap projection covers the world and hides undiscovered landmarks', () 
   assert.equal(found.filter(marker => marker.kind === 'cave').length, 1);
   assert.equal(found.filter(marker => marker.kind === 'camp').length, 1);
   assert.equal(found.length, CITY_MAP_MARKERS.length + 2);
+});
+
+test('compact minimap keeps public location names visible', () => {
+  const markers = minimapMarkers(new Set());
+  assert.deepEqual(visibleMinimapLocationLabels(markers).map(marker => marker.label), ['ARENA', 'CMPD', 'MKT', 'LAB', 'AGY', 'VLT']);
 });
 
 test('minimap only plots nearby humans and never canonical agents', () => {
