@@ -65,7 +65,7 @@ const privateArenaStarts=new SlidingWindowLimiter({limit:3,windowMs:10*60_000});
 const compoundCommands=new SlidingWindowLimiter({limit:1200,windowMs:60_000});
 const compoundInputs=new SlidingWindowLimiter({limit:12_000,windowMs:60_000});
 const worldEconomyCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
-const arenaCumulativeStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'arena-stats',fileName:'arena-stats.json'});
+const arenaCumulativeStore=new WorldStore({directory:path.join(directory,'world'),databaseUrl:process.env.DATABASE_URL||null,rowId:'arena-stats',fileName:'arena-stats.json',continueAfterWriteFailure:true});
 const arenaCumulative=new ArenaCumulativeStats(arenaCumulativeStore);
 const arenaRooms=new ArenaRoomPool(path.join(directory,'arena'),{onMatch:()=>recordArenaMatches(),collection:durableDatabase.collection('arena-rooms',{directory:path.join(directory,'arena'),maxRecords:4,maxBytes:32_000_000})});
 const arenaSurvival=new ArenaSurvivalService(core,path.join(directory,'arena'),{profiles:()=>arenaRooms.profiles(),onMatch:()=>recordSurvivalMatches(),checkpointTicks:30,collection:durableDatabase.collection('arena-survival',{directory:path.join(directory,'arena'),maxRecords:1,maxBytes:16_000_000})});

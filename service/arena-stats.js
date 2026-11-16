@@ -9,6 +9,7 @@ const SURVIVAL_METRICS = Object.freeze([
 ]);
 
 const count = value => (Number.isFinite(value) ? value : 0);
+const isCount = value => Number.isSafeInteger(value) && value >= 0;
 const emptyGame = () => ({ matches: 0, draws: 0, decisions: 0 });
 const emptyArena = () => ({ matches: 0, wins: 0, losses: 0, draws: 0 });
 const emptyMetrics = () => Object.fromEntries(SURVIVAL_METRICS.map(key => [key, 0]));
@@ -31,7 +32,25 @@ function emptyState() {
 
 function normalize(saved) {
   const state = emptyState();
-  if (!saved || typeof saved !== 'object' || saved.version !== VERSION) return state;
+  if (saved === null || saved === undefined) return state;
+  if (typeof saved !== 'object' || Array.isArray(saved) || saved.version !== VERSION) {
+    throw new Error('Invalid Arena cumulative statistics document');
+  }
+  for (const game of GAME_KEYS) {
+    const source = saved.games?.[game];
+    if (!source || !['matches', 'draws', 'decisions'].every(field => isCount(source[field]))) {
+      throw new Error(`Invalid Arena cumulative ${game} totals`);
+    }
+    if (source.draws > source.matches) throw new Error(`Invalid Arena cumulative ${game} draw total`);
+  }
+  if (!saved.agents || typeof saved.agents !== 'object' || Array.isArray(saved.agents)
+      || !saved.cursors || typeof saved.cursors !== 'object' || Array.isArray(saved.cursors)
+      || !saved.cursors.rooms || typeof saved.cursors.rooms !== 'object' || Array.isArray(saved.cursors.rooms)
+      || !Array.isArray(saved.cursors.survival)
+      || Object.keys(saved.cursors.rooms).length > ROOM_CURSOR_LIMIT
+      || saved.cursors.survival.length > SURVIVAL_CURSOR_LIMIT) {
+    throw new Error('Invalid Arena cumulative statistics indexes');
+  }
   if (typeof saved.updated_at === 'string') state.updated_at = saved.updated_at;
   for (const game of GAME_KEYS) {
     const source = saved.games?.[game];
@@ -39,15 +58,26 @@ function normalize(saved) {
     state.games[game] = { matches: count(source.matches), draws: count(source.draws), decisions: count(source.decisions) };
   }
   for (const [id, source] of Object.entries(saved.agents || {})) {
-    if (!source || typeof source !== 'object') continue;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('Invalid Arena cumulative agent record');
     const agent = emptyAgent(id);
     for (const field of ['name', 'sprite', 'strategy']) if (typeof source[field] === 'string') agent[field] = source[field];
-    for (const field of Object.keys(agent.arena)) agent.arena[field] = count(source.arena?.[field]);
-    for (const field of ['matches', 'wins', 'losses', 'placement_total']) agent.survival[field] = count(source.survival?.[field]);
+    for (const field of Object.keys(agent.arena)) {
+      if (!isCount(source.arena?.[field])) throw new Error('Invalid Arena cumulative agent record');
+      agent.arena[field] = source.arena[field];
+    }
+    if (agent.arena.wins + agent.arena.losses + agent.arena.draws !== agent.arena.matches) throw new Error('Arena cumulative agent record does not reconcile');
+    for (const field of ['matches', 'wins', 'losses', 'placement_total']) {
+      if (!isCount(source.survival?.[field])) throw new Error('Invalid Arena cumulative Survival record');
+      agent.survival[field] = source.survival[field];
+    }
+    if (agent.survival.wins + agent.survival.losses !== agent.survival.matches) throw new Error('Arena cumulative Survival record does not reconcile');
     for (const field of ['latest_final_placement', 'latest_research', 'latest_match_id', 'latest_completed_at']) {
       if (source.survival?.[field] !== undefined) agent.survival[field] = source.survival[field];
     }
-    for (const metric of SURVIVAL_METRICS) agent.survival.metrics[metric] = count(source.survival?.metrics?.[metric]);
+    for (const metric of SURVIVAL_METRICS) {
+      if (!isCount(source.survival?.metrics?.[metric])) throw new Error('Invalid Arena cumulative Survival metrics');
+      agent.survival.metrics[metric] = source.survival.metrics[metric];
+    }
     state.agents[id] = agent;
   }
   for (const [runId, matchId] of Object.entries(saved.cursors?.rooms || {})) {
@@ -80,9 +110,7 @@ export class ArenaCumulativeStats {
   }
 
   async restore() {
-    let saved = null;
-    try { saved = await this.store.load(); }
-    catch (error) { this.logger.error(`Arena cumulative statistics could not be loaded: ${error.message}`); }
+    const saved = await this.store.load();
     this.state = normalize(saved);
     return this.state;
   }
