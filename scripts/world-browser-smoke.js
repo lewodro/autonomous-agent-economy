@@ -62,7 +62,7 @@ try{
  await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
  assert.equal(await evaluate('!!document.querySelector(".world-header a[href=\\"/compound\\"],.world-header a[href=\\"/arena\\"]")'),false,'Arena and Compound must not return as global header buttons');
  assert.ok(await evaluate('(()=>{const text=document.querySelector(".world-legend")?.textContent||"";return text.includes("ARENA")&&text.includes("COMPOUND")})()'),'the world must still show where Arena and Compound are');
- assert.ok(await evaluate('(()=>{const p=document.getElementById("world-minimap"),c=document.getElementById("minimap-canvas"),r=p?.getBoundingClientRect();return !!p&&!!c&&!p.hidden&&r.width>180&&r.right<=1280&&c.width===416&&c.height===300})()'),'desktop minimap must load at a compact size with a cached pixel canvas');
+ assert.ok(await evaluate('(()=>{const p=document.getElementById("world-minimap"),c=document.getElementById("minimap-canvas"),r=p?.getBoundingClientRect();return !!p&&!!c&&!p.hidden&&r.width>120&&r.width<=160&&r.right<=1280&&c.width===416&&c.height===300})()'),'desktop minimap must load at a compact size with a cached pixel canvas');
  assert.equal(await evaluate("document.getElementById('minimap-canvas').dataset.outer"),'0','undiscovered outer landmarks must stay hidden from the minimap');
  assert.ok((await evaluate("document.getElementById('minimap-journal').textContent")).includes('DISCOVERIES 0/'),'fresh visitors start with an empty discovery journal count');
  assert.equal(await evaluate("document.getElementById('minimap-region').textContent"),'CITY CENTER');
@@ -187,13 +187,14 @@ try{
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:base+'/arena'});
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
- assert.equal(await evaluate("document.querySelector('a[href=\"/world\"]')?.getAttribute('href')"),'/world');
+ assert.equal(await evaluate("document.querySelector('a[href=\"/world?return=arena\"]')?.getAttribute('href')"),'/world?return=arena');
  await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
- await send('Page.navigate',{url:base+'/world'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
+ await send('Page.navigate',{url:base+'/world?return=arena'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
  assert.ok(await evaluate("document.querySelector('#character-dialog h2')?.textContent.includes('Step into the live world')"),'a returning visitor still sees the intro');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open&&document.activeElement?.id==="world-canvas"');
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
- assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:560,y:480},'entering from Arena must reset the visitor to the plaza spawn');
+ assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect();return r.width>0&&r.width<=160})()'),'the desktop local map must stay compact');
+ assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:928,y:674},'returning from Arena must restore the saved world position');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
@@ -358,7 +359,7 @@ try{
  assert.deepEqual(await evaluate(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)})?.appearance)`),await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).appearance'),'a refresh keeps the saved appearance');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
- assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect();return r.width<=140&&r.right<=390&&r.left>=0&&c.width>=100&&c.height>50})()'),'mobile minimap stays compact and inside the viewport');
+ assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect();return r.width<=112&&r.right<=390&&r.left>=0&&c.width>=90&&c.height>45})()'),'mobile minimap stays compact and inside the viewport');
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  assert.ok(await evaluate('(()=>{const d=document.getElementById("character-dialog");return d.scrollWidth<=d.clientWidth+1&&document.documentElement.scrollWidth<=390})()'),'the character creator must not overflow a 390px viewport');
  assert.ok(await evaluate('(()=>{const b=document.querySelector("#character-body-swatches button");const r=b.getBoundingClientRect();return r.width>=28&&r.height>=28})()'),'mobile swatches must stay tappable');

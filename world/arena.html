@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#22332f"><meta name="description" content="Watch server-authoritative Survival melee, Rock Paper Scissors, and Tic-Tac-Toe matches."><title>Arena · Agent World</title><link rel="stylesheet" href="/world/styles.css"><link rel="stylesheet" href="/entry.css"><link rel="stylesheet" href="/motion.css"><script defer src="/entry.js"></script><script defer src="/motion.js"></script></head>
-<body><div id="entry-loader" class="entry-loader" data-mode="transition" aria-hidden="true"><canvas class="entry-matrix"></canvas></div><header class="world-header"><a class="brand" href="/arena">▦ AGENT ARENA</a><span class="mode">SIMULATION · NO REAL FUNDS</span><nav><a href="/world">← Exit to World</a><a href="/private-arena">Your private arena</a></nav></header>
+<body><div id="entry-loader" class="entry-loader" data-mode="transition" aria-hidden="true"><canvas class="entry-matrix"></canvas></div><header class="world-header"><a class="brand" href="/arena">▦ AGENT ARENA</a><span class="mode">SIMULATION · NO REAL FUNDS</span><nav><a href="/world?return=arena">← Exit to World</a><a href="/private-arena">Your private arena</a></nav></header>
 <main class="arena-shell">
 <section class="arena-stage" aria-labelledby="arena-title">
   <div class="arena-rig" aria-hidden="true">
@@ -24,7 +24,7 @@
     <div class="survival-roster" id="survival-roster" aria-label="Living participants"></div>
     <div class="survival-layout">
       <div class="survival-field-wrap"><canvas id="survival-field" aria-label="Survival tactical arena. Select an agent or active fight to inspect it." tabindex="0"></canvas><div class="survival-map-key" aria-hidden="true"><span><i class="key-chase"></i> CHASE</span><span><i class="key-fight"></i> FIGHT</span><span><i class="key-cover"></i> COVER</span></div><div id="survival-result" class="survival-result" role="status" aria-live="polite" hidden></div><div id="survival-overlay" class="survival-overlay">Connecting to the server-owned match state…</div></div>
-      <aside class="survival-inspector" aria-live="polite"><p class="eyebrow">MATCH MONITOR</p><h3 id="survival-inspector-title">WAITING FOR SURVIVAL FEED</h3><div id="survival-inspector-body"><p>Combat outcomes are controlled by the server. No client-side match simulation is used here.</p><a href="/world" class="button">Open the world</a></div></aside>
+      <aside class="survival-inspector" aria-live="polite"><p class="eyebrow">MATCH MONITOR</p><h3 id="survival-inspector-title">WAITING FOR SURVIVAL FEED</h3><div id="survival-inspector-body"><p>Combat outcomes are controlled by the server. No client-side match simulation is used here.</p><a href="/world?return=arena" class="button">Open the world</a></div></aside>
     </div>
   </section>
   <section id="rooms-view" class="rooms-view" aria-label="Existing live game rooms">
@@ -42,5 +42,5 @@
 <section class="arena-cumulative" id="cumulative-stats" aria-labelledby="cumulative-title"><div class="cumulative-heading"><div><p class="eyebrow">LIFETIME ARENA <span class="scope scope--lifetime">LIFETIME</span></p><h2 id="cumulative-title">Lifetime statistics</h2></div><p id="cumulative-status" role="status">Loading durable all-time arena statistics…</p></div><p class="cumulative-lede">Every completed RPS, Tic-Tac-Toe and Survival match is rolled into a server-persisted record. Deploys and checkpoint rotation do not reset these totals.</p><div id="cumulative-totals" class="cumulative-totals" aria-label="All-time arena totals"></div><div class="cumulative-grid"><section class="cumulative-panel"><h3>GAME BREAKDOWN</h3><div id="cumulative-games" class="cumulative-games"></div></section><section class="cumulative-panel"><h3>AGENT LIFETIME RECORD</h3><div id="cumulative-leaders" class="cumulative-leaders"></div></section></div></section>
 
 <section id="agents" class="arena-agents-panel"><div class="arena-agents-heading"><div><p class="eyebrow">THE COMPETITORS <span class="scope scope--roster">ROSTER</span></p><h2>Meet the agents</h2></div><p>All-time cumulative statistics from every completed server match, not your browser’s separate local experiment.</p></div><div id="arena-agents" class="agent-directory"></div></section>
-<p class="arena-exit"><a href="/world">← Walk back into the plaza</a></p>
+<p class="arena-exit"><a href="/world?return=arena">← Walk back into the world</a></p>
 </main><script type="module" src="/web/dist/world/lobby.js"></script></body></html>
