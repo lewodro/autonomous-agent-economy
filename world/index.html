@@ -30,12 +30,28 @@
         </div>
       </section>
       <div id="world-region" class="world-region" role="status" aria-live="polite"></div>
+      <div id="quick-chat-bubbles" class="quick-chat__bubbles" aria-live="polite" aria-atomic="false"></div>
+      <div id="quick-chat-prompt" class="quick-chat__prompt" hidden>HOLD E · QUICK CHAT</div>
+      <div id="quick-chat-notice" class="quick-chat__notice" role="status" aria-live="polite" hidden></div>
+      <div id="quick-chat" class="quick-chat" hidden>
+        <div id="quick-chat-wheel" class="quick-chat__wheel" role="group" aria-labelledby="quick-chat-title">
+          <p id="quick-chat-title" class="quick-chat__title">QUICK CHAT</p>
+          <p id="quick-chat-note" class="quick-chat__note">HOLD E · RELEASE TO CANCEL</p>
+          <div class="quick-chat__options">
+            <button type="button" class="quick-chat__option" data-phrase="ttt" data-direction="up" aria-keyshortcuts="ArrowUp"><span class="quick-chat__arrow" aria-hidden="true">↑</span><span class="quick-chat__phrase">run tic-tac-toe?</span></button>
+            <button type="button" class="quick-chat__option" data-phrase="arena" data-direction="right" aria-keyshortcuts="ArrowRight"><span class="quick-chat__arrow" aria-hidden="true">→</span><span class="quick-chat__phrase">arena?</span></button>
+            <button type="button" class="quick-chat__option" data-phrase="follow" data-direction="down" aria-keyshortcuts="ArrowDown"><span class="quick-chat__arrow" aria-hidden="true">↓</span><span class="quick-chat__phrase">follow me</span></button>
+            <button type="button" class="quick-chat__option" data-phrase="nice" data-direction="left" aria-keyshortcuts="ArrowLeft"><span class="quick-chat__arrow" aria-hidden="true">←</span><span class="quick-chat__phrase">nice one</span></button>
+          </div>
+          <button id="quick-chat-cancel" class="quick-chat__cancel" type="button">Cancel · Esc</button>
+        </div>
+      </div>
       <div id="discovery-toast" class="discovery-toast" role="status" aria-live="polite" hidden><span>DISCOVERED</span><strong></strong></div>
       <div id="farm-notices" class="farm-notices" aria-live="polite" aria-label="World notifications"></div>
       <details class="world-legend" aria-label="Landmark directions"><summary>Directions</summary><div class="world-legend__grid"><b>AROUND YOU</b><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span><button type="button" class="world-sheet-close" data-close-legend>Close directions</button></div></details>
       <div id="world-hint" class="world-hint" aria-live="polite">WASD / arrows to walk · E to interact</div>
       <div id="world-live" class="world-live" role="status" aria-label="Live public games" aria-live="polite" hidden></div>
-      <div class="touch-controls"><div id="joystick" class="joystick" aria-label="Touch movement joystick"><span id="joystick-knob"></span></div><button id="interact" class="interact-button" disabled>Interact</button></div>
+      <div class="touch-controls"><div id="joystick" class="joystick" aria-label="Touch movement joystick"><span id="joystick-knob"></span></div><div class="touch-actions"><button id="quick-chat-open" class="quick-chat-open" type="button" hidden aria-label="Quick chat with a nearby visitor">CHAT</button><button id="interact" class="interact-button" disabled>Interact</button></div></div>
     </section>
     <div class="world-footer"><details id="world-help"><summary>Help &amp; project</summary><p class="help-desktop">Click the world to focus. Walk with WASD or arrows and press E near people, buildings, plots, or resources. Valuable materials live beyond the plaza.</p><p class="help-mobile">Use the joystick to walk and tap Interact near people, buildings, plots, or resources. Valuable materials live beyond the plaza.</p><nav class="world-footer__links" aria-label="Project links"><a href="/post/">Build log</a><a href="https://github.com/lewodro/autonomous-agent-economy/tree/main/docs" target="_blank" rel="noreferrer">Docs ↗</a><a href="https://github.com/lewodro/autonomous-agent-economy" target="_blank" rel="noreferrer">GitHub ↗</a></nav></details><details id="world-directory"><summary>Agent directory · keyboard accessible</summary><div id="agent-directory" class="agent-directory"></div></details></div>
     <section id="world-lab" class="lab-panel" hidden aria-label="World developer controls"></section>
