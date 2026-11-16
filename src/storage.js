@@ -4,7 +4,17 @@ import { receiveRevenue, allocateTreasury } from './treasury.js';
 import { startTournament, nextTournamentPair, scoreTournament } from './tournament.js';
 
 export const STORAGE_KEY = 'agent-arena-v1';
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// PostgreSQL jsonb canonicalizes object-key order. Check semantic JSON
+// equality so a verified checkpoint remains replayable after a real database
+// round trip while array/event ordering stays strict.
+const canonical = value => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') return Object.fromEntries(
+    Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])]),
+  );
+  return value;
+};
+const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 export async function validateState(input, { agentOverride = null } = {}) {
   if (!input || input.version !== 1 || ![2, 20].includes(input.agents?.length) || !Array.isArray(input.matches)
       || !Array.isArray(input.events) || input.matches.length > 10000 || input.events.length > 150000

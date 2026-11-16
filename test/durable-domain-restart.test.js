@@ -11,11 +11,12 @@ import { SessionStore } from '../service/session-store.js';
 import { ExperimentStore } from '../service/experiment-store.js';
 
 class MemoryPool {
-  constructor(){this.rows=new Map();}
+  constructor(){this.rows=new Map();this.imports=new Set();}
   async query(sql,params=[]){
     if(sql.startsWith('create table'))return{rows:[]};
     const key=params.length>=2?`${params[0]}:${params[1]}`:null;
     if(sql.startsWith('select state'))return{rows:this.rows.has(key)?[{state:structuredClone(this.rows.get(key))}]:[]};
+    if(sql.startsWith('with receipt')){if(this.imports.has(key))return{rows:[]};this.imports.add(key);if(!this.rows.has(key))this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
     if(sql.startsWith('insert into')){if(sql.includes('do nothing')&&this.rows.has(key))return{rows:[]};this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
     if(sql.startsWith('delete from')){this.rows.delete(key);return{rows:[]};}
     if(sql.startsWith('select record_id')){const prefix=`${params[0]}:`;return{rows:[...this.rows.entries()].filter(([id])=>id.startsWith(prefix)).sort().slice(0,params[1]).map(([id,state])=>({record_id:id.slice(prefix.length),state:structuredClone(state)}))};}

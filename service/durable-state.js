@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const TABLE = 'durable_state';
+const IMPORT_TABLE = 'durable_state_imports';
 const namespacePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const recordPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,191}$/;
 
@@ -48,6 +49,12 @@ export class DurableStateDatabase {
         record_id text not null,
         state jsonb not null,
         updated_at timestamptz not null default now(),
+        primary key (namespace, record_id)
+      )`);
+      await this.pool.query(`create table if not exists ${IMPORT_TABLE} (
+        namespace text not null,
+        record_id text not null,
+        imported_at timestamptz not null default now(),
         primary key (namespace, record_id)
       )`);
     }
@@ -181,7 +188,13 @@ export class DurableStateCollection {
   async insertLegacy(id, state) {
     const json = this.encode(state);
     await this.database.pool.query(
-      `insert into ${TABLE} (namespace, record_id, state, updated_at) values ($1, $2, $3::jsonb, now())
+      `with receipt as (
+         insert into ${IMPORT_TABLE} (namespace, record_id, imported_at) values ($1, $2, now())
+         on conflict (namespace, record_id) do nothing
+         returning namespace, record_id
+       )
+       insert into ${TABLE} (namespace, record_id, state, updated_at)
+       select namespace, record_id, $3::jsonb, now() from receipt
        on conflict (namespace, record_id) do nothing`,
       [this.namespace, id, json],
     );

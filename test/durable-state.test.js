@@ -7,11 +7,12 @@ import { DurableStateDatabase } from '../service/durable-state.js';
 import { ReplayArchive } from '../service/replay-archive.js';
 
 class MemoryPool {
-  constructor(){this.rows=new Map();}
+  constructor(){this.rows=new Map();this.imports=new Set();}
   async query(sql,params=[]){
     if(sql.startsWith('create table'))return{rows:[]};
     const key=params.length>=2?`${params[0]}:${params[1]}`:null;
     if(sql.startsWith('select state'))return{rows:this.rows.has(key)?[{state:structuredClone(this.rows.get(key))}]:[]};
+    if(sql.startsWith('with receipt')){if(this.imports.has(key))return{rows:[]};this.imports.add(key);if(!this.rows.has(key))this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
     if(sql.startsWith('insert into')){if(sql.includes('do nothing')&&this.rows.has(key))return{rows:[]};this.rows.set(key,JSON.parse(params[2]));return{rows:[]};}
     if(sql.startsWith('delete from')){this.rows.delete(key);return{rows:[]};}
     if(sql.startsWith('select record_id')&&sql.includes('pg_column_size')){
@@ -67,6 +68,20 @@ test('legacy JSON import is idempotent and never overwrites a Postgres record',a
     await writeFile(path.join(legacy,'run-1.json'),JSON.stringify({source:'changed-legacy'}));
     await collection.entries();
     assert.deepEqual(await collection.get('run-1'),{source:'postgres'});
+    await database.close();
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('a retained legacy record is not resurrected after its imported row is deleted',async()=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'durable-import-receipt-')),legacy=path.join(directory,'legacy');
+  try{
+    await mkdir(legacy,{recursive:true});
+    await writeFile(path.join(legacy,'run-1.json'),JSON.stringify({source:'legacy'}));
+    const pool=new MemoryPool(),database=new DurableStateDatabase({directory,pool});await database.open();
+    const collection=database.collection('arena',{directory:legacy,legacyIdPattern:/^run-[0-9]+$/});
+    assert.deepEqual(await collection.get('run-1'),{source:'legacy'});
+    await collection.delete('run-1');
+    assert.equal(await collection.get('run-1'),null,'the durable import receipt survives row retention/deletion');
     await database.close();
   }finally{await rm(directory,{recursive:true,force:true});}
 });

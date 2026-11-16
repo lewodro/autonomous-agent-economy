@@ -54,7 +54,24 @@ export class WorldStore {
   async load() {
     if (this.mode === 'postgres') {
       const result = await this.pool.query(`select state from ${TABLE} where id = $1`, [this.rowId]);
-      return result.rows[0]?.state ?? null;
+      if (result.rows[0]) return result.rows[0].state;
+      let legacy;
+      try {
+        legacy = JSON.parse(await readFile(this.file, 'utf8'));
+      } catch (error) {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      }
+      // The row ID is the migration receipt. Concurrent starts and repeated
+      // reconciliation may both observe the legacy file, but only the first
+      // insert wins and an existing Postgres document is never overwritten.
+      await this.pool.query(
+        `insert into ${TABLE} (id, state, updated_at) values ($1, $2::jsonb, now())
+         on conflict (id) do nothing`,
+        [this.rowId, JSON.stringify(legacy)],
+      );
+      const imported = await this.pool.query(`select state from ${TABLE} where id = $1`, [this.rowId]);
+      return imported.rows[0]?.state ?? null;
     }
     try {
       return JSON.parse(await readFile(this.file, 'utf8'));
