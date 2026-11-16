@@ -4,11 +4,12 @@
  * this catalog mirrors it for rendering. A unit test compares both lists.
  */
 export type QuickChatDirection = 'up' | 'right' | 'down' | 'left';
-export interface QuickChatPhrase {id: string; direction: QuickChatDirection; text: string}
+export type QuickChatGame = 'tictactoe' | 'rps';
+export interface QuickChatPhrase {id: string; direction: QuickChatDirection; text: string; challenge?: QuickChatGame}
 
 export const QUICK_CHAT_OPTIONS: ReadonlyArray<QuickChatPhrase> = Object.freeze([
-  {id: 'ttt', direction: 'up', text: 'run tic-tac-toe?'},
-  {id: 'arena', direction: 'right', text: 'arena?'},
+  {id: 'ttt', direction: 'up', text: 'tic-tac-toe?', challenge: 'tictactoe'},
+  {id: 'rps', direction: 'right', text: 'rps?', challenge: 'rps'},
   {id: 'follow', direction: 'down', text: 'follow me'},
   {id: 'nice', direction: 'left', text: 'nice one'},
 ]);
