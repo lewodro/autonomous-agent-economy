@@ -12,11 +12,13 @@ import { HttpArenaGateway, type AgentProfile, type MatchRecord } from './gateway
 import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
-import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceSnapshot } from './presence-client.js';
+import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
+import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, quickChatForDirection, quickChatPhrase, type QuickChatDirection } from './quick-chat.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
+const quickChatRoot=$<HTMLDivElement>('quick-chat'),quickChatWheel=$<HTMLDivElement>('quick-chat-wheel'),quickChatPrompt=$<HTMLDivElement>('quick-chat-prompt'),quickChatNotice=$<HTMLDivElement>('quick-chat-notice'),quickChatBubbles=$<HTMLDivElement>('quick-chat-bubbles'),quickChatOpenButton=$<HTMLButtonElement>('quick-chat-open'),quickChatNote=$('quick-chat-note');
 const settings=loadSettings(),gateway=new HttpArenaGateway();
 // Reloading the world keeps the saved position, and so does returning from a
 // world venue (Arena, Treasury, Compound): each venue persists the visitor on
@@ -30,7 +32,7 @@ const venueReturns=new Set(['arena','treasury','compound']);
 const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
 if(!returningFromVenue&&navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
-const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
+const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas,{holdDelayMs:QUICK_CHAT_HOLD_MS,onHold:openQuickChat,onHoldEnd:closeQuickChatFromHold}),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const minimap=new WorldMinimap($<HTMLCanvasElement>('minimap-canvas'),$<HTMLButtonElement>('minimap-toggle'),$('minimap-body'),$('minimap-region'),$<HTMLButtonElement>('minimap-journal'));
 const discoveries=new Set(loadDiscoveries());
 let currentRegion=regionAt(player.position),discoveryMarkers=minimapMarkers(discoveries);
@@ -45,6 +47,8 @@ const speechLimiter=new SpeechLimiter();
 const thoughtCounts=new Map<string,number>();
 let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
+let quickChatOpen=false,quickChatSending=false,quickChatNoticeTimer=0;
+const quickChatBubbleElements=new Map<string,{element:HTMLDivElement;expiresAt:number;removeAt:number;leaving:boolean}>();
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
 let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,presenceEverConnected=false,presenceStateTimer=0,lastPresenceMoveAt=0,lastPresenceMoveState='';
 let camera=followCamera({...MAP.spawn},player.position,renderer.viewport().width,renderer.viewport().height,100);
@@ -228,7 +232,7 @@ function startPresence():Promise<void> {
   if(!entered||stopped||presenceClient)return Promise.resolve();
   let client:WorldPresenceClient,heartbeatFailures=0;
   client=new WorldPresenceClient({avatar:player.spriteId,appearance:player.appearance??null,position:{...player.position},direction:player.facing,activity:player.activity,
-    onPlayers:syncRemotePlayers,onConnection:state=>{
+    onPlayers:syncRemotePlayers,onQuickChat:receiveQuickChat,onConnection:state=>{
       if(presenceClient!==client)return;
       if(state==='reconnecting'){schedulePresenceReconnectLabel();return;}
       settlePresenceState(state==='closed'?'closed':'connected');
@@ -251,6 +255,137 @@ async function leavePresence():Promise<void> {
   try{await client.leave();}catch{client.close();}
 }
 function resetInput():void {keyboard.reset();touch.reset();moveTarget=null;targetStuckMs=0;}
+/** Closest human inside the server's quick-chat radius, if any. */
+function quickChatNeighbour():{actor:WorldActor;position:{x:number;y:number};distance:number}|null {
+  let best:{actor:WorldActor;position:{x:number;y:number};distance:number}|null=null;
+  for(const remote of remotePlayers.values()){
+    const distance=Math.hypot(remote.actor.position.x-player.position.x,remote.actor.position.y-player.position.y);
+    if(distance<=QUICK_CHAT_RADIUS&&(!best||distance<best.distance))best={actor:remote.actor,position:remote.actor.position,distance};
+  }
+  return best;
+}
+function canQuickChat():boolean {return entered&&!stopped&&!!presenceClient&&presenceState==='connected'&&!dialog.open&&!character.open&&quickChatNeighbour()!==null;}
+function positionQuickChatWheel():void {
+  const rect=canvas.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  const scale=Math.min(1.5,rect.width/400);
+  const x=(player.position.x-camera.x)*scale,y=(player.position.y-camera.y)*scale;
+  const width=quickChatWheel.offsetWidth||300,height=quickChatWheel.offsetHeight||220;
+  quickChatWheel.style.left=`${Math.min(Math.max(8,x-width/2),Math.max(8,rect.width-width-8))}px`;
+  quickChatWheel.style.top=`${Math.min(Math.max(8,y-height-22),Math.max(8,rect.height-height-8))}px`;
+}
+function openQuickChat():boolean {
+  if(quickChatOpen)return true;
+  if(quickChatSending||!canQuickChat())return false;
+  quickChatOpen=true;
+  quickChatNote.textContent=touchFirst?'CHOOSE A PHRASE':'HOLD E · RELEASE TO CANCEL';
+  for(const option of quickChatWheel.querySelectorAll<HTMLButtonElement>('.quick-chat__option'))option.disabled=false;
+  quickChatRoot.hidden=false;quickChatRoot.setAttribute('aria-hidden','false');
+  positionQuickChatWheel();
+  quickChatWheel.querySelector<HTMLButtonElement>('.quick-chat__option')?.focus({preventScroll:true});
+  return true;
+}
+function closeQuickChat(restoreFocus=true):void {
+  if(!quickChatOpen)return;
+  quickChatOpen=false;
+  quickChatRoot.hidden=true;quickChatRoot.setAttribute('aria-hidden','true');
+  for(const option of quickChatWheel.querySelectorAll<HTMLButtonElement>('.quick-chat__option'))option.classList.remove('is-selected');
+  if(restoreFocus&&entered&&!stopped&&!dialog.open&&!character.open)canvas.focus({preventScroll:true});
+}
+/** Releasing a held E without a direction cancels the selector. */
+function closeQuickChatFromHold():void {if(quickChatOpen)closeQuickChat();}
+function flashQuickChatNotice(message:string):void {
+  if(quickChatNoticeTimer)window.clearTimeout(quickChatNoticeTimer);
+  quickChatNotice.textContent=message;quickChatNotice.hidden=false;
+  quickChatNoticeTimer=window.setTimeout(()=>{quickChatNotice.hidden=true;quickChatNoticeTimer=0;},1_500);
+}
+function quickChatName(playerId:string,own:boolean):string {
+  if(own)return 'YOU';
+  return (remotePlayers.get(`presence:${playerId}`)?.actor.name||'VISITOR').toUpperCase();
+}
+function positionQuickChatBubble(element:HTMLDivElement,position:{x:number;y:number}):void {
+  const rect=canvas.getBoundingClientRect();
+  const scale=Math.min(1.5,rect.width/400);
+  element.style.left=`${(position.x-camera.x)*scale}px`;
+  element.style.top=`${(position.y-camera.y)*scale-48}px`;
+}
+function showQuickChatBubble(chat:PresenceQuickChat,position:{x:number;y:number},own:boolean):void {
+  const current=quickChatBubbleElements.get(chat.player_id);
+  if(current){current.element.remove();quickChatBubbleElements.delete(chat.player_id);}
+  const element=document.createElement('div');element.className='quick-chat__bubble';
+  const author=document.createElement('b');author.textContent=quickChatName(chat.player_id,own);
+  const phrase=document.createElement('span');phrase.textContent=chat.text;
+  element.append(author,phrase);quickChatBubbles.append(element);positionQuickChatBubble(element,position);
+  const now=performance.now();
+  quickChatBubbleElements.set(chat.player_id,{element,expiresAt:now+QUICK_CHAT_BUBBLE_MS,removeAt:now+QUICK_CHAT_BUBBLE_MS+QUICK_CHAT_BUBBLE_EXIT_MS,leaving:false});
+  requestAnimationFrame(()=>element.classList.add('is-visible'));
+}
+/** Nearby humans only: the server relays to the world, the client keeps it local. */
+function receiveQuickChat(chat:PresenceQuickChat):void {
+  if(stopped)return;
+  const own=chat.player_id===presenceClient?.player_id;
+  const position=own?player.position:remotePlayers.get(`presence:${chat.player_id}`)?.actor.position;
+  if(!position)return;
+  if(!own&&Math.hypot(position.x-player.position.x,position.y-player.position.y)>QUICK_CHAT_VISIBLE_RADIUS)return;
+  showQuickChatBubble(chat,position,own);
+}
+async function sendQuickChatPhrase(phraseId:string):Promise<void> {
+  const client=presenceClient,phrase=quickChatPhrase(phraseId);
+  if(!client||!phrase||quickChatSending)return;
+  quickChatSending=true;
+  const option=quickChatWheel.querySelector<HTMLButtonElement>(`.quick-chat__option[data-phrase="${phraseId}"]`);
+  option?.classList.add('is-selected');
+  for(const button of quickChatWheel.querySelectorAll<HTMLButtonElement>('.quick-chat__option'))button.disabled=true;
+  // Let the chosen direction flash once, then get out of the way.
+  if(reducedMotion)closeQuickChat();else window.setTimeout(()=>closeQuickChat(),120);
+  try{showQuickChatBubble(await client.sendQuickChat(phraseId),player.position,true);}
+  catch(error){
+    const code=typeof error==='object'&&error&&'code'in error?String((error as{code:unknown}).code):'';
+    flashQuickChatNotice(code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':'QUICK CHAT UNAVAILABLE');
+  }finally{quickChatSending=false;}
+}
+function quickChatDirectionFromKey(key:string):QuickChatDirection|undefined {
+  switch(key.toLowerCase()){
+    case 'arrowup':case 'w':return 'up';
+    case 'arrowright':case 'd':return 'right';
+    case 'arrowdown':case 's':return 'down';
+    case 'arrowleft':case 'a':return 'left';
+    default:return undefined;
+  }
+}
+function updateQuickChat(time:number):void {
+  const available=canQuickChat();
+  quickChatPrompt.hidden=!available;quickChatOpenButton.hidden=!available;
+  if(quickChatOpen){
+    if(!available)closeQuickChat(false);
+    else positionQuickChatWheel();
+  }
+  for(const [playerId,bubble] of quickChatBubbleElements){
+    const position=playerId===presenceClient?.player_id?player.position:remotePlayers.get(`presence:${playerId}`)?.actor.position;
+    if(!position){bubble.element.remove();quickChatBubbleElements.delete(playerId);continue;}
+    positionQuickChatBubble(bubble.element,position);
+    if(!bubble.leaving&&time>=bubble.expiresAt){bubble.leaving=true;bubble.element.classList.remove('is-visible');bubble.element.classList.add('is-leaving');}
+    if(time>=bubble.removeAt){bubble.element.remove();quickChatBubbleElements.delete(playerId);}
+  }
+}
+quickChatWheel.addEventListener('click',event=>{
+  if(!(event.target instanceof Element))return;
+  const option=event.target.closest<HTMLButtonElement>('.quick-chat__option');
+  const phraseId=option?.dataset.phrase;
+  if(phraseId)void sendQuickChatPhrase(phraseId);
+});
+$('quick-chat-cancel').addEventListener('click',()=>closeQuickChat());
+quickChatRoot.addEventListener('pointerdown',event=>{if(event.target===quickChatRoot)closeQuickChat();});
+quickChatOpenButton.addEventListener('click',()=>{openQuickChat();});
+window.addEventListener('keydown',event=>{
+  if(!quickChatOpen)return;
+  if(event.key==='Escape'){event.preventDefault();closeQuickChat();return;}
+  const direction=quickChatDirectionFromKey(event.key);
+  if(!direction)return;
+  event.preventDefault();
+  const phrase=quickChatForDirection(direction);
+  if(phrase)void sendQuickChatPhrase(phrase.id);
+});
 function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
 dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
@@ -584,7 +719,7 @@ function portal():void {
   setTimeout(()=>location.assign('/arena'),matchMedia('(prefers-reduced-motion: reduce)').matches?0:220);
 }
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
-  if(!target||dialog.open||character.open)return;
+  if(!target||dialog.open||character.open||quickChatOpen)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
   if(target.type==='arena')portal();else if(target.type==='agent'){
     const actor=npcs.find(npc=>npc.agentId===target.id);
@@ -806,14 +941,18 @@ updateDiscoverySummary();
 syncRegion(false);
 character.addEventListener('cancel',event=>{if(!entered)event.preventDefault();});
 $('interaction-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{
-  resetInput();
+  // The frame loop already resets input while the dialog is open. Resetting
+  // again from this (asynchronous) close event would swallow a key press made
+  // between the dialog closing and the event arriving.
   requestAnimationFrame(()=>{
     const active=document.activeElement;
     if(!dialog.open&&(active===document.body||active===document.documentElement||dialog.contains(active)))canvas.focus();
   });
 });
 character.addEventListener('close',()=>{
-  resetInput();
+  // Same reasoning as the interaction dialog: the frame loop owns input resets
+  // while the setup dialog is open, so a late close event must not clear a
+  // fresh key press.
   requestAnimationFrame(()=>{
     if(!character.open&&(restoreWorldFocus||document.activeElement===document.body))canvas.focus();
     restoreWorldFocus=false;
@@ -884,7 +1023,7 @@ function farmGuide():{target:{x:number;y:number};label:string}|null{
 function frame(time:number):void {
   const dt=Math.min(.1,(time-previous)/1000);previous=time;
   const k=keyboard.read(),t=touch.read();
-  if(entered&&!dialog.open&&!character.open&&!document.hidden){
+  if(entered&&!dialog.open&&!character.open&&!quickChatOpen&&!document.hidden){
     const input=normalizeInput(k.x+t.x,k.y+t.y,k.interact||t.interact);
     if(input.x||input.y){moveTarget=null;targetStuckMs=0;}
     if(input.x||input.y||!moveTarget)moveActor(player,input,dt,150,WALLS);
@@ -917,7 +1056,7 @@ function frame(time:number):void {
     if(input.interact)void interact();
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
     if(time-lastSave>3000){persist();lastSave=time;}
-  }else{resetInput();player.movementState='idle';}
+  }else{player.movementState='idle';if(!entered||dialog.open||character.open)resetInput();}
   if(entered&&presenceClient&&time-lastPresenceMoveAt>=80){
     const state=`${player.position.x},${player.position.y},${player.facing},${player.movementState}`;
     if(state!==lastPresenceMoveState){
@@ -942,6 +1081,7 @@ function frame(time:number):void {
     humans:nearbyHumans(player.position,[...remotePlayers.values()].map(remote=>remote.actor.position)),
   },time);
   camera=followCamera(camera,player.position,renderer.viewport().width,renderer.viewport().height,dt);
+  updateQuickChat(time);
   const interpolation=1-Math.exp(-14*Math.max(0,dt));
   for(const remote of remotePlayers.values()){
     remote.actor.position.x+=(remote.target.x-remote.actor.position.x)*interpolation;
