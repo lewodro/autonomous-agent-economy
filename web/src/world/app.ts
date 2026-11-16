@@ -12,13 +12,15 @@ import { HttpArenaGateway, type AgentProfile, type MatchRecord } from './gateway
 import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
-import { WorldPresenceClient, type PresenceAgent, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
+import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type PresenceChallengeAccepted, type PresenceChallengeUpdate, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, quickChatForDirection, quickChatPhrase, type QuickChatDirection } from './quick-chat.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
 const quickChatRoot=$<HTMLDivElement>('quick-chat'),quickChatWheel=$<HTMLDivElement>('quick-chat-wheel'),quickChatPrompt=$<HTMLDivElement>('quick-chat-prompt'),quickChatNotice=$<HTMLDivElement>('quick-chat-notice'),quickChatBubbles=$<HTMLDivElement>('quick-chat-bubbles'),quickChatOpenButton=$<HTMLButtonElement>('quick-chat-open'),quickChatNote=$('quick-chat-note');
+const challengePrompt=$<HTMLDivElement>('challenge-prompt'),challengeFrom=$<HTMLElement>('challenge-from'),challengeGame=$<HTMLElement>('challenge-game'),challengeAccept=$<HTMLButtonElement>('challenge-accept'),challengeDecline=$<HTMLButtonElement>('challenge-decline'),challengeTimerBar=$<HTMLElement>('challenge-timer'),challengeOutgoing=$<HTMLDivElement>('challenge-outgoing'),challengeOutgoingText=$<HTMLElement>('challenge-outgoing-text'),challengeNotice=$<HTMLDivElement>('challenge-notice');
+const challengeTimerFill=challengeTimerBar.querySelector<HTMLElement>('i')!;
 const settings=loadSettings(),gateway=new HttpArenaGateway();
 // Reloading the world keeps the saved position, and so does returning from a
 // world venue (Arena, Treasury, Compound): each venue persists the visitor on
@@ -28,8 +30,8 @@ const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNav
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
 const returnTarget=new URLSearchParams(location.search).get('return');
-const venueReturns=new Set(['arena','treasury','compound']);
-const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
+const venueReturns=new Set(['arena','treasury','compound','duel']);
+const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound','/duel'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
 if(!returningFromVenue&&navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas,{holdDelayMs:QUICK_CHAT_HOLD_MS,onHold:openQuickChat,onHoldEnd:closeQuickChatFromHold}),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
@@ -49,6 +51,9 @@ let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
 let quickChatOpen=false,quickChatSending=false,quickChatNoticeTimer=0;
 const quickChatBubbleElements=new Map<string,{element:HTMLDivElement;expiresAt:number;removeAt:number;leaving:boolean}>();
+let incomingChallenge:PresenceChallenge|null=null,incomingChallengeTimer=0;
+let outgoingChallenge:PresenceChallenge|null=null,outgoingChallengeTimer=0,challengeNoticeTimer=0;
+let challengeBusy=false,duelNavigating=false;
 let presenceClient:WorldPresenceClient|undefined,presenceState:'idle'|'connecting'|'connected'|'reconnecting'|'closed'='idle';
 let presenceHeartbeat=0,presenceReconnect=0,presenceConnecting=false,presenceEverConnected=false,presenceStateTimer=0,lastPresenceMoveAt=0,lastPresenceMoveState='';
 let camera=followCamera({...MAP.spawn},player.position,renderer.viewport().width,renderer.viewport().height,100);
@@ -232,7 +237,7 @@ function startPresence():Promise<void> {
   if(!entered||stopped||presenceClient)return Promise.resolve();
   let client:WorldPresenceClient,heartbeatFailures=0;
   client=new WorldPresenceClient({avatar:player.spriteId,appearance:player.appearance??null,position:{...player.position},direction:player.facing,activity:player.activity,
-    onPlayers:syncRemotePlayers,onQuickChat:receiveQuickChat,onConnection:state=>{
+    onPlayers:syncRemotePlayers,onQuickChat:receiveQuickChat,onChallenge:receiveChallengeUpdate,onConnection:state=>{
       if(presenceClient!==client)return;
       if(state==='reconnecting'){schedulePresenceReconnectLabel();return;}
       settlePresenceState(state==='closed'?'closed':'connected');
@@ -329,6 +334,117 @@ function receiveQuickChat(chat:PresenceQuickChat):void {
   if(!own&&Math.hypot(position.x-player.position.x,position.y-player.position.y)>QUICK_CHAT_VISIBLE_RADIUS)return;
   showQuickChatBubble(chat,position,own);
 }
+const CHALLENGE_GAME_LABELS:Record<PresenceChallenge['game'],string>={tictactoe:'TIC-TAC-TOE',rps:'ROCK PAPER SCISSORS'};
+function challengeRemainingMs(challenge:PresenceChallenge):number {
+  const until=Date.parse(challenge.expires_at);
+  return Number.isFinite(until)?Math.max(0,until-Date.now()):0;
+}
+function flashChallengeNotice(message:string):void {
+  if(challengeNoticeTimer)window.clearTimeout(challengeNoticeTimer);
+  challengeNotice.textContent=message;challengeNotice.hidden=false;
+  challengeNoticeTimer=window.setTimeout(()=>{challengeNotice.hidden=true;challengeNoticeTimer=0;},1_800);
+}
+function clearIncomingChallenge():void {
+  if(incomingChallengeTimer){window.clearTimeout(incomingChallengeTimer);incomingChallengeTimer=0;}
+  incomingChallenge=null;
+  challengePrompt.hidden=true;challengePrompt.classList.remove('is-leaving');
+  challengeAccept.disabled=false;challengeDecline.disabled=false;
+}
+/** A compact HUD card; movement input stays live while the invite drains. */
+function startIncomingChallenge(challenge:PresenceChallenge):void {
+  clearIncomingChallenge();
+  incomingChallenge=challenge;
+  challengeFrom.textContent=challenge.from_name.toUpperCase();
+  challengeGame.textContent=CHALLENGE_GAME_LABELS[challenge.game];
+  challengePrompt.hidden=false;challengePrompt.classList.remove('is-leaving');
+  challengeTimerBar.style.setProperty('--challenge-ttl',`${Math.max(800,challengeRemainingMs(challenge))}ms`);
+  // Restart the draining bar even when a new invite reuses the same card.
+  challengeTimerFill.style.animation='none';void challengeTimerFill.offsetWidth;challengeTimerFill.style.animation='';
+  const remain=challengeRemainingMs(challenge);
+  incomingChallengeTimer=window.setTimeout(()=>{
+    if(incomingChallenge?.challenge_id!==challenge.challenge_id)return;
+    clearIncomingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');
+  },remain+80);
+}
+function clearOutgoingChallenge():void {
+  if(outgoingChallengeTimer){window.clearTimeout(outgoingChallengeTimer);outgoingChallengeTimer=0;}
+  outgoingChallenge=null;challengeOutgoing.hidden=true;delete challengeOutgoing.dataset.challengeId;
+}
+function showOutgoingChallenge(challenge:PresenceChallenge):void {
+  clearOutgoingChallenge();
+  outgoingChallenge=challenge;
+  challengeOutgoing.dataset.challengeId=challenge.challenge_id;
+  challengeOutgoingText.textContent=`CHALLENGE SENT · ${CHALLENGE_GAME_LABELS[challenge.game]}`;
+  challengeOutgoing.hidden=false;
+  const remain=challengeRemainingMs(challenge);
+  outgoingChallengeTimer=window.setTimeout(()=>{
+    if(outgoingChallenge?.challenge_id!==challenge.challenge_id)return;
+    clearOutgoingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');
+  },remain+80);
+}
+/** Each browser persists its own position before the shared match page opens. */
+function leaveForDuel(duelId:string):void {
+  if(duelNavigating)return;
+  duelNavigating=true;challengeBusy=true;
+  clearIncomingChallenge();clearOutgoingChallenge();
+  persist();resetInput();void leavePresence();
+  document.body.classList.add('leaving');
+  const target=`/duel/${encodeURIComponent(duelId)}`;
+  window.setTimeout(()=>location.assign(target),reducedMotion?0:220);
+}
+async function acceptIncomingChallenge():Promise<void> {
+  const challenge=incomingChallenge,client=presenceClient;
+  if(!challenge||!client||challengeBusy||duelNavigating)return;
+  challengeBusy=true;challengeAccept.disabled=true;challengeDecline.disabled=true;
+  try{
+    const accepted:PresenceChallengeAccepted=await client.acceptChallenge(challenge.challenge_id);
+    clearIncomingChallenge();
+    leaveForDuel(accepted.duel_id);
+  }catch(error){
+    challengeBusy=false;challengeAccept.disabled=false;challengeDecline.disabled=false;
+    const code=typeof error==='object'&&error&&'code'in error?String((error as{code:unknown}).code):'';
+    flashChallengeNotice(code==='CHALLENGER_LEFT'?'CHALLENGER LEFT':code==='CHALLENGE_EXPIRED'||code==='CHALLENGE_NOT_FOUND'?'CHALLENGE EXPIRED':code==='NOT_NEARBY'?'MOVE CLOSER TO ACCEPT':code==='CHALLENGE_BUSY'?'ALREADY IN A MATCH':'COULD NOT ACCEPT');
+    if(code==='CHALLENGER_LEFT'||code==='CHALLENGE_EXPIRED'||code==='CHALLENGE_NOT_FOUND'||code==='CHALLENGE_NOT_YOURS')clearIncomingChallenge();
+  }
+}
+async function declineIncomingChallenge():Promise<void> {
+  const challenge=incomingChallenge,client=presenceClient;
+  if(!challenge||!client||challengeBusy)return;
+  challengeBusy=true;challengeAccept.disabled=true;challengeDecline.disabled=true;
+  try{await client.declineChallenge(challenge.challenge_id);}
+  catch{/* An invite that expired mid-click is already gone. */}
+  finally{challengeBusy=false;clearIncomingChallenge();flashChallengeNotice('CHALLENGE DECLINED');}
+}
+function receiveChallengeUpdate(update:PresenceChallengeUpdate):void {
+  if(stopped||duelNavigating)return;
+  if(update.type==='challenged'){
+    if(challengeBusy)return;
+    if(update.challenge.to_player_id!==presenceClient?.player_id)return;
+    startIncomingChallenge(update.challenge);
+    return;
+  }
+  if(update.type==='accepted'){
+    const accepted=update.accepted;
+    if(outgoingChallenge?.challenge_id===accepted.challenge_id)clearOutgoingChallenge();
+    if(incomingChallenge?.challenge_id===accepted.challenge_id)clearIncomingChallenge();
+    const own=accepted.from_player_id===presenceClient?.player_id||accepted.to_player_id===presenceClient?.player_id;
+    if(own)leaveForDuel(accepted.duel_id);
+    return;
+  }
+  if(update.type==='declined'){
+    if(outgoingChallenge?.challenge_id===update.declined.challenge_id){clearOutgoingChallenge();flashChallengeNotice('CHALLENGE DECLINED');}
+    return;
+  }
+  if(update.type==='cancelled'){
+    if(outgoingChallenge?.challenge_id===update.cancelled.challenge_id){clearOutgoingChallenge();flashChallengeNotice('CHALLENGE CANCELLED');}
+    if(incomingChallenge?.challenge_id===update.cancelled.challenge_id){clearIncomingChallenge();flashChallengeNotice('CHALLENGE CANCELLED');}
+    return;
+  }
+  if(update.type==='expired'){
+    if(outgoingChallenge?.challenge_id===update.challenge_id){clearOutgoingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');}
+    if(incomingChallenge?.challenge_id===update.challenge_id){clearIncomingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');}
+  }
+}
 async function sendQuickChatPhrase(phraseId:string):Promise<void> {
   const client=presenceClient,phrase=quickChatPhrase(phraseId);
   if(!client||!phrase||quickChatSending)return;
@@ -338,10 +454,15 @@ async function sendQuickChatPhrase(phraseId:string):Promise<void> {
   for(const button of quickChatWheel.querySelectorAll<HTMLButtonElement>('.quick-chat__option'))button.disabled=true;
   // Let the chosen direction flash once, then get out of the way.
   if(reducedMotion)closeQuickChat();else window.setTimeout(()=>closeQuickChat(),120);
-  try{showQuickChatBubble(await client.sendQuickChat(phraseId),player.position,true);}
+  try{
+    const result=await client.sendQuickChat(phraseId);
+    showQuickChatBubble(result.chat,player.position,true);
+    if(result.challenge)showOutgoingChallenge(result.challenge);
+  }
   catch(error){
     const code=typeof error==='object'&&error&&'code'in error?String((error as{code:unknown}).code):'';
-    flashQuickChatNotice(code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':'QUICK CHAT UNAVAILABLE');
+    const message=code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':code==='CHALLENGE_RATE_LIMITED'?'CHALLENGE COOLDOWN':code==='CHALLENGE_BUSY'?'ALREADY CHALLENGED':'QUICK CHAT UNAVAILABLE';
+    if(phrase.challenge)flashChallengeNotice(message);else flashQuickChatNotice(message);
   }finally{quickChatSending=false;}
 }
 function quickChatDirectionFromKey(key:string):QuickChatDirection|undefined {
@@ -375,6 +496,8 @@ quickChatWheel.addEventListener('click',event=>{
   if(phraseId)void sendQuickChatPhrase(phraseId);
 });
 $('quick-chat-cancel').addEventListener('click',()=>closeQuickChat());
+challengeAccept.addEventListener('click',()=>{void acceptIncomingChallenge();});
+challengeDecline.addEventListener('click',()=>{void declineIncomingChallenge();});
 quickChatRoot.addEventListener('pointerdown',event=>{if(event.target===quickChatRoot)closeQuickChat();});
 quickChatOpenButton.addEventListener('click',()=>{openQuickChat();});
 window.addEventListener('keydown',event=>{
