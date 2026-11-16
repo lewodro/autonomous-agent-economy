@@ -100,6 +100,24 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
     assert.equal(movementEvent.type, 'PlayerMoved');
     assert.deepEqual(movementEvent.data.player.position, { x: 135, y: 100 });
 
+    const quickChat = await request('/api/worlds/main/presence/quick-chat', { phrase_id: 'follow' }, alice.cookie);
+    assert.equal(quickChat.status, 200);
+    assert.equal(quickChat.data.quick_chat.text, 'follow me');
+    assert.equal(quickChat.data.quick_chat.player_id, aliceId);
+    const quickChatEvent = await nextEventOf(aliceEvents, 'PlayerQuickChat');
+    assert.equal(quickChatEvent.data.quick_chat.text, 'follow me');
+    assert.equal(quickChatEvent.data.quick_chat.phrase_id, 'follow');
+    const quickChatSpam = await request('/api/worlds/main/presence/quick-chat', { phrase_id: 'nice' }, alice.cookie);
+    assert.equal(quickChatSpam.status, 429);
+    assert.equal(quickChatSpam.data.code, 'QUICK_CHAT_RATE_LIMITED');
+    const arbitraryText = await request('/api/worlds/main/presence/quick-chat', { text: 'free text chat' }, alice.cookie);
+    assert.equal(arbitraryText.status, 400);
+    assert.equal(arbitraryText.data.code, 'INVALID_QUICK_CHAT');
+    const unknownPhrase = await request('/api/worlds/main/presence/quick-chat', { phrase_id: 'trade-sol' }, alice.cookie);
+    assert.equal(unknownPhrase.status, 400);
+    assert.equal(unknownPhrase.data.code, 'INVALID_QUICK_CHAT');
+    assert.equal('quick_chat' in (await request('/api/worlds/main/presence')).data, false, 'quick chats are never snapshotted');
+
     const reconnected = await request('/api/worlds/main/presence/join', { position: { x: 900, y: 100 } },bob.cookie);
     assert.deepEqual(reconnected.data.player.position, { x: 135, y: 100 });
     const updateEvent = await nextEventOf(aliceEvents,'PlayerUpdated');
@@ -113,6 +131,9 @@ test('presence HTTP snapshots and SSE stay consistent across two visitors and re
     assert.equal(leaveEvent.type, 'PlayerLeft');
     assert.equal(leaveEvent.data.player_id, bobId);
     assert.deepEqual((await request('/api/worlds/main/presence')).data.players.map(player => player.player_id), [aliceId]);
+    const lonelyQuickChat = await request('/api/worlds/main/presence/quick-chat', { phrase_id: 'nice' }, alice.cookie);
+    assert.equal(lonelyQuickChat.status, 409);
+    assert.equal(lonelyQuickChat.data.code, 'NO_NEARBY_HUMAN');
   } finally {
     for (const controller of controllers) controller.abort();
     if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }

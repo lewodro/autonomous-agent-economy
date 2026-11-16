@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {WorldPresenceService,WORLD_PLAYABLE_BOUNDS} from '../service/world-presence.js';
+import {QUICK_CHAT_COOLDOWN_MS,QUICK_CHAT_PHRASES,QUICK_CHAT_RADIUS} from '../service/quick-chat.js';
+import {QUICK_CHAT_OPTIONS,QUICK_CHAT_RADIUS as CLIENT_QUICK_CHAT_RADIUS} from '../web/dist/world/quick-chat.js';
 import {MAP} from '../web/dist/world/map.js';
 
 const alice='11111111-1111-4111-8111-111111111111',bob='22222222-2222-4222-8222-222222222222';
@@ -94,4 +96,45 @@ test('SSE sends one shared snapshot and ordered movement deltas to every viewer'
 test('presence capacity is bounded and health exposes counts without identities',()=>{
   const service=serviceAt({maxPlayers:2,maxViewers:1});service.join('main',alice);service.join('main',bob);assert.throws(()=>service.join('main','33333333-3333-4333-8333-333333333333'),{code:'WORLD_FULL'});
   assert.deepEqual(service.health(),{status:'ok',mode:'single_process_authoritative',configured_worlds:1,active_players:2,active_agents:0,event_streams:0,limits:{players_per_world:2,event_streams_per_world:1}});
+});
+
+test('quick chat vocabulary is identical on the server and in the client selector',()=>{
+  assert.deepEqual(
+    QUICK_CHAT_OPTIONS.map(option=>[option.id,option.direction,option.text]),
+    Object.entries(QUICK_CHAT_PHRASES).map(([id,phrase])=>[id,phrase.direction,phrase.text]),
+  );
+  assert.equal(QUICK_CHAT_COOLDOWN_MS,1_500);
+  assert.equal(CLIENT_QUICK_CHAT_RADIUS,QUICK_CHAT_RADIUS);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.id),['ttt','arena','follow','nice']);
+});
+
+test('quick chat relays an allowlisted phrase to nearby humans with a cooldown',()=>{
+  let now=1_000;const service=serviceAt({now:()=>now,quickChatCooldownMs:1_000});
+  const events=[],emit=service.emit.bind(service);service.emit=(worldId,type,payload)=>{events.push({type,...payload});emit(worldId,type,payload);};
+  const owner=service.join('main',alice,{position:{x:100,y:100}});
+  service.join('main',bob,{position:{x:300,y:100}});
+  // Free text, unknown IDs and extra fields never reach the relay.
+  assert.throws(()=>service.quickChat('main',alice,{text:'free text'}),{code:'INVALID_QUICK_CHAT'});
+  assert.throws(()=>service.quickChat('main',alice,{phrase_id:'trade-sol'}),{code:'INVALID_QUICK_CHAT'});
+  assert.throws(()=>service.quickChat('main',alice,{phrase_id:'ttt',text:'free text'}),{code:'INVALID_QUICK_CHAT'});
+  assert.throws(()=>service.quickChat('main',alice,[]),{code:'INVALID_QUICK_CHAT'});
+  const sent=service.quickChat('main',alice,{phrase_id:'ttt'});
+  assert.deepEqual(sent.quick_chat,{player_id:owner.player.player_id,phrase_id:'ttt',text:'run tic-tac-toe?',direction:'up',sent_at:new Date(now).toISOString()});
+  const event=events.find(value=>value.type==='PlayerQuickChat');
+  assert.deepEqual(event.quick_chat,sent.quick_chat);
+  assert.equal('lastQuickChatAt' in service.snapshot('main').players[0],false,'the cooldown clock is private');
+  now+=400;
+  assert.throws(()=>service.quickChat('main',alice,{phrase_id:'nice'}),{code:'QUICK_CHAT_RATE_LIMITED'});
+  now+=600;
+  assert.equal(service.quickChat('main',alice,{phrase_id:'nice'}).quick_chat.text,'nice one');
+});
+
+test('quick chat requires a visitor-owned player and another human in range',()=>{
+  const service=serviceAt({now:()=>5_000});
+  service.join('main',alice,{position:{x:100,y:100}});
+  assert.throws(()=>service.quickChat('main',alice,{phrase_id:'follow'}),{code:'NO_NEARBY_HUMAN'});
+  service.join('main',bob,{position:{x:100+QUICK_CHAT_RADIUS+1,y:100}});
+  assert.throws(()=>service.quickChat('main',alice,{phrase_id:'follow'}),{code:'NO_NEARBY_HUMAN'});
+  assert.throws(()=>service.quickChat('main','33333333-3333-4333-8333-333333333333',{phrase_id:'follow'}),{code:'PLAYER_NOT_FOUND'});
+  assert.throws(()=>service.quickChat('other',alice,{phrase_id:'follow'}),{code:'WORLD_NOT_FOUND'});
 });
