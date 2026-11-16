@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#142620">
+  <meta name="description" content="A private Tic-Tac-Toe or Rock Paper Scissors match between two visitors of the shared world.">
+  <title>Shared match · Agent World</title>
+  <link rel="stylesheet" href="/world/styles.css">
+</head>
+<body class="duel-page">
+  <main class="duel-shell">
+    <header class="duel-head">
+      <h1 id="duel-title">SHARED MATCH</h1>
+      <a href="/world?return=duel">← Return to world</a>
+    </header>
+    <p id="duel-status" class="duel-status" role="status" aria-live="polite">Opening the match…</p>
+    <div id="duel-players" class="duel-players" aria-label="Players"></div>
+    <div id="duel-board" class="duel-board" hidden aria-label="Tic-Tac-Toe board"></div>
+    <div id="duel-actions" class="duel-actions" hidden aria-label="Rock Paper Scissors moves"></div>
+    <p id="duel-hint" class="duel-hint"></p>
+    <p id="duel-result" class="duel-result" hidden></p>
+    <a id="duel-return" class="duel-return" href="/world?return=duel">RETURN TO WORLD</a>
+  </main>
+  <script type="module" src="/web/dist/world/duel.js"></script>
+</body>
+</html>
