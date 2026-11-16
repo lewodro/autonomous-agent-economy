@@ -19,6 +19,7 @@ const emptySurvival = () => ({
   metrics: emptyMetrics(),
 });
 const emptyAgent = id => ({ id, name: null, sprite: null, strategy: null, arena: emptyArena(), survival: emptySurvival() });
+const totalMatches = state => GAME_KEYS.reduce((total, game) => total + state.games[game].matches, 0);
 
 function emptyState() {
   return {
@@ -103,19 +104,53 @@ function completionTime(run, match) {
  * recorded match id and Survival matches are deduplicated by match id.
  */
 export class ArenaCumulativeStats {
-  constructor(store, { logger = console } = {}) {
+  constructor(store, { logger = console, now = () => new Date().toISOString() } = {}) {
     this.store = store;
     this.logger = logger;
+    this.now = now;
     this.state = emptyState();
+    this.persistedMatches = 0;
+    this.pendingWrites = 0;
+    this.lastSuccessfulWriteAt = null;
+    this.lastWriteFailureAt = null;
+    this.lastWriteFailed = false;
   }
 
   async restore() {
     const saved = await this.store.load();
     this.state = normalize(saved);
+    this.persistedMatches = totalMatches(this.state);
     return this.state;
   }
 
-  persist() { return this.store.save(this.state); }
+  async persist() {
+    const matches = totalMatches(this.state);
+    this.pendingWrites++;
+    try {
+      await this.store.save(this.state);
+      this.persistedMatches = Math.max(this.persistedMatches, matches);
+      this.lastSuccessfulWriteAt = this.now();
+      this.lastWriteFailed = false;
+    } catch (error) {
+      this.lastWriteFailureAt = this.now();
+      this.lastWriteFailed = true;
+      throw error;
+    } finally { this.pendingWrites--; }
+  }
+
+  health() {
+    const inMemoryMatches = totalMatches(this.state);
+    return {
+      status: this.lastWriteFailed ? 'degraded' : 'ok',
+      durable_matches: this.persistedMatches,
+      in_memory_matches: inMemoryMatches,
+      reconciliation_lag_matches: Math.max(0, inMemoryMatches - this.persistedMatches),
+      reconciliation_pending: inMemoryMatches > this.persistedMatches,
+      pending_writes: this.pendingWrites,
+      last_successful_write_at: this.lastSuccessfulWriteAt,
+      last_write_failure_at: this.lastWriteFailureAt,
+    };
+  }
 
   snapshot() { return structuredClone(this.state); }
 

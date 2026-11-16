@@ -277,6 +277,42 @@ test('cumulative statistics fail closed on load errors or malformed durable stat
   await assert.rejects(() => malformed.restore(), /Invalid Arena cumulative rps totals/);
 });
 
+test('cumulative health reports durable progress, reconciliation lag, and write recovery', async () => {
+  let fail = false, saved = null;
+  const times = ['2026-11-16T01:00:00.000Z', '2026-11-16T01:01:00.000Z', '2026-11-16T01:02:00.000Z'];
+  const store = {
+    load: async () => saved,
+    save: async state => { if (fail) throw new Error('transient write failure'); saved = structuredClone(state); },
+  };
+  const stats = new ArenaCumulativeStats(store, { now: () => times.shift() });
+  await stats.restore();
+  assert.deepEqual(stats.health(), {
+    status: 'ok', durable_matches: 0, in_memory_matches: 0, reconciliation_lag_matches: 0,
+    reconciliation_pending: false, pending_writes: 0, last_successful_write_at: null, last_write_failure_at: null,
+  });
+  stats.recordRooms([run({ runId: 'health-run', matches: [rpsMatch('health-1', 'a')] })]);
+  assert.equal(stats.health().reconciliation_lag_matches, 1);
+  assert.equal(stats.health().reconciliation_pending, true);
+  await stats.persist();
+  assert.deepEqual(stats.health(), {
+    status: 'ok', durable_matches: 1, in_memory_matches: 1, reconciliation_lag_matches: 0,
+    reconciliation_pending: false, pending_writes: 0, last_successful_write_at: '2026-11-16T01:00:00.000Z', last_write_failure_at: null,
+  });
+  stats.recordRooms([run({ runId: 'health-next', matches: [rpsMatch('health-2', 'b')] })]);
+  fail = true;
+  await assert.rejects(() => stats.persist(), /transient write failure/);
+  assert.deepEqual(stats.health(), {
+    status: 'degraded', durable_matches: 1, in_memory_matches: 2, reconciliation_lag_matches: 1,
+    reconciliation_pending: true, pending_writes: 0, last_successful_write_at: '2026-11-16T01:00:00.000Z', last_write_failure_at: '2026-11-16T01:01:00.000Z',
+  });
+  fail = false;
+  await stats.persist();
+  assert.deepEqual(stats.health(), {
+    status: 'ok', durable_matches: 2, in_memory_matches: 2, reconciliation_lag_matches: 0,
+    reconciliation_pending: false, pending_writes: 0, last_successful_write_at: '2026-11-16T01:02:00.000Z', last_write_failure_at: '2026-11-16T01:01:00.000Z',
+  });
+});
+
 test('the Arena cumulative store can save again after a reported transient write failure', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'arena-stats-write-recovery-'));
   const blockingTarget = path.join(directory, 'arena-stats.json');
