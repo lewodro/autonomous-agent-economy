@@ -1,5 +1,6 @@
 import {createHmac} from 'node:crypto';
 import {appearanceEqual,sanitizeAppearance as sanitizeAvatarAppearance} from './avatar-appearance.js';
+import {QUICK_CHAT_COOLDOWN_MS,QUICK_CHAT_PHRASES,QUICK_CHAT_RADIUS} from './quick-chat.js';
 
 const IDENTIFIER=/^[a-zA-Z0-9_-]{1,64}$/;
 const VISITOR_ID=/^[a-f0-9-]{36}$/;
@@ -23,18 +24,20 @@ function fail(code,message,status=400){return Object.assign(new Error(message),{
  * Anonymous visitor cookies own actors; browsers never choose public IDs or capabilities.
  */
 export class WorldPresenceService {
-  constructor({worldIds=['main'],allowedAvatars=['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo'],bounds=WORLD_PLAYABLE_BOUNDS,maxPlayers=40,maxViewers=100,staleMs=45_000,minUpdateMs=66,minHeartbeatMs=1_000,maxMovementCatchupMs=1_000,identitySecret='local-world-presence-identity-secret',agentPresence=null,now=()=>Date.now()}={}){
+  constructor({worldIds=['main'],allowedAvatars=['visitor_starter','visitor_ember','visitor_atlas','visitor_nova','visitor_echo'],bounds=WORLD_PLAYABLE_BOUNDS,maxPlayers=40,maxViewers=100,staleMs=45_000,minUpdateMs=66,minHeartbeatMs=1_000,maxMovementCatchupMs=1_000,quickChatRadius=QUICK_CHAT_RADIUS,quickChatCooldownMs=QUICK_CHAT_COOLDOWN_MS,identitySecret='local-world-presence-identity-secret',agentPresence=null,now=()=>Date.now()}={}){
     if(!Array.isArray(worldIds)||!worldIds.length||worldIds.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(worldIds).size!==worldIds.length)throw new Error('World presence requires unique, valid configured world IDs');
     if(!Array.isArray(allowedAvatars)||!allowedAvatars.length||allowedAvatars.some(id=>typeof id!=='string'||!IDENTIFIER.test(id))||new Set(allowedAvatars).size!==allowedAvatars.length)throw new Error('World presence requires unique, valid approved avatar IDs');
     if(typeof identitySecret!=='string'||identitySecret.length<32)throw new Error('World presence identity secret must contain at least 32 characters');
     if(!Number.isFinite(maxMovementCatchupMs)||maxMovementCatchupMs<250||maxMovementCatchupMs>2_000)throw new Error('World presence movement catch-up must be between 250 and 2000 ms');
-    this.allowedWorlds=new Set(worldIds);this.allowedAvatars=new Set(allowedAvatars);this.bounds=bounds;this.maxPlayers=maxPlayers;this.maxViewers=maxViewers;this.staleMs=staleMs;this.minUpdateMs=minUpdateMs;this.minHeartbeatMs=minHeartbeatMs;this.maxMovementCatchupMs=maxMovementCatchupMs;this.movementCreditCap=Math.min(maxMovementCatchupMs,MOVEMENT_CREDIT_MS)*MOVEMENT_RATE;this.identitySecret=identitySecret;this.agentPresence=agentPresence;this.now=now;
+    if(!Number.isFinite(quickChatRadius)||quickChatRadius<1)throw new Error('Quick chat requires a positive proximity radius');
+    if(!Number.isFinite(quickChatCooldownMs)||quickChatCooldownMs<250)throw new Error('Quick chat cooldown must be at least 250 ms');
+    this.allowedWorlds=new Set(worldIds);this.allowedAvatars=new Set(allowedAvatars);this.bounds=bounds;this.maxPlayers=maxPlayers;this.maxViewers=maxViewers;this.staleMs=staleMs;this.minUpdateMs=minUpdateMs;this.minHeartbeatMs=minHeartbeatMs;this.maxMovementCatchupMs=maxMovementCatchupMs;this.movementCreditCap=Math.min(maxMovementCatchupMs,MOVEMENT_CREDIT_MS)*MOVEMENT_RATE;this.quickChatRadius=quickChatRadius;this.quickChatCooldownMs=quickChatCooldownMs;this.identitySecret=identitySecret;this.agentPresence=agentPresence;this.now=now;
     this.worlds=new Map();this.listeners=new Map();
   }
   world(worldId){if(typeof worldId!=='string'||!this.allowedWorlds.has(worldId))throw fail('WORLD_NOT_FOUND','Unknown world',404);let world=this.worlds.get(worldId);if(!world){world=new Map();this.worlds.set(worldId,world);}return world;}
   presenceId(worldId,visitorId){if(!VISITOR_ID.test(visitorId||''))throw fail('VISITOR_SESSION_INVALID','A valid anonymous visitor session is required',401);return`visitor_${createHmac('sha256',this.identitySecret).update(`world-presence-v1:${worldId}:${visitorId}`).digest('hex').slice(0,24)}`;}
   displayName(playerId){return`Watcher ${1000+(Number.parseInt(playerId.slice(-6),16)%9000)}`;}
-  publicPlayer(player){const{visitorId,lastUpdateAt,lastMoveAt,lastHeartbeatAt,movementCredit,...value}=player;return value;}
+  publicPlayer(player){const{visitorId,lastUpdateAt,lastMoveAt,lastHeartbeatAt,lastQuickChatAt,movementCredit,...value}=player;return value;}
   snapshot(worldId){this.prune(worldId);return{world_id:worldId,players:[...this.world(worldId).values()].map(player=>this.publicPlayer(player)),agents:worldId==='main'&&this.agentPresence?this.agentPresence.snapshot():[]};}
   sanitizePosition(position){const x=position?.x,y=position?.y;if(typeof x!=='number'||typeof y!=='number')throw fail('INVALID_POSITION','Position coordinates must be numbers');if(!Number.isFinite(x)||!Number.isFinite(y)||x<this.bounds.minX||y<this.bounds.minY||x>this.bounds.maxX||y>this.bounds.maxY)throw fail('INVALID_POSITION','Position is outside the world bounds');return{x:Math.round(x*10)/10,y:Math.round(y*10)/10};}
   sanitizeAvatar(avatar){if(avatar==null)return'visitor_starter';if(typeof avatar!=='string'||!this.allowedAvatars.has(avatar))throw fail('INVALID_AVATAR','Avatar is not approved');return avatar;}
@@ -62,6 +65,26 @@ export class WorldPresenceService {
     const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastMoveAt<this.minUpdateMs)throw fail('PRESENCE_RATE_LIMITED','Move updates are limited',429);const next=this.sanitizePosition(position),elapsed=Math.min(Math.max(0,now-player.lastMoveAt),this.maxMovementCatchupMs),distance=Math.hypot(next.x-player.position.x,next.y-player.position.y),available=(Number.isFinite(player.movementCredit)?player.movementCredit:this.movementCreditCap)+elapsed*MOVEMENT_RATE;if(distance>available)throw fail('INVALID_POSITION','Movement exceeded the world speed limit');const nextDirection=DIRECTIONS.has(direction)?direction:player.direction,nextAnimation=ANIMATIONS.has(animation_state)?animation_state:'idle',changed=next.x!==player.position.x||next.y!==player.position.y||nextDirection!==player.direction||nextAnimation!==player.animation_state;player.position=next;player.direction=nextDirection;player.animation_state=nextAnimation;player.lastUpdateAt=now;player.lastMoveAt=now;player.movementCredit=Math.max(0,Math.min(this.movementCreditCap,available-distance));player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerMoved',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};
   }
   heartbeat(worldId,visitorId,{activity}={}){const player=this.requireVisitor(worldId,visitorId),now=this.now();if(now-player.lastHeartbeatAt<this.minHeartbeatMs)throw fail('PRESENCE_RATE_LIMITED','Heartbeat updates are limited',429);if(activity!==undefined&&(typeof activity!=='string'||activity.length>80))throw fail('INVALID_ACTIVITY','Activity is invalid');const changed=activity!==undefined&&activity!==player.activity;if(changed)player.activity=activity;player.lastHeartbeatAt=now;player.lastUpdateAt=now;player.updated_at=new Date(now).toISOString();if(changed)this.emit(worldId,'PlayerUpdated',{player:this.publicPlayer(player)});return{player:this.publicPlayer(player)};}
+  /**
+   * Relays one allowlisted phrase to the world. Identity comes from the visitor
+   * session, the text from the server catalog, and the event is ephemeral: it is
+   * never written to player state or returned by a later snapshot.
+   */
+  quickChat(worldId,visitorId,input={}){
+    if(!input||typeof input!=='object'||Array.isArray(input))throw fail('INVALID_QUICK_CHAT','Quick chat payload must be an object');
+    const phraseId=input.phrase_id;
+    if(typeof phraseId!=='string'||!Object.hasOwn(QUICK_CHAT_PHRASES,phraseId))throw fail('INVALID_QUICK_CHAT','Quick chat accepts an approved phrase ID only');
+    for(const key of Object.keys(input))if(key!=='phrase_id')throw fail('INVALID_QUICK_CHAT','Quick chat accepts an approved phrase ID only');
+    this.prune(worldId);
+    const player=this.requireVisitor(worldId,visitorId),now=this.now(),phrase=QUICK_CHAT_PHRASES[phraseId];
+    const nearHuman=[...this.world(worldId).values()].some(other=>other.player_id!==player.player_id&&Math.hypot(other.position.x-player.position.x,other.position.y-player.position.y)<=this.quickChatRadius);
+    if(!nearHuman)throw fail('NO_NEARBY_HUMAN','Move closer to another visitor to use quick chat',409);
+    if(Number.isFinite(player.lastQuickChatAt)&&now-player.lastQuickChatAt<this.quickChatCooldownMs)throw fail('QUICK_CHAT_RATE_LIMITED','Quick chat is limited',429);
+    player.lastQuickChatAt=now;
+    const quick_chat={player_id:player.player_id,phrase_id:phraseId,text:phrase.text,direction:phrase.direction,sent_at:new Date(now).toISOString()};
+    this.emit(worldId,'PlayerQuickChat',{quick_chat});
+    return{quick_chat};
+  }
   leave(worldId,visitorId){const player=this.requireVisitor(worldId,visitorId);this.world(worldId).delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id});return{left:true};}
   prune(worldId){const world=this.world(worldId),cutoff=this.now()-this.staleMs;for(const player of world.values())if(player.lastUpdateAt<=cutoff){world.delete(player.player_id);this.emit(worldId,'PlayerLeft',{player_id:player.player_id,reason:'stale'});}}
   connect(worldId,res){this.prune(worldId);const group=this.listeners.get(worldId)||new Set();if(group.size>=this.maxViewers)return false;this.listeners.set(worldId,group);group.add(res);let closed=false;const cleanup=()=>{if(closed)return;closed=true;clearInterval(heartbeat);group.delete(res);if(!group.size)this.listeners.delete(worldId);};const heartbeat=setInterval(()=>{this.prune(worldId);if(res.destroyed||res.writableLength>1_000_000)return res.destroy();try{res.write(': keepalive\n\n');}catch{res.destroy();}},15_000);heartbeat.unref();res.on('close',cleanup);res.on('error',cleanup);try{res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform',Connection:'keep-alive','X-Accel-Buffering':'no'});res.write(`event: WorldJoined\ndata: ${JSON.stringify(this.snapshot(worldId))}\n\n`);}catch{cleanup();try{res.destroy();}catch{}}return true;}
