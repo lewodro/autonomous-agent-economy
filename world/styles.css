@@ -376,6 +376,9 @@
   .discovery-groups{grid-template-columns:1fr;gap:8px}
   .discovery-group{padding:8px}
 }
+@media(max-width:760px) and (pointer:coarse){
+  .world-minimap{bottom:calc(118px + env(safe-area-inset-bottom))}
+}
 @media(prefers-reduced-motion:reduce){
   .world-minimap,.world-minimap__body,.world-region,.discovery-toast{transition:none!important}
 }
