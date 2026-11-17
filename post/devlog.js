@@ -8,12 +8,15 @@ async function load(){
   const count=document.getElementById('release-count');
   if(count)count.textContent=`${String(data.entries.length).padStart(2,'0')} VERIFIED MILESTONES`;
   root.replaceChildren();
-  for(const [index,item] of data.entries.entries()){
+  const newestFirst=[...data.entries].reverse();
+  for(const [index,item] of newestFirst.entries()){
+    const milestone=data.entries.length-index;
     const article=element('article','entry');
-    article.dataset.entry=String(index+1);
-    article.append(element('div','entry-index',String(index+1).padStart(2,'0')));
+    article.dataset.entry=String(milestone);
+    if(index===0)article.classList.add('entry--latest');
+    article.append(element('div','entry-index',String(milestone).padStart(2,'0')));
     const body=element('div','entry-body');
-    body.append(element('p','entry-meta',`${item.date} · SHIPPED`),element('h2','',item.title),element('p','entry-summary',item.summary));
+    body.append(element('p','entry-meta',`${item.date} · ${index===0?'LATEST SHIPMENT':'SHIPPED'}`),element('h2','',item.title),element('p','entry-summary',item.summary));
     const details=element('details','entry-details');details.append(element('summary','', 'Technical notes'));
     for(const paragraph of item.detail.split(/\n\s*\n/))details.append(element('p','',paragraph.replace(/^##\s+/gm,'')));
     body.append(details);

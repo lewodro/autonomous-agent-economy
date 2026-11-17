@@ -198,6 +198,96 @@
       "pr": null,
       "detail": "## Why\nPage loads jumped straight from the previous screen into the next one. The short matrix wipe that already existed on public pages now carries one shared progress bar, so navigation reads as a deliberate entrance instead of a flash of unstyled content.\n\n## Entry transition\nThe shared entry script adds a compact track to the transition overlay and fills it on a gentle ease-in curve: slow at first, then a quick sweep to the end. The bar appears on every page load, not just the first visit, and the overlay clears itself after the fill. A timer fallback removes it even when requestAnimationFrame is paused in a background tab.\n\nReduced-motion visitors still skip the overlay entirely.\n\n## Tests\nThe full test suite passed with 298 tests and 4 skipped. The repository syntax check passed, and a browser check confirmed the bar, the eased fill and clean removal on the root, World and build-log pages across repeat loads.",
       "source": "2026-11-04-page-entry-transition.md"
+    },
+    {
+      "date": "2026-11-10",
+      "title": "Make the outer world feel inhabited",
+      "summary": "Woodland edges, gravel camps and deliberate clearings gave the expanded map readable destinations without blocking farming or resource placement.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/9c44d19ba1e7326e64f19bdf8a875f9fe928bc62",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/79",
+      "detail": "## World scenery\nTree-site clearings, campfires, gravel camps and outer woodland lines now break up the large green regions while respecting paths and resource-safe placement. Returning from the Treasury also restores the visitor at the Treasury instead of dropping them at an unrelated entrance.\n\n## Main commits\n6b141dd established resource-safe clearings. 7fcac06 and 7fd4d2a added camps and woodland edges. ac420de completed the Treasury return path.",
+      "source": "2026-11-10-world-scenery.md"
+    },
+    {
+      "date": "2026-11-11",
+      "title": "Let every visitor build a pixel identity",
+      "summary": "A modular character creator now composes approved pixel parts into a live world-avatar preview.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/f6eb88427df854e8518a884dc6978ddd0b1f33c8",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/80",
+      "detail": "## Character creator\nVisitors can combine the existing modular sprite parts, see the result immediately and carry the selected appearance into the shared world. The system reuses the established pixel pipeline instead of introducing a second avatar renderer.\n\n## Main commits\n1d8e7be built modular player composition. 8087b69 added the creator interface and live preview.",
+      "source": "2026-11-11-character-creator.md"
+    },
+    {
+      "date": "2026-11-12",
+      "title": "Generate a wilderness beyond the town",
+      "summary": "A seeded outer ring added original caves, ruins, camps and traversable terrain around the authored city center.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/718e3a3c0448ccc2c0503923e2df6a2fdf655bec",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/82",
+      "detail": "## Procedural expansion\nThe authored plaza remains stable while deterministic generation builds varied outer terrain with paths, cave mouths, ruins and camp sites. Collision and placement rules keep generated landmarks walkable and compatible with the existing world renderer.\n\n## Main commit\n701d17a introduced the procedural outer ring and cave generation as one coherent world expansion.",
+      "source": "2026-11-12-procedural-outer-world.md"
+    },
+    {
+      "date": "2026-11-12",
+      "title": "Turn exploration into a remembered journey",
+      "summary": "A compact minimap, discovery journal and region feedback now help visitors understand and revisit the larger world.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/34af9053a12f662f18f0a2ff3936f663d1350d27",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/83",
+      "detail": "## Exploration loop\nNamed regions, contextual prompts and a cached pixel minimap make distant routes legible without replacing physical exploration. Discoveries enter a lightweight journal, while textured biome ground, benches and camp clearings give the outer landmarks stronger silhouettes.\n\n## Main commits\n6291df4 built the cached minimap. 46eca42 connected the journal and region feedback. 848bbf5 completed the biome and campfire art pass. b481ba5 added exploration coverage and storage documentation.",
+      "source": "2026-11-12-world-exploration.md"
+    },
+    {
+      "date": "2026-11-14",
+      "title": "Put the Arena action on stage",
+      "summary": "The Arena became a stage-first pixel experience with a live roster, event feed and readable RPS and Tic-Tac-Toe bouts.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/12d131ba71613552e038a7ae405b9bfea83eedc8",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/84",
+      "detail": "## Game feel\nThe match stage now dominates the Arena instead of dashboard panels. Live roster movement, event highlights and result banners make ongoing autonomous games understandable, while RPS and Tic-Tac-Toe share the same compact pixel presentation language.\n\n## Main commits\n6004370 established the stage-first landing. c72987e added the roster, feed and results. 4de8678 built the bout stage. b271163 covered responsive browser behavior.",
+      "source": "2026-11-14-pixel-arena.md"
+    },
+    {
+      "date": "2026-11-15",
+      "title": "Make the map smaller and venue returns smarter",
+      "summary": "The local map stopped covering the world, and visitors now return from venues to the exact world position they left.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/14c458f68552a451ec4d3a121ad9556ead3c6a0f",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/85",
+      "detail": "## World continuity\nA compact local-map panel preserves navigation context without becoming the main view. Entering the Arena or another venue records the visitor's authoritative world spot, so leaving restores that location instead of resetting the journey.\n\n## Main commits\ne659aa0 reduced the map panel. e2d24ed restored saved world positions. b622347 covered both behaviors in the browser.",
+      "source": "2026-11-15-minimap-and-venue-return.md"
+    },
+    {
+      "date": "2026-11-15",
+      "title": "Give nearby visitors a quick voice",
+      "summary": "Bounded proximity phrases let people greet, warn and coordinate without turning the shared world into an unmoderated chat room.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/f9d807790dde63581e6356d2aef0c01abf3c308f",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/86",
+      "detail": "## Proximity chat\nThe server validates a small phrase catalog, checks distance and rate limits, then relays the phrase to nearby humans. Desktop and mobile receive a compact selector and short-lived speech bubbles; holding E can open chat without breaking the normal interaction tap.\n\n## Main commits\n1ea1611 defined the phrase catalog. 7ecdaca enforced proximity and rate limits. ead0a0e completed selector, bubbles and mobile control. e4d3dbd and 27f5168 added server and two-browser coverage.",
+      "source": "2026-11-15-proximity-quick-chat.md"
+    },
+    {
+      "date": "2026-11-15",
+      "title": "Challenge the person standing beside you",
+      "summary": "Nearby visitors can now invite each other into an ephemeral RPS or Tic-Tac-Toe duel from the shared world.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/949754c725658a35e295a08beca308f544e7d5f9",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/87",
+      "detail": "## World-to-game flow\nChallenges begin with real shared-world proximity, travel through validated presence routes and open one duel surface for both games. Invitations and duel state remain ephemeral; the authoritative game routes decide legal moves and results.\n\n## Main commits\n489e0ff added challenge state. 5e3c592 exposed validated routes. 2201c57 built the world prompt. 5f56d17 added the shared duel page. d181abe covered two-browser and mobile flows.",
+      "source": "2026-11-15-world-challenges.md"
+    },
+    {
+      "date": "2026-11-16",
+      "title": "Make lifetime Arena statistics fail honestly",
+      "summary": "Public cumulative records now reconcile from durable matches and report storage failures instead of silently presenting partial success.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/5765222d9d4c7e9c937f1ff3a1fa89d0150961c4",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/88",
+      "detail": "## Durable truth\nLifetime Arena statistics are derived and reconciled from settled durable history. If persistence is unavailable, the system fails closed and exposes reconciliation and write-health signals rather than quietly drifting away from match evidence.\n\n## Main commit\n8d421d5 implemented the fail-closed accounting, reconciliation path and durability checks in one focused change.",
+      "source": "2026-11-16-arena-statistics.md"
+    },
+    {
+      "date": "2026-11-16",
+      "title": "Prove production history survives a restart",
+      "summary": "Real Postgres restart and legacy-import checks now exercise the same persistence path expected in production.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/00b8675262aa3717a8f4ba00c58eb690591a7569",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/89",
+      "detail": "## Restart evidence\nThe persistence harness writes durable state, stops the service, boots it again against Postgres and verifies the records remain intact. Legacy local history can be imported without duplicating already-reconciled events, and CI now runs the database-backed restart job.\n\n## Main commits\nba97b5b closed restart and import gaps. 3928b43 added the real Postgres harness. 2bd54dd wired the persistence job into CI.",
+      "source": "2026-11-16-postgres-restart-ci.md"
     }
   ]
 }
