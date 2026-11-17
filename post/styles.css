@@ -104,6 +104,8 @@ h1 .title-accent { color: var(--green); text-shadow: 4px 4px 0 rgba(36,72,49,.48
 .log-heading__count { color: var(--gold); font: 10px/1.4 var(--mono); letter-spacing: .1em; }
 .log { position: relative; padding: 18px 0 4px; counter-reset: milestone; }
 .entry { --pointer-x: 50%; --pointer-y: 50%; position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 24px; margin: 16px 0; padding: 42px 34px 46px 0; overflow: hidden; border: 1px solid transparent; border-bottom-color: var(--line); transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
+.entry--latest { border-top-color:#526756; background:linear-gradient(90deg,rgba(166,218,139,.075),transparent 62%); }
+.entry--latest .entry-meta { color:var(--gold); }
 .entry::after { content: ""; position: absolute; inset: 0; z-index: -1; opacity: 0; background: radial-gradient(340px circle at var(--pointer-x) var(--pointer-y), rgba(166,218,139,.12), transparent 72%); transition: opacity .25s ease; pointer-events: none; }
 .entry::before { content: ""; position: absolute; left: 46px; top: 73px; bottom: -18px; width: 2px; background: repeating-linear-gradient(var(--line) 0 7px, transparent 7px 13px); }
 .entry:last-child::before { display: none; }
