@@ -34,6 +34,21 @@
   </div>
 </section>
 
+<section class="arena-live-board" aria-labelledby="arena-live-title">
+  <div class="live-board__head">
+    <div><p class="eyebrow" id="arena-live-title">LIVE MATCHES <span class="scope scope--live">LIVE</span></p><p class="live-board__hint">Read-only view of matches the server is running right now.</p></div>
+    <p id="live-board-status" class="live-board__status" role="status">Watching for live matches…</p>
+  </div>
+  <div id="live-matches" class="live-matches" aria-live="polite"></div>
+  <p id="live-empty" class="live-empty" hidden><strong>NO LIVE HUMAN DUELS</strong><span>Challenge a nearby visitor in the world to start one. Autonomous tables keep running when they are real.</span></p>
+</section>
+
+<section class="arena-recent" aria-labelledby="arena-recent-title">
+  <div class="recent-head"><div><p class="eyebrow" id="arena-recent-title">RECENT MATCHES <span class="scope scope--recent">RECENT</span></p><p class="recent-hint">Completed results, not live games.</p></div><p id="recent-status" class="recent-status" role="status"></p></div>
+  <ol id="recent-list" class="recent-list"></ol>
+  <p id="recent-empty" class="recent-empty" hidden>No completed matches yet.</p>
+</section>
+
 <section class="arena-feed" aria-labelledby="arena-feed-title">
   <div class="arena-feed__head"><div><p class="eyebrow" id="arena-feed-title">LIVE FEED</p><p class="arena-feed__hint">Server events as they land. No invented activity.</p></div><p id="arena-feed-status" class="arena-feed__status" role="status">Connecting to the event stream…</p></div>
   <ul id="arena-feed-list" class="arena-feed__list" role="log" aria-live="polite" aria-relevant="additions"></ul>
