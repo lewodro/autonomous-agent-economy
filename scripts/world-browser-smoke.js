@@ -104,12 +104,21 @@ try{
  await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
  await delay(520);
  await wait('!document.getElementById("quick-chat").hidden&&document.querySelectorAll(".quick-chat__option").length===4');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['follow','down'],['nice','left']],'the selector offers the four approved directions');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['hi','up'],['follow','right'],['nice','down'],['wait','left']],'the selector opens on the social page with four approved directions');
+ assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'SOCIAL ▸');
  assert.ok(await evaluate('(()=>{const r=document.getElementById("quick-chat-wheel").getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})()'),'the desktop selector stays inside the viewport');
+ // Q switches to the game page without sending a phrase; directions remap to
+ // the challenge phrases. Switching back restores the social page.
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
+ await wait('document.querySelector(".quick-chat__option[data-phrase=\\"ttt\\"]")');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['arena','down'],['explore','left']],'the game page keeps the four approved directions');
+ assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
+ await wait('document.querySelector(".quick-chat__option[data-phrase=\\"hi\\"]")');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
  await wait('document.getElementById("quick-chat").hidden');
- await wait('document.getElementById("quick-chat-bubbles").textContent.includes("follow me")');
- await secondBrowser.wait('document.getElementById("quick-chat-bubbles").textContent.includes("follow me")',8000);
+ await wait('document.getElementById("quick-chat-bubbles").textContent.includes("nice one")');
+ await secondBrowser.wait('document.getElementById("quick-chat-bubbles").textContent.includes("nice one")',8000);
  await wait('!document.querySelector(".quick-chat__bubble")',6000);
  await secondBrowser.wait('!document.querySelector(".quick-chat__bubble")',6000);
  // B holds E and answers with the left direction.
@@ -118,7 +127,7 @@ try{
  await secondBrowser.evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
  await secondBrowser.wait('!document.getElementById("quick-chat").hidden',5000);
  await secondBrowser.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
- await wait('document.getElementById("quick-chat-bubbles").textContent.includes("nice one")',8000);
+ await wait('document.getElementById("quick-chat-bubbles").textContent.includes("wait here")',8000);
  // Rapid second send inside the cooldown is rejected and must not stack bubbles.
  const spamQuickChat=await secondBrowser.evaluate("fetch('/api/worlds/main/presence/quick-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phrase_id:'nice'})}).then(async response=>({status:response.status,...await response.json()}))");
  assert.equal(spamQuickChat.status,429,'quick chat spam must be rate limited');
@@ -132,6 +141,8 @@ try{
  await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
  await delay(520);
  await wait('!document.getElementById("quick-chat").hidden');
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
+ await wait('document.querySelector(".quick-chat__option[data-phrase=\\"ttt\\"]")');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true}))");
  await wait('!document.getElementById("challenge-outgoing").hidden&&document.getElementById("quick-chat-bubbles").textContent.includes("tic-tac-toe?")',8000);
  await secondBrowser.wait('!document.getElementById("challenge-prompt").hidden&&document.getElementById("challenge-game").textContent.includes("TIC-TAC-TOE")',8000);
@@ -154,6 +165,7 @@ try{
  await evaluate('document.querySelector(".duel-cell[data-cell=\\"2\\"]").click()');
  await wait('!document.getElementById("duel-result").hidden&&document.getElementById("duel-result").textContent.includes("YOU WIN")',10000);
  await secondBrowser.wait('!document.getElementById("duel-result").hidden&&document.getElementById("duel-status").textContent.includes("YOU LOST")',10000);
+ assert.equal(await evaluate('document.querySelectorAll(".duel-cell.is-winning").length'),3,'the winning line is emphasised without confetti');
  await screenshot('duel-ttt');
  await evaluate('document.getElementById("duel-return").click()');
  await secondBrowser.evaluate('document.getElementById("duel-return").click()');
@@ -173,6 +185,8 @@ try{
  await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
  await delay(520);
  await wait('!document.getElementById("quick-chat").hidden');
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
+ await wait('document.querySelector(".quick-chat__option[data-phrase=\\"rps\\"]")');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))");
  await secondBrowser.wait('!document.getElementById("challenge-prompt").hidden&&document.getElementById("challenge-game").textContent.includes("ROCK PAPER SCISSORS")',8000);
  await secondBrowser.evaluate('document.getElementById("challenge-accept").click()');
@@ -184,7 +198,17 @@ try{
  await secondBrowser.evaluate('document.querySelector(".duel-actions button[data-pick=\\"scissors\\"]").click()');
  await wait('!document.getElementById("duel-result").hidden&&document.getElementById("duel-result").textContent.includes("YOU WIN")',10000);
  await secondBrowser.wait('!document.getElementById("duel-result").hidden&&document.getElementById("duel-status").textContent.includes("YOU LOST")',10000);
- await evaluate('document.getElementById("duel-return").click()');
+ // Anyone can open the settled match read-only. The spectator page has no seat
+ // and no enabled move or pick control.
+ const rpsDuelPath=await evaluate('location.pathname');
+ await send('Page.navigate',{url:base+rpsDuelPath+'?spectate=1'});
+ await wait('document.getElementById("duel-mode").textContent.includes("SPECTATING")',10000);
+ await wait('!document.getElementById("duel-result").hidden&&document.getElementById("duel-status").textContent.includes("WINS")',10000);
+ assert.equal(await evaluate('document.querySelectorAll(".duel-actions button:not([disabled]),.duel-cell:not([disabled])").length'),0,'a spectator has no enabled move or pick control');
+ assert.equal(await evaluate('document.getElementById("duel-return").getAttribute("href")'),'/arena','spectators return to the Arena');
+ assert.equal(await evaluate('document.getElementById("duel-players").textContent.includes("PLAYER A")&&document.getElementById("duel-players").textContent.includes("PLAYER B")'),true,'spectators see both participants, not a seat');
+ await screenshot('duel-spectate');
+ await send('Page.navigate',{url:base+'/world?return=duel'});
  await secondBrowser.evaluate('document.getElementById("duel-return").click()');
  await wait("location.pathname==='/world'",10000);
  await secondBrowser.wait("location.pathname==='/world'",10000);
@@ -233,6 +257,14 @@ try{
  await wait('!document.getElementById("interact").disabled');
  await evaluate('document.getElementById("interact").click()');
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');await screenshot('desktop');await screenshot('lobby');
+ // The public board merges only server data: human duels plus real tables.
+ const publicBoard=await evaluate("fetch('/api/world/duels').then(r=>r.json())");
+ assert.ok(Array.isArray(publicBoard.live)&&Array.isArray(publicBoard.recent),'the Arena board reads the public duel list');
+ assert.ok(publicBoard.recent.length>=2,'both completed shared human duels remain in the public recent list');
+ assert.equal(publicBoard.live.some(duel=>JSON.stringify(duel).includes('visitorId')),false,'public duels never expose visitor sessions');
+ await wait('document.querySelectorAll("#recent-list .recent-row__tag[data-source=\\"human\\"]").length>=2',10000);
+ await wait('document.querySelectorAll("#live-matches .live-match").length>0||!document.getElementById("live-empty").hidden');
+ assert.ok(await evaluate('document.querySelector("#live-matches .live-match")?document.querySelectorAll("#live-matches .live-match__watch").length>0:document.getElementById("live-empty").textContent.includes("NO LIVE HUMAN DUELS")'),'live rows expose a WATCH link or the honest empty state');
  assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
  await wait('document.querySelectorAll(".room-player").length>=4&&document.querySelectorAll(".room-versus").length>=2');
  assert.ok(await evaluate('[...document.querySelectorAll(".room-card")].filter(card=>card.querySelectorAll(".room-player").length===2).every(card=>card.querySelector(".room-versus")?.textContent==="VS")'),'room cards must visually group each pair around a VS marker');
@@ -307,6 +339,9 @@ try{
  assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect();return r.width>0&&r.width<=160})()'),'the desktop local map must stay compact');
  await wait("document.getElementById('minimap-canvas').dataset.locationLabels?.includes('ARENA')");
  assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map must keep its public location names');
+ await wait('document.querySelectorAll(".world-minimap__label").length===6');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map renders all six destination labels');
+ assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&getComputedStyle(node).fontSize!=="0px"})})()'),'destination labels stay inside the compact map with readable text');
  assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:928,y:674},'returning from Arena must restore the saved world position');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
  await send('Page.navigate',{url:base+'/labs/world'});await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
@@ -483,6 +518,8 @@ try{
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
  assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect();return r.width<=112&&r.right<=390&&r.left>=0&&c.width>=90&&c.height>45})()'),'mobile minimap stays compact and inside the viewport');
+ await wait('document.querySelectorAll(".world-minimap__label").length===6');
+ assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&parseFloat(getComputedStyle(node).fontSize)>=5})})()'),'all six labels stay inside a 390px compact map');
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  assert.ok(await evaluate('(()=>{const d=document.getElementById("character-dialog");return d.scrollWidth<=d.clientWidth+1&&document.documentElement.scrollWidth<=390})()'),'the character creator must not overflow a 390px viewport');
  assert.ok(await evaluate('(()=>{const b=document.querySelector("#character-body-swatches button");const r=b.getBoundingClientRect();return r.width>=28&&r.height>=28})()'),'mobile swatches must stay tappable');
@@ -516,7 +553,12 @@ try{
  await delay(1600);
  await evaluate('document.getElementById("quick-chat-open").click()');
  await wait('!document.getElementById("quick-chat").hidden');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','follow','nice']);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['hi','follow','nice','wait']);
+ assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'SOCIAL ▸');
+ await evaluate('document.getElementById("quick-chat-page").click()');
+ await wait('document.querySelector(".quick-chat__option[data-phrase=ttt]")');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','arena','explore']);
+ assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate('document.querySelector(".quick-chat__option[data-phrase=ttt]").click()');
  await wait('!document.getElementById("challenge-outgoing").hidden',5000);
  const mobileChallengeId=await evaluate('document.getElementById("challenge-outgoing").dataset.challengeId');
@@ -543,6 +585,8 @@ try{
  await delay(240);
  assert.ok(await evaluate('document.documentElement.scrollWidth<=430'),'the exploration UI must fit a 430px viewport');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect(),h=document.getElementById("world-hint").getBoundingClientRect();return m.right<=430&&m.left>=0&&m.bottom<=932&&h.right<=430})()'),'minimap and contextual hint stay inside a 430×932 viewport');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the 430px map keeps every public destination label');
+ assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1})})()'),'no label escapes the 430px compact map');
  const position430=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
  const guest430=await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:${position430.x+36},y:${position430.y}},direction:'left',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))`);
  assert.equal(guest430.status,201);
