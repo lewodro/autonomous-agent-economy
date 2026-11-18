@@ -25,7 +25,10 @@
       <section id="world-minimap" class="world-minimap" aria-label="World minimap">
         <div class="world-minimap__head"><span>LOCAL MAP</span><button id="minimap-toggle" type="button" aria-expanded="true" aria-controls="minimap-body">MAP ▾</button></div>
         <div id="minimap-body" class="world-minimap__body">
-          <canvas id="minimap-canvas" aria-label="Minimap showing the city, the outer loop, your position and landmarks you have discovered"></canvas>
+          <div class="world-minimap__map">
+            <canvas id="minimap-canvas" aria-label="Minimap showing the city, the outer loop, your position and landmarks you have discovered"></canvas>
+            <div id="minimap-labels" class="world-minimap__labels" aria-hidden="true"></div>
+          </div>
           <div class="world-minimap__foot"><span id="minimap-region">CITY CENTER</span><button id="minimap-journal" type="button">DISCOVERIES 0/16</button></div>
         </div>
       </section>

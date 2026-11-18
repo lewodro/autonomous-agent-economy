@@ -346,6 +346,13 @@
 .world-minimap.is-collapsed .world-minimap__body{max-height:0;opacity:0;transform:translateY(-4px);pointer-events:none}
 .world-minimap.no-transition,.world-minimap.no-transition .world-minimap__body{transition:none}
 #minimap-canvas{display:block;width:100%;height:auto;aspect-ratio:208/150;border:1px solid #4c5f50;background:#14241e;image-rendering:pixelated;touch-action:manipulation}
+.world-minimap__map{position:relative;line-height:0}
+.world-minimap__labels{position:absolute;inset:1px;overflow:hidden;pointer-events:none;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.world-minimap__label{position:absolute;padding:0 1px;color:#f4e8c2;background:#0d1a16d9;font-size:6px;line-height:1.05;letter-spacing:.02em;white-space:nowrap;text-shadow:0 1px 0 #07100c;box-shadow:0 0 0 1px #5b6f5799}
+.world-minimap__label[data-side="right"]{transform:translate(4px,-50%)}
+.world-minimap__label[data-side="left"]{transform:translate(calc(-100% - 4px),-50%)}
+.world-minimap__label[data-side="above"]{transform:translate(-50%,calc(-100% - 4px))}
+.world-minimap__label[data-side="below"]{transform:translate(-50%,4px)}
 .world-minimap__foot{display:flex;flex-direction:column;align-items:stretch;gap:3px;padding:3px 1px 0}
 #minimap-region{color:#c9d4b7;font-size:7px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #minimap-journal{width:100%;min-height:18px;padding:2px 4px;border:1px solid #506052;background:#20342b;color:#d8cf9f;font-size:6px;letter-spacing:.04em;line-height:1;box-shadow:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -371,6 +378,9 @@
   .world-minimap__foot{padding-top:2px;gap:2px}
   #minimap-region{font-size:6px;letter-spacing:.04em}
   #minimap-journal{min-height:16px;padding:2px 3px;font-size:6px}
+  .world-minimap__label{font-size:5px;padding:0;box-shadow:none}
+  .world-minimap__label[data-side="right"]{transform:translate(3px,-50%)}
+  .world-minimap__label[data-side="left"]{transform:translate(calc(-100% - 3px),-50%)}
   .world-region{top:104px;max-width:calc(100% - 128px);font-size:8px;letter-spacing:.2em;padding:3px 7px}
   .discovery-toast{bottom:calc(164px + env(safe-area-inset-bottom));padding:6px 10px;min-width:120px}
   .discovery-groups{grid-template-columns:1fr;gap:8px}

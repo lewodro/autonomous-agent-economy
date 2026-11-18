@@ -6,6 +6,18 @@ import {
 import type { Facing, Position } from './model.js';
 
 const PIXEL_RATIO = 2;
+/**
+ * Label sides keep the six public city names legible on the compact map
+ * without leader lines: dense markers point their label away from each other.
+ */
+const LABEL_SIDE: Record<string, 'left' | 'right' | 'above' | 'below'> = {
+  'arena-door': 'right',
+  archive: 'left',
+  'compound-entrance': 'left',
+  'south-market': 'left',
+  'treasury-house': 'right',
+  'agent-agency': 'right',
+};
 export interface MinimapFrame {
   player: Position; facing: Facing; markers: ReadonlyArray<MapMarker>; humans: ReadonlyArray<Position>;
 }
@@ -23,6 +35,8 @@ export class WorldMinimap {
   private lastUpdate = 0;
   private lastKey = '';
   private collapsed = false;
+  private labelLayer: HTMLElement | null = null;
+  private labelNodes = new Map<string, HTMLElement>();
   constructor(
     private canvas: HTMLCanvasElement,
     private toggle: HTMLButtonElement,
@@ -35,6 +49,13 @@ export class WorldMinimap {
     const context = this.canvas.getContext('2d');
     if (!context) throw new Error('Your browser does not support the minimap.');
     this.ctx = context;
+    this.labelLayer = this.canvas.parentElement?.querySelector<HTMLElement>('.world-minimap__labels') ?? null;
+    if (!this.labelLayer) {
+      this.labelLayer = document.createElement('div');
+      this.labelLayer.className = 'world-minimap__labels';
+      this.labelLayer.setAttribute('aria-hidden', 'true');
+      this.canvas.parentElement?.append(this.labelLayer);
+    }
     this.paintBase();
     this.toggle.addEventListener('click', () => this.setCollapsed(!this.collapsed));
     this.setCollapsed(false, true);
@@ -121,8 +142,8 @@ export class WorldMinimap {
     this.canvas.dataset.markers = String(frame.markers.length);
     this.canvas.dataset.outer = String(frame.markers.filter(marker => marker.kind !== 'city').length);
     const labeledLocations = visibleMinimapLocationLabels(frame.markers);
-    const labeledLocationIds = new Set(labeledLocations.map(marker => marker.id));
     this.canvas.dataset.locationLabels = labeledLocations.map(marker => marker.label).join(',');
+    this.renderLocationLabels(labeledLocations);
     const c = this.ctx;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -144,11 +165,6 @@ export class WorldMinimap {
         c.fillRect(x - 2, y - 2, 5, 5);
         c.fillStyle = '#d7b675';
         c.fillRect(x - 1, y - 1, 3, 3);
-        if (labeledLocationIds.has(marker.id)) {
-          const [offsetX, offsetY] = marker.labelOffset ?? [0, -4];
-          c.fillStyle = '#d8cf9f';
-          c.fillText(marker.label, x + offsetX, y + offsetY);
-        }
       } else if (marker.kind === 'cave') {
         c.fillStyle = '#1a2a25';
         c.fillRect(x - 2, y - 2, 5, 4);
@@ -182,6 +198,39 @@ export class WorldMinimap {
     };
     const [dx, dy] = facingOffset[frame.facing];
     c.fillRect(px + dx, py + dy, 2, 2);
+  }
+  /**
+   * Public city names are DOM text rather than scaled canvas text. The canvas
+   * is a fixed 208x150 bitmap scaled down by CSS, which made canvas labels
+   * unreadable; percentage-positioned DOM labels stay crisp at every width.
+   */
+  private renderLocationLabels(labels: ReadonlyArray<MapMarker>): void {
+    const layer = this.labelLayer;
+    if (!layer) return;
+    const seen = new Set<string>();
+    for (const marker of labels) {
+      seen.add(marker.id);
+      let node = this.labelNodes.get(marker.id);
+      if (!node) {
+        node = document.createElement('span');
+        node.className = 'world-minimap__label';
+        node.dataset.location = marker.id;
+        node.dataset.side = LABEL_SIDE[marker.id] ?? 'above';
+        node.textContent = marker.label;
+        layer.append(node);
+        this.labelNodes.set(marker.id, node);
+      }
+      const point = minimapPoint(marker.position);
+      const left = `${(point.x / MINIMAP_WIDTH * 100).toFixed(2)}%`;
+      const top = `${(point.y / MINIMAP_HEIGHT * 100).toFixed(2)}%`;
+      if (node.style.left !== left) node.style.left = left;
+      if (node.style.top !== top) node.style.top = top;
+    }
+    for (const [id, node] of this.labelNodes) {
+      if (seen.has(id)) continue;
+      node.remove();
+      this.labelNodes.delete(id);
+    }
   }
   setRegion(label: string): void { this.region.textContent = label; }
   setSummary(text: string): void { this.summary.textContent = text; }
