@@ -372,7 +372,7 @@
 .world-discovery-note{padding-top:10px;margin-top:14px;border-top:1px solid #506052;color:var(--muted);font-size:10px}
 @media(pointer:fine){.world-minimap{left:18px;bottom:18px}}
 @media(max-width:760px){
-  .world-minimap{left:auto;right:6px;top:48px;bottom:auto;z-index:11;width:104px;max-width:calc(100% - 12px);padding:3px;border-width:1px;box-shadow:2px 2px 0 #0d1a16}
+  .world-minimap{left:6px;right:auto;top:auto;bottom:6px;z-index:11;width:104px;max-width:calc(100% - 12px);padding:3px;border-width:1px;box-shadow:2px 2px 0 #0d1a16}
   .world-minimap__head{font-size:6px;letter-spacing:.06em;padding-bottom:2px}
   .world-minimap__head button{min-height:16px;padding:2px 3px;font-size:6px}
   .world-minimap__foot{padding-top:2px;gap:2px}
@@ -385,6 +385,9 @@
   .discovery-toast{bottom:calc(164px + env(safe-area-inset-bottom));padding:6px 10px;min-width:120px}
   .discovery-groups{grid-template-columns:1fr;gap:8px}
   .discovery-group{padding:8px}
+}
+@media(max-width:760px) and (pointer:coarse){
+  .world-minimap{bottom:calc(118px + env(safe-area-inset-bottom))}
 }
 @media(prefers-reduced-motion:reduce){
   .world-minimap,.world-minimap__body,.world-region,.discovery-toast{transition:none!important}
