@@ -125,6 +125,24 @@ test('proximity challenges create one shared authoritative duel and reject abuse
     assert.equal(intruder.status, 403);
     assert.equal(intruder.data.code, 'DUEL_NOT_YOURS');
 
+    // The public board and spectate route are read-only and never carry seats.
+    const board = await request('/api/world/duels');
+    assert.equal(board.status, 200);
+    assert.equal(board.data.live.length, 1);
+    assert.equal(board.data.live[0].duel_id, accepted.data.duel_id);
+    assert.equal(board.data.live[0].players.length, 2);
+    assert.equal(JSON.stringify(board.data).includes('visitorId'), false);
+    const spectate = await request(`/api/world/duels/${accepted.data.duel_id}/spectate`);
+    assert.equal(spectate.status, 200);
+    assert.equal(spectate.data.spectating, true);
+    assert.equal('you' in spectate.data, false, 'spectators have no seat');
+    assert.deepEqual(spectate.data.board, aliceView.data.board);
+    const spectatorMove = await request(`/api/world/duels/${accepted.data.duel_id}/move`, { cell: 0, revision: 0 });
+    assert.equal(spectatorMove.status, 403, 'a spectator cannot move for a player');
+    assert.equal(spectatorMove.data.code, 'DUEL_NOT_YOURS');
+    const spectatorPost = await request(`/api/world/duels/${accepted.data.duel_id}/spectate`, {});
+    assert.equal(spectatorPost.status, 405);
+
     // Turn order is enforced by the rule module; a stale revision is rejected.
     const outOfTurn = await request(`/api/world/duels/${accepted.data.duel_id}/move`, { cell: 0, revision: 0 }, bob.cookie);
     assert.equal(outOfTurn.status, 400);
@@ -158,6 +176,9 @@ test('proximity challenges create one shared authoritative duel and reject abuse
     const rpsAccepted = await request(`/api/worlds/main/presence/challenges/${rps.data.challenge.challenge_id}/accept`, {}, bob.cookie);
     assert.equal(rpsAccepted.status, 200);
     await request(`/api/world/duels/${rpsAccepted.data.duel_id}/pick`, { move: 'rock' }, alice.cookie);
+    const lockedWatch = await request(`/api/world/duels/${rpsAccepted.data.duel_id}/spectate`);
+    assert.deepEqual(lockedWatch.data.locked, [true, false]);
+    assert.equal(JSON.stringify(lockedWatch.data).includes('rock'), false, 'a live spectator never receives a locked move');
     const revealed = await request(`/api/world/duels/${rpsAccepted.data.duel_id}/pick`, { move: 'scissors' }, bob.cookie);
     assert.equal(revealed.data.status, 'finished');
     assert.equal(revealed.data.result, 'a');

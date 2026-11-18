@@ -138,7 +138,7 @@ export class WorldChallengeService {
   createDuel(challenge,from,to){
     const now=this.now();
     const duel={id:`duel-${randomUUID()}`,worldId:challenge.worldId,game:challenge.game,status:'playing',revision:0,createdAt:now,expiresAt:now+this.duelTtlMs,finishedAt:null,result:null,winner:null,
-      players:[{visitorId:from.visitorId,playerId:from.player_id,name:from.display_name},{visitorId:to.visitorId,playerId:to.player_id,name:to.display_name}],
+      players:[{visitorId:from.visitorId,playerId:from.player_id,name:from.display_name,avatar:from.avatar||'visitor_starter'},{visitorId:to.visitorId,playerId:to.player_id,name:to.display_name,avatar:to.avatar||'visitor_starter'}],
       ...(challenge.game==='tictactoe'?{board:Array(9).fill(null),moves:[]}:{picks:{}})};
     this.duels.set(duel.id,duel);
     for(const player of duel.players)this.duelByPlayer.set(player.playerId,duel.id);
@@ -157,6 +157,58 @@ export class WorldChallengeService {
     if(!duel||duel.worldId!==worldId)throw fail('DUEL_NOT_FOUND','That match is no longer available',404);
     if(!duel.players.some(player=>player.visitorId===visitorId))throw fail('DUEL_NOT_YOURS','This match belongs to another pair',403);
     return this.publicDuel(duel,visitorId);
+  }
+  /**
+   * Public Arena board. Summaries carry display names and avatars only; visitor
+   * sessions never leave the server. RPS rows expose lock state, never picks.
+   */
+  publicList(worldId){
+    this.prune();
+    const summarize=duel=>{
+      const view={duel_id:duel.id,game:duel.game,status:duel.status,revision:duel.revision,
+        created_at:new Date(duel.createdAt).toISOString(),expires_at:new Date(duel.expiresAt).toISOString(),
+        finished_at:duel.finishedAt?new Date(duel.finishedAt).toISOString():null,
+        players:duel.players.map((player,index)=>({player_id:player.playerId,name:player.name,marker:index===0?'a':'b',avatar:player.avatar||'visitor_starter'})),
+        result:duel.result,winner_player_id:duel.winner};
+      if(duel.game==='tictactoe'){
+        view.board=duel.board;
+        view.turn_player_id=duel.status==='playing'?duel.players[duel.moves.length%2].playerId:null;
+      }else{
+        view.locked=duel.players.map(player=>Boolean(duel.picks[player.visitorId]));
+      }
+      return view;
+    };
+    const matches=[...this.duels.values()].filter(duel=>duel.worldId===worldId)
+      .sort((a,b)=>Number(b.status==='playing')-Number(a.status==='playing')||b.createdAt-a.createdAt);
+    return {
+      live:matches.filter(duel=>duel.status==='playing').slice(0,8).map(summarize),
+      recent:matches.filter(duel=>duel.status!=='playing').slice(0,8).map(summarize),
+    };
+  }
+  /**
+   * Read-only observation of one public duel. No cookie, no seat, no command.
+   * RPS selections stay hidden until both players locked and the duel settled.
+   */
+  spectate(worldId,duelId){
+    this.prune();
+    const duel=this.duels.get(duelId);
+    if(!duel||duel.worldId!==worldId)throw fail('DUEL_NOT_FOUND','That match is no longer available',404);
+    const view={duel_id:duel.id,game:duel.game,status:duel.status,revision:duel.revision,spectating:true,
+      created_at:new Date(duel.createdAt).toISOString(),expires_at:new Date(duel.expiresAt).toISOString(),
+      finished_at:duel.finishedAt?new Date(duel.finishedAt).toISOString():null,
+      players:duel.players.map((player,index)=>({player_id:player.playerId,name:player.name,marker:index===0?'a':'b',avatar:player.avatar||'visitor_starter'})),
+      result:duel.result,winner_player_id:duel.winner};
+    if(duel.game==='tictactoe'){
+      view.board=duel.board;
+      view.moves=duel.moves.map(move=>({player_id:move.playerId,cell:move.cell}));
+      view.turn_player_id=duel.status==='playing'?duel.players[duel.moves.length%2].playerId:null;
+    }else{
+      view.locked=duel.players.map(player=>Boolean(duel.picks[player.visitorId]));
+      // The reveal is part of the settled public record, never the live one.
+      if(duel.status==='playing')view.players.forEach((player,index)=>{player.picked=Boolean(duel.picks[duel.players[index].visitorId]);});
+      else view.picks=duel.players.map(player=>({player_id:player.playerId,move:duel.picks[player.visitorId]??null}));
+    }
+    return view;
   }
   command(worldId,visitorId,duelId,action,data={}){
     this.prune();
@@ -197,7 +249,7 @@ export class WorldChallengeService {
     const you=duel.players[index],opponent=duel.players[other];
     const marker=position=>position===0?'a':'b';
     const view={duel_id:duel.id,game:duel.game,status:duel.status,revision:duel.revision,created_at:new Date(duel.createdAt).toISOString(),expires_at:new Date(duel.expiresAt).toISOString(),
-      you:{player_id:you.playerId,name:you.name,marker:marker(index)},opponent:{player_id:opponent.playerId,name:opponent.name,marker:marker(other)},
+      you:{player_id:you.playerId,name:you.name,marker:marker(index),avatar:you.avatar||'visitor_starter'},opponent:{player_id:opponent.playerId,name:opponent.name,marker:marker(other),avatar:opponent.avatar||'visitor_starter'},
       result:duel.result,winner_player_id:duel.winner};
     if(duel.game==='tictactoe'){
       view.board=duel.board;

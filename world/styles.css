@@ -666,3 +666,71 @@
   .feed-item.is-entering,.feed-item.is-leaving,.roster-chip.is-entering,.rooms-view .room-card.is-entering,.arena-stage__pit .survival-view.is-entering,.arena-stage__pit .rooms-view.is-entering{opacity:1!important;transform:none!important}
   .survival-result{transform:translate(-50%,0)}
 }
+
+/* Live match board and recent results: compact, clearly separate scopes. */
+.arena-live-board{margin:0 0 18px;padding:16px 18px;border:2px solid #3f5348;background:linear-gradient(160deg,#1b2b25,#15231e 70%);box-shadow:5px 5px 0 #0d1a16}
+.live-board__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px}
+.live-board__hint{margin:4px 0 0;color:#8f9c94;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.live-board__status{margin:0;color:#b9eb69;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;text-align:right;white-space:nowrap}
+.live-matches{display:grid;gap:7px}
+.live-match{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:9px 11px;border:1px solid #35433e;border-left:3px solid #52624d;background:#192420;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;transition:opacity .2s ease,transform .2s ease,border-color .2s ease,background .2s ease}
+.live-match[data-source="human"]{border-left-color:#b9eb69;background:#1b2a22}
+.live-match[data-source="survival"]{border-left-color:#e2a15d}
+.live-match:hover{background:#21332b;border-color:#506a58}
+.live-match.is-entering{opacity:0;transform:translateY(6px)}
+.live-match.is-leaving{opacity:0;transform:translateY(-4px);animation:arena-row-out .22s ease-in forwards}
+.live-match__game{min-width:38px;padding:3px 5px;border:1px solid #506a58;color:#d8cf9f;font:700 9px/1 ui-monospace,monospace;letter-spacing:.1em;text-align:center}
+.live-match__players{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+.live-match__player{display:flex;align-items:center;gap:6px;min-width:0}
+.live-match__player img{width:24px;height:24px;image-rendering:pixelated;border:1px solid #3d5044;background:#14231e;flex:none}
+.live-match__player b{color:#e3e8dc;font:10px/1.2 ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-match__vs{color:#8f9c94;font:8px/1 ui-monospace,monospace;letter-spacing:.08em}
+.live-match__state{color:#b9eb69;font:9px/1.2 ui-monospace,monospace;letter-spacing:.08em;white-space:nowrap}
+.live-match[data-source="table"] .live-match__state{color:#c5d7af}
+.live-match__watch{min-height:30px;padding:5px 10px;border:2px solid #b9eb69;background:#26382f;color:#d7f3a5;font:700 9px/1 ui-monospace,monospace;letter-spacing:.12em;box-shadow:2px 2px 0 #0d1a16;display:inline-flex;align-items:center;justify-content:center}
+.live-match__watch:hover{background:#33493a;color:#fff3cf;text-decoration:none}
+.live-empty{margin:4px 0 0;padding:14px;border:1px dashed #435a4c;background:#16241f;text-align:center;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.live-empty[hidden]{display:none}
+.live-empty strong{display:block;color:#d8cf9f;font-size:10px;letter-spacing:.16em}
+.live-empty span{display:block;margin-top:5px;color:#8f9c94;font-size:10px;line-height:1.5}
+
+.arena-recent{margin:0 0 18px;padding:14px 18px;border:1px solid #35433e;background:#172420}
+.recent-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.recent-hint{margin:4px 0 0;color:#8f9c94;font:10px/1.5 ui-monospace,monospace}
+.recent-status{margin:0;color:#c5d7af;font:9px/1.5 ui-monospace,monospace;letter-spacing:.08em;white-space:nowrap}
+.recent-list{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:5px}
+.recent-row{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;align-items:center;gap:9px;padding:7px 9px;border:1px solid #2a3a32;background:#182620;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;transition:opacity .2s ease,transform .2s ease}
+.recent-row.is-entering{opacity:0;transform:translateY(5px)}
+.recent-row.is-leaving{opacity:0;transform:translateY(-3px);animation:arena-row-out .2s ease-in forwards}
+.recent-row__tag{padding:2px 4px;border:1px solid #4c5f50;color:#aebba6;font-size:7px;letter-spacing:.12em}
+.recent-row__tag[data-source="human"]{border-color:#7d9a68;color:#cfe7b6}
+.recent-row__game{color:#b9eb69;font-size:9px;letter-spacing:.08em}
+.recent-row__players{color:#cfd8c9;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent-row__state{color:#e3e8dc;font-size:9px;letter-spacing:.06em;white-space:nowrap}
+.recent-row__time{color:#8f9c94;font-size:9px;font-variant-numeric:tabular-nums}
+.recent-empty{margin:8px 0 0;color:#8f9c94;font:10px/1.5 ui-monospace,monospace}
+.recent-empty[hidden]{display:none}
+@keyframes arena-row-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-4px)}}
+@media(max-width:760px){
+  .arena-live-board{padding:12px}
+  .live-board__head{flex-direction:column;gap:4px}
+  .live-board__status{text-align:left;white-space:normal}
+  .live-match{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"game players watch" "state state watch";gap:8px;padding:8px 9px}
+  .live-match__game{grid-area:game}
+  .live-match__players{grid-area:players}
+  .live-match__state{grid-area:state;white-space:normal}
+  .live-match__watch{grid-area:watch;min-height:40px;padding:6px 8px}
+  .live-match__player img{width:22px;height:22px}
+  .arena-recent{padding:12px}
+  .recent-head{flex-direction:column;gap:4px}
+  .recent-row{grid-template-columns:auto auto minmax(0,1fr) auto;grid-template-areas:"tag game state time" "players players players players";gap:6px}
+  .recent-row__tag{grid-area:tag}
+  .recent-row__game{grid-area:game}
+  .recent-row__players{grid-area:players;white-space:normal}
+  .recent-row__state{grid-area:state}
+  .recent-row__time{grid-area:time}
+}
+@media(prefers-reduced-motion:reduce){
+  .live-match,.recent-row{transition:none!important;animation:none!important}
+  .live-match.is-entering,.live-match.is-leaving,.recent-row.is-entering,.recent-row.is-leaving{opacity:1!important;transform:none!important}
+}
