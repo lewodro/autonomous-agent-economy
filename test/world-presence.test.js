@@ -100,13 +100,16 @@ test('presence capacity is bounded and health exposes counts without identities'
 
 test('quick chat vocabulary is identical on the server and in the client selector',()=>{
   assert.deepEqual(
-    QUICK_CHAT_OPTIONS.map(option=>[option.id,option.direction,option.text,option.challenge]),
-    Object.entries(QUICK_CHAT_PHRASES).map(([id,phrase])=>[id,phrase.direction,phrase.text,phrase.challenge]),
+    QUICK_CHAT_OPTIONS.map(option=>[option.id,option.page,option.direction,option.text,option.challenge]),
+    Object.entries(QUICK_CHAT_PHRASES).map(([id,phrase])=>[id,phrase.page,phrase.direction,phrase.text,phrase.challenge]),
   );
   assert.equal(QUICK_CHAT_COOLDOWN_MS,1_500);
   assert.equal(CLIENT_QUICK_CHAT_RADIUS,QUICK_CHAT_RADIUS);
-  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.id),['ttt','rps','follow','nice']);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.id),['hi','follow','nice','wait','ttt','rps','arena','explore']);
   assert.deepEqual(QUICK_CHAT_OPTIONS.filter(option=>option.challenge).map(option=>option.id),['ttt','rps']);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.filter(option=>option.page==='social').map(option=>option.text),['hi!','follow me','nice one','wait here']);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.filter(option=>option.page==='game').map(option=>option.text),['tic-tac-toe?','rps?','arena?',"let's explore"]);
+  assert.deepEqual(QUICK_CHAT_OPTIONS.map(option=>option.direction),['up','right','down','left','up','right','down','left']);
 });
 
 test('quick chat relays an allowlisted phrase to nearby humans with a cooldown',()=>{

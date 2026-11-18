@@ -218,6 +218,15 @@ const server = http.createServer(async (req, res) => {
       const result=action==='accept'?worldChallenges.accept(worldId,visitor.id,challengeId):action==='decline'?worldChallenges.decline(worldId,visitor.id,challengeId):worldChallenges.cancel(worldId,visitor.id,challengeId);
       return json(res,200,result,cookie);
     }
+    if(route==='/api/world/duels'){
+      if(req.method!=='GET')return json(res,405,{error:'Public match list is read-only'});
+      return json(res,200,worldChallenges.publicList('main'));
+    }
+    const duelSpectateRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})\/spectate$/);
+    if(duelSpectateRoute){
+      if(req.method!=='GET')return json(res,405,{error:'Spectating is read-only'});
+      return json(res,200,worldChallenges.spectate('main',duelSpectateRoute[1]));
+    }
     const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick))?$/);
     if(duelRoute){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};

@@ -1,4 +1,4 @@
-import { HttpArenaGateway, type ArenaRoom } from './gateway.js';
+import { HttpArenaGateway, type ArenaRoom, type LiveDuel, type LiveDuelBoard, type MatchRecord } from './gateway.js';
 import { acceptsSurvivalUpdate, loadSurvivalSnapshot, SurvivalRenderer, hitTest, type Selection, type SurvivalEvent, type SurvivalSnapshot } from './survival.js';
 const gateway=new HttpArenaGateway(),rooms=document.getElementById('rooms')!,status=document.getElementById('lobby-status')!,agents=document.getElementById('arena-agents')!;
 const survivalView=document.getElementById('survival-view')!,roomsView=document.getElementById('rooms-view')!;
@@ -219,7 +219,7 @@ function paintSurvival():void{
 survivalCanvas.addEventListener('pointerdown',event=>{if(!snapshot)return;const p=survivalRenderer?.point(event,snapshot);if(!p)return;selection=hitTest(snapshot,p.x,p.y,survivalRenderer?.positions());paintSurvival();});
 async function refreshSurvival():Promise<void>{
   if(stopped)return;
-  try{const next=await loadSurvivalSnapshot();if(acceptsSurvivalUpdate(snapshot,next)){snapshot=next;if(gameMode==='survival')paintSurvival();else{observeSurvivalEvents(next);paintRoster(next);paintResult(next);}}}
+  try{const next=await loadSurvivalSnapshot();if(acceptsSurvivalUpdate(snapshot,next)){snapshot=next;if(gameMode==='survival')paintSurvival();else{observeSurvivalEvents(next);paintRoster(next);paintResult(next);}renderLiveBoard();}}
   catch(error){if(!snapshot){document.getElementById('survival-overlay')!.hidden=false;survivalStatus.textContent=error instanceof Error&&error.message.includes('404')?'SURVIVAL FEED NOT AVAILABLE':'SURVIVAL FEED UNAVAILABLE';}else survivalStatus.textContent='CONNECTION INTERRUPTED · LAST SERVER SNAPSHOT SHOWN';}
   if(!stopped)window.setTimeout(()=>void refreshSurvival(),1500);
 }
@@ -241,6 +241,8 @@ async function refresh():Promise<void>{
   if(stopped)return;
   try{
     const list=await gateway.listRooms();
+    roomCache=list;
+    renderLiveBoard();
     // Preserve focused room links between polls.
     for(const room of list){
       let card=document.getElementById('room-'+room.id) as HTMLElement|null;
@@ -282,6 +284,180 @@ function updateFeedStatus(fighting?:number):void{
   if(typeof fighting==='number')liveRooms=fighting;
   const parts=[`SEQ ${snapshot?.sequence??'—'}`,liveRooms?`${liveRooms} FIGHTING`:'NO LIVES NOW',snapshot?`${snapshot.agents.filter(agent=>agent.status==='alive').length} ALIVE`:'CONNECTING'];
   feedStatus.textContent=`SERVER EVENT STREAM · ${parts.join(' · ')}`;
+}
+
+/* ---------------------------------------------------------------
+   Live match board and recent results. The board merges only data
+   the server already exposes: live human duels, autonomous rooms
+   and the authoritative Survival snapshot. Watching is read-only.
+   --------------------------------------------------------------- */
+const AVATAR_PREVIEWS:Record<string,string>={
+  visitor_starter:'/assets/avatars/clean/starter_preview.png',
+  visitor_ember:'/assets/avatars/clean/ember_preview.png',
+  visitor_atlas:'/assets/avatars/clean/atlas_preview.png',
+  visitor_nova:'/assets/avatars/clean/nova_preview.png',
+  visitor_echo:'/assets/avatars/clean/echo_preview.png',
+};
+const liveMatches=document.getElementById('live-matches') as HTMLElement;
+const liveEmpty=document.getElementById('live-empty') as HTMLElement;
+const liveBoardStatus=document.getElementById('live-board-status') as HTMLElement;
+const recentList=document.getElementById('recent-list') as HTMLElement;
+const recentEmpty=document.getElementById('recent-empty') as HTMLElement;
+const recentStatus=document.getElementById('recent-status') as HTMLElement;
+const GAME_SHORT:Record<string,string>={rps:'RPS',tictactoe:'TTT',survival:'SURV'};
+const GAME_LONG:Record<string,string>={rps:'ROCK PAPER SCISSORS',tictactoe:'TIC-TAC-TOE',survival:'SURVIVAL MELEE'};
+let roomCache:ArenaRoom[]=[];
+let duelCache:LiveDuelBoard={live:[],recent:[]};
+let historyCache:MatchRecord[]=[];
+let liveSignature='',recentSignature='';
+const isLiveRoom=(room:ArenaRoom):boolean=>room.status==='live'||room.status==='starting';
+const avatarPreview=(avatar:string):string=>AVATAR_PREVIEWS[avatar]||AVATAR_PREVIEWS.visitor_starter!;
+function duelState(duel:LiveDuel):string{
+  if(duel.game==='rps'){
+    const locked=(duel.locked||[]).filter(Boolean).length;
+    return locked>=2?'BOTH LOCKED':`${locked}/2 LOCKED`;
+  }
+  const turn=duel.players.find(player=>player.player_id===duel.turn_player_id);
+  return turn?`TURN · ${turn.name.toUpperCase()}`:'LIVE';
+}
+function tableState(room:ArenaRoom):string{
+  return `${room.status==='live'?'FIGHTING':room.status==='starting'?'STARTING':room.status.toUpperCase()} · ${room.phase.toUpperCase()}${room.spectators?` · ${room.spectators} WATCHING`:''}`;
+}
+interface LiveRow {key:string;source:'human'|'table'|'survival';game:string;players:{name:string;image?:string}[];state:string;href?:string;survival?:boolean}
+function liveRows():LiveRow[]{
+  const rows:LiveRow[]=[];
+  for(const duel of duelCache.live){
+    if(duel.status!=='playing')continue;
+    rows.push({key:`h-${duel.duel_id}`,source:'human',game:duel.game,
+      players:duel.players.map(player=>({name:player.name,image:avatarPreview(player.avatar)})),
+      state:duelState(duel),href:`/duel/${encodeURIComponent(duel.duel_id)}?spectate=1`});
+  }
+  for(const room of roomCache){
+    if(!isLiveRoom(room)||room.participants.length<2)continue;
+    rows.push({key:`t-${room.id}`,source:'table',game:room.game,
+      players:room.participants.map(agent=>({name:agent.name,image:'/'+agent.sprite})),
+      state:tableState(room),href:gateway.watchMatch(room)});
+  }
+  if(snapshot&&snapshot.status!=='finished'&&snapshot.agents.length){
+    const alive=snapshot.agents.filter(agent=>agent.status==='alive');
+    const leader=snapshot.agents.find(agent=>agent.id===snapshot!.leader_id);
+    rows.push({key:'s-survival',source:'survival',game:'survival',
+      players:[{name:leader?leader.name:'FIELD',image:leader?'/'+leader.sprite:undefined},{name:`${alive.length} ALIVE`}],
+      state:`ROUND ${String(snapshot.round).padStart(2,'0')} · ${snapshot.engagements.filter(value=>value.status==='fighting').length} FIGHTS`,survival:true});
+  }
+  return rows;
+}
+function liveRowElement(row:LiveRow):HTMLElement{
+  const card=document.createElement('article');card.className='live-match';card.dataset.liveKey=row.key;card.dataset.source=row.source;
+  const game=document.createElement('span');game.className='live-match__game';game.textContent=GAME_SHORT[row.game]||row.game.toUpperCase();
+  const players=document.createElement('div');players.className='live-match__players';
+  row.players.forEach((player,index)=>{
+    if(index)players.append(Object.assign(document.createElement('span'),{className:'live-match__vs',textContent:'VS'}));
+    const chip=document.createElement('span');chip.className='live-match__player';
+    if(player.image){const img=document.createElement('img');img.src=player.image;img.alt='';img.width=24;img.height=24;img.decoding='async';img.loading='lazy';chip.append(img);}
+    const name=document.createElement('b');name.textContent=player.name.toUpperCase();chip.append(name);players.append(chip);
+  });
+  const state=document.createElement('span');state.className='live-match__state';state.textContent=row.state;
+  card.append(game,players,state);
+  if(row.href){const link=document.createElement('a');link.className='live-match__watch';link.href=row.href;link.textContent='WATCH';link.setAttribute('aria-label',`Watch ${GAME_LONG[row.game]||row.game} match read-only`);card.append(link);}
+  else if(row.survival){const watch=document.createElement('button');watch.type='button';watch.className='live-match__watch';watch.textContent='WATCH';watch.dataset.watch='survival';watch.setAttribute('aria-label','Watch the live Survival match');card.append(watch);}
+  return card;
+}
+function retargetKeyed(container:HTMLElement,attr:string,keys:string[]):void{
+  const desired=new Set(keys);
+  for(const child of Array.from(container.children)){
+    if(!(child instanceof HTMLElement)||!child.dataset[attr])continue;
+    if(desired.has(child.dataset[attr]!)||child.classList.contains('is-leaving'))continue;
+    child.classList.add('is-leaving');
+    const remove=()=>child.remove();
+    child.addEventListener('animationend',remove,{once:true});
+    window.setTimeout(remove,reduceMotion.matches?0:240);
+  }
+}
+function renderLiveBoard():void{
+  const rows=liveRows();
+  const signature=rows.map(row=>`${row.key}:${row.state}:${row.players.map(player=>player.name).join('/')}`).join('|');
+  if(signature===liveSignature)return;
+  liveSignature=signature;
+  withFlip(liveMatches,'liveKey',()=>{
+    retargetKeyed(liveMatches,'liveKey',rows.map(row=>row.key));
+    const existing=new Map<string,HTMLElement>();
+    for(const child of Array.from(liveMatches.children))if(child instanceof HTMLElement&&child.dataset.liveKey)existing.set(child.dataset.liveKey,child);
+    for(const row of rows){
+      let node=existing.get(row.key);
+      if(!node){node=liveRowElement(row);if(!reduceMotion.matches){node.classList.add('is-entering');requestAnimationFrame(()=>requestAnimationFrame(()=>node!.classList.remove('is-entering')));}}
+      liveMatches.append(node);
+    }
+  });
+  const human=rows.filter(row=>row.source==='human').length;
+  const tables=rows.filter(row=>row.source==='table').length;
+  liveBoardStatus.textContent=rows.length?`${human} HUMAN · ${tables} TABLE${tables===1?'':'S'}`: 'NO LIVE MATCHES';
+  liveEmpty.hidden=rows.length>0;
+}
+liveMatches.addEventListener('click',event=>{
+  const target=event.target;
+  if(target instanceof Element&&target.closest<HTMLElement>('[data-watch="survival"]'))setMode('survival');
+});
+interface RecentRow {key:string;source:'human'|'table';game:string;players:string;state:string;stamp:string}
+function recentRows():RecentRow[]{
+  const rows:RecentRow[]=[];
+  for(const duel of duelCache.recent){
+    if(duel.status==='expired')continue;
+    const winner=duel.result==='draw'?null:duel.players.find(player=>player.player_id===duel.winner_player_id);
+    rows.push({key:`h-${duel.duel_id}`,source:'human' as const,game:duel.game,players:duel.players.map(player=>player.name).join(' vs '),
+      state:duel.result==='draw'?'DRAW':winner?`${winner.name.toUpperCase()} WON`:'COMPLETE',stamp:duel.finished_at||duel.created_at});
+  }
+  for(const match of historyCache){
+    const winner=match.result==='draw'?null:match.players[match.result==='a'?0:1];
+    rows.push({key:`t-${match.runId}-${match.id}`,source:'table' as const,game:match.game,players:match.players.map(player=>player.name).join(' vs '),
+      state:match.result==='draw'?'DRAW':winner?`${winner.name.toUpperCase()} WON`:'COMPLETE',stamp:match.completedAt});
+  }
+  return rows.sort((a,b)=>String(b.stamp).localeCompare(String(a.stamp))).slice(0,8);
+}
+function renderRecent():void{
+  const rows=recentRows();
+  const signature=rows.map(row=>`${row.key}:${row.state}`).join('|');
+  if(signature===recentSignature)return;
+  recentSignature=signature;
+  retargetKeyed(recentList,'recentKey',rows.map(row=>row.key));
+  const existing=new Map<string,HTMLElement>();
+  for(const child of Array.from(recentList.children))if(child instanceof HTMLElement&&child.dataset.recentKey)existing.set(child.dataset.recentKey,child);
+  for(const row of rows){
+    let item=existing.get(row.key);
+    if(!item){
+      item=document.createElement('li');item.className='recent-row';item.dataset.recentKey=row.key;
+      const tag=document.createElement('span');tag.className='recent-row__tag';tag.dataset.source=row.source;
+      const game=document.createElement('span');game.className='recent-row__game';
+      const players=document.createElement('span');players.className='recent-row__players';
+      const state=document.createElement('strong');state.className='recent-row__state';
+      const stamp=document.createElement('time');stamp.className='recent-row__time';
+      item.append(tag,game,players,state,stamp);
+      if(!reduceMotion.matches){item.classList.add('is-entering');requestAnimationFrame(()=>requestAnimationFrame(()=>item!.classList.remove('is-entering')));}
+    }
+    const source=row.source==='human'?'HUMAN':'TABLE';
+    (item.querySelector('.recent-row__tag') as HTMLElement).textContent=source;
+    (item.querySelector('.recent-row__game') as HTMLElement).textContent=GAME_SHORT[row.game]||row.game.toUpperCase();
+    (item.querySelector('.recent-row__players') as HTMLElement).textContent=row.players;
+    (item.querySelector('.recent-row__state') as HTMLElement).textContent=row.state;
+    const time=item.querySelector('.recent-row__time') as HTMLTimeElement;
+    time.textContent=row.stamp?new Date(row.stamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+    time.dateTime=row.stamp||'';
+    recentList.append(item);
+  }
+  recentEmpty.hidden=rows.length>0;
+  recentStatus.textContent=rows.length?`LAST ${rows.length} RESULTS`:'NO RESULTS YET';
+}
+async function refreshDuels():Promise<void>{
+  if(stopped)return;
+  try{duelCache=await gateway.liveDuels();if(!stopped){renderLiveBoard();renderRecent();}}
+  catch{liveBoardStatus.textContent='LIVE BOARD RECONNECTING…';}
+  if(!stopped)window.setTimeout(()=>void refreshDuels(),2_000);
+}
+async function refreshHistory():Promise<void>{
+  if(stopped)return;
+  try{historyCache=await gateway.history();if(!stopped)renderRecent();}
+  catch{/* The live board still works without retained history. */}
+  if(!stopped)window.setTimeout(()=>void refreshHistory(),5_000);
 }
 async function profiles():Promise<void>{
   if(stopped)return;
@@ -348,4 +524,4 @@ async function refreshCumulative():Promise<void>{
   if(!stopped)setTimeout(()=>void refreshCumulative(),5000);
 }
 updateFeedStatus();
-setMode('survival');void refresh();void profiles();void refreshSurvival();void refreshCumulative();
+setMode('survival');void refresh();void profiles();void refreshSurvival();void refreshCumulative();void refreshDuels();void refreshHistory();

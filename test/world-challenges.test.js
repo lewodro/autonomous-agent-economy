@@ -197,3 +197,59 @@ test('a challenge rejected for abuse creates no duel and notifies the stream',()
   assert.ok(types.includes('ChallengeDeclined'));
   assert.equal(types.includes('ChallengeAccepted'),false);
 });
+
+test('the public board lists live duels without visitor sessions or hidden RPS picks',()=>{
+  const {presence,challenges,events}=build();
+  seat(presence,alice,100);seat(presence,bob,150);seat(presence,carol,900);
+  const {duel_id}=acceptedDuel(challenges,events,alice,bob,'rps');
+  const board=challenges.publicList('main');
+  assert.equal(board.live.length,1);
+  assert.equal(board.recent.length,0);
+  const [row]=board.live;
+  assert.equal(row.duel_id,duel_id);
+  assert.equal(row.game,'rps');
+  assert.equal(row.status,'playing');
+  assert.deepEqual(row.players.map(player=>player.name.length>0), [true,true]);
+  assert.equal(row.players.some(player=>'visitorId' in player),false);
+  assert.deepEqual(row.locked,[false,false]);
+  assert.equal(JSON.stringify(row).includes('rock'),false,'the live board never carries selections');
+  assert.equal(JSON.stringify(row).includes('11111111-1111-4111-8111-111111111111'),false,'visitor cookies never leak');
+  challenges.command('main',alice,duel_id,'pick',{move:'rock'});
+  const locked=challenges.publicList('main').live[0];
+  assert.deepEqual(locked.locked,[true,false]);
+  assert.equal(JSON.stringify(locked).includes('rock'),false,'a locked selection stays secret on the public board');
+});
+
+test('spectating is read-only and hides the RPS reveal until the duel settles',()=>{
+  const {presence,challenges,events}=build();
+  const owner=seat(presence,alice,100);seat(presence,bob,150);
+  const {duel_id}=acceptedDuel(challenges,events,alice,bob,'rps');
+  const aliceId=owner.player_id,bobId=presence.presenceId('main',bob);
+  challenges.command('main',alice,duel_id,'pick',{move:'rock'});
+  const watching=challenges.spectate('main',duel_id);
+  assert.equal(watching.spectating,true);
+  assert.equal(watching.status,'playing');
+  assert.deepEqual(watching.locked,[true,false]);
+  assert.equal('picks' in watching,false,'live spectators never receive either choice');
+  assert.equal(JSON.stringify(watching).includes('rock'),false);
+  assert.equal(watching.players.some(player=>'visitorId' in player),false);
+  challenges.command('main',bob,duel_id,'pick',{move:'scissors'});
+  const settled=challenges.spectate('main',duel_id);
+  assert.equal(settled.status,'finished');
+  assert.deepEqual(settled.picks.map(pick=>pick.move).sort(),['rock','scissors'],'the settled reveal is public');
+  assert.equal(settled.result,'a');
+  assert.equal(settled.winner_player_id,aliceId);
+});
+
+test('spectating a TTT duel shows the same board to everyone and rejects unknown matches',()=>{
+  const {presence,challenges,events}=build();
+  const owner=seat(presence,alice,100);seat(presence,bob,150);
+  const {duel_id}=acceptedDuel(challenges,events,alice,bob);
+  challenges.command('main',alice,duel_id,'move',{cell:4,revision:0});
+  const watching=challenges.spectate('main',duel_id);
+  assert.deepEqual(watching.board,[null,null,null,null,'a',null,null,null,null]);
+  assert.equal(watching.turn_player_id,presence.presenceId('main',bob));
+  assert.equal(challenges.view('main',alice,duel_id).board.join(','),watching.board.join(','),'participants and spectators share one board');
+  assert.throws(()=>challenges.spectate('main','duel-99999999-9999-4999-8999-999999999999'),{code:'DUEL_NOT_FOUND'});
+  assert.deepEqual(challenges.publicList('other'),{live:[],recent:[]},'other worlds see no duels');
+});

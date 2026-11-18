@@ -19,11 +19,21 @@ export interface ArenaStatistics {
   games:{rps:{matches:number;draws:number;decisions:number};tictactoe:{matches:number;draws:number;decisions:number};survival:{matches:number;draws:number;decisions:number}};
   agents:(AgentProfile&{win_rate:number})[];
 }
+/** Public, read-only match summaries. They never carry a visitor session or RPS pick. */
+export interface LiveDuelPlayer {player_id:string;name:string;marker:'a'|'b';avatar:string}
+export interface LiveDuel {
+  duel_id:string;game:'tictactoe'|'rps';status:'playing'|'finished'|'expired';revision:number;
+  created_at:string;expires_at:string;finished_at:string|null;
+  players:LiveDuelPlayer[];result:'a'|'b'|'draw'|null;winner_player_id:string|null;
+  board?:Array<'a'|'b'|null>;turn_player_id?:string|null;locked?:boolean[];
+}
+export interface LiveDuelBoard {live:LiveDuel[];recent:LiveDuel[]}
 export interface ArenaGateway {
   listRooms():Promise<ArenaRoom[]>;
   getAgentProfiles():Promise<AgentProfile[]>;
   statistics():Promise<ArenaStatistics>;
   history():Promise<MatchRecord[]>;
+  liveDuels():Promise<LiveDuelBoard>;
   watchMatch(room:ArenaRoom):string;
 }
 export async function request<T>(url:string,options?:RequestInit):Promise<T> {
@@ -37,6 +47,7 @@ export class HttpArenaGateway implements ArenaGateway {
   async getAgentProfiles():Promise<AgentProfile[]> {return (await request<{agents:AgentProfile[]}>('/api/arena/agents')).agents;}
   async statistics():Promise<ArenaStatistics> {return request<ArenaStatistics>('/api/arena/statistics');}
   async history():Promise<MatchRecord[]> {return (await request<{matches:MatchRecord[]}>('/api/arena/history')).matches;}
+  async liveDuels():Promise<LiveDuelBoard> {return request<LiveDuelBoard>('/api/world/duels');}
   watchMatch(room:ArenaRoom):string {
     if(!((room.game==='rps'&&/^rps-[12]$/.test(room.id))||(room.game==='tictactoe'&&/^ttt-[12]$/.test(room.id))))throw new Error('Unsupported room');
     return `/arena/${room.game}/${room.id}`;

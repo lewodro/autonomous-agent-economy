@@ -4,22 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#142620">
-  <meta name="description" content="A private Tic-Tac-Toe or Rock Paper Scissors match between two visitors of the shared world.">
-  <title>Shared match · Agent World</title>
+  <meta name="description" content="A live Tic-Tac-Toe or Rock Paper Scissors match between two visitors of the shared world, with read-only spectating.">
+  <title>Shared match · Last Seat Arena</title>
   <link rel="stylesheet" href="/world/styles.css">
 </head>
 <body class="duel-page">
+  <div class="duel-rig" aria-hidden="true">
+    <div class="duel-rail duel-rail--left"></div>
+    <div class="duel-rail duel-rail--right"></div>
+    <div class="duel-lamp duel-lamp--left"></div>
+    <div class="duel-lamp duel-lamp--right"></div>
+    <div class="duel-banner duel-banner--left"><span>LAST SEAT</span></div>
+    <div class="duel-banner duel-banner--right"><span>ARENA</span></div>
+  </div>
   <main class="duel-shell">
     <header class="duel-head">
-      <h1 id="duel-title">SHARED MATCH</h1>
-      <a href="/world?return=duel">← Return to world</a>
+      <a class="duel-brand" href="/arena">▦ LAST SEAT ARENA</a>
+      <span id="duel-mode" class="duel-mode">SHARED MATCH</span>
+      <a class="duel-exit" href="/world?return=duel">← Return to world</a>
     </header>
-    <p id="duel-status" class="duel-status" role="status" aria-live="polite">Opening the match…</p>
-    <div id="duel-players" class="duel-players" aria-label="Players"></div>
-    <div id="duel-board" class="duel-board" hidden aria-label="Tic-Tac-Toe board"></div>
-    <div id="duel-actions" class="duel-actions" hidden aria-label="Rock Paper Scissors moves"></div>
-    <p id="duel-hint" class="duel-hint"></p>
-    <p id="duel-result" class="duel-result" hidden></p>
+    <section class="duel-stage" aria-labelledby="duel-title">
+      <p class="duel-eyebrow"><span id="duel-game">LIVE MATCH</span> <span class="duel-scope" id="duel-scope">LIVE</span></p>
+      <h1 id="duel-title">SHARED MATCH</h1>
+      <p id="duel-status" class="duel-status" role="status" aria-live="polite">Opening the match…</p>
+      <div id="duel-players" class="duel-players" aria-label="Players"></div>
+      <div class="duel-center">
+        <div id="duel-board" class="duel-board" hidden aria-label="Tic-Tac-Toe board"></div>
+        <div id="duel-actions" class="duel-actions" hidden aria-label="Rock Paper Scissors moves"></div>
+        <p id="duel-hint" class="duel-hint"></p>
+        <p id="duel-result" class="duel-result" hidden></p>
+      </div>
+    </section>
     <a id="duel-return" class="duel-return" href="/world?return=duel">RETURN TO WORLD</a>
   </main>
   <script type="module" src="/web/dist/world/duel.js"></script>

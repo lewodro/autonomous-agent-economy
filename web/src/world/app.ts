@@ -13,12 +13,12 @@ import { liveMatchMessages } from './live-statistics.js';
 import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type PresenceChallengeAccepted, type PresenceChallengeUpdate, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
-import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, quickChatForDirection, quickChatPhrase, type QuickChatDirection } from './quick-chat.js';
+import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
-const quickChatRoot=$<HTMLDivElement>('quick-chat'),quickChatWheel=$<HTMLDivElement>('quick-chat-wheel'),quickChatPrompt=$<HTMLDivElement>('quick-chat-prompt'),quickChatNotice=$<HTMLDivElement>('quick-chat-notice'),quickChatBubbles=$<HTMLDivElement>('quick-chat-bubbles'),quickChatOpenButton=$<HTMLButtonElement>('quick-chat-open'),quickChatNote=$('quick-chat-note');
+const quickChatRoot=$<HTMLDivElement>('quick-chat'),quickChatWheel=$<HTMLDivElement>('quick-chat-wheel'),quickChatPrompt=$<HTMLDivElement>('quick-chat-prompt'),quickChatNotice=$<HTMLDivElement>('quick-chat-notice'),quickChatBubbles=$<HTMLDivElement>('quick-chat-bubbles'),quickChatOpenButton=$<HTMLButtonElement>('quick-chat-open'),quickChatNote=$('quick-chat-note'),quickChatOptions=$<HTMLDivElement>('quick-chat-options'),quickChatPageButton=$<HTMLButtonElement>('quick-chat-page');
 const challengePrompt=$<HTMLDivElement>('challenge-prompt'),challengeFrom=$<HTMLElement>('challenge-from'),challengeGame=$<HTMLElement>('challenge-game'),challengeAccept=$<HTMLButtonElement>('challenge-accept'),challengeDecline=$<HTMLButtonElement>('challenge-decline'),challengeTimerBar=$<HTMLElement>('challenge-timer'),challengeOutgoing=$<HTMLDivElement>('challenge-outgoing'),challengeOutgoingText=$<HTMLElement>('challenge-outgoing-text'),challengeNotice=$<HTMLDivElement>('challenge-notice');
 const challengeTimerFill=challengeTimerBar.querySelector<HTMLElement>('i')!;
 const settings=loadSettings(),gateway=new HttpArenaGateway();
@@ -49,7 +49,7 @@ const speechLimiter=new SpeechLimiter();
 const thoughtCounts=new Map<string,number>();
 let visitorName='human',publicHistory:MatchRecord[]=[],nextHistoryRefresh=0;
 const remotePlayers=new Map<string,{actor:WorldActor;target:{x:number;y:number}}>();
-let quickChatOpen=false,quickChatSending=false,quickChatNoticeTimer=0;
+let quickChatOpen=false,quickChatSending=false,quickChatNoticeTimer=0,quickChatPage:QuickChatPage='social';
 const quickChatBubbleElements=new Map<string,{element:HTMLDivElement;expiresAt:number;removeAt:number;leaving:boolean}>();
 let incomingChallenge:PresenceChallenge|null=null,incomingChallengeTimer=0;
 let outgoingChallenge:PresenceChallenge|null=null,outgoingChallengeTimer=0,challengeNoticeTimer=0;
@@ -279,11 +279,31 @@ function positionQuickChatWheel():void {
   quickChatWheel.style.left=`${Math.min(Math.max(8,x-width/2),Math.max(8,rect.width-width-8))}px`;
   quickChatWheel.style.top=`${Math.min(Math.max(8,y-height-22),Math.max(8,rect.height-height-8))}px`;
 }
+const DIRECTION_GLYPH:Record<QuickChatDirection,string>={up:'↑',right:'→',down:'↓',left:'←'};
+function renderQuickChatOptions():void {
+  quickChatOptions.replaceChildren();
+  for(const phrase of quickChatPhrases(quickChatPage)){
+    const button=document.createElement('button');button.type='button';button.className='quick-chat__option';
+    button.dataset.phrase=phrase.id;button.dataset.direction=phrase.direction;button.dataset.page=phrase.page;
+    button.setAttribute('aria-keyshortcuts',`Arrow${phrase.direction.charAt(0).toUpperCase()}${phrase.direction.slice(1)}`);
+    if(phrase.challenge)button.classList.add('is-challenge');
+    const arrow=document.createElement('span');arrow.className='quick-chat__arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent=DIRECTION_GLYPH[phrase.direction];
+    const label=document.createElement('span');label.className='quick-chat__phrase';label.textContent=phrase.text;
+    button.append(arrow,label);quickChatOptions.append(button);
+  }
+  quickChatPageButton.textContent=`${QUICK_CHAT_PAGE_LABEL[quickChatPage]} ▸`;
+  quickChatPageButton.dataset.page=quickChatPage;
+}
+function switchQuickChatPage():void {
+  quickChatPage=nextQuickChatPage(quickChatPage);
+  renderQuickChatOptions();
+  quickChatOptions.querySelector<HTMLButtonElement>('.quick-chat__option')?.focus({preventScroll:true});
+}
 function openQuickChat():boolean {
   if(quickChatOpen)return true;
   if(quickChatSending||!canQuickChat())return false;
   quickChatOpen=true;
-  quickChatNote.textContent=touchFirst?'CHOOSE A PHRASE':'HOLD E · RELEASE TO CANCEL';
+  quickChatNote.textContent=touchFirst?'CHOOSE A PHRASE · PAGE TOGGLE':'HOLD E · Q SWITCHES PAGE';
   for(const option of quickChatWheel.querySelectorAll<HTMLButtonElement>('.quick-chat__option'))option.disabled=false;
   quickChatRoot.hidden=false;quickChatRoot.setAttribute('aria-hidden','false');
   positionQuickChatWheel();
@@ -503,12 +523,15 @@ quickChatOpenButton.addEventListener('click',()=>{openQuickChat();});
 window.addEventListener('keydown',event=>{
   if(!quickChatOpen)return;
   if(event.key==='Escape'){event.preventDefault();closeQuickChat();return;}
+  if(event.key.toLowerCase()==='q'){event.preventDefault();switchQuickChatPage();return;}
   const direction=quickChatDirectionFromKey(event.key);
   if(!direction)return;
   event.preventDefault();
-  const phrase=quickChatForDirection(direction);
+  const phrase=quickChatForDirection(direction,quickChatPage);
   if(phrase)void sendQuickChatPhrase(phrase.id);
 });
+quickChatPageButton.addEventListener('click',()=>{if(quickChatOpen)switchQuickChatPage();});
+renderQuickChatOptions();
 function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
 dialog.addEventListener('close',stopResearchLive);
 function show(title:string):number {stopResearchLive();resetInput();$('interaction-title').textContent=title;content.replaceChildren();if(!dialog.open)dialog.showModal();return ++interactionVersion;}
