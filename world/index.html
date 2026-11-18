@@ -46,14 +46,12 @@
       <div id="challenge-notice" class="challenge-notice" role="status" aria-live="polite" hidden></div>
       <div id="quick-chat" class="quick-chat" hidden>
         <div id="quick-chat-wheel" class="quick-chat__wheel" role="group" aria-labelledby="quick-chat-title">
-          <p id="quick-chat-title" class="quick-chat__title">QUICK CHAT</p>
-          <p id="quick-chat-note" class="quick-chat__note">HOLD E · RELEASE TO CANCEL</p>
-          <div class="quick-chat__options">
-            <button type="button" class="quick-chat__option" data-phrase="ttt" data-direction="up" aria-keyshortcuts="ArrowUp"><span class="quick-chat__arrow" aria-hidden="true">↑</span><span class="quick-chat__phrase">tic-tac-toe?</span></button>
-            <button type="button" class="quick-chat__option" data-phrase="rps" data-direction="right" aria-keyshortcuts="ArrowRight"><span class="quick-chat__arrow" aria-hidden="true">→</span><span class="quick-chat__phrase">rps?</span></button>
-            <button type="button" class="quick-chat__option" data-phrase="follow" data-direction="down" aria-keyshortcuts="ArrowDown"><span class="quick-chat__arrow" aria-hidden="true">↓</span><span class="quick-chat__phrase">follow me</span></button>
-            <button type="button" class="quick-chat__option" data-phrase="nice" data-direction="left" aria-keyshortcuts="ArrowLeft"><span class="quick-chat__arrow" aria-hidden="true">←</span><span class="quick-chat__phrase">nice one</span></button>
+          <div class="quick-chat__head">
+            <p id="quick-chat-title" class="quick-chat__title">QUICK CHAT</p>
+            <button id="quick-chat-page" class="quick-chat__page" type="button" aria-label="Switch between social and game phrases">SOCIAL ▸</button>
           </div>
+          <p id="quick-chat-note" class="quick-chat__note">HOLD E · Q SWITCHES PAGE</p>
+          <div id="quick-chat-options" class="quick-chat__options" role="group" aria-label="Quick chat phrases"></div>
           <button id="quick-chat-cancel" class="quick-chat__cancel" type="button">Cancel · Esc</button>
         </div>
       </div>

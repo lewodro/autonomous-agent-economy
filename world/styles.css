@@ -391,7 +391,11 @@
 .quick-chat__notice{position:absolute;left:50%;bottom:62px;z-index:15;padding:4px 9px;border:1px solid #b0a37d;background:#20342bf2;color:#f0cf75;font:9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.1em;transform:translateX(-50%);box-shadow:2px 2px 0 #0d1a16;pointer-events:none}
 .quick-chat{position:absolute;inset:0;z-index:18;background:#08120e44;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;touch-action:manipulation}
 .quick-chat__wheel{position:absolute;width:min(300px,calc(100% - 20px));padding:8px;border:2px solid #b0a37d;background:#14231ef7;box-shadow:5px 5px 0 #0d1a16;animation:quick-chat-in .16s ease-out}
-.quick-chat__title{margin:0;color:#f0cf75;font-size:9px;line-height:1.2;letter-spacing:.22em;text-align:center}
+.quick-chat__head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+.quick-chat__title{margin:0;color:#f0cf75;font-size:9px;line-height:1.2;letter-spacing:.22em;text-align:left}
+.quick-chat__page{min-height:22px;padding:2px 7px;border:1px solid #6f8a70;background:#20342b;color:#cfe7b6;font:8px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.12em;box-shadow:none}
+.quick-chat__page:hover{background:#2c4437;border-color:#a8b48f}
+.quick-chat__option.is-challenge{border-color:#6f8a70;background:#22382c}
 .quick-chat__note{margin:2px 0 7px;color:#aebba6;font-size:7px;line-height:1.2;letter-spacing:.08em;text-align:center}
 .quick-chat__options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .quick-chat__option{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;min-height:62px;padding:7px 8px;border:2px solid #506052;background:#20342b;color:#eee3c1;text-align:left;font-size:10px;line-height:1.25;letter-spacing:0;box-shadow:2px 2px 0 #0d1a16}
@@ -410,6 +414,7 @@
   .quick-chat__wheel{width:min(320px,calc(100% - 16px));padding:7px}
   .quick-chat__options{gap:5px}
   .quick-chat__option{min-height:72px;padding:8px;font-size:11px}
+  .quick-chat__page{min-height:30px;padding:4px 9px;font-size:9px}
   .quick-chat__bubble{max-width:150px;font-size:9px}
   .quick-chat__notice{bottom:calc(172px + env(safe-area-inset-bottom));font-size:8px}
   .quick-chat-open{width:64px;height:40px;font-size:9px;border-radius:20px}
