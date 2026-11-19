@@ -31,8 +31,8 @@ const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNav
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
 const returnTarget=new URLSearchParams(location.search).get('return');
-const venueReturns=new Set(['arena','treasury','compound','duel']);
-const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound','/duel'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
+const venueReturns=new Set(['arena','treasury','compound','duel','cave']);
+const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound','/duel','/cave'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
 if(!returningFromVenue&&navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas,{holdDelayMs:QUICK_CHAT_HOLD_MS,onHold:openQuickChat,onHoldEnd:closeQuickChatFromHold}),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
@@ -872,6 +872,16 @@ function portal():void {
   persist();resetInput();void leavePresence();emit({type:'world:entered-arena',actorId:player.id});document.body.classList.add('leaving');
   setTimeout(()=>location.assign('/arena'),matchMedia('(prefers-reduced-motion: reduce)').matches?0:220);
 }
+async function enterCave(siteId:string):Promise<void>{
+  try{
+    const response=await fetch('/api/world/cave/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({exterior:{...player.position}}),credentials:'same-origin',signal:AbortSignal.timeout(6000)});
+    const result=await response.json().catch(()=>({})) as {run?:{run_id?:string};error?:string};
+    if(!response.ok||!result.run?.run_id)throw new Error(result.error||'Cave is unavailable');
+    persist();resetInput();void leavePresence();document.body.classList.add('leaving');
+    setTimeout(()=>location.assign(`/cave?site=${encodeURIComponent(siteId)}`),reducedMotion?0:220);
+  }catch(error){farmHud.notice(error instanceof Error?error.message.toUpperCase():'CAVE UNAVAILABLE','warn');}
+}
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open||quickChatOpen)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
@@ -895,6 +905,19 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     const site=EXPLORATION_SITES.find(value=>value.id===target.id);
     if(site){
       recordDiscovery(site.id);
+      if(site.kind==='cave'){
+        const version=show('DANGEROUS AREA');
+        text('p','If you are defeated inside, you return to the plaza and lose your current internal game credits.');
+        text('p','A normal exit returns you to this exact spot. Wallet, SOL and treasury balances are never affected.');
+        text('p',site.description);
+        const actions=document.createElement('div');actions.className='cave-entry-actions';content.append(actions);
+        const enter=document.createElement('button');enter.type='button';enter.className='primary';enter.textContent='ENTER';
+        enter.onclick=()=>{void enterCave(site.id);};
+        const cancel=document.createElement('button');cancel.type='button';cancel.textContent='CANCEL';
+        cancel.onclick=()=>{if(dialog.open&&version===interactionVersion)dialog.close();};
+        actions.append(enter,cancel);
+        return;
+      }
       show(site.label);
       text('p',site.description);
       text('p',site.discovery);

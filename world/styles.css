@@ -814,3 +814,40 @@
   .arena-crowd i,.arena-banner::after,.arena-torch i{animation:none!important}
   .live-match.is-entering,.live-match.is-leaving,.recent-row.is-entering,.recent-row.is-leaving{opacity:1!important;transform:none!important}
 }
+
+/* Enterable cave: dark rock, bounded torch light, depth-aware atmosphere. */
+.cave-page{min-height:100vh;margin:0;background:#0a100e;color:#e4ddc5;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.cave-shell{width:min(720px,calc(100% - 20px));margin:0 auto;padding:14px 0 32px}
+.cave-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #334238}
+.cave-brand{color:#f0cf75!important;font-size:10px;letter-spacing:.16em;text-decoration:none}
+.cave-depth{padding:3px 7px;border:1px solid #6f8a70;background:#15231d;color:#cfe7b6;font-size:9px;letter-spacing:.12em}
+.cave-exit{color:#c9d4b7;font-size:9px;letter-spacing:.1em}
+.cave-stage{position:relative;border:2px solid #3f5348;background:#0d1411;box-shadow:5px 5px 0 #070d0a;overflow:hidden}
+#cave-canvas{display:block;width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;touch-action:none}
+.cave-overlay{position:absolute;inset:0;z-index:3;display:grid;align-content:center;justify-items:center;gap:12px;padding:20px;background:#060a08ee;text-align:center}
+.cave-overlay[hidden]{display:none}
+.cave-message{margin:0;color:#f0cf75;font-size:12px;line-height:1.6;letter-spacing:.1em}
+.cave-return{padding:9px 14px;border:2px solid #8fb37a;background:#23352a;color:#e9f7c2;font-size:10px;letter-spacing:.12em;text-decoration:none}
+.cave-hud{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;font-size:9px;letter-spacing:.1em}
+.cave-health{display:flex;align-items:center;gap:7px;color:#c9d4b7}
+.cave-health__bar{width:140px;height:12px;border:2px solid #506052;background:#15231d}
+.cave-health__bar i{display:block;height:100%;background:linear-gradient(90deg,#c76b55,#e2a15d);transition:width .18s ease}
+.cave-hud__right{color:#f0cf75;text-align:right;min-height:12px}
+.cave-hint{margin:10px 0;color:#9fae9d;font-size:9px;line-height:1.5;letter-spacing:.06em;text-align:center}
+.cave-controls{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:56px}
+.cave-joystick{position:relative;width:72px;height:72px;flex:none;border:2px solid #5a6d58;border-radius:50%;background:#18261f;box-shadow:2px 2px 0 #070d0a;touch-action:none}
+.cave-joystick span{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border:2px solid #8fb37a;border-radius:50%;background:#2b4133}
+.cave-buttons{display:flex;gap:8px}
+.cave-attack,.cave-action{min-width:84px;min-height:48px;padding:8px 10px;border:2px solid #8f7550;background:#2b3325;color:#f0cf75;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;box-shadow:2px 2px 0 #070d0a;touch-action:manipulation}
+.cave-action{border-color:#8fb37a;background:#26382f;color:#dcefc0}
+@media(max-width:600px){
+  .cave-shell{padding:10px 0 26px}
+  .cave-brand{font-size:9px}
+  #cave-canvas{min-height:220px}
+  .cave-health__bar{width:96px}
+  .cave-hud{font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .cave-health__bar i{transition:none}
+}
+.cave-entry-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}

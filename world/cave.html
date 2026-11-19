@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b100e">
+  <meta name="description" content="An authoritative, per-visitor cave run with darkness, torches and simple monsters.">
+  <title>Cave · Agent World</title>
+  <link rel="stylesheet" href="/world/styles.css">
+</head>
+<body class="cave-page">
+  <main class="cave-shell">
+    <header class="cave-head">
+      <a class="cave-brand" href="/arena">▦ LAST SEAT ARENA</a>
+      <span id="cave-depth" class="cave-depth">CAVE · LEVEL 1</span>
+      <a class="cave-exit" href="/world?return=cave">← Exit to World</a>
+    </header>
+    <section class="cave-stage" aria-label="Cave interior">
+      <canvas id="cave-canvas" width="480" height="360" aria-label="Dark cave interior with torches, passages and monsters"></canvas>
+      <div id="cave-overlay" class="cave-overlay" hidden>
+        <p id="cave-message" class="cave-message" role="status" aria-live="polite">Opening the cave…</p>
+        <a id="cave-return" class="cave-return" href="/world?return=cave">RETURN TO WORLD</a>
+      </div>
+    </section>
+    <div class="cave-hud">
+      <div class="cave-health"><span>HEALTH</span><div class="cave-health__bar"><i id="cave-health-fill"></i></div><b id="cave-health-text">100 / 100</b></div>
+      <div class="cave-hud__right"><span id="cave-notice" role="status" aria-live="polite"></span></div>
+    </div>
+    <p id="cave-hint" class="cave-hint">Move with WASD or arrows · ATTACK · E · Leave through the entrance</p>
+    <div class="cave-controls">
+      <div id="cave-joystick" class="cave-joystick" aria-label="Cave movement joystick"><span id="cave-joystick-knob"></span></div>
+      <div class="cave-buttons"><button id="cave-attack" type="button" class="cave-attack">ATTACK</button>
+      <button id="cave-action" type="button" class="cave-action">E · EXIT</button></div>
+    </div>
+  </main>
+  <script type="module" src="/web/dist/world/cave.js"></script>
+</body>
+</html>
