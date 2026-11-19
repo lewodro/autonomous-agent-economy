@@ -55,5 +55,47 @@ export class WorldEconomy {
   snapshot(owner=null){return{mode:'test_credits',nodes:this.nodes(),profile:owner?this.profile(owner):null,treasury:{public_address:this.treasuryAddress,payouts_enabled:this.payoutsEnabled,signing:'external_only'},receipts:owner?this.state.receipts.filter(receipt=>receipt.owner===owner).slice(-20).map(({owner,...receipt})=>receipt):[]};}
   async gather(owner,{node_id}={},position){const node=RESOURCE_NODES.find(value=>value.id===node_id);if(!node)throw fail('RESOURCE_NOT_FOUND','Unknown resource node',404);const runtime=this.state.nodes[node.id],now=this.now();if(runtime.availableAt>now)throw fail('RESOURCE_RESPAWNING','This resource is still respawning',409);const activePosition=nodePosition(node,runtime.generation);if(!position||Math.hypot(position.x-activePosition.x,position.y-activePosition.y)>72)throw fail('RESOURCE_OUT_OF_RANGE','Move closer to gather this resource',409);const generation=runtime.generation+1,idempotency_key=`${node.id}:${generation}`;if(this.state.receipts.some(value=>value.idempotency_key===idempotency_key))throw fail('REWARD_DUPLICATE','This harvest was already rewarded',409);const profile=this.profile(owner);profile.credits+=node.reward;this.state.profiles[owner]={user_id:profile.user_id,nickname:profile.nickname,credits:profile.credits};runtime.generation=generation;runtime.availableAt=now+(this.respawnMs??node.respawn_ms);const receipt={reward_id:randomUUID(),owner,user_id:profile.user_id,source_action:`gather:${node.kind}`,node_id:node.id,generation,amount_credits:node.reward,timestamp:new Date(now).toISOString(),status:'test_credited',idempotency_key};this.state.receipts.push(receipt);this.state.receipts=this.state.receipts.slice(-20_000);await this.persist();const {owner:discard,...publicReceipt}=receipt,{spawn_pool,...publicNode}=node;return{node:{...publicNode,position:activePosition,available:false,available_at:new Date(runtime.availableAt).toISOString()},profile:this.profile(owner),receipt:publicReceipt};}
   health(){return{status:'ok',nodes:RESOURCE_NODES.length,receipts:this.state.receipts.length,payouts_enabled:this.payoutsEnabled,treasury_configured:Boolean(this.treasuryAddress)};}
+  /** Bounded cave reward. One receipt per monster per run prevents duplicate grants. */
+  async awardCave(owner, { run_id, monster_id, amount } = {}) {
+    if (typeof run_id !== 'string' || !/^cave-[a-f0-9-]{36}$/.test(run_id)) throw fail('INVALID_CAVE_REWARD', 'Invalid cave reward run');
+    if (typeof monster_id !== 'string' || !/^[a-z0-9-]{1,48}$/.test(monster_id)) throw fail('INVALID_CAVE_REWARD', 'Invalid cave reward monster');
+    if (!Number.isInteger(amount) || amount < 1 || amount > 20) throw fail('INVALID_CAVE_REWARD', 'Cave rewards are bounded');
+    const idempotency_key = `cave_reward:${run_id}:${monster_id}`;
+    if (this.state.receipts.some(receipt => receipt.idempotency_key === idempotency_key)) return { credits: this.profile(owner).credits, already_awarded: true };
+    const profile = this.profile(owner);
+    profile.credits += amount;
+    this.state.profiles[owner] = profile;
+    const receipt = {
+      reward_id: randomUUID(), owner, user_id: profile.user_id, source_action: 'cave:monster',
+      node_id: monster_id, reward_key: run_id, amount_credits: amount,
+      timestamp: new Date(this.now()).toISOString(), status: 'test_credited', idempotency_key,
+    };
+    this.state.receipts.push(receipt);
+    this.state.receipts = this.state.receipts.slice(-20_000);
+    await this.persist();
+    return { credits: profile.credits, reward: { ...receipt, owner: undefined } };
+  }
+
+  /** Cave defeat zeroes internal test credits once per run; never wallet funds. */
+  async forfeitCredits(owner, { run_id } = {}) {
+    if (typeof run_id !== 'string' || !/^cave-[a-f0-9-]{36}$/.test(run_id)) throw fail('INVALID_CAVE_SETTLEMENT', 'Invalid cave settlement run');
+    const idempotency_key = `cave_defeat:${run_id}`;
+    const existing = this.state.receipts.find(receipt => receipt.idempotency_key === idempotency_key);
+    if (existing) return { credits: this.profile(owner).credits, lost_credits: 0, already_settled: true };
+    const profile = this.profile(owner), lost = profile.credits;
+    if (lost > 0) {
+      profile.credits = 0;
+      this.state.profiles[owner] = profile;
+      this.state.receipts.push({
+        reward_id: randomUUID(), owner, user_id: profile.user_id, source_action: 'cave_defeat',
+        amount_credits: lost, timestamp: new Date(this.now()).toISOString(),
+        status: 'test_debited', idempotency_key,
+      });
+      this.state.receipts = this.state.receipts.slice(-20_000);
+    }
+    await this.persist();
+    return { credits: profile.credits, lost_credits: lost, already_settled: false };
+  }
+
   async close(){await this.writeQueue;if(this.store)await this.store.close();}
 }
