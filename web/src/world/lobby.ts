@@ -369,7 +369,10 @@ function retargetKeyed(container:HTMLElement,attr:string,keys:string[]):void{
     if(!(child instanceof HTMLElement)||!child.dataset[attr])continue;
     if(desired.has(child.dataset[attr]!)||child.classList.contains('is-leaving'))continue;
     child.classList.add('is-leaving');
-    const remove=()=>child.remove();
+    // A row can reappear mid-exit (a duel is briefly filtered, then returns).
+    // Only remove it if it is still leaving when the timeout fires; the
+    // renderers clear the flag when they reuse a node.
+    const remove=()=>{if(child.classList.contains('is-leaving'))child.remove();};
     child.addEventListener('animationend',remove,{once:true});
     window.setTimeout(remove,reduceMotion.matches?0:240);
   }
@@ -377,7 +380,7 @@ function retargetKeyed(container:HTMLElement,attr:string,keys:string[]):void{
 function renderLiveBoard():void{
   const rows=liveRows();
   const signature=rows.map(row=>`${row.key}:${row.state}:${row.players.map(player=>player.name).join('/')}`).join('|');
-  if(signature===liveSignature)return;
+  if(signature===liveSignature&&!liveMatches.querySelector('.is-leaving'))return;
   liveSignature=signature;
   withFlip(liveMatches,'liveKey',()=>{
     retargetKeyed(liveMatches,'liveKey',rows.map(row=>row.key));
@@ -386,6 +389,7 @@ function renderLiveBoard():void{
     for(const row of rows){
       let node=existing.get(row.key);
       if(!node){node=liveRowElement(row);if(!reduceMotion.matches){node.classList.add('is-entering');requestAnimationFrame(()=>requestAnimationFrame(()=>node!.classList.remove('is-entering')));}}
+      else node.classList.remove('is-leaving');
       liveMatches.append(node);
     }
   });
@@ -417,13 +421,14 @@ function recentRows():RecentRow[]{
 function renderRecent():void{
   const rows=recentRows();
   const signature=rows.map(row=>`${row.key}:${row.state}`).join('|');
-  if(signature===recentSignature)return;
+  if(signature===recentSignature&&!recentList.querySelector('.is-leaving'))return;
   recentSignature=signature;
   retargetKeyed(recentList,'recentKey',rows.map(row=>row.key));
   const existing=new Map<string,HTMLElement>();
   for(const child of Array.from(recentList.children))if(child instanceof HTMLElement&&child.dataset.recentKey)existing.set(child.dataset.recentKey,child);
   for(const row of rows){
     let item=existing.get(row.key);
+    if(item)item.classList.remove('is-leaving');
     if(!item){
       item=document.createElement('li');item.className='recent-row';item.dataset.recentKey=row.key;
       const tag=document.createElement('span');tag.className='recent-row__tag';tag.dataset.source=row.source;

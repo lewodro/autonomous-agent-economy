@@ -78,6 +78,6 @@ test('cave HTTP routes are per-visitor, validate intents and keep runs read-only
       const exited = once(child, 'exit'); child.kill('SIGTERM');
       await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 3_000))]);
     }
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
   }
 });

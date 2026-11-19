@@ -910,6 +910,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
         text('p','If you are defeated inside, you return to the plaza and lose your current internal game credits.');
         text('p','A normal exit returns you to this exact spot. Wallet, SOL and treasury balances are never affected.');
         text('p',site.description);
+        text('p',site.discovery);
         const actions=document.createElement('div');actions.className='cave-entry-actions';content.append(actions);
         const enter=document.createElement('button');enter.type='button';enter.className='primary';enter.textContent='ENTER';
         enter.onclick=()=>{void enterCave(site.id);};
@@ -1284,6 +1285,7 @@ window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFr
 if(location.pathname==='/labs/world'){
   const lab=$('world-lab');lab.hidden=false;
   const teleport=async(position:{x:number;y:number})=>{await leavePresence();moveTarget=null;player.position=safePosition(position);persist();if(entered)startPresence();canvas.focus();};
+  (window as unknown as {__worldTeleport?:(position:{x:number;y:number})=>Promise<void>}).__worldTeleport=teleport;
   for(const landmark of LANDMARKS){const b=document.createElement('button');b.textContent='Teleport: '+landmark.label;b.onclick=()=>{void teleport(landmark.position);};lab.append(b);}
   for(const [name,position] of Object.entries(EXPLORATION_PROBES)){const b=document.createElement('button');b.textContent='Walk probe: '+name;b.onclick=()=>{void teleport(position);};lab.append(b);}
   const badge=document.createElement('button');badge.textContent='Toggle preview crown';badge.onclick=()=>{if(npcs[0])npcs[0].recentWinner=!npcs[0].recentWinner;};lab.append(badge);

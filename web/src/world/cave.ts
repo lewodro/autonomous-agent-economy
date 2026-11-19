@@ -245,6 +245,7 @@ try {
     stopped = true;
   } else {
     applyView(result.run);
+    document.body.dataset.caveReady = '1';
     requestAnimationFrame(frame);
   }
 } catch {

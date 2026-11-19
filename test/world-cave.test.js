@@ -99,6 +99,14 @@ test('attacks are server-owned: range, malformed IDs, duplicates and dead-mob re
   await assert.rejects(() => service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000003' }), { code: 'CAVE_NO_TARGET' });
 });
 
+test('client-supplied health and monster state are ignored', async () => {
+  const { service } = serviceAt();
+  const { run } = await start(service);
+  const forged = await service.move('visitor-a', { run_id: run.run_id, x: 160, y: 340, hp: 999, monsters: [{ id: 'crawler-1', hp: 0, alive: false }] });
+  assert.equal(forged.player.hp, CAVE_MAX_HP, 'the visitor cannot forge its health');
+  assert.equal(forged.monsters.every(monster => monster.alive), true, 'the visitor cannot kill monsters from the client');
+});
+
 test('monsters chase, attack using server-owned damage and reset when the visitor escapes', async () => {
   const { service, tick } = serviceAt();
   await start(service);

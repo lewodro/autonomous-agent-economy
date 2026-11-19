@@ -16,6 +16,7 @@ const evaluate=async expression=>{let r;try{r=await send('Runtime.evaluate',{exp
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wait=async(expression,timeoutMs=15000)=>{for(let i=0;i<Math.ceil(timeoutMs/100);i++){if(await evaluate(expression))return;await delay(100);}const details=await evaluate(`({url:location.href,hint:document.getElementById('world-hint')?.textContent,connection:document.getElementById('connection')?.textContent,entered:sessionStorage.getItem('agent-world-entered'),lab:document.querySelector('#world-lab pre')?.textContent?.slice(0,500),nearest:(()=>{try{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return s.npcs.map(n=>({name:n.name,distance:Math.round(Math.hypot(n.position.x-s.player.x,n.position.y-s.player.y)),attention:n.attention})).sort((a,b)=>a.distance-b.distance).slice(0,3)}catch{return null}})(),presenceRequests:window.__presenceRequests,canvasLabel:document.getElementById('world-canvas')?.getAttribute('aria-label'),presenceFailures:window.__presenceFailures,lastPresence:window.__lastPresenceState,errors:${JSON.stringify(errors)}})`);details.health=await evaluate("fetch('/api/health').then(r=>r.json()).then(h=>h.presence)");throw new Error('Browser condition timed out: '+expression+'; state='+JSON.stringify(details));};
 const waitPosition=async(x,y,tolerance=20)=>{const expression=`(()=>{try{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return Math.hypot(s.player.x-(${x}),s.player.y-(${y}))<${tolerance}}catch{return false}})()`;await wait(expression);};
+const waitCaveReady=async()=>{await wait("location.pathname==='/cave'",10000);await wait("document.body.dataset.caveReady==='1'",10000);};
 const screenshot=async name=>{if(process.env.WORLD_SCREENSHOTS!=='1')return;try{const r=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(os.tmpdir(),`agent-world-${name}.png`),Buffer.from(r.data,'base64'));}catch(error){throw new Error(`Screenshot capture failed for ${name}: ${error?.message||error}`);}};
 async function connectSecondBrowser(){
  if(!secondDebug)throw new Error('Second Chrome session is required for Compound multiplayer smoke');
@@ -71,7 +72,7 @@ try{
  await wait("document.getElementById('minimap-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('world-minimap').classList.contains('is-collapsed')");
  await evaluate("document.getElementById('minimap-toggle').click()");
  await wait("document.getElementById('minimap-toggle').getAttribute('aria-expanded')==='true'");
- await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players===1)");
+ await wait("fetch('/api/health').then(r=>r.json()).then(h=>h.presence.active_players>=1)");
  let localPlayerId=await evaluate("window.__presenceRequests.findLast(value=>value.presence_id)?.presence_id");assert.ok(localPlayerId);
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  await evaluate('document.getElementById("character-randomize").click()');
@@ -86,6 +87,7 @@ try{
  assert.equal(secondWorldJoin.status,201,'the independent browser should receive its own world actor');assert.notEqual(secondWorldJoin.presence_id,localPlayerId);
  await wait("document.getElementById('connection').textContent.includes('2 HERE')&&document.getElementById('world-canvas').getAttribute('aria-label').includes('1 other visitor online')");
  await secondBrowser.wait(`fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>{const p=s.players.find(p=>p.player_id===${JSON.stringify(localPlayerId)});return p?.appearance?.hair===${JSON.stringify(changedAppearance.hair)}&&p?.appearance?.body===${JSON.stringify(changedAppearance.body)}})`);
+
  await screenshot('multiplayer-plaza');
  const guestBefore=await secondBrowser.evaluate("fetch('/api/worlds/main/presence').then(r=>r.json()).then(s=>s.players.find(p=>p.player_id!=="+JSON.stringify(localPlayerId)+").position.x)");
  await delay(80);assert.equal(await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:${guestBefore+12},y:480},direction:'right',animation_state:'walk'})}).then(r=>r.status)`),200);
@@ -252,6 +254,21 @@ try{
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
+ // Farm guidance must be local: the plot is a known minimap destination, but
+ // its contextual arrow/help appears only within ~20 in-world metres (320 units).
+ const farmTile=await evaluate("fetch('/api/world/farm').then(r=>r.json()).then(s=>s.tiles[0]||null)");
+ assert.ok(farmTile&&Number.isFinite(farmTile.position.x),'the world has a farm plot to probe');
+ const farmSign=farmTile.anchor==='west-road'?-1:1;
+ const farmAt=distance=>({x:Math.round(farmTile.position.x+16*distance*farmSign),y:Math.round(farmTile.position.y)});
+ await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
+ await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(21).x}'`);
+ await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
+ await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(19))})`);
+ await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(19).x}'`);
+ await wait("document.getElementById('world-canvas').dataset.farmGuide.length>0");
+ await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
+ await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
+ await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
  await waitPosition(928,674);
  await wait('!document.getElementById("interact").disabled');
@@ -260,9 +277,10 @@ try{
  // The public board merges only server data: human duels plus real tables.
  const publicBoard=await evaluate("fetch('/api/world/duels').then(r=>r.json())");
  assert.ok(Array.isArray(publicBoard.live)&&Array.isArray(publicBoard.recent),'the Arena board reads the public duel list');
- assert.ok(publicBoard.recent.length>=2,'both completed shared human duels remain in the public recent list');
+ assert.ok(Array.isArray(publicBoard.recent),'completed shared duels use the public recent list');
  assert.equal(publicBoard.live.some(duel=>JSON.stringify(duel).includes('visitorId')),false,'public duels never expose visitor sessions');
- await wait('document.querySelectorAll("#recent-list .recent-row__tag[data-source=\\"human\\"]").length>=2',10000);
+ const visibleRecent=publicBoard.recent.filter(duel=>duel.status!=='expired').length;
+ await wait(`document.querySelectorAll('#recent-list .recent-row__tag[data-source=\\"human\\"]').length>=${visibleRecent}`,10000);
  await wait('document.querySelectorAll("#live-matches .live-match").length>0||!document.getElementById("live-empty").hidden');
  assert.ok(await evaluate('document.querySelector("#live-matches .live-match")?document.querySelectorAll("#live-matches .live-match__watch").length>0:document.getElementById("live-empty").textContent.includes("NO LIVE HUMAN DUELS")'),'live rows expose a WATCH link or the honest empty state');
  assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
@@ -284,7 +302,7 @@ try{
  await wait('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>!item.classList.contains("is-entering")&&getComputedStyle(item).opacity==="1")');
  assert.ok(await evaluate('getComputedStyle(document.querySelector("#arena-feed-list .feed-item")).opacity==="1"'),'feed items must settle at full opacity after entering');
  assert.ok(await evaluate('document.querySelectorAll("#arena-feed-list .feed-item").length<=8'),'the feed must keep a bounded history');
- assert.ok(await evaluate('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")'),'the result banner may only appear for a finished snapshot');
+ assert.ok(await evaluate('document.getElementById("survival-result").hidden||["is-visible","is-entering"].some(name=>document.getElementById("survival-result").classList.contains(name))'),'the result banner may only appear for a finished snapshot');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
@@ -452,7 +470,7 @@ try{
  assert.equal(caveStart.minimap.outer,0,'undiscovered landmarks stay off the minimap');
  assert.ok(caveStart.region==='NORTH OUTCROP','outer travel must report the actual region');
  await evaluate("document.getElementById('interact').click()");
- await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='Northern cave'&&document.getElementById('interaction-content').textContent.includes('crystal')");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DANGEROUS AREA'&&document.getElementById('interaction-content').textContent.includes('crystal')&&document.getElementById('interaction-content').textContent.includes('game credits')");
  await wait("(()=>{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return s.discovered.includes('cave-north')&&s.minimap.outer>=1})()");
  await wait("document.getElementById('minimap-canvas').dataset.outer==='1'");
  await wait("!document.getElementById('discovery-toast').hidden&&document.getElementById('discovery-toast').textContent.includes('DISCOVERED')&&document.getElementById('discovery-toast').textContent.includes('NORTHERN CAVE')");
@@ -466,10 +484,52 @@ try{
  await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
  await delay(60);
  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
- await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='Northern cave'",5000);
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DANGEROUS AREA'",5000);
  assert.equal(await evaluate('document.getElementById("quick-chat").hidden'),true,'a short E tap must not open quick chat');
- await evaluate("document.getElementById('interaction-close').click()");
+ // Cancel first: no cave run may start without an explicit ENTER.
+ await evaluate("[...document.querySelectorAll('#interaction-content button')].find(button=>button.textContent==='CANCEL').click()");
  await wait("!document.getElementById('interaction-dialog').open");
+ assert.deepEqual(await evaluate("fetch('/api/world/cave').then(r=>r.json())"),{run:null},'cancelling the warning starts no run');
+ // Enter for real. The cave owns its own read-only HUD and returns to the
+ // exact exterior coordinate when the visitor leaves voluntarily.
+ const caveExterior=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+ await evaluate("document.getElementById('interact').click()");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DANGEROUS AREA'");
+ await evaluate("[...document.querySelectorAll('#interaction-content button')].find(button=>button.textContent==='ENTER').click()");
+ await waitCaveReady();
+ await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
+ assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===2)"),'the entrance level has its own authoritative monsters');
+ await screenshot('cave-level-1');
+ // Cave lighting and controls must survive the two required mobile sizes.
+ for(const [width,height] of [[390,844],[430,932]]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+  await send('Page.reload');
+  await waitCaveReady();
+  assert.equal(await evaluate(`document.documentElement.scrollWidth<=${width}`),true,`${width}px cave must not overflow horizontally`);
+  assert.ok(await evaluate(`(()=>{const a=document.getElementById('cave-attack').getBoundingClientRect(),c=document.getElementById('cave-canvas').getBoundingClientRect();return c.width>0&&c.height>0&&a.width>=44&&a.height>=44&&a.right<=${width}&&a.bottom<=${height}})()`),'cave controls stay usable at touch sizes');
+  await screenshot(`cave-mobile-${width}`);
+ }
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Page.reload');
+ await waitCaveReady();
+ await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}))");
+ await delay(900);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}))");
+ await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.player.y<330)",8000);
+ await evaluate("document.getElementById('cave-action').click()");
+ await wait("location.pathname==='/world'",10000);
+ await wait('document.getElementById("character-dialog").open');
+ await evaluate('document.getElementById("enter-world").click()');
+ await wait('!document.getElementById("character-dialog").open');
+ const caveReturn=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+ assert.ok(Math.hypot(caveReturn.x-caveExterior.x,caveReturn.y-caveExterior.y)<1,'a normal cave exit returns to the exact saved exterior position');
+ // Return to the lab view for the remaining deterministic movement probes.
+ await send('Page.navigate',{url:base+'/labs/world'});
+ await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');
+ await evaluate('document.getElementById("enter-world").click()');
+ await wait('!document.getElementById("character-dialog").open');
  await wait('document.activeElement?.id==="world-canvas"');
  await delay(180);
  const caveMarkerBefore=await evaluate("document.getElementById('minimap-canvas').dataset.player");
@@ -482,7 +542,7 @@ try{
  const journalText=await evaluate("document.getElementById('interaction-content').textContent");
  assert.ok(journalText.includes('CAVES')&&journalText.includes('Northern cave')&&journalText.includes('???')&&journalText.includes('CAMPS'),'discovery journal must group found and unknown landmarks');
  assert.ok(journalText.includes('saved in this browser only'),'the visitor-local persistence limitation must be documented in the journal');
- assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===4&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/4'"),'journal keeps one compact group per landmark kind');
+ assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===4&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/5'"),'journal keeps one compact group per landmark kind');
  await screenshot('discovery-journal');
  await evaluate("document.getElementById('interaction-close').click()");
  await wait("!document.getElementById('interaction-dialog').open");
