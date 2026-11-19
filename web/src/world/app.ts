@@ -14,6 +14,7 @@ import { loadSurvivalSnapshot } from './survival.js';
 import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type PresenceChallengeAccepted, type PresenceChallengeUpdate, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
+import { withinFarmGuidance } from './scale.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
@@ -626,8 +627,9 @@ async function loadFarm():Promise<void>{
     if(snapshot.account?.signed_in&&savedProfileDirty)scheduleSavedProfile();
     for(const tile of snapshot.tiles){
       const before=knownTiles.get(tile.id);
-      if(previous&&before===undefined)farmHud.notice(`New farm plot appeared in ${anchorLabel(tile.anchor)}`,'info');
-      if(before==='growing'&&tile.stage==='ready'&&tile.mine)farmHud.notice(`${cropLabel(tile.crop)} ready at ${anchorLabel(tile.anchor)}`,'good');
+      const canDescribe=withinFarmGuidance(player.position,tile.position);
+      if(canDescribe&&previous&&before===undefined)farmHud.notice(`New farm plot appeared in ${anchorLabel(tile.anchor)}`,'info');
+      if(canDescribe&&before==='growing'&&tile.stage==='ready'&&tile.mine)farmHud.notice(`${cropLabel(tile.crop)} ready at ${anchorLabel(tile.anchor)}`,'good');
       knownTiles.set(tile.id,tile.stage);
     }
   }catch{/* the HUD keeps the last snapshot until the next poll */}
@@ -652,7 +654,13 @@ async function harvestPlot(tile:FarmTile):Promise<void>{
   }catch(error){farmHud.notice(error instanceof Error?error.message:'Harvesting failed','warn');}
 }
 let bazaarHinted=false;
-function burstAtBazaarHint():void{if(bazaarHinted||!farmSnapshot)return;const carrying=CROPS.reduce((sum,kind)=>sum+(farmSnapshot?.account?.inventory[kind]||0),0);if(carrying>0&&!bazaarHinted){bazaarHinted=true;farmHud.notice('Follow the arrow to the bazaar to sell your produce','info');}}
+function burstAtBazaarHint():void{
+  if(bazaarHinted||!farmSnapshot)return;
+  const carrying=CROPS.reduce((sum,kind)=>sum+(farmSnapshot?.account?.inventory[kind]||0),0);
+  if(carrying>0&&withinFarmGuidance(player.position,farmSnapshot.bazaar.position)){
+    bazaarHinted=true;farmHud.notice('Follow the arrow to the bazaar to sell your produce','info');
+  }
+}
 function showFarmPlot(tile:FarmTile):void{
   if(tile.mine&&tile.stage!=='wild'){void harvestPlot(tile);return;}
   show(tile.stage==='wild'?'FARM PLOT · plant':`${cropLabel(tile.crop)} · ${tile.stage}`);
@@ -1158,10 +1166,12 @@ function farmGuide():{target:{x:number;y:number};label:string}|null{
   if(!entered||!farmSnapshot?.account)return null;
   const account=farmSnapshot.account;
   const carrying=CROPS.reduce((sum,kind)=>sum+(account.inventory[kind]||0),0);
-  if(carrying>0)return {target:{...farmSnapshot.bazaar.position},label:'Sell produce'};
-  if(Math.hypot(player.position.x-MAP.spawn.x,player.position.y-MAP.spawn.y)<650)return null;
-  const ready=farmSnapshot.tiles.filter(tile=>tile.mine&&tile.stage==='ready');
-  const candidates=ready.length?ready:farmSnapshot.tiles.filter(tile=>tile.stage==='wild');
+  // Guidance is strictly local: a plot or the bazaar is only pointed at once
+  // the visitor is standing within roughly 20 in-world metres of it.
+  if(carrying>0)return withinFarmGuidance(player.position,farmSnapshot.bazaar.position)
+    ?{target:{...farmSnapshot.bazaar.position},label:'Sell produce'}:null;
+  const ready=farmSnapshot.tiles.filter(tile=>tile.mine&&tile.stage==='ready'&&withinFarmGuidance(player.position,tile.position));
+  const candidates=ready.length?ready:farmSnapshot.tiles.filter(tile=>tile.stage==='wild'&&withinFarmGuidance(player.position,tile.position));
   if(!candidates.length)return null;
   const nearest=[...candidates].sort((a,b)=>Math.hypot(player.position.x-a.position.x,player.position.y-a.position.y)-Math.hypot(player.position.x-b.position.x,player.position.y-b.position.y)||a.id.localeCompare(b.id))[0]!;
   return {target:{...nearest.position},label:ready.length?`Harvest ${cropLabel(nearest.crop).toLowerCase()}`:'Plant a crop'};
@@ -1239,7 +1249,11 @@ function frame(time:number):void {
     npc.position.y+=(target.y-npc.position.y)*interpolation;
   }
   for(let index=particles.length-1;index>=0;index--)if(particles[index]!.expiresAt<=time)particles.splice(index,1);
-  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuide(),moveTarget});raf=requestAnimationFrame(frame);
+  const farmGuideTarget=farmGuide();
+  // Exposes the contextual guidance range to tests without changing rendering.
+  const guideKey=farmGuideTarget?`${farmGuideTarget.label}@${Math.round(farmGuideTarget.target.x)},${Math.round(farmGuideTarget.target.y)}`:'';
+  if(canvas.dataset.farmGuide!==guideKey)canvas.dataset.farmGuide=guideKey;
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuideTarget,moveTarget});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
