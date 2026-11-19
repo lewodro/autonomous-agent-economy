@@ -50,6 +50,23 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'whispering-grove',kind:'shrine',facing:'west',position:{x:OUTER_LOOP.right+192,y:1250},radius:74,label:'Whispering grove',
     description:'A ring of old trees surrounds a small standing stone east of the loop.',
     discovery:'A wind chime of bone and tin hangs from a branch, moving without wind.'},
+  // Remote districts reward the walk: each sits off its own trail beyond the
+  // loop, with rock, water or old construction instead of more empty grass.
+  {id:'shattered-ridge',kind:'ruin',facing:'south',position:{x:2720,y:-910},radius:82,label:'Shattered ridge',
+    description:'A spine of split stone rises above the northern tree line. The path ends at a narrow gap between two slabs.',
+    discovery:'Chisel marks on the inner face suggest the gap was once a doorway.'},
+  {id:'rift-monolith',kind:'shrine',facing:'north',position:{x:-1240,y:-900},radius:78,label:'Rift monolith',
+    description:'A dark standing stone leans over a shallow depression in the north-west scrub.',
+    discovery:'A ring of smaller stones holds rainwater; a cold draft rises from the centre.'},
+  {id:'old-quarry',kind:'ruin',facing:'east',position:{x:-1240,y:1560},radius:84,label:'Old quarry',
+    description:'Stepped cuts in the hillside mark a quarry long since abandoned. A cracked handcart rests by the trail.',
+    discovery:'Rust-stained pick heads lie scattered below the upper ledge.'},
+  {id:'echo-cave',kind:'cave',facing:'west',position:{x:3000,y:1360},radius:78,label:'Echo cave',
+    description:'A low black mouth in the eastern ridge returns every footstep a heartbeat late.',
+    discovery:'Old torch brackets are fixed into the rock just inside the entrance.'},
+  {id:'lantern-grove',kind:'shrine',facing:'west',position:{x:3000,y:1760},radius:78,label:'Lantern grove',
+    description:'Dead lanterns hang from the outer trees beside the south-east trail.',
+    discovery:'One lantern still holds a dry wick, as if someone meant to return and light it.'},
 ];
 /** Small deterministic PRNG keeps generated content stable between sessions. */
 function seededRandom(seed:number):()=>number {
@@ -123,6 +140,14 @@ export const OUTER_TERRAIN_AREAS: GroundArea[] = [
   {x:MAP.maxX-240,y:MAP.minY+360,width:200,height:MAP.height-760,color:'#2d4c39'},
   {x:MAP.maxX-340,y:MAP.minY+400,width:180,height:MAP.height-840,color:'#34513f'},
   {x:MAP.maxX-440,y:MAP.minY+440,width:160,height:MAP.height-920,color:'#2d4c39'},
+  // Remote texture: dense woodland in the wet corners and bare ridge bands
+  // around the quarry and shattered stone. Painted under paths and props.
+  {x:MAP.minX+120,y:MAP.minY+180,width:360,height:340,color:'#284436'},
+  {x:MAP.maxX-620,y:MAP.minY+140,width:420,height:420,color:'#284436'},
+  {x:MAP.maxX-520,y:MAP.maxY-760,width:440,height:460,color:'#284436'},
+  {x:MAP.minX+120,y:MAP.maxY-720,width:420,height:380,color:'#2a4739'},
+  {x:2540,y:-1010,width:380,height:190,color:'#3a443c'},
+  {x:MAP.minX+90,y:1420,width:420,height:230,color:'#3a443c'},
 ];
 TERRAIN_AREAS.push(...OUTER_TERRAIN_AREAS);
 export interface WorldPath extends Rect {color?:string}
@@ -132,6 +157,14 @@ export const OUTER_EXPLORATION_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.right,y:OUTER_LOOP.top-28,width:192,height:56,color:'#786b55'},
   {x:532,y:OUTER_LOOP.bottom-28,width:56,height:202,color:'#786b55'},
   {x:OUTER_LOOP.right,y:1222,width:192,height:56,color:'#786b55'},
+  // Trails to the remote districts. They join the same outer loop, so every
+  // new site stays reachable without enlarging the walkable canvas.
+  {x:2692,y:-910,width:56,height:198,color:'#786b55'},
+  {x:-1240,y:-910,width:200,height:56,color:'#786b55'},
+  {x:-1240,y:-910,width:56,height:198,color:'#786b55'},
+  {x:-1240,y:1532,width:200,height:56,color:'#786b55'},
+  {x:2840,y:1332,width:200,height:56,color:'#786b55'},
+  {x:2840,y:1732,width:200,height:56,color:'#786b55'},
 ];
 export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
@@ -182,7 +215,8 @@ export const PATHS: WorldPath[] = [
   ...OUTER_LOOP_PATHS,...OUTER_EXPLORATION_PATHS,
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
-const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440}];
+const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440},
+];
 export const GROUND_DETAILS: GroundDetail[] = Array.from({length:170},(_,index)=>{
   const area=detailAreas[index%detailAreas.length]!;
   const seed=(Math.imul(index+19,1103515245)+12345)>>>0;
@@ -287,8 +321,8 @@ export function canPlaceTree(point:Position):boolean {
 export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12)&&clearsExploration(point,24); }
 export function canPlaceFlower(point:Position):boolean {
   return isNaturalGround(point,6)
-    && TREES.every(tree=>{const scale=tree.scale||1;return Math.hypot(tree.x+6*scale-point.x,tree.y+38*scale-point.y)>30;})
-    && ROCKS.every(rock=>Math.hypot(rock.x-point.x,rock.y-point.y)>26)
+    && TREES.every(tree=>{const scale=tree.scale||1;return Math.hypot(tree.x+6*scale-point.x,tree.y+38*scale-point.y)>46;})
+    && ROCKS.every(rock=>Math.hypot(rock.x-point.x,rock.y-point.y)>44)
     && BUSHES.every(bush=>!bush.solid||Math.hypot(bush.x-point.x,bush.y-point.y)>bush.size/2+16)
     && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34)
     && clearsExploration(point,20);

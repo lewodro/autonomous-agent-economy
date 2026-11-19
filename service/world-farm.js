@@ -499,6 +499,26 @@ export class WorldFarm {
     return { account: this.view(identity), accepted_seconds: accepted, credits_earned: earned };
   }
 
+  /**
+   * Cave defeat debits the internal test-credit account exactly once per run.
+   * Uses the same command idempotency + ledger as planting and selling; it has
+   * no wallet, SOL or treasury effect.
+   */
+  async forfeitCredits(identity, input = {}) {
+    if (input.reason !== 'cave_defeat') throw fail('INVALID_REASON', 'Only cave defeats forfeit credits');
+    if (typeof input.request_id !== 'string' || !REQUEST_ID.test(input.request_id)) throw fail('INVALID_REQUEST_ID', 'Invalid defeat settlement ID');
+    const account = this.account(identity);
+    return this.command(identity, 'cave_defeat', { request_id: input.request_id }, () => {
+      const lost = account.credits;
+      if (lost > 0) {
+        account.credits = 0;
+        account.updated_at = new Date(this.now()).toISOString();
+        this.event(account, 'cave_defeat', { run_id: input.request_id, credits_lost: lost });
+      }
+      return { reason: 'cave_defeat', lost_credits: lost, credits: account.credits };
+    });
+  }
+
   async linkWallet(identity, { display_name } = {}) {
     const account = this.account(identity);
     if (display_name !== undefined) {

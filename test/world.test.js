@@ -249,3 +249,16 @@ test('arena gateway derives relative room routes and rejects invalid game/slot c
  assert.equal(gateway.watchMatch({game:'tictactoe',id:'ttt-2'}),'/arena/tictactoe/ttt-2');
  for(const room of [{game:'rps',id:'ttt-1'},{game:'tictactoe',id:'../secret'},{game:'chess',id:'rps-1'}])assert.throws(()=>gateway.watchMatch(room),/Unsupported/);
 });
+
+test('remote wilderness districts add destinations without enlarging the canvas', () => {
+  const remote = ['shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove'];
+  for (const id of remote) {
+    const site = EXPLORATION_SITES.find(value => value.id === id);
+    assert.ok(site, `${id} exists`);
+    assert.ok(Math.hypot(site.position.x - MAP.spawn.x, site.position.y - MAP.spawn.y) > 1400, `${id} is remote`);
+    assert.equal(collides(site.position), false, `${id} entrance is walkable`);
+    assert.ok(PATHS.some(path => site.position.x >= path.x - site.radius && site.position.x <= path.x + path.width + site.radius
+      && site.position.y >= path.y - site.radius && site.position.y <= path.y + path.height + site.radius), `${id} has a connecting trail`);
+  }
+  assert.equal(MAP.width * MAP.height, 4800 * 3456, 'the static world canvas stays under the mobile Safari ceiling');
+});

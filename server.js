@@ -33,6 +33,8 @@ import { PrivateArenaManager } from './service/private-arena.js';
 import { CompoundGame } from './service/compound-game.js';
 import { WorldEconomy } from './service/world-economy.js';
 import { WorldFarm } from './service/world-farm.js';
+import { CaveService } from './service/world-cave.js';
+import { publicCaveLayout } from './service/cave-layout.js';
 import { WorldStore } from './service/world-store.js';
 import { DurableStateDatabase } from './service/durable-state.js';
 import { createClerkVerifier, accountCookie, clearAccountCookie, accountSession } from './service/world-identity.js';
@@ -101,9 +103,18 @@ const worldFarm=new WorldFarm(worldStore,{
   allowTimeScale:!production,
   payoutsEnabled:process.env.WORLD_SOL_PAYOUTS_ENABLED==='1',
 });
+const caveService=new CaveService({
+  onDefeat: async({runId,credential})=>{
+    const farm=await worldFarm.forfeitCredits(credential.farmIdentity,{reason:'cave_defeat',request_id:runId});
+    const economy=await worldEconomy.forfeitCredits(credential.economyOwner,{run_id:runId});
+    return {farm,economy};
+  },
+  onReward: async({runId,monsterId,amount,credential})=>worldEconomy.awardCave(credential.economyOwner,{run_id:runId,monster_id:monsterId,amount}),
+});
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
 const challengeCommands=new SlidingWindowLimiter({limit:120,windowMs:60_000});
+const caveCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const duelCommands=new SlidingWindowLimiter({limit:600,windowMs:60_000});
 let shuttingDown=false;
 const worldAgents=new WorldAgentPresenceService({profiles:()=>arenaRooms.profiles()});
@@ -217,6 +228,36 @@ const server = http.createServer(async (req, res) => {
       const [,worldId,challengeId,action]=challengeRoute;
       const result=action==='accept'?worldChallenges.accept(worldId,visitor.id,challengeId):action==='decline'?worldChallenges.decline(worldId,visitor.id,challengeId):worldChallenges.cancel(worldId,visitor.id,challengeId);
       return json(res,200,result,cookie);
+    }
+    if(route==='/api/world/cave/config'){
+      if(req.method!=='GET')return json(res,405,{error:'Cave layout is read-only'});
+      return json(res,200,publicCaveLayout());
+    }
+    if(route==='/api/world/cave'||route.startsWith('/api/world/cave/')){
+      const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
+      const accountKey=accountSession(req);
+      const credential={
+        farmIdentity:accountKey?{key:accountKey,provider:'clerk'}:{key:`guest:${visitor.id}`,provider:'guest'},
+        economyOwner:accountKey||visitor.id,
+      };
+      if(req.method==='GET'&&route==='/api/world/cave')return json(res,200,await caveService.snapshot(visitor.id),cookie);
+      if(req.method!=='POST')return json(res,405,{error:'Cave command requires POST'},cookie);
+      if(!caveCommands.allow())return json(res,429,{error:'Cave actions are temporarily limited'},cookie);
+      const action=route.slice('/api/world/cave/'.length);
+      if(!['start','move','attack','descend','exit'].includes(action))return json(res,404,{error:'Unknown cave command'},cookie);
+      const data=await body(req,2048);
+      try{
+        if(action==='start')return json(res,200,await caveService.start(visitor.id,{...data,credential}),cookie);
+        if(action==='move')return json(res,200,await caveService.move(visitor.id,data),cookie);
+        if(action==='attack')return json(res,200,await caveService.attack(visitor.id,data),cookie);
+        if(action==='descend')return json(res,200,await caveService.descend(visitor.id,data),cookie);
+        return json(res,200,await caveService.exit(visitor.id,data),cookie);
+      }catch(error){
+        if(error?.code?.startsWith('CAVE_')||error?.code==='INVALID_REQUEST_ID'||error?.code==='INVALID_EXTERIOR'||error?.code==='INVALID_CREDENTIAL'||error?.code==='INVALID_MOVE'||error?.code==='INVALID_VISITOR'){
+          return json(res,error.status||400,{error:error.message,code:error.code},cookie);
+        }
+        throw error;
+      }
     }
     if(route==='/api/world/duels'){
       if(req.method!=='GET')return json(res,405,{error:'Public match list is read-only'});
@@ -520,9 +561,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route.startsWith('/api/')) return json(res, 404, { error: 'Route or local session not found' });
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
-    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : /^\/duel\/duel-[a-f0-9-]{36}$/.test(pathname) ? '/world/duel.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
+    const pathname = decodeURIComponent(route), page = pathname === '/' ? '/world/index.html' : ['/home','/home/','/landing','/landing/'].includes(pathname) ? '/index.html' : ['/world','/world/','/labs/world'].includes(pathname) ? '/world/index.html' : ['/treasury','/treasury/'].includes(pathname) ? '/world/treasury.html' : ['/compound','/compound/'].includes(pathname) ? '/world/compound.html' : ['/arena','/arena/','/arena/survival/survival-main'].includes(pathname) ? '/world/arena.html' : ['/private-arena','/private-arena/'].includes(pathname) ? '/world/private-arena.html' : pathname === '/cave' ? '/world/cave.html' : /^\/duel\/duel-[a-f0-9-]{36}$/.test(pathname) ? '/world/duel.html' : pathname === '/rps' || /^\/arena\/(rps\/rps-[12]|tictactoe\/ttt-[12])$/.test(pathname) ? '/legacy/index.html' : ['/post', '/post/'].includes(pathname) ? '/post/index.html' : pathname;
     const target = path.resolve(root, `.${page}`), relative = path.relative(root, target);
-    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|duel.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/aae_avatar_kit\/(avatar-manifest\.json|layers\/(body|hair|outfits|accessories)\/[\w-]+\.png)|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
+    if (relative.startsWith('..') || !/^(index\.html|styles\.css|(entry|motion)\.(css|js)|legacy\/(index\.html|styles.css|script\.js)|post\/(index\.html|styles.css|devlog.js|devlog.json)|world\/(index\.html|arena.html|private-arena.html|compound.html|treasury.html|duel.html|cave.html|styles.css)|src\/[\w-]+\.js|web\/dist\/(world\/)?[\w-]+\.js|assets\/(agents|sprites-agent)\/[\w-]+\.png|assets\/aae_avatar_kit\/(avatar-manifest\.json|layers\/(body|hair|outfits|accessories)\/[\w-]+\.png)|assets\/avatars\/(index\.json|clean\/(starter|ember|atlas|nova|echo)(_preview)?\.png))$/.test(relative)) { res.writeHead(404).end('Not found'); return; }
     const bytes = await readFile(target);res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }).end(bytes);
   } catch (error) {
     const {status,code,error:safeMessage}=publicRequestError(error,{production});

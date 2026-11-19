@@ -58,7 +58,7 @@ test('discoveries persist per browser and ignore stale or duplicate ids', () => 
 test('discovery journal groups stay compact and counts follow interactions', () => {
   const none = discoveryGroups(new Set());
   assert.deepEqual(none.map(group => group.label), ['CAVES', 'RUINS', 'SHRINES', 'CAMPS']);
-  assert.deepEqual(none.map(group => group.total), [4, 2, 2, 8]);
+  assert.deepEqual(none.map(group => group.total), [DISCOVERY_SITES.filter(site => site.kind === 'cave').length, DISCOVERY_SITES.filter(site => site.kind === 'ruin').length, DISCOVERY_SITES.filter(site => site.kind === 'shrine').length, DISCOVERY_SITES.filter(site => site.kind === 'camp').length]);
   assert.deepEqual(none.map(group => group.discoveredCount), [0, 0, 0, 0]);
   const some = discoveryGroups(new Set(['cave-north', 'cave-east', 'mossy-ruin', 'camp-west-1']));
   assert.deepEqual(some.map(group => group.discoveredCount), [2, 1, 0, 1]);
