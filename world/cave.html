@@ -16,17 +16,18 @@
       <a class="cave-exit" href="/world?return=cave">← Exit to World</a>
     </header>
     <section class="cave-stage" aria-label="Cave interior">
-      <canvas id="cave-canvas" width="480" height="360" aria-label="Dark cave interior with torches, passages and monsters"></canvas>
+      <canvas id="cave-canvas" width="480" height="360" tabindex="0" aria-label="Dark cave interior with torches, passages and monsters"></canvas>
       <div id="cave-overlay" class="cave-overlay" hidden>
         <p id="cave-message" class="cave-message" role="status" aria-live="polite">Opening the cave…</p>
         <a id="cave-return" class="cave-return" href="/world?return=cave">RETURN TO WORLD</a>
       </div>
     </section>
     <div class="cave-hud">
-      <div class="cave-health"><span>HEALTH</span><div class="cave-health__bar"><i id="cave-health-fill"></i></div><b id="cave-health-text">100 / 100</b></div>
+      <div class="cave-health"><span>HP</span><div class="cave-health__bar"><i id="cave-health-fill"></i></div><b id="cave-health-text">100 / 100</b></div>
+      <div class="cave-stats"><span id="cave-monsters">MONSTERS 0 / 0</span><span id="cave-weapon">STARTER BLADE</span></div>
       <div class="cave-hud__right"><span id="cave-notice" role="status" aria-live="polite"></span></div>
     </div>
-    <p id="cave-hint" class="cave-hint">Move with WASD or arrows · ATTACK · E · Leave through the entrance</p>
+    <p id="cave-hint" class="cave-hint">WASD to move · click a monster to attack · E to open chests, descend or leave</p>
     <div class="cave-controls">
       <div id="cave-joystick" class="cave-joystick" aria-label="Cave movement joystick"><span id="cave-joystick-knob"></span></div>
       <div class="cave-buttons"><button id="cave-attack" type="button" class="cave-attack">ATTACK</button>

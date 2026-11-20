@@ -39,6 +39,7 @@ const canvas = $<HTMLCanvasElement>('cave-canvas'), overlay = $<HTMLDivElement>(
 const message = $<HTMLElement>('cave-message'), depth = $<HTMLElement>('cave-depth');
 const healthFill = $<HTMLElement>('cave-health-fill'), healthText = $<HTMLElement>('cave-health-text');
 const hint = $<HTMLElement>('cave-hint'), notice = $<HTMLElement>('cave-notice');
+const monstersText = $<HTMLElement>('cave-monsters'), weaponText = $<HTMLElement>('cave-weapon');
 const actionButton = $<HTMLButtonElement>('cave-action'), attackButton = $<HTMLButtonElement>('cave-attack');
 const keyboard = new KeyboardInput(canvas);
 const touch = new TouchJoystickInput($('cave-joystick'), $('cave-joystick-knob'), actionButton);
@@ -61,6 +62,10 @@ let config: Config | null = null, view: View | null = null;
 let local: Position = { x: 0, y: 0 }, camera: Position = { x: 0, y: 0 };
 let lastFrame = performance.now(), lastMove = 0, lastPoll = 0, lastAttack = 0, sequence = 0;
 let stopped = false, movePending = false, noticeUntil = 0, moving = false;
+let moveTarget: Position | null = null;
+let attackTargetId: string | null = null;
+let interactTarget: { kind: 'chest' | 'exit' | 'descent'; id?: string } | null = null;
+let targetStuck = 0, targetDistance = Infinity;
 
 async function request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -91,16 +96,24 @@ function applyView(next: View): void {
   canvas.dataset.monsters = next.monsters.map(monster => monster.kind).join(',');
   healthFill.style.width = `${Math.max(0, Math.round(next.player.hp / next.player.max_hp * 100))}%`;
   healthText.textContent = `${next.player.hp} / ${next.player.max_hp}`;
+  monstersText.textContent = `MONSTERS ${next.kills} / ${next.required}`;
+  weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
   const current = level();
-  if (current?.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64) {
+  const chest = nearbyChest();
+  if (chest) {
+    actionButton.textContent = 'E · CHEST';
+    hint.textContent = 'Press E or click the chest to open it. Chests hold the cave-only blades.';
+  } else if (current?.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64) {
     actionButton.textContent = 'E · EXIT';
     hint.textContent = 'Press E to leave through the entrance. Your outside position is saved.';
   } else if (current?.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64) {
-    actionButton.textContent = 'E · DESCEND';
-    hint.textContent = 'Press E to take the descending passage. Deeper means darker and harder.';
+    actionButton.textContent = next.cleared ? 'E · DESCEND' : 'PASSAGE SEALED';
+    hint.textContent = next.cleared
+      ? 'Press E to take the descending passage. Deeper means darker and harder.'
+      : `Clear the floor first: ${next.kills} / ${next.required} monsters defeated.`;
   } else {
     actionButton.textContent = 'E · ACTION';
-    hint.textContent = config ? 'WASD / arrows to move · ATTACK when a monster is close · find the passage' : 'Loading cave…';
+    hint.textContent = config ? 'WASD / arrows or click to move · click a monster to attack · E to interact' : 'Loading cave…';
   }
   if (next.status === 'dead') {
     const settings = loadSettings(); settings.position = { ...MAP.spawn }; saveSettings(settings);
@@ -199,14 +212,88 @@ async function attack(): Promise<void> {
   lastAttack = performance.now();
   await send('attack', { request_id: `strike-${Date.now()}-${++sequence}` });
 }
+function nearbyChest(): View['chests'][number] | null {
+  return view?.chests.find(chest => !chest.opened
+    && Math.hypot(local.x - chest.x, local.y - chest.y) < 64) ?? null;
+}
 async function action(): Promise<void> {
   const current = level(); if (!current || !view || view.status !== 'playing' || stopped) return;
+  const chest = nearbyChest();
+  if (chest) { await send('chest', { chest_id: chest.id }); return; }
   if (current.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64) {
     await request(`/api/world/cave/exit`, { run_id: view.run_id });
     stopped = true; location.assign('/world?return=cave');
   } else if (current.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64) {
+    if (!view.cleared) { flash(`PASSAGE SEALED · MONSTERS ${view.kills} / ${view.required}`); return; }
     await send('descend', {});
-  } else flash('NO EXIT OR PASSAGE HERE');
+  } else flash('NO EXIT, CHEST OR PASSAGE HERE');
+}
+function clearTargets(): void {
+  moveTarget = null; attackTargetId = null; interactTarget = null;
+  targetStuck = 0; targetDistance = Infinity;
+}
+function walkToward(target: Position, step: number): boolean {
+  const dx = target.x - local.x, dy = target.y - local.y, distance = Math.hypot(dx, dy);
+  if (distance <= 3) return true;
+  const moveX = dx / distance * step, moveY = dy / distance * step;
+  const nx = { x: local.x + moveX, y: local.y };
+  if (walkable(nx)) local.x = nx.x;
+  const ny = { x: local.x, y: local.y + moveY };
+  if (walkable(ny)) local.y = ny.y;
+  return Math.hypot(target.x - local.x, target.y - local.y) <= 4;
+}
+function queueMove(time: number, facing: string): void {
+  const current = view; if (!current || time - lastMove <= 100 || movePending) return;
+  lastMove = time; movePending = true;
+  void request<View>('/api/world/cave/move', {
+    run_id: current.run_id, x: Math.round(local.x), y: Math.round(local.y), facing,
+  }).then(next => {
+    if (stopped) return;
+    applyView(next);
+    if (Math.hypot(next.player.x - local.x, next.player.y - local.y) > 24) local = { x: next.player.x, y: next.player.y };
+  }).catch(() => {}).finally(() => { movePending = false; });
+}
+function facingFor(target: Position): string {
+  const dx = target.x - local.x, dy = target.y - local.y;
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+}
+function pointerTarget(event: PointerEvent): void {
+  if (!view || view.status !== 'playing' || stopped || event.button !== 0) return;
+  canvas.focus({ preventScroll: true });
+  const box = canvas.getBoundingClientRect();
+  const point = {
+    x: camera.x + (event.clientX - box.left) * VIEW_W / Math.max(1, box.width),
+    y: camera.y + (event.clientY - box.top) * VIEW_H / Math.max(1, box.height),
+  };
+  const monster = view.monsters
+    .filter(value => value.alive && Math.hypot(value.x - point.x, value.y - point.y) < 26)
+    .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) - Math.hypot(b.x - point.x, b.y - point.y))[0];
+  if (monster) {
+    attackTargetId = monster.id; moveTarget = { x: monster.x, y: monster.y }; interactTarget = null;
+    targetStuck = 0; targetDistance = Infinity;
+    return;
+  }
+  const chest = view.chests
+    .filter(value => !value.opened && Math.hypot(value.x - point.x, value.y - point.y) < 26)
+    .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) - Math.hypot(b.x - point.x, b.y - point.y))[0];
+  if (chest) {
+    interactTarget = { kind: 'chest', id: chest.id }; moveTarget = { x: chest.x, y: chest.y }; attackTargetId = null;
+    targetStuck = 0; targetDistance = Infinity;
+    return;
+  }
+  const current = level();
+  if (current?.exit && Math.hypot(current.exit.x - point.x, current.exit.y - point.y) < 30) {
+    interactTarget = { kind: 'exit' }; moveTarget = { ...current.exit }; attackTargetId = null;
+    targetStuck = 0; targetDistance = Infinity;
+    return;
+  }
+  if (current?.descent && Math.hypot(current.descent.x - point.x, current.descent.y - point.y) < 30) {
+    interactTarget = { kind: 'descent' }; moveTarget = { ...current.descent }; attackTargetId = null;
+    targetStuck = 0; targetDistance = Infinity;
+    return;
+  }
+  attackTargetId = null; interactTarget = null; moveTarget = point;
+  targetStuck = 0; targetDistance = Infinity;
 }
 function frame(time: number): void {
   if (stopped) return;
@@ -215,20 +302,44 @@ function frame(time: number): void {
   const input = normalizeInput(k.x + t.x, k.y + t.y, k.interact || t.interact);
   moving = false;
   if (view?.status === 'playing' && (input.x || input.y)) {
+    clearTargets();
     const step = Math.min(7, 150 * dt);
     const nx = { x: local.x + input.x * step, y: local.y };
     if (walkable(nx)) local.x = nx.x;
     const ny = { x: local.x, y: local.y + input.y * step };
     if (walkable(ny)) local.y = ny.y;
-    moving = Boolean(input.x || input.y);
+    moving = true;
     camera = cameraFor(local);
-    if (time - lastMove > 100 && !movePending) {
-      lastMove = time; movePending = true;
-      void request<View>('/api/world/cave/move', {
-        run_id: view.run_id, x: Math.round(local.x), y: Math.round(local.y),
-        facing: Math.abs(input.x) > Math.abs(input.y) ? (input.x > 0 ? 'right' : 'left') : (input.y > 0 ? 'down' : 'up'),
-      }).then(next => { if (!stopped) applyView(next); if (Math.hypot(next.player.x - local.x, next.player.y - local.y) > 24) local = { x: next.player.x, y: next.player.y }; })
-        .catch(() => {}).finally(() => { movePending = false; });
+    const facing = Math.abs(input.x) > Math.abs(input.y) ? (input.x > 0 ? 'right' : 'left') : (input.y > 0 ? 'down' : 'up');
+    queueMove(time, facing);
+  } else if (view?.status === 'playing' && (attackTargetId || moveTarget)) {
+    let target: Position | null = moveTarget;
+    if (attackTargetId) {
+      const monster = view.monsters.find(value => value.id === attackTargetId && value.alive);
+      if (!monster) { clearTargets(); target = null; }
+      else { target = { x: monster.x, y: monster.y }; moveTarget = target; }
+    }
+    if (target) {
+      const distance = Math.hypot(target.x - local.x, target.y - local.y);
+      const range = view.weapon?.range ?? 62;
+      if (attackTargetId && distance <= range) {
+        moving = false;
+        void attack();
+      } else {
+        const step = Math.min(7, 150 * dt);
+        const before = { ...local };
+        const reached = walkToward(target, step);
+        const travelled = Math.hypot(local.x - before.x, local.y - before.y);
+        moving = travelled > 0.01;
+        if (moving) { camera = cameraFor(local); queueMove(time, facingFor(target)); }
+        if (distance >= targetDistance - 0.5) targetStuck += dt; else { targetStuck = 0; targetDistance = distance; }
+        if (targetStuck > 1.1) { clearTargets(); }
+        else if (reached && !attackTargetId) {
+          const pending = interactTarget;
+          clearTargets();
+          if (pending) void action();
+        }
+      }
     }
   }
   if (input.interact) void action();
@@ -241,6 +352,7 @@ function frame(time: number): void {
   requestAnimationFrame(frame);
 }
 attackButton.addEventListener('click', () => void attack());
+canvas.addEventListener('pointerdown', pointerTarget);
 window.addEventListener('pagehide', () => { stopped = true; keyboard.read(); touch.destroy(); });
 
 try {

@@ -832,6 +832,8 @@
 .cave-health{display:flex;align-items:center;gap:7px;color:#c9d4b7}
 .cave-health__bar{width:140px;height:12px;border:2px solid #506052;background:#15231d}
 .cave-health__bar i{display:block;height:100%;background:linear-gradient(90deg,#c76b55,#e2a15d);transition:width .18s ease}
+.cave-stats{display:flex;flex-direction:column;gap:2px;color:#cfe7b6;text-align:center}
+.cave-stats span{white-space:nowrap}
 .cave-hud__right{color:#f0cf75;text-align:right;min-height:12px}
 .cave-hint{margin:10px 0;color:#9fae9d;font-size:9px;line-height:1.5;letter-spacing:.06em;text-align:center}
 .cave-controls{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:56px}
@@ -840,6 +842,13 @@
 .cave-buttons{display:flex;gap:8px}
 .cave-attack,.cave-action{min-width:84px;min-height:48px;padding:8px 10px;border:2px solid #8f7550;background:#2b3325;color:#f0cf75;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;box-shadow:2px 2px 0 #070d0a;touch-action:manipulation}
 .cave-action{border-color:#8fb37a;background:#26382f;color:#dcefc0}
+/* Desktop is keyboard + pointer first: no permanent joystick or oversized
+   touch buttons. The same elements stay visible for coarse-pointer devices. */
+@media (hover:hover) and (pointer:fine){
+  .cave-joystick,.cave-buttons{display:none}
+  .cave-controls{justify-content:center;min-height:0;margin-top:6px}
+  .cave-hint{margin:8px 0 0}
+}
 @media(max-width:600px){
   .cave-shell{padding:10px 0 26px}
   .cave-brand{font-size:9px}
