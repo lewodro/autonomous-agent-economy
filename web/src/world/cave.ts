@@ -6,7 +6,10 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { normalizeInput, type Position, type Rect } from './model.js';
 import { MAP } from './map.js';
-import { loadSettings, saveSettings } from './sprites.js';
+import { SPRITES, loadSettings, saveSettings } from './sprites.js';
+import { appearanceKey, appearanceSprites } from './appearance.js';
+import { drawActorSprite } from './renderer.js';
+import { drawCaveChest, drawCaveMonster } from './cave-art.js';
 
 interface RectLike extends Rect {}
 interface Torch { x: number; y: number; radius: number }
@@ -26,7 +29,10 @@ interface Monster {
 interface View {
   run_id: string; level: number; level_name: string; status: 'playing' | 'exited' | 'dead';
   player: Position & { facing: string; hp: number; max_hp: number };
-  monsters: Monster[]; reset_at: string;
+  monsters: Monster[]; chests: Array<{ id: string; x: number; y: number; opened: boolean }>;
+  kills: number; required: number; cleared: boolean; can_descend: boolean;
+  weapon: { id: string; name: string; damage: number; range: number };
+  reset_at: string;
 }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('cave-canvas'), overlay = $<HTMLDivElement>('cave-overlay');
@@ -41,10 +47,20 @@ const ctx = canvas.getContext('2d')!;
 const mask = document.createElement('canvas'); mask.width = canvas.width; mask.height = canvas.height;
 const maskCtx = mask.getContext('2d')!;
 const VIEW_W = canvas.width, VIEW_H = canvas.height;
+// The cave is part of the same world session, so it renders the exact saved
+// visitor appearance instead of a generic placeholder.
+const settings = loadSettings();
+const playerAppearance = settings.appearance;
+const playerSprite = SPRITES.find(sprite => sprite.id === settings.avatar);
+const playerImage = new Image();
+if (playerSprite) playerImage.src = playerSprite.sheet;
+if (playerAppearance) appearanceSprites.preload(playerAppearance);
+canvas.dataset.appearance = playerAppearance ? appearanceKey(playerAppearance) : `preset:${settings.avatar}`;
+canvas.dataset.monsterSprites = 'pixel';
 let config: Config | null = null, view: View | null = null;
 let local: Position = { x: 0, y: 0 }, camera: Position = { x: 0, y: 0 };
 let lastFrame = performance.now(), lastMove = 0, lastPoll = 0, lastAttack = 0, sequence = 0;
-let stopped = false, movePending = false, noticeUntil = 0;
+let stopped = false, movePending = false, noticeUntil = 0, moving = false;
 
 async function request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -72,6 +88,7 @@ function applyView(next: View): void {
   view = next;
   if (changedLevel) { local = { x: next.player.x, y: next.player.y }; camera = cameraFor(local); }
   depth.textContent = `CAVE · LEVEL ${next.level} · ${next.level_name}`;
+  canvas.dataset.monsters = next.monsters.map(monster => monster.kind).join(',');
   healthFill.style.width = `${Math.max(0, Math.round(next.player.hp / next.player.max_hp * 100))}%`;
   healthText.textContent = `${next.player.hp} / ${next.player.max_hp}`;
   const current = level();
@@ -140,27 +157,14 @@ function drawScene(time: number): void {
     rect(ctx, current.exit.x - 16, current.exit.y - 10, 32, 20, '#53614b');
     rect(ctx, current.exit.x - 10, current.exit.y - 7, 20, 14, '#1a241c');
   }
-  for (const monster of view?.monsters ?? []) {
-    if (!monster.alive) {
-      rect(ctx, monster.x - 7, monster.y + 3, 14, 4, '#384039');
-      continue;
-    }
-    const color = monster.state === 'attack' ? '#e07b62' : monster.state === 'chase' ? '#c9a35c'
-      : monster.kind === 'bat' ? '#8d7aa6' : monster.kind === 'stone' ? '#7f8a83' : '#9c6d5b';
-    const size = monster.boss ? 22 : monster.kind === 'stone' ? 16 : 12;
-    rect(ctx, monster.x - size / 2, monster.y - size / 2, size, size, color);
-    rect(ctx, monster.x - size / 2, monster.y - size / 2 - 5, size * (monster.hp / monster.max_hp), 3, '#d96b57');
-    if (monster.kind === 'bat' && !reduced.matches) {
-      const flap = Math.floor(time / 110) % 2 ? 3 : 0;
-      rect(ctx, monster.x - size / 2 - 5, monster.y - 4 - flap, 5, 3, color);
-      rect(ctx, monster.x + size / 2, monster.y - 4 - flap, 5, 3, color);
-    }
-  }
-  rect(ctx, local.x - 7, local.y - 9, 14, 18, '#f0dfb4');
-  rect(ctx, local.x - 4, local.y - 6, 8, 6, '#263a30');
-  const facing = view?.player.facing ?? 'down';
-  rect(ctx, local.x + (facing === 'right' ? 7 : facing === 'left' ? -9 : facing === 'up' ? -2 : -2),
-    local.y + (facing === 'down' ? 8 : facing === 'up' ? -12 : -4), 4, 4, '#f0cf75');
+  for (const chest of view?.chests ?? []) drawCaveChest(ctx, chest, time, reduced.matches);
+  for (const monster of view?.monsters ?? []) drawCaveMonster(ctx, monster, time, reduced.matches);
+  ctx.fillStyle = '#050a0880';
+  ctx.beginPath(); ctx.ellipse(Math.round(local.x), Math.round(local.y + 8), 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+  const facing = (view?.player.facing ?? 'down') as 'up' | 'down' | 'left' | 'right';
+  const composed = playerAppearance ? appearanceSprites.sheet(playerAppearance) ?? undefined : undefined;
+  drawActorSprite(ctx, playerSprite, playerImage, { position: local, facing, movementState: moving ? 'walking' : 'idle' },
+    time, reduced.matches, 44, composed);
   ctx.restore();
 
   // One small darkness mask: solid ambient black with soft destination-out
@@ -209,12 +213,14 @@ function frame(time: number): void {
   const dt = Math.min(.05, (time - lastFrame) / 1000); lastFrame = time;
   const k = keyboard.read(), t = touch.read();
   const input = normalizeInput(k.x + t.x, k.y + t.y, k.interact || t.interact);
+  moving = false;
   if (view?.status === 'playing' && (input.x || input.y)) {
     const step = Math.min(7, 150 * dt);
     const nx = { x: local.x + input.x * step, y: local.y };
     if (walkable(nx)) local.x = nx.x;
     const ny = { x: local.x, y: local.y + input.y * step };
     if (walkable(ny)) local.y = ny.y;
+    moving = Boolean(input.x || input.y);
     camera = cameraFor(local);
     if (time - lastMove > 100 && !movePending) {
       lastMove = time; movePending = true;
