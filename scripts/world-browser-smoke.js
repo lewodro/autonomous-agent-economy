@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { listChromeTargets } from './chrome-debug.js';
-import { OUTER_CAMPS } from '../web/dist/world/map.js';
+import { OUTER_CAMPS, OUTER_LOOP } from '../web/dist/world/map.js';
 const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
 const secondDebug=process.env.CHROME_DEBUG_URL_2;
 const targets=await listChromeTargets(debug);
@@ -463,7 +463,7 @@ try{
  await screenshot('agency-walk-in');
  await teleportProbe('agency',1568,340,'agency');
  // Generated cave mouths are ordinary interaction zones on the outer loop.
- await teleportProbe('caveNorth',-700,-736,'north-cave');
+ await teleportProbe('caveNorth',-700,OUTER_LOOP.top,'north-cave');
  await wait("!document.getElementById('interact').disabled");
  const caveStart=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent)");
  assert.equal(caveStart.discovered.includes('cave-north'),false,'approaching a cave must not discover it passively');
@@ -499,7 +499,9 @@ try{
  await waitCaveReady();
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
- assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===2)"),'the entrance level has its own authoritative monsters');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===3&&s.run.required===3&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 3','the cave HUD shows the floor objective');
+ assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
  await screenshot('cave-level-1');
  // Cave lighting and controls must survive the two required mobile sizes.
  for(const [width,height] of [[390,844],[430,932]]){

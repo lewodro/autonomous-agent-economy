@@ -9,9 +9,10 @@ export const WORLD_BOUNDS = { minX: MAP.minX + 52, minY: MAP.minY + 76,
 /** The hand-authored town inside the procedural outer ring. */
 export const CORE_BOUNDS = { minX: -896, minY: -576, maxX: 2688, maxY: 1728 };
 export type RingSide = 'north' | 'south' | 'east' | 'west';
-/** Dirt loop through the outer districts. Caves and ruins branch from it. */
-export const OUTER_LOOP = { left: CORE_BOUNDS.minX - 160, right: CORE_BOUNDS.maxX + 160,
-  top: CORE_BOUNDS.minY - 160, bottom: CORE_BOUNDS.maxY + 160 };
+/** Dirt loop through the outer districts. Caves and ruins branch from it.
+ * The loop now pushes close to the four map edges so the outer wilderness feels
+ * like a real journey while the canvas itself stays at 4800×3456. */
+export const OUTER_LOOP = { left: -1160, right: 2960, top: -880, bottom: 2000 };
 export interface ExplorationSite {
   id:string; kind:'cave'|'ruin'|'shrine'; facing:RingSide; radius:number; position:Position;
   label:string; description:string; discovery:string;
@@ -52,19 +53,19 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
     discovery:'A wind chime of bone and tin hangs from a branch, moving without wind.'},
   // Remote districts reward the walk: each sits off its own trail beyond the
   // loop, with rock, water or old construction instead of more empty grass.
-  {id:'shattered-ridge',kind:'ruin',facing:'south',position:{x:2720,y:-910},radius:82,label:'Shattered ridge',
+  {id:'shattered-ridge',kind:'ruin',facing:'south',position:{x:2700,y:-1010},radius:82,label:'Shattered ridge',
     description:'A spine of split stone rises above the northern tree line. The path ends at a narrow gap between two slabs.',
     discovery:'Chisel marks on the inner face suggest the gap was once a doorway.'},
-  {id:'rift-monolith',kind:'shrine',facing:'north',position:{x:-1240,y:-900},radius:78,label:'Rift monolith',
+  {id:'rift-monolith',kind:'shrine',facing:'east',position:{x:-1320,y:-790},radius:78,label:'Rift monolith',
     description:'A dark standing stone leans over a shallow depression in the north-west scrub.',
     discovery:'A ring of smaller stones holds rainwater; a cold draft rises from the centre.'},
-  {id:'old-quarry',kind:'ruin',facing:'east',position:{x:-1240,y:1560},radius:84,label:'Old quarry',
+  {id:'old-quarry',kind:'ruin',facing:'east',position:{x:-1320,y:1560},radius:84,label:'Old quarry',
     description:'Stepped cuts in the hillside mark a quarry long since abandoned. A cracked handcart rests by the trail.',
     discovery:'Rust-stained pick heads lie scattered below the upper ledge.'},
-  {id:'echo-cave',kind:'cave',facing:'west',position:{x:3000,y:1360},radius:78,label:'Echo cave',
+  {id:'echo-cave',kind:'cave',facing:'west',position:{x:3090,y:1360},radius:78,label:'Echo cave',
     description:'A low black mouth in the eastern ridge returns every footstep a heartbeat late.',
     discovery:'Old torch brackets are fixed into the rock just inside the entrance.'},
-  {id:'lantern-grove',kind:'shrine',facing:'west',position:{x:3000,y:1760},radius:78,label:'Lantern grove',
+  {id:'lantern-grove',kind:'shrine',facing:'west',position:{x:3090,y:1760},radius:78,label:'Lantern grove',
     description:'Dead lanterns hang from the outer trees beside the south-east trail.',
     discovery:'One lantern still holds a dry wick, as if someone meant to return and light it.'},
 ];
@@ -159,12 +160,11 @@ export const OUTER_EXPLORATION_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.right,y:1222,width:192,height:56,color:'#786b55'},
   // Trails to the remote districts. They join the same outer loop, so every
   // new site stays reachable without enlarging the walkable canvas.
-  {x:2692,y:-910,width:56,height:198,color:'#786b55'},
-  {x:-1240,y:-910,width:200,height:56,color:'#786b55'},
-  {x:-1240,y:-910,width:56,height:198,color:'#786b55'},
-  {x:-1240,y:1532,width:200,height:56,color:'#786b55'},
-  {x:2840,y:1332,width:200,height:56,color:'#786b55'},
-  {x:2840,y:1732,width:200,height:56,color:'#786b55'},
+  {x:2672,y:-1010,width:56,height:158,color:'#786b55'},
+  {x:-1320,y:-818,width:188,height:56,color:'#786b55'},
+  {x:-1320,y:1532,width:188,height:56,color:'#786b55'},
+  {x:2840,y:1332,width:278,height:56,color:'#786b55'},
+  {x:2840,y:1732,width:278,height:56,color:'#786b55'},
 ];
 export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
@@ -172,12 +172,12 @@ export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:56,height:OUTER_LOOP.bottom-OUTER_LOOP.top+56,color:'#786b55'},
   {x:OUTER_LOOP.right-28,y:OUTER_LOOP.top-28,width:56,height:OUTER_LOOP.bottom-OUTER_LOOP.top+56,color:'#786b55'},
   // Four short connectors join the old road network to the outer loop.
-  {x:548,y:OUTER_LOOP.top-28,width:56,height:384,color:'#786b55'},
-  {x:OUTER_LOOP.left-28,y:420,width:354,height:56,color:'#786b55'},
-  {x:1222,y:1540,width:56,height:376,color:'#786b55'},
+  {x:548,y:OUTER_LOOP.top-28,width:56,height:-400-(OUTER_LOOP.top-28),color:'#786b55'},
+  {x:OUTER_LOOP.left-28,y:420,width:-730-(OUTER_LOOP.left-28),height:56,color:'#786b55'},
+  {x:1222,y:1540,width:56,height:OUTER_LOOP.bottom+28-1540,color:'#786b55'},
   // This east connector leaves from the lower edge of the east road so the
   // ore-east-2 grass patch just north of it stays natural ground.
-  {x:1978,y:866,width:898,height:56,color:'#786b55'},
+  {x:1978,y:866,width:OUTER_LOOP.right+28-1978,height:56,color:'#786b55'},
 ];
 export const PATHS: WorldPath[] = [
   {x:392,y:300,width:760,height:560},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},

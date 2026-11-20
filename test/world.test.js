@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_VEGETATION, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
@@ -261,4 +261,17 @@ test('remote wilderness districts add destinations without enlarging the canvas'
       && site.position.y >= path.y - site.radius && site.position.y <= path.y + path.height + site.radius), `${id} has a connecting trail`);
   }
   assert.equal(MAP.width * MAP.height, 4800 * 3456, 'the static world canvas stays under the mobile Safari ceiling');
+});
+
+test('outer loop pushes toward the map edges and every landmark keeps a connecting trail', () => {
+  assert.ok(OUTER_LOOP.left < CORE_BOUNDS.minX - 200, 'the western loop opens a real wilderness band');
+  assert.ok(OUTER_LOOP.right > CORE_BOUNDS.maxX + 200, 'the eastern loop opens a real wilderness band');
+  assert.ok(OUTER_LOOP.top < CORE_BOUNDS.minY - 200, 'the northern loop opens a real wilderness band');
+  assert.ok(OUTER_LOOP.bottom > CORE_BOUNDS.maxY + 200, 'the southern loop opens a real wilderness band');
+  assert.ok(OUTER_LOOP.left > WORLD_BOUNDS.minX && OUTER_LOOP.right < WORLD_BOUNDS.maxX);
+  assert.ok(OUTER_LOOP.top > WORLD_BOUNDS.minY && OUTER_LOOP.bottom < WORLD_BOUNDS.maxY);
+  for (const site of EXPLORATION_SITES) {
+    assert.ok(PATHS.some(path => site.position.x >= path.x - site.radius && site.position.x <= path.x + path.width + site.radius
+      && site.position.y >= path.y - site.radius && site.position.y <= path.y + path.height + site.radius), `${site.id} must connect to the trail network`);
+  }
 });
