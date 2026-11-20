@@ -9,15 +9,23 @@
 export const CAVE_RESET_MS = 7 * 60 * 1000;
 export const CAVE_PLAYER_SPEED = 150;
 export const CAVE_MAX_HP = 100;
-export const CAVE_ATTACK_DAMAGE = 12;
-export const CAVE_ATTACK_RANGE = 62;
 export const CAVE_PLAYER_RADIUS = 12;
+
+/** Cave-only blades. The server owns the equipped weapon; the browser never picks one. */
+export const CAVE_WEAPONS = {
+  rusted: { id: 'rusted', name: 'Rusted Blade', damage: 12, range: 62 },
+  iron: { id: 'iron', name: 'Iron Sword', damage: 18, range: 70 },
+  caveforged: { id: 'caveforged', name: 'Caveforged Blade', damage: 26, range: 78 },
+};
+export const CAVE_START_WEAPON = 'rusted';
+export const CAVE_ATTACK_DAMAGE = CAVE_WEAPONS.rusted.damage;
+export const CAVE_ATTACK_RANGE = CAVE_WEAPONS.rusted.range;
 
 const rect = (x, y, width, height) => ({ x, y, width, height });
 
 export const CAVE_LEVELS = [
   {
-    level: 1, name: 'ENTRANCE', ambient: 0.18,
+    level: 1, name: 'ENTRANCE', ambient: 0.18, required: 3, chests: [],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 340 }, exit: { x: 112, y: 168 }, descent: { x: 420, y: 590 },
     rooms: [
@@ -37,10 +45,12 @@ export const CAVE_LEVELS = [
     monsters: [
       { id: 'crawler-1', kind: 'crawler', x: 340, y: 170, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
       { id: 'crawler-2', kind: 'crawler', x: 250, y: 610, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
+      { id: 'crawler-3', kind: 'crawler', x: 760, y: 250, hp: 28, damage: 6, speed: 64, aggro: 215, range: 42, cooldownMs: 1150, reward: 3 },
     ],
   },
   {
-    level: 2, name: 'NARROW WAYS', ambient: 0.1,
+    level: 2, name: 'NARROW WAYS', ambient: 0.1, required: 5,
+    chests: [{ id: 'chest-iron', x: 180, y: 450, weapon: 'iron' }],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: { x: 780, y: 650 },
     rooms: [
@@ -56,14 +66,16 @@ export const CAVE_LEVELS = [
       { kind: 'pillar', x: 860, y: 400 }, { kind: 'bones', x: 600, y: 640 },
     ],
     monsters: [
-      { id: 'bat-2-1', kind: 'bat', x: 260, y: 320, hp: 18, damage: 4, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
-      { id: 'crawler-2-1', kind: 'crawler', x: 700, y: 260, hp: 28, damage: 6, speed: 66, aggro: 220, range: 42, cooldownMs: 1100, reward: 3 },
-      { id: 'stone-2', kind: 'stone', x: 820, y: 380, hp: 40, damage: 8, speed: 48, aggro: 200, range: 46, cooldownMs: 1500, reward: 4 },
-      { id: 'bat-2-2', kind: 'bat', x: 620, y: 640, hp: 18, damage: 4, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
+      { id: 'bat-2-1', kind: 'bat', x: 260, y: 320, hp: 20, damage: 5, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
+      { id: 'crawler-2-1', kind: 'crawler', x: 700, y: 260, hp: 30, damage: 7, speed: 66, aggro: 220, range: 42, cooldownMs: 1100, reward: 3 },
+      { id: 'stone-2', kind: 'stone', x: 820, y: 380, hp: 44, damage: 9, speed: 48, aggro: 200, range: 46, cooldownMs: 1500, reward: 4 },
+      { id: 'bat-2-2', kind: 'bat', x: 620, y: 640, hp: 20, damage: 5, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
+      { id: 'crawler-2-2', kind: 'crawler', x: 200, y: 420, hp: 32, damage: 7, speed: 68, aggro: 225, range: 42, cooldownMs: 1050, reward: 3 },
     ],
   },
   {
-    level: 3, name: 'DEEP CHAMBER', ambient: 0.05,
+    level: 3, name: 'DEEP CHAMBER', ambient: 0.05, required: 4,
+    chests: [{ id: 'chest-caveforged', x: 860, y: 520, weapon: 'caveforged' }],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: null,
     rooms: [
@@ -78,9 +90,10 @@ export const CAVE_LEVELS = [
       { kind: 'pillar', x: 700, y: 320 }, { kind: 'crate', x: 600, y: 540 },
     ],
     monsters: [
-      { id: 'bat-3-1', kind: 'bat', x: 660, y: 260, hp: 22, damage: 5, speed: 92, aggro: 250, range: 38, cooldownMs: 950, reward: 3 },
-      { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 46, damage: 9, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
-      { id: 'warden', kind: 'stone', x: 780, y: 320, hp: 66, damage: 12, speed: 44, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
+      { id: 'bat-3-1', kind: 'bat', x: 660, y: 260, hp: 24, damage: 6, speed: 92, aggro: 250, range: 38, cooldownMs: 950, reward: 3 },
+      { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 50, damage: 10, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
+      { id: 'warden', kind: 'stone', x: 780, y: 320, hp: 72, damage: 14, speed: 44, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
+      { id: 'stone-3-2', kind: 'stone', x: 620, y: 500, hp: 54, damage: 10, speed: 52, aggro: 225, range: 46, cooldownMs: 1350, reward: 5 },
     ],
   },
 ];
@@ -107,10 +120,11 @@ export function publicCaveLayout() {
     max_hp: CAVE_MAX_HP,
     levels: CAVE_LEVELS.map(level => ({
       level: level.level, name: level.name, ambient: level.ambient, bounds: level.bounds,
-      entry: level.entry, exit: level.exit, descent: level.descent,
+      entry: level.entry, exit: level.exit, descent: level.descent, required: level.required,
       rooms: level.rooms.map(room => ({ ...room })),
       torches: level.torches.map(torch => ({ ...torch })),
       props: level.props.map(prop => ({ ...prop })),
+      chests: level.chests.map(chest => ({ id: chest.id, x: chest.x, y: chest.y })),
       monster_kinds: level.monsters.map(monster => ({ id: monster.id, kind: monster.kind, boss: Boolean(monster.boss) })),
     })),
   };

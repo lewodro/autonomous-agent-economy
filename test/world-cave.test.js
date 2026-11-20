@@ -30,6 +30,11 @@ test('cave layout is a bounded three-level dungeon with deterministic public con
   assert.equal(CAVE_LEVELS.length, 3);
   assert.deepEqual(CAVE_LEVELS.map(level => level.level), [1, 2, 3]);
   assert.equal(CAVE_RESET_MS, 7 * 60 * 1000);
+  assert.deepEqual(CAVE_LEVELS.map(level => level.required), [3, 5, 4]);
+  assert.deepEqual(CAVE_LEVELS.map(level => level.monsters.length), [3, 5, 4]);
+  assert.equal(CAVE_LEVELS[0].chests.length, 0, 'the entrance holds no weapon chest');
+  assert.equal(CAVE_LEVELS[1].chests[0].weapon, 'iron');
+  assert.equal(CAVE_LEVELS[2].chests[0].weapon, 'caveforged');
   assert.ok(CAVE_LEVELS[2].ambient < CAVE_LEVELS[0].ambient, 'deeper levels are darker');
   assert.ok(CAVE_LEVELS[2].monsters.length > CAVE_LEVELS[0].monsters.length, 'deeper levels are harder');
   assert.equal(isCaveWalkable(1, { x: 140, y: 340 }), true);
@@ -67,18 +72,58 @@ test('a visitor cannot act in another visitor run and movement is range and wall
   assert.equal(JSON.stringify(moved).includes('credential'), false);
 });
 
-test('descent requires the passage and advances through all three levels', async () => {
+test('descent requires a cleared floor and advances through all three levels', async () => {
   const { service } = serviceAt();
   const { run } = await start(service);
-  await assert.rejects(() => service.descend('visitor-a', { run_id: run.run_id }), { code: 'CAVE_NOT_AT_DESCENT' });
+  const state = service.runs.get('visitor-a');
+  await assert.rejects(() => service.descend('visitor-a', { run_id: run.run_id }), { code: 'CAVE_FLOOR_SEALED' });
   const first = caveLevel(1);
-  service.runs.get('visitor-a').player.x = first.descent.x;
-  service.runs.get('visitor-a').player.y = first.descent.y;
+  state.player.x = first.descent.x;
+  state.player.y = first.descent.y;
+  await assert.rejects(() => service.descend('visitor-a', { run_id: run.run_id }), { code: 'CAVE_FLOOR_SEALED' });
+  state.kills = first.required;
   const second = await service.descend('visitor-a', { run_id: run.run_id });
   assert.equal(second.level, 2);
   assert.equal(second.monsters.length, caveLevel(2).monsters.length);
+  assert.equal(second.kills, 0, 'a new floor starts with a fresh kill count');
+  assert.equal(second.cleared, false);
   const entry = caveLevel(2).entry;
   assert.deepEqual({ x: second.player.x, y: second.player.y }, entry);
+});
+
+test('floor chests grant cave-only blades once and the deepest chest is the best', async () => {
+  const { service } = serviceAt();
+  const { run } = await start(service);
+  const state = service.runs.get('visitor-a');
+  const first = caveLevel(1);
+  assert.equal(run.weapon.id, 'rusted');
+  assert.equal(run.chests.length, 0);
+  state.kills = first.required;
+  state.player.x = first.descent.x; state.player.y = first.descent.y;
+  const second = await service.descend('visitor-a', { run_id: run.run_id });
+  assert.equal(second.chests.length, 1);
+  await assert.rejects(() => service.chest('visitor-a', { run_id: run.run_id, chest_id: 'chest-iron' }), { code: 'CAVE_NOT_AT_CHEST' });
+  const ironChest = state.chests.find(chest => chest.id === 'chest-iron');
+  state.player.x = ironChest.x + 20; state.player.y = ironChest.y;
+  const opened = await service.chest('visitor-a', { run_id: run.run_id, chest_id: 'chest-iron' });
+  assert.equal(opened.opened, true);
+  assert.equal(opened.weapon.id, 'iron');
+  assert.equal(opened.found_weapon.id, 'iron');
+  const again = await service.chest('visitor-a', { run_id: run.run_id, chest_id: 'chest-iron' });
+  assert.equal(again.duplicate, true, 'a chest never opens twice');
+  assert.equal(again.weapon.id, 'iron');
+
+  const config = caveLevel(2);
+  state.kills = config.required;
+  state.player.x = config.descent.x; state.player.y = config.descent.y;
+  const third = await service.descend('visitor-a', { run_id: run.run_id });
+  assert.equal(third.level, 3);
+  assert.equal(third.can_descend, false, 'the deepest floor has no passage');
+  const deepChest = state.chests.find(chest => chest.id === 'chest-caveforged');
+  state.player.x = deepChest.x - 20; state.player.y = deepChest.y;
+  const deepest = await service.chest('visitor-a', { run_id: run.run_id, chest_id: 'chest-caveforged' });
+  assert.equal(deepest.weapon.id, 'caveforged');
+  assert.ok(deepest.weapon.damage > second.weapon.damage);
 });
 
 test('attacks are server-owned: range, malformed IDs, duplicates and dead-mob rewards', async () => {

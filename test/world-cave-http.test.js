@@ -52,6 +52,11 @@ test('cave HTTP routes are per-visitor, validate intents and keep runs read-only
     assert.match(runId, /^cave-[a-f0-9-]{36}$/);
     assert.equal(started.data.run.player.hp, 100);
     assert.equal(started.data.run.monsters.every(monster => typeof monster.hp === 'number'), true);
+    assert.equal(started.data.run.kills, 0);
+    assert.equal(started.data.run.required, 3);
+    assert.equal(started.data.run.cleared, false);
+    assert.equal(started.data.run.weapon.id, 'rusted');
+    assert.equal(started.data.run.chests.length, 0);
     const live = await request('/api/world/cave');
     assert.equal(live.data.run.run_id, runId, 'a visitor resumes its own active run');
     assert.equal('credential' in live.data.run, false);
@@ -65,6 +70,12 @@ test('cave HTTP routes are per-visitor, validate intents and keep runs read-only
     const noTarget = await request('/api/world/cave/attack', { run_id: runId, request_id: 'strike-http-0001' });
     assert.equal(noTarget.status, 409);
     assert.equal(noTarget.data.code, 'CAVE_NO_TARGET');
+    const sealed = await request('/api/world/cave/descend', { run_id: runId });
+    assert.equal(sealed.status, 409);
+    assert.equal(sealed.data.code, 'CAVE_FLOOR_SEALED');
+    const missingChest = await request('/api/world/cave/chest', { run_id: runId, chest_id: 'chest-iron' });
+    assert.equal(missingChest.status, 404);
+    assert.equal(missingChest.data.code, 'CAVE_CHEST_NOT_FOUND');
     const wrongRun = await request('/api/world/cave/exit', { run_id: 'cave-22222222-2222-4222-8222-222222222222' });
     assert.equal(wrongRun.status, 404);
     assert.equal(wrongRun.data.code, 'CAVE_RUN_NOT_FOUND');
