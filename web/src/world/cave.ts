@@ -62,7 +62,7 @@ canvas.dataset.monsterSprites = 'pixel';
 let config: Config | null = null, view: View | null = null;
 let local: Position = { x: 0, y: 0 }, camera: Position = { x: 0, y: 0 };
 let lastFrame = performance.now(), lastMove = 0, lastPoll = 0, lastAttack = 0, sequence = 0;
-let stopped = false, movePending = false, noticeUntil = 0, moving = false;
+let stopped = false, movePending = false, noticeUntil = 0, moving = false, endingRun = false;
 let moveTarget: Position | null = null;
 let attackTargetId: string | null = null;
 let interactTarget: { kind: 'chest' | 'exit' | 'descent'; id?: string } | null = null;
@@ -238,14 +238,44 @@ async function action(): Promise<void> {
   const choice = caveActionFor({ chest: Boolean(chest), exit, descent, monster: Boolean(nearbyMonster()) });
   if (choice === 'chest' && chest) { await send('chest', { chest_id: chest.id }); return; }
   if (choice === 'exit') {
-    await request(`/api/world/cave/exit`, { run_id: view.run_id });
-    stopped = true; location.assign('/world?return=cave');
+    await leaveCave('/world?return=cave');
   } else if (choice === 'descent') {
     if (!view.cleared) { flash(`PASSAGE SEALED · MONSTERS ${view.kills} / ${view.required}`); return; }
     await send('descend', {});
   } else if (choice === 'attack') await attack();
   else flash('NO EXIT, CHEST, PASSAGE OR MONSTER IN REACH');
 }
+/**
+ * Ends the active run before any navigation away from the cave. The header
+ * exit link used to be a plain anchor, which left the run 'playing' on the
+ * server: coming back to the cave then reported "leave the current run first".
+ */
+async function leaveCave(destination: string): Promise<void> {
+  if (endingRun) return;
+  stopped = true;
+  if (view && view.status === 'playing') {
+    try {
+      await request('/api/world/cave/exit', { run_id: view.run_id });
+      endingRun = true;
+    } catch {
+      // Leave endingRun false so pagehide can retry with a beacon while the
+      // page is being torn down. The run may simply have ended already.
+    }
+  } else endingRun = true;
+  location.assign(destination);
+}
+function bindExitLink(id: string, destination: string): void {
+  const link = document.getElementById(id);
+  link?.addEventListener('click', event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void leaveCave(destination);
+  });
+}
+bindExitLink('cave-exit-link', '/world?return=cave');
+bindExitLink('cave-brand-link', '/arena');
+bindExitLink('cave-return', '/world?return=cave');
+
 function clearTargets(): void {
   moveTarget = null; attackTargetId = null; interactTarget = null;
   targetStuck = 0; targetDistance = Infinity;
