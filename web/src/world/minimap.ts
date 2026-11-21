@@ -1,6 +1,6 @@
 import { CORE_BOUNDS, MAP, OUTER_LOOP } from './map.js';
 import {
-  MINIMAP_HEIGHT, MINIMAP_PADDING, MINIMAP_PATHS, MINIMAP_WIDTH,
+  MINIMAP_HEIGHT, MINIMAP_PADDING, MINIMAP_PATHS, MINIMAP_TRAILS, MINIMAP_WIDTH,
   minimapPoint, type MapMarker,
 } from './explore.js';
 import type { Facing, Position } from './model.js';
@@ -88,6 +88,18 @@ export class WorldMinimap {
     for (const path of MINIMAP_PATHS) {
       const start = minimapPoint({ x: path.x1, y: path.y1 });
       const end = minimapPoint({ x: path.x2, y: path.y2 });
+      c.moveTo(Math.round(start.x) + .5, Math.round(start.y) + .5);
+      c.lineTo(Math.round(end.x) + .5, Math.round(end.y) + .5);
+    }
+    c.stroke();
+    // Remote district spurs are fainter than the loop so the map still reads
+    // as one route, while the widened wilderness keeps visible destinations.
+    c.strokeStyle = '#625a48';
+    c.lineWidth = 1;
+    c.beginPath();
+    for (const trail of MINIMAP_TRAILS) {
+      const start = minimapPoint(trail.from);
+      const end = minimapPoint(trail.to);
       c.moveTo(Math.round(start.x) + .5, Math.round(start.y) + .5);
       c.lineTo(Math.round(end.x) + .5, Math.round(end.y) + .5);
     }
