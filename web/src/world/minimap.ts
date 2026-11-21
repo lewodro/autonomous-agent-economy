@@ -1,6 +1,6 @@
-import { CORE_BOUNDS, MAP } from './map.js';
+import { CORE_BOUNDS, MAP, OUTER_LOOP } from './map.js';
 import {
-  MINIMAP_HEIGHT, MINIMAP_PADDING, MINIMAP_PATHS, MINIMAP_WIDTH,
+  MINIMAP_HEIGHT, MINIMAP_PADDING, MINIMAP_PATHS, MINIMAP_TRAILS, MINIMAP_WIDTH,
   minimapPoint, type MapMarker,
 } from './explore.js';
 import type { Facing, Position } from './model.js';
@@ -92,12 +92,24 @@ export class WorldMinimap {
       c.lineTo(Math.round(end.x) + .5, Math.round(end.y) + .5);
     }
     c.stroke();
-    // Tiny connectors make the city-to-loop transitions legible at this size.
+    // Remote district spurs are fainter than the loop so the map still reads
+    // as one route, while the widened wilderness keeps visible destinations.
+    c.strokeStyle = '#625a48';
+    c.lineWidth = 1;
+    c.beginPath();
+    for (const trail of MINIMAP_TRAILS) {
+      const start = minimapPoint(trail.from);
+      const end = minimapPoint(trail.to);
+      c.moveTo(Math.round(start.x) + .5, Math.round(start.y) + .5);
+      c.lineTo(Math.round(end.x) + .5, Math.round(end.y) + .5);
+    }
+    c.stroke();
+    // Connectors follow the same city-to-loop junctions the player walks.
     const connections: Array<[Position, Position]> = [
-      [{ x: 576, y: CORE_BOUNDS.minY }, { x: 576, y: (CORE_BOUNDS.minY + MAP.minY) / 2 }],
-      [{ x: (CORE_BOUNDS.minX + MAP.minX) / 2, y: 460 }, { x: CORE_BOUNDS.minX, y: 460 }],
-      [{ x: 1250, y: CORE_BOUNDS.maxY }, { x: 1250, y: (CORE_BOUNDS.maxY + MAP.maxY) / 2 }],
-      [{ x: CORE_BOUNDS.maxX, y: 900 }, { x: (CORE_BOUNDS.maxX + MAP.maxX) / 2, y: 900 }],
+      [{ x: 576, y: CORE_BOUNDS.minY }, { x: 576, y: OUTER_LOOP.top }],
+      [{ x: CORE_BOUNDS.minX, y: 460 }, { x: OUTER_LOOP.left, y: 460 }],
+      [{ x: 1250, y: CORE_BOUNDS.maxY }, { x: 1250, y: OUTER_LOOP.bottom }],
+      [{ x: CORE_BOUNDS.maxX, y: 900 }, { x: OUTER_LOOP.right, y: 900 }],
     ];
     c.strokeStyle = '#5f5947';
     c.lineWidth = 1;

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMP_SITES, EXPLORATION_SITES, LANDMARKS, MAP, OUTER_CAMPS } from '../web/dist/world/map.js';
+import { CAMP_SITES, EXPLORATION_SITES, LANDMARKS, MAP, OUTER_CAMPS, OUTER_LOOP } from '../web/dist/world/map.js';
 import {
-  CITY_MAP_MARKERS, DISCOVERY_SITES, DISCOVERY_STORAGE_KEY, MINIMAP_HEIGHT, MINIMAP_WIDTH,
+  CITY_MAP_MARKERS, DISCOVERY_SITES, DISCOVERY_STORAGE_KEY, MINIMAP_HEIGHT, MINIMAP_TRAILS, MINIMAP_WIDTH,
   discoveryGroups, loadDiscoveries, minimapMarkers, minimapPoint, nearbyHumans,
   parseDiscoveryList, regionAt, regionLabel, saveDiscoveries,
 } from '../web/dist/world/explore.js';
@@ -93,6 +93,17 @@ test('minimap projection covers the world and hides undiscovered landmarks', () 
 test('compact minimap keeps public location names visible', () => {
   const markers = minimapMarkers(new Set());
   assert.deepEqual(visibleMinimapLocationLabels(markers).map(marker => marker.label), ['ARENA', 'CMPD', 'MKT', 'LAB', 'AGY', 'VLT']);
+});
+
+test('minimap keeps the expanded loop and its remote trails in projection', () => {
+  assert.equal(MINIMAP_TRAILS.length, 5);
+  for (const trail of MINIMAP_TRAILS) {
+    assert.ok(trail.from.x === OUTER_LOOP.left || trail.from.x === OUTER_LOOP.right
+      || trail.from.y === OUTER_LOOP.top || trail.from.y === OUTER_LOOP.bottom, 'a remote trail starts on the loop');
+    assert.ok(EXPLORATION_SITES.some(site => site.position.x === trail.to.x && site.position.y === trail.to.y), 'a remote trail ends at its site');
+    const start = minimapPoint(trail.from), end = minimapPoint(trail.to);
+    assert.ok(start.x >= 0 && start.x <= MINIMAP_WIDTH && end.y >= 0 && end.y <= MINIMAP_HEIGHT, 'remote trails stay inside the minimap');
+  }
 });
 
 test('minimap only plots nearby humans and never canonical agents', () => {

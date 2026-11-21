@@ -1227,7 +1227,10 @@ function frame(time:number):void {
       const speech=publicSpeech(closeProfile,closeNpc.activityState||'wander',thoughtSeed(closeNpc.id,count,Math.floor(Date.now()/60_000)),{visitorName,publicHistory});
       closeNpc.speech={text:speech.text,expiresAt:time+24000,synthetic:speech.synthetic};
     }
-    if(time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});void loadFarm();}
+    // Visitor-scoped refreshes wait for the presence join to own the visitor
+    // cookie. Firing them from the first frame races the join, so one response
+    // can mint a second identity and leave a ghost actor in the plaza.
+    if(presenceClient?.player_id&&time>=resourceRefresh){resourceRefresh=time+5000;void loadWorldEconomy().catch(()=>{});void loadFarm();}
     const resourceTargets:Interactable[]=worldResources.filter(resource=>resource.available).map(resource=>({id:`resource:${resource.id}`,position:resource.position,radius:64,type:'zone',label:`${resource.kind==='ore'?`Mine ${resource.variant??'ore'}`:'Harvest plants'} · ${resource.rarity.replace('_',' ')}`}));
     const plotTargets:Interactable[]=(farmSnapshot?.tiles||[]).map(tile=>({id:`plot:${tile.id}`,position:tile.position,radius:70,type:'zone' as const,
       label:tile.stage==='wild'?'Plant a crop':tile.mine?(tile.stage==='ready'?`Harvest ${cropLabel(tile.crop).toLowerCase()}`:`${cropLabel(tile.crop).toLowerCase()} growing`):`${cropLabel(tile.crop).toLowerCase()} field`}));

@@ -244,13 +244,14 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST')return json(res,405,{error:'Cave command requires POST'},cookie);
       if(!caveCommands.allow())return json(res,429,{error:'Cave actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/cave/'.length);
-      if(!['start','move','attack','descend','exit'].includes(action))return json(res,404,{error:'Unknown cave command'},cookie);
+      if(!['start','move','attack','descend','chest','exit'].includes(action))return json(res,404,{error:'Unknown cave command'},cookie);
       const data=await body(req,2048);
       try{
         if(action==='start')return json(res,200,await caveService.start(visitor.id,{...data,credential}),cookie);
         if(action==='move')return json(res,200,await caveService.move(visitor.id,data),cookie);
         if(action==='attack')return json(res,200,await caveService.attack(visitor.id,data),cookie);
         if(action==='descend')return json(res,200,await caveService.descend(visitor.id,data),cookie);
+        if(action==='chest')return json(res,200,await caveService.chest(visitor.id,data),cookie);
         return json(res,200,await caveService.exit(visitor.id,data),cookie);
       }catch(error){
         if(error?.code?.startsWith('CAVE_')||error?.code==='INVALID_REQUEST_ID'||error?.code==='INVALID_EXTERIOR'||error?.code==='INVALID_CREDENTIAL'||error?.code==='INVALID_MOVE'||error?.code==='INVALID_VISITOR'){

@@ -9,8 +9,8 @@ statistics changes.
 
 | State | Owner | Lifetime |
 | --- | --- | --- |
-| Cave run, level, position, health, monsters, attack idempotency | `service/world-cave.js` (in memory) | Per visitor, per run; discarded after `CAVE_RESET_MS` |
-| Level geometry, torches, props, base monster anchors | `service/cave-layout.js`, served by `GET /api/world/cave/config` | Deterministic, static |
+| Cave run, level, position, health, monsters, kills, chests, weapon, attack idempotency | `service/world-cave.js` (in memory) | Per visitor, per run; discarded after `CAVE_RESET_MS` |
+| Level geometry, torches, props, monster anchors, floor targets, weapon chests | `service/cave-layout.js`, served by `GET /api/world/cave/config` | Deterministic, static |
 | Internal credit loss and cave rewards | `WorldFarm` ledger and `WorldEconomy` receipts | Durable, idempotent by run/monster key |
 | Saved exterior position | Existing localStorage settings | Per visitor, same as other venues |
 
@@ -30,12 +30,48 @@ position, health, monster health, range checks, damage, death and rewards:
   geometry; it cannot teleport or cross rock.
 - `POST /api/world/cave/attack` requires a request ID. Duplicates replay the
   original result without applying damage twice; dead monsters cannot grant a
-  second reward.
-- `POST /api/world/cave/descend` requires standing at the passage.
+  second reward. Damage and reach come from the equipped cave weapon.
+- `POST /api/world/cave/chest` opens a nearby weapon chest once. The server
+  equips the better cave-only blade; a repeated request never opens it twice.
+- `POST /api/world/cave/descend` requires a cleared floor (and standing at the
+  passage). The next floor respawns its own monsters, chest and kill count.
 - `POST /api/world/cave/exit` ends the run and returns the saved exterior.
 
 `GET /api/world/cave` is a read-only snapshot. No visitor UUID, credential or
 hidden encounter state is included in public responses.
+
+## Floors, monsters and weapons
+
+The cave has three deterministic floors. Each floor seals its descent until
+enough monsters are defeated: entrance `3/3`, narrow ways `5/5`, deep chamber
+`4/4` (the final floor has no descent). The compact HUD shows
+`CAVE · LEVEL n`, `HP x/y`, `MONSTERS x/y` and the equipped blade.
+
+Monsters are original code-drawn pixel creatures (crawler, bat, stone
+creature), not coloured rectangles. The player uses the exact shared-world
+avatar appearance and directional frames, composed from the same saved
+settings as the plaza.
+
+Cave blades are cave-only and server-owned:
+
+| Weapon | Source | Damage | Reach |
+| --- | --- | --- | --- |
+| Rusted Blade | start of every run | 12 | 62 |
+| Iron Sword | floor 2 chest | 18 | 70 |
+| Caveforged Blade | floor 3 chest | 26 | 78 |
+
+There is no overworld inventory, weapon picker or PvP use. A chest is
+authoritative and cannot be opened twice. When the inactive run is discarded
+after `CAVE_RESET_MS`, monsters, floors, chests and the weapon all reset.
+
+## Controls
+
+- Desktop: WASD/arrows move; click ground to walk, click a monster to chase and
+  attack, click a chest/passage to walk to it and interact; `E` interacts with a
+  chest, passage or exit, and strikes the nearest monster when nothing else is
+  in reach. The joystick and large touch buttons are hidden for fine pointers.
+- Mobile: the existing joystick moves; compact ATTACK and E buttons stay inside
+  the viewport at 390×844 and 430×932.
 
 ## Credits and return paths
 

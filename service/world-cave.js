@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
-  CAVE_ATTACK_DAMAGE, CAVE_ATTACK_RANGE, CAVE_MAX_HP, CAVE_PLAYER_RADIUS,
-  CAVE_PLAYER_SPEED, CAVE_RESET_MS, caveLevel, isCaveWalkable,
+  CAVE_MAX_HP, CAVE_PLAYER_RADIUS, CAVE_PLAYER_SPEED, CAVE_RESET_MS,
+  CAVE_START_WEAPON, CAVE_WEAPONS, caveLevel, isCaveWalkable,
 } from './cave-layout.js';
 
 const fail = (code, message, status = 400) => Object.assign(new Error(message), { code, status });
@@ -44,21 +44,35 @@ export class CaveService {
 
   spawn(level) {
     return caveLevel(level).monsters.map(monster => ({
-      ...monster, home: { x: monster.x, y: monster.y }, hp: monster.hp, alive: true,
+      ...monster, home: { x: monster.x, y: monster.y }, hp: monster.hp, maxHp: monster.hp, alive: true,
       state: 'idle', lastAttack: 0,
     }));
   }
 
+  spawnChests(level) {
+    return caveLevel(level).chests.map(chest => ({ id: chest.id, x: chest.x, y: chest.y, weapon: chest.weapon, opened: false }));
+  }
+
+  weapon(run) {
+    return CAVE_WEAPONS[run.weaponId] ?? CAVE_WEAPONS[CAVE_START_WEAPON];
+  }
+
   view(run) {
+    const config = caveLevel(run.level), weapon = this.weapon(run);
+    const cleared = run.kills >= config.required;
     return {
-      run_id: run.id, level: run.level, level_name: caveLevel(run.level).name,
+      run_id: run.id, level: run.level, level_name: config.name,
       status: run.status, player: { ...run.player },
       monsters: run.monsters.map(monster => ({
         id: monster.id, kind: monster.kind, boss: Boolean(monster.boss),
         x: Math.round(monster.x), y: Math.round(monster.y), hp: monster.hp,
-        max_hp: monster.hp <= 0 ? caveLevel(run.level).monsters.find(m => m.id === monster.id).hp : monster.maxHp,
+        max_hp: monster.maxHp ?? config.monsters.find(m => m.id === monster.id)?.hp ?? monster.hp,
         alive: monster.alive, state: monster.state,
       })),
+      chests: run.chests.map(chest => ({ id: chest.id, x: chest.x, y: chest.y, opened: chest.opened })),
+      kills: run.kills, required: config.required, cleared,
+      can_descend: cleared && Boolean(config.descent),
+      weapon: { id: weapon.id, name: weapon.name, damage: weapon.damage, range: weapon.range },
       reset_at: new Date(run.lastActiveAt + this.resetMs).toISOString(),
     };
   }
@@ -130,7 +144,9 @@ export class CaveService {
         economyOwner: input.credential.economyOwner,
       },
       player: { x: level.entry.x, y: level.entry.y, facing: 'down', hp: CAVE_MAX_HP, max_hp: CAVE_MAX_HP },
-      monsters: this.spawn(1), startedAt: now, lastActiveAt: now, lastTick: now,
+      monsters: this.spawn(1), chests: this.spawnChests(1), weaponId: CAVE_START_WEAPON,
+      kills: 0, killed: new Set(),
+      startedAt: now, lastActiveAt: now, lastTick: now,
       defeatSettled: false, rewarded: new Set(), attacks: new Map(),
     };
     this.runs.set(visitorId, run);
@@ -167,14 +183,19 @@ export class CaveService {
     if (cached) return { ...cached, duplicate: true };
     await this.advance(run);
     if (run.status !== 'playing') return { ...this.view(run), hit: false, player_defeated: true };
+    const weapon = this.weapon(run);
     const target = run.monsters
-      .filter(monster => monster.alive && Math.hypot(monster.x - run.player.x, monster.y - run.player.y) <= CAVE_ATTACK_RANGE)
+      .filter(monster => monster.alive && Math.hypot(monster.x - run.player.x, monster.y - run.player.y) <= weapon.range)
       .sort((a, b) => Math.hypot(a.x - run.player.x, a.y - run.player.y) - Math.hypot(b.x - run.player.x, b.y - run.player.y))[0];
     if (!target) throw fail('CAVE_NO_TARGET', 'No monster is within reach', 409);
-    target.hp = Math.max(0, target.hp - CAVE_ATTACK_DAMAGE);
+    target.hp = Math.max(0, target.hp - weapon.damage);
     let reward = null;
     if (target.hp === 0) {
       target.alive = false; target.state = 'dead';
+      if (!run.killed.has(target.id)) {
+        run.killed.add(target.id);
+        run.kills = run.killed.size;
+      }
       if (!run.rewarded.has(target.id)) {
         run.rewarded.add(target.id);
         reward = { monster_id: target.id, amount: target.reward, reward_key: `${run.id}:${target.id}` };
@@ -192,13 +213,34 @@ export class CaveService {
     const run = this.require(visitorId, input.run_id);
     const config = caveLevel(run.level);
     if (!config.descent) throw fail('CAVE_DEEPEST', 'This is the deepest known chamber', 409);
+    if (run.kills < config.required) throw fail('CAVE_FLOOR_SEALED', `Defeat ${config.required - run.kills} more monster${config.required - run.kills === 1 ? '' : 's'} to open the passage`, 409);
     if (Math.hypot(run.player.x - config.descent.x, run.player.y - config.descent.y) > 64) throw fail('CAVE_NOT_AT_DESCENT', 'Find the descending passage first', 409);
     const next = caveLevel(run.level + 1), now = this.now();
     run.level = next.level;
     run.player.x = next.entry.x; run.player.y = next.entry.y;
     run.monsters = this.spawn(next.level);
+    run.chests = this.spawnChests(next.level);
+    run.kills = 0; run.killed = new Set(); run.attacks.clear();
     run.lastTick = now; run.lastActiveAt = now;
     return this.view(run);
+  }
+
+  async chest(visitorId, input = {}) {
+    this.prune();
+    const run = this.require(visitorId, input.run_id);
+    if (typeof input.chest_id !== 'string' || !REAL_ID.test(input.chest_id)) throw fail('CAVE_INVALID_CHEST', 'A chest ID is required', 400);
+    await this.advance(run);
+    if (run.status !== 'playing') return { ...this.view(run), opened: false, player_defeated: true };
+    const chest = run.chests.find(value => value.id === input.chest_id);
+    if (!chest) throw fail('CAVE_CHEST_NOT_FOUND', 'That chest is not on this floor', 404);
+    if (Math.hypot(run.player.x - chest.x, run.player.y - chest.y) > 64) throw fail('CAVE_NOT_AT_CHEST', 'Move closer to the chest', 409);
+    if (chest.opened) return { ...this.view(run), opened: true, chest_id: chest.id, duplicate: true };
+    chest.opened = true;
+    const found = CAVE_WEAPONS[chest.weapon];
+    const current = this.weapon(run);
+    let foundWeapon = null;
+    if (found && found.damage > current.damage) { run.weaponId = found.id; foundWeapon = { ...found }; }
+    return { ...this.view(run), opened: true, chest_id: chest.id, found_weapon: foundWeapon };
   }
 
   async exit(visitorId, input = {}) {

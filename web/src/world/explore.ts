@@ -147,6 +147,18 @@ export const MINIMAP_PATHS: ReadonlyArray<{ x1: number; y1: number; x2: number; 
   { x1: OUTER_LOOP.left, y1: OUTER_LOOP.top, x2: OUTER_LOOP.left, y2: OUTER_LOOP.bottom },
   { x1: OUTER_LOOP.right, y1: OUTER_LOOP.top, x2: OUTER_LOOP.right, y2: OUTER_LOOP.bottom },
 ];
+const REMOTE_SITE_IDS = new Set(['shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove']);
+function nearestLoopAnchor(position: Position): Position {
+  const candidates: Position[] = [
+    { x: position.x, y: OUTER_LOOP.top }, { x: position.x, y: OUTER_LOOP.bottom },
+    { x: OUTER_LOOP.left, y: position.y }, { x: OUTER_LOOP.right, y: position.y },
+  ];
+  return candidates.sort((a, b) => Math.hypot(a.x - position.x, a.y - position.y) - Math.hypot(b.x - position.x, b.y - position.y))[0]!;
+}
+/** Remote spurs keep the widened loop readable once a district is discovered. */
+export const MINIMAP_TRAILS: ReadonlyArray<{ from: Position; to: Position }> =
+  EXPLORATION_SITES.filter(site => REMOTE_SITE_IDS.has(site.id))
+    .map(site => ({ from: nearestLoopAnchor(site.position), to: { ...site.position } }));
 export function isKnownDiscovery(id: string): boolean {
   return DISCOVERY_SITES.some(site => site.id === id);
 }

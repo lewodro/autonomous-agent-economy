@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { listChromeTargets } from './chrome-debug.js';
-import { OUTER_CAMPS } from '../web/dist/world/map.js';
+import { OUTER_CAMPS, OUTER_LOOP } from '../web/dist/world/map.js';
 const base=process.env.GAME_URL||'http://localhost:3000',debug=process.env.CHROME_DEBUG_URL||'http://127.0.0.1:9322';
 const secondDebug=process.env.CHROME_DEBUG_URL_2;
 const targets=await listChromeTargets(debug);
@@ -302,7 +302,8 @@ try{
  await wait('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>!item.classList.contains("is-entering")&&getComputedStyle(item).opacity==="1")');
  assert.ok(await evaluate('getComputedStyle(document.querySelector("#arena-feed-list .feed-item")).opacity==="1"'),'feed items must settle at full opacity after entering');
  assert.ok(await evaluate('document.querySelectorAll("#arena-feed-list .feed-item").length<=8'),'the feed must keep a bounded history');
- assert.ok(await evaluate('document.getElementById("survival-result").hidden||["is-visible","is-entering"].some(name=>document.getElementById("survival-result").classList.contains(name))'),'the result banner may only appear for a finished snapshot');
+ await wait('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")',5000);
+ assert.ok(await evaluate('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")'),'the result banner may only appear for a finished snapshot');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
@@ -463,7 +464,7 @@ try{
  await screenshot('agency-walk-in');
  await teleportProbe('agency',1568,340,'agency');
  // Generated cave mouths are ordinary interaction zones on the outer loop.
- await teleportProbe('caveNorth',-700,-736,'north-cave');
+ await teleportProbe('caveNorth',-700,OUTER_LOOP.top,'north-cave');
  await wait("!document.getElementById('interact').disabled");
  const caveStart=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent)");
  assert.equal(caveStart.discovered.includes('cave-north'),false,'approaching a cave must not discover it passively');
@@ -499,25 +500,57 @@ try{
  await waitCaveReady();
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
- assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===2)"),'the entrance level has its own authoritative monsters');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===3&&s.run.required===3&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 3','the cave HUD shows the floor objective');
+ assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
+ assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
+ assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
+ assert.ok(await evaluate("document.getElementById('cave-hint').textContent.includes('E')&&document.getElementById('cave-hint').textContent.includes('click')"),'desktop hint teaches WASD/click/E');
  await screenshot('cave-level-1');
  // Cave lighting and controls must survive the two required mobile sizes.
  for(const [width,height] of [[390,844],[430,932]]){
   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+  await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
   await send('Page.reload');
   await waitCaveReady();
   assert.equal(await evaluate(`document.documentElement.scrollWidth<=${width}`),true,`${width}px cave must not overflow horizontally`);
   assert.ok(await evaluate(`(()=>{const a=document.getElementById('cave-attack').getBoundingClientRect(),c=document.getElementById('cave-canvas').getBoundingClientRect();return c.width>0&&c.height>0&&a.width>=44&&a.height>=44&&a.right<=${width}&&a.bottom<=${height}})()`),'cave controls stay usable at touch sizes');
+  assert.notEqual(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none',`${width}px cave keeps the joystick`);
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none',`${width}px cave keeps compact touch buttons`);
+  assert.ok(await evaluate(`(()=>{const h=document.getElementById('cave-monsters').getBoundingClientRect();return h.width>0&&h.right<=${width}&&h.bottom<=${height}})()`),'the floor objective stays inside the mobile viewport');
   await screenshot(`cave-mobile-${width}`);
  }
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Emulation.setTouchEmulationEnabled',{enabled:false});
  await send('Page.reload');
  await waitCaveReady();
- await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}))");
- await delay(900);
- await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}))");
- await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.player.y<330)",8000);
- await evaluate("document.getElementById('cave-action').click()");
+ const holdCaveKey=async(key,ms)=>{
+  await evaluate(`document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
+  await delay(ms);
+  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
+ };
+ const caveHpTotal=()=>evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.monsters.reduce((total,monster)=>total+Math.max(0,monster.hp),0))");
+ const beforeStrike=await caveHpTotal();
+ await holdCaveKey('d',1100);
+ await holdCaveKey('w',900);
+ await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.monsters.some(monster=>monster.alive&&Math.hypot(monster.x-s.run.player.x,monster.y-s.run.player.y)<=s.run.weapon.range))",8000);
+ for(let attempt=0;attempt<4;attempt++){
+  await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+  await delay(80);
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
+  await delay(520);
+  if(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.kills>=1)"))break;
+ }
+ assert.ok(await caveHpTotal()<beforeStrike,'desktop E strikes a nearby monster');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.kills>=1)"),'the E strike advances the floor kill count');
+ await wait("document.getElementById('cave-monsters').textContent.startsWith('MONSTERS 1 / 3')",5000);
+ assert.ok((await evaluate("document.getElementById('cave-monsters').textContent")).startsWith('MONSTERS 1 / 3'),'the HUD follows the authoritative kill count');
+ await holdCaveKey('a',1500);
+ await holdCaveKey('w',420);
+ await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>Math.hypot(s.run.player.x-112,s.run.player.y-168)<64)",8000);
+ await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await delay(80);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
  await wait("location.pathname==='/world'",10000);
  await wait('document.getElementById("character-dialog").open');
  await evaluate('document.getElementById("enter-world").click()');
