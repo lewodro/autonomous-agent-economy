@@ -25,7 +25,7 @@ interface Config {
 }
 interface Monster {
   id: string; kind: string; boss: boolean; x: number; y: number; hp: number;
-  max_hp: number; alive: boolean; state: string;
+  max_hp: number; alive: boolean; state: string; hit: boolean; hit_until: number;
 }
 interface View {
   run_id: string; level: number; level_name: string; status: 'playing' | 'exited' | 'dead';
@@ -91,13 +91,16 @@ function showOverlay(text: string, returnLabel: string): void {
 }
 function applyView(next: View): void {
   const changedLevel = !view || view.level !== next.level;
+  const passageJustUnlocked = Boolean(view && view.level === next.level && !view.cleared && next.cleared && next.can_descend);
   view = next;
   if (changedLevel) { local = { x: next.player.x, y: next.player.y }; camera = cameraFor(local); }
   depth.textContent = `CAVE · LEVEL ${next.level} · ${next.level_name}`;
   canvas.dataset.monsters = next.monsters.map(monster => monster.kind).join(',');
+  canvas.dataset.hitMonsters = next.monsters.filter(monster => monster.hit).map(monster => monster.id).join(',');
   healthFill.style.width = `${Math.max(0, Math.round(next.player.hp / next.player.max_hp * 100))}%`;
   healthText.textContent = `${next.player.hp} / ${next.player.max_hp}`;
   monstersText.textContent = `MONSTERS ${next.kills} / ${next.required}`;
+  if (passageJustUnlocked) flash('PASSAGE UNLOCKED');
   weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
   const current = level();
   const chest = nearbyChest();
@@ -178,7 +181,7 @@ function drawScene(time: number): void {
     rect(ctx, current.exit.x - 10, current.exit.y - 7, 20, 14, '#1a241c');
   }
   for (const chest of view?.chests ?? []) drawCaveChest(ctx, chest, time, reduced.matches);
-  for (const monster of view?.monsters ?? []) drawCaveMonster(ctx, monster, time, reduced.matches);
+  for (const monster of view?.monsters ?? []) drawCaveMonster(ctx, { ...monster, hit: monster.hit_until > Date.now() }, time, reduced.matches);
   ctx.fillStyle = '#050a0880';
   ctx.beginPath(); ctx.ellipse(Math.round(local.x), Math.round(local.y + 8), 14, 5, 0, 0, Math.PI * 2); ctx.fill();
   const facing = (view?.player.facing ?? 'down') as 'up' | 'down' | 'left' | 'right';

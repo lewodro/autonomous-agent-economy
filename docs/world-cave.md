@@ -43,11 +43,11 @@ hidden encounter state is included in public responses.
 ## Floors, monsters and weapons
 
 The cave has three deterministic floors. Each floor seals its descent until
-enough monsters are defeated: entrance `3/3`, narrow ways `5/5`, deep chamber
-`4/4` (the final floor has no descent). The compact HUD shows
+enough monsters are defeated: entrance `4/4`, narrow ways `5/5`, deep chamber
+`4/4` (including a 120 HP Grizzly; the final floor has no descent). The compact HUD shows
 `CAVE · LEVEL n`, `HP x/y`, `MONSTERS x/y` and the equipped blade.
 
-Monsters are original code-drawn pixel creatures (crawler, bat, stone
+Monsters are original code-drawn pixel creatures (crawler, bat, stone and Grizzly
 creature), not coloured rectangles. The player uses the exact shared-world
 avatar appearance and directional frames, composed from the same saved
 settings as the plaza.

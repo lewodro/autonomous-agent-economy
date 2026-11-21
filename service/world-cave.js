@@ -45,7 +45,7 @@ export class CaveService {
   spawn(level) {
     return caveLevel(level).monsters.map(monster => ({
       ...monster, home: { x: monster.x, y: monster.y }, hp: monster.hp, maxHp: monster.hp, alive: true,
-      state: 'idle', lastAttack: 0,
+      state: 'idle', lastAttack: 0, hitUntil: 0,
     }));
   }
 
@@ -58,7 +58,7 @@ export class CaveService {
   }
 
   view(run) {
-    const config = caveLevel(run.level), weapon = this.weapon(run);
+    const config = caveLevel(run.level), weapon = this.weapon(run), now = this.now();
     const cleared = run.kills >= config.required;
     return {
       run_id: run.id, level: run.level, level_name: config.name,
@@ -67,7 +67,7 @@ export class CaveService {
         id: monster.id, kind: monster.kind, boss: Boolean(monster.boss),
         x: Math.round(monster.x), y: Math.round(monster.y), hp: monster.hp,
         max_hp: monster.maxHp ?? config.monsters.find(m => m.id === monster.id)?.hp ?? monster.hp,
-        alive: monster.alive, state: monster.state,
+        alive: monster.alive, state: monster.state, hit: monster.hitUntil > now, hit_until: monster.hitUntil,
       })),
       chests: run.chests.map(chest => ({ id: chest.id, x: chest.x, y: chest.y, opened: chest.opened })),
       kills: run.kills, required: config.required, cleared,
@@ -189,6 +189,7 @@ export class CaveService {
       .sort((a, b) => Math.hypot(a.x - run.player.x, a.y - run.player.y) - Math.hypot(b.x - run.player.x, b.y - run.player.y))[0];
     if (!target) throw fail('CAVE_NO_TARGET', 'No monster is within reach', 409);
     target.hp = Math.max(0, target.hp - weapon.damage);
+    target.hitUntil = this.now() + 180;
     let reward = null;
     if (target.hp === 0) {
       target.alive = false; target.state = 'dead';

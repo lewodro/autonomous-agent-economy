@@ -5,7 +5,7 @@
  */
 export interface CaveMonsterView {
   id: string; kind: string; boss: boolean; x: number; y: number;
-  hp: number; max_hp: number; alive: boolean; state: string;
+  hp: number; max_hp: number; alive: boolean; state: string; hit: boolean;
 }
 export interface CaveChestView { id: string; x: number; y: number; opened: boolean }
 
@@ -41,8 +41,8 @@ function crawler(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: nu
   const { x, y } = monster;
   const step = reduced ? 0 : Math.floor(time / 190 + x) % 2;
   const lunge = monster.state === 'attack' && !reduced ? 2 : 0;
-  const body = monster.state === 'attack' ? '#9c4f3c' : '#7d4f3a';
-  const shell = monster.state === 'attack' ? '#c26d4c' : '#a97452';
+  const body = monster.hit ? '#e14b3f' : monster.state === 'attack' ? '#9c4f3c' : '#7d4f3a';
+  const shell = monster.hit ? '#ff7162' : monster.state === 'attack' ? '#c26d4c' : '#a97452';
   shadow(c, x, y + 9, 16);
   // Six legs, offset each animation frame.
   for (let leg = 0; leg < 3; leg++) {
@@ -70,8 +70,8 @@ function bat(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: number
   const hover = reduced ? 0 : Math.round(Math.sin(time / 260 + x) * 2);
   const flap = reduced ? 0 : Math.floor(time / 120 + x) % 2;
   const attack = monster.state === 'attack';
-  const body = attack ? '#8e5a76' : '#6d5a8c';
-  const wing = attack ? '#b97791' : '#4f406b';
+  const body = monster.hit ? '#e14b3f' : attack ? '#8e5a76' : '#6d5a8c';
+  const wing = monster.hit ? '#ff7162' : attack ? '#b97791' : '#4f406b';
   shadow(c, x, y + 12, 10);
   const cy = y - 2 + hover + (attack ? 3 : 0);
   // Wide membrane wings with a two-frame flap.
@@ -103,9 +103,9 @@ function stone(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: numb
   // Chunky legs and a broad rocky torso.
   rect(c, x - 8 * size, y + 5 * size, 5 * size, 7 * size, '#4d5750');
   rect(c, x + 3 * size, y + 5 * size, 5 * size, 7 * size, '#4d5750');
-  rect(c, x - 11 * size, y - 9 * size + bob, 22 * size, 16 * size, '#59635b');
-  rect(c, x - 8 * size, y - 12 * size + bob, 16 * size, 15 * size, '#7f8a83');
-  rect(c, x - 5 * size, y - 10 * size + bob, 9 * size, 8 * size, '#98a299');
+  rect(c, x - 11 * size, y - 9 * size + bob, 22 * size, 16 * size, monster.hit ? '#d43f36' : '#59635b');
+  rect(c, x - 8 * size, y - 12 * size + bob, 16 * size, 15 * size, monster.hit ? '#ed6255' : '#7f8a83');
+  rect(c, x - 5 * size, y - 10 * size + bob, 9 * size, 8 * size, monster.hit ? '#ff8878' : '#98a299');
   // Arms rise when the creature attacks.
   rect(c, x - 14 * size, y - 6 * size - lift + bob, 5 * size, 11 * size, '#6a746d');
   rect(c, x + 9 * size, y - 6 * size - lift + bob, 5 * size, 11 * size, '#6a746d');
@@ -124,9 +124,31 @@ function stone(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: numb
   }
 }
 
+function grizzly(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: number, reduced: boolean): void {
+  const { x, y } = monster;
+  const bob = reduced ? 0 : Math.round(Math.sin(time / 360 + x) * 1);
+  const lunge = monster.state === 'attack' ? 3 : 0;
+  const fur = monster.hit ? '#e14b3f' : '#6f4932';
+  const light = monster.hit ? '#ff7868' : '#9a6845';
+  shadow(c, x, y + 15, 20);
+  rect(c, x - 15, y - 11 + bob + lunge, 30, 23, fur);
+  rect(c, x - 11, y - 20 + bob + lunge, 22, 15, light);
+  rect(c, x - 13, y - 23 + bob + lunge, 6, 6, fur);
+  rect(c, x + 7, y - 23 + bob + lunge, 6, 6, fur);
+  rect(c, x - 8, y - 16 + bob + lunge, 4, 3, '#211814');
+  rect(c, x + 4, y - 16 + bob + lunge, 4, 3, '#211814');
+  rect(c, x - 5, y - 10 + bob + lunge, 10, 6, '#c18d63');
+  rect(c, x - 2, y - 9 + bob + lunge, 4, 3, '#241916');
+  rect(c, x - 16, y + 6 + bob, 7, 13, fur);
+  rect(c, x + 9, y + 6 + bob, 7, 13, fur);
+  rect(c, x - 12, y + 10 + bob, 8, 11, '#513526');
+  rect(c, x + 4, y + 10 + bob, 8, 11, '#513526');
+}
+
 export function drawCaveMonster(c: CanvasRenderingContext2D, monster: CaveMonsterView, time: number, reduced: boolean): void {
   if (!monster.alive) { deadMonster(c, monster); return; }
-  if (monster.kind === 'bat') bat(c, monster, time, reduced);
+  if (monster.kind === 'grizzly') grizzly(c, monster, time, reduced);
+  else if (monster.kind === 'bat') bat(c, monster, time, reduced);
   else if (monster.kind === 'stone') stone(c, monster, time, reduced);
   else crawler(c, monster, time, reduced);
   healthBar(c, monster);

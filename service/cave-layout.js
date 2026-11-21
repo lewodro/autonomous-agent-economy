@@ -25,7 +25,7 @@ const rect = (x, y, width, height) => ({ x, y, width, height });
 
 export const CAVE_LEVELS = [
   {
-    level: 1, name: 'ENTRANCE', ambient: 0.18, required: 3, chests: [],
+    level: 1, name: 'ENTRANCE', ambient: 0.18, required: 4, chests: [],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 340 }, exit: { x: 112, y: 168 }, descent: { x: 420, y: 590 },
     rooms: [
@@ -46,6 +46,7 @@ export const CAVE_LEVELS = [
       { id: 'crawler-1', kind: 'crawler', x: 340, y: 170, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
       { id: 'crawler-2', kind: 'crawler', x: 250, y: 610, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
       { id: 'crawler-3', kind: 'crawler', x: 760, y: 250, hp: 28, damage: 6, speed: 64, aggro: 215, range: 42, cooldownMs: 1150, reward: 3 },
+      { id: 'bat-1', kind: 'bat', x: 690, y: 330, hp: 20, damage: 5, speed: 84, aggro: 225, range: 38, cooldownMs: 1050, reward: 2 },
     ],
   },
   {
@@ -92,7 +93,7 @@ export const CAVE_LEVELS = [
     monsters: [
       { id: 'bat-3-1', kind: 'bat', x: 660, y: 260, hp: 24, damage: 6, speed: 92, aggro: 250, range: 38, cooldownMs: 950, reward: 3 },
       { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 50, damage: 10, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
-      { id: 'warden', kind: 'stone', x: 780, y: 320, hp: 72, damage: 14, speed: 44, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
+      { id: 'grizzly', kind: 'grizzly', x: 780, y: 320, hp: 120, damage: 14, speed: 48, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
       { id: 'stone-3-2', kind: 'stone', x: 620, y: 500, hp: 54, damage: 10, speed: 52, aggro: 225, range: 46, cooldownMs: 1350, reward: 5 },
     ],
   },
