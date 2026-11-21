@@ -67,8 +67,9 @@ after `CAVE_RESET_MS`, monsters, floors, chests and the weapon all reset.
 ## Controls
 
 - Desktop: WASD/arrows move; click ground to walk, click a monster to chase and
-  attack, click a chest/passage to walk to it and interact; `E` interacts. The
-  joystick and large touch buttons are hidden for fine pointers.
+  attack, click a chest/passage to walk to it and interact; `E` interacts with a
+  chest, passage or exit, and strikes the nearest monster when nothing else is
+  in reach. The joystick and large touch buttons are hidden for fine pointers.
 - Mobile: the existing joystick moves; compact ATTACK and E buttons stay inside
   the viewport at 390×844 and 430×932.
 
