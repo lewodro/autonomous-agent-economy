@@ -502,6 +502,9 @@ try{
  assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===3&&s.run.required===3&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
  assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 3','the cave HUD shows the floor objective');
  assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
+ assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
+ assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
+ assert.ok(await evaluate("document.getElementById('cave-hint').textContent.includes('E')&&document.getElementById('cave-hint').textContent.includes('click')"),'desktop hint teaches WASD/click/E');
  await screenshot('cave-level-1');
  // Cave lighting and controls must survive the two required mobile sizes.
  for(const [width,height] of [[390,844],[430,932]]){
@@ -510,16 +513,41 @@ try{
   await waitCaveReady();
   assert.equal(await evaluate(`document.documentElement.scrollWidth<=${width}`),true,`${width}px cave must not overflow horizontally`);
   assert.ok(await evaluate(`(()=>{const a=document.getElementById('cave-attack').getBoundingClientRect(),c=document.getElementById('cave-canvas').getBoundingClientRect();return c.width>0&&c.height>0&&a.width>=44&&a.height>=44&&a.right<=${width}&&a.bottom<=${height}})()`),'cave controls stay usable at touch sizes');
+  assert.notEqual(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none',`${width}px cave keeps the joystick`);
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none',`${width}px cave keeps compact touch buttons`);
+  assert.ok(await evaluate(`(()=>{const h=document.getElementById('cave-monsters').getBoundingClientRect();return h.width>0&&h.right<=${width}&&h.bottom<=${height}})()`),'the floor objective stays inside the mobile viewport');
   await screenshot(`cave-mobile-${width}`);
  }
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.reload');
  await waitCaveReady();
- await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}))");
- await delay(900);
- await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}))");
- await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.player.y<330)",8000);
- await evaluate("document.getElementById('cave-action').click()");
+ const holdCaveKey=async(key,ms)=>{
+  await evaluate(`document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
+  await delay(ms);
+  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
+ };
+ const caveHpTotal=()=>evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.monsters.reduce((total,monster)=>total+Math.max(0,monster.hp),0))");
+ const beforeStrike=await caveHpTotal();
+ await holdCaveKey('d',1100);
+ await holdCaveKey('w',900);
+ await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.monsters.some(monster=>monster.alive&&Math.hypot(monster.x-s.run.player.x,monster.y-s.run.player.y)<=s.run.weapon.range))",8000);
+ for(let attempt=0;attempt<4;attempt++){
+  await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+  await delay(80);
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
+  await delay(520);
+  if(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.kills>=1)"))break;
+ }
+ assert.ok(await caveHpTotal()<beforeStrike,'desktop E strikes a nearby monster');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.kills>=1)"),'the E strike advances the floor kill count');
+ await wait("document.getElementById('cave-monsters').textContent.startsWith('MONSTERS 1 / 3')",5000);
+ assert.ok((await evaluate("document.getElementById('cave-monsters').textContent")).startsWith('MONSTERS 1 / 3'),'the HUD follows the authoritative kill count');
+ await holdCaveKey('a',1500);
+ await holdCaveKey('w',420);
+ await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>Math.hypot(s.run.player.x-112,s.run.player.y-168)<64)",8000);
+ await evaluate("document.getElementById('cave-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await delay(80);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
  await wait("location.pathname==='/world'",10000);
  await wait('document.getElementById("character-dialog").open');
  await evaluate('document.getElementById("enter-world").click()');
