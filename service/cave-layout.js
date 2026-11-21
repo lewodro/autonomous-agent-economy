@@ -10,6 +10,8 @@ export const CAVE_RESET_MS = 7 * 60 * 1000;
 export const CAVE_PLAYER_SPEED = 150;
 export const CAVE_MAX_HP = 100;
 export const CAVE_PLAYER_RADIUS = 12;
+/** Shared interaction reach for exits, chests and descending passages. */
+export const CAVE_INTERACT_RADIUS = 96;
 
 /** Cave-only blades. The server owns the equipped weapon; the browser never picks one. */
 export const CAVE_WEAPONS = {
@@ -52,12 +54,12 @@ export const CAVE_LEVELS = [
     ],
   },
   {
-    level: 2, name: 'NARROW WAYS', ambient: 0.1, required: 5,
+    level: 2, name: 'NARROW WAYS', ambient: 0.1, required: 6,
     chests: [{ id: 'chest-iron', x: 180, y: 450, weapon: 'iron' }],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: { x: 780, y: 650 },
     rooms: [
-      rect(80, 260, 300, 250), rect(340, 340, 220, 80),
+      rect(120, 120, 240, 180), rect(80, 260, 300, 250), rect(340, 340, 220, 80),
       rect(520, 180, 350, 280), rect(680, 420, 80, 180), rect(520, 570, 320, 110),
     ],
     torches: [
@@ -74,15 +76,18 @@ export const CAVE_LEVELS = [
       { id: 'stone-2', kind: 'stone', x: 820, y: 380, hp: 60, damage: 12, speed: 48, aggro: 200, range: 46, cooldownMs: 1500, reward: 4 },
       { id: 'bat-2-2', kind: 'bat', x: 620, y: 640, hp: 40, damage: 9, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
       { id: 'crawler-2-2', kind: 'crawler', x: 200, y: 420, hp: 44, damage: 10, speed: 68, aggro: 225, range: 42, cooldownMs: 1050, reward: 3 },
+      { id: 'bat-2-3', kind: 'bat', x: 230, y: 200, hp: 44, damage: 11, speed: 90, aggro: 245, range: 38, cooldownMs: 980, reward: 3 },
     ],
   },
   {
-    level: 3, name: 'DEEP CHAMBER', ambient: 0.05, required: 4,
+    level: 3, name: 'DEEP CHAMBER', ambient: 0.05, required: 6,
     chests: [{ id: 'chest-caveforged', x: 860, y: 520, weapon: 'caveforged' }],
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: null,
     rooms: [
       rect(80, 260, 260, 240), rect(310, 340, 220, 80), rect(495, 160, 385, 430),
+      rect(830, 300, 130, 180), rect(520, 560, 280, 130),
+      rect(80, 130, 220, 170), rect(560, 120, 220, 140),
     ],
     torches: [
       { x: 120, y: 300, radius: 110 }, { x: 600, y: 210, radius: 105 }, { x: 820, y: 540, radius: 95 },
@@ -97,6 +102,8 @@ export const CAVE_LEVELS = [
       { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 64, damage: 13, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
       { id: 'grizzly', kind: 'grizzly', x: 780, y: 320, hp: 120, damage: 16, speed: 48, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
       { id: 'stone-3-2', kind: 'stone', x: 620, y: 500, hp: 64, damage: 13, speed: 52, aggro: 225, range: 46, cooldownMs: 1350, reward: 5 },
+      { id: 'stone-3-3', kind: 'stone', x: 900, y: 400, hp: 66, damage: 14, speed: 54, aggro: 230, range: 46, cooldownMs: 1300, reward: 5 },
+      { id: 'bat-3-2', kind: 'bat', x: 650, y: 630, hp: 44, damage: 11, speed: 94, aggro: 250, range: 38, cooldownMs: 940, reward: 3 },
     ],
   },
 ];
@@ -118,6 +125,7 @@ export function publicCaveLayout() {
   return {
     reset_ms: CAVE_RESET_MS,
     player_speed: CAVE_PLAYER_SPEED,
+    interact_radius: CAVE_INTERACT_RADIUS,
     attack_damage: CAVE_ATTACK_DAMAGE,
     attack_range: CAVE_ATTACK_RANGE,
     max_hp: CAVE_MAX_HP,

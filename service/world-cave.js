@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
-  CAVE_MAX_HP, CAVE_PLAYER_RADIUS, CAVE_PLAYER_SPEED, CAVE_RESET_MS,
+  CAVE_INTERACT_RADIUS, CAVE_MAX_HP, CAVE_PLAYER_RADIUS, CAVE_PLAYER_SPEED, CAVE_RESET_MS,
   CAVE_START_WEAPON, CAVE_WEAPONS, caveLevel, isCaveWalkable,
 } from './cave-layout.js';
 
@@ -215,7 +215,7 @@ export class CaveService {
     const config = caveLevel(run.level);
     if (!config.descent) throw fail('CAVE_DEEPEST', 'This is the deepest known chamber', 409);
     if (run.kills < config.required) throw fail('CAVE_FLOOR_SEALED', `Defeat ${config.required - run.kills} more monster${config.required - run.kills === 1 ? '' : 's'} to open the passage`, 409);
-    if (Math.hypot(run.player.x - config.descent.x, run.player.y - config.descent.y) > 64) throw fail('CAVE_NOT_AT_DESCENT', 'Find the descending passage first', 409);
+    if (Math.hypot(run.player.x - config.descent.x, run.player.y - config.descent.y) > CAVE_INTERACT_RADIUS) throw fail('CAVE_NOT_AT_DESCENT', 'Find the descending passage first', 409);
     const next = caveLevel(run.level + 1), now = this.now();
     run.level = next.level;
     run.player.x = next.entry.x; run.player.y = next.entry.y;
@@ -234,7 +234,7 @@ export class CaveService {
     if (run.status !== 'playing') return { ...this.view(run), opened: false, player_defeated: true };
     const chest = run.chests.find(value => value.id === input.chest_id);
     if (!chest) throw fail('CAVE_CHEST_NOT_FOUND', 'That chest is not on this floor', 404);
-    if (Math.hypot(run.player.x - chest.x, run.player.y - chest.y) > 64) throw fail('CAVE_NOT_AT_CHEST', 'Move closer to the chest', 409);
+    if (Math.hypot(run.player.x - chest.x, run.player.y - chest.y) > CAVE_INTERACT_RADIUS) throw fail('CAVE_NOT_AT_CHEST', 'Move closer to the chest', 409);
     if (chest.opened) return { ...this.view(run), opened: true, chest_id: chest.id, duplicate: true };
     chest.opened = true;
     const found = CAVE_WEAPONS[chest.weapon];

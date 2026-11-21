@@ -30,8 +30,9 @@ test('cave layout is a bounded three-level dungeon with deterministic public con
   assert.equal(CAVE_LEVELS.length, 3);
   assert.deepEqual(CAVE_LEVELS.map(level => level.level), [1, 2, 3]);
   assert.equal(CAVE_RESET_MS, 7 * 60 * 1000);
-  assert.deepEqual(CAVE_LEVELS.map(level => level.required), [4, 5, 4]);
-  assert.deepEqual(CAVE_LEVELS.map(level => level.monsters.length), [4, 5, 4]);
+  assert.deepEqual(CAVE_LEVELS.map(level => level.required), [4, 6, 6]);
+  assert.deepEqual(CAVE_LEVELS.map(level => level.monsters.length), [4, 6, 6]);
+  assert.deepEqual(CAVE_LEVELS.map(level => level.rooms.length), [5, 6, 7], 'each deeper floor adds one chamber');
   assert.equal(CAVE_LEVELS.every(level => level.monsters.length >= 4), true);
   assert.equal(CAVE_LEVELS[0].chests.length, 0, 'the entrance holds no weapon chest');
   assert.equal(CAVE_LEVELS[1].chests[0].weapon, 'iron');
@@ -368,4 +369,22 @@ test('standing still near cave monsters eventually kills the player', async () =
   }
   assert.equal(state.status, 'dead', `standing still should end the run (after ${elapsed}ms)`);
   assert.equal(calls.defeats.length, 1, 'the defeat settles once');
+});
+
+
+test('descending uses the shared interaction reach and deeper floors are reachable', async () => {
+  const { service } = serviceAt();
+  const { run } = await start(service);
+  const state = service.runs.get('visitor-a');
+  const first = caveLevel(1);
+  state.kills = first.required;
+  state.player.x = first.descent.x + 90; state.player.y = first.descent.y;
+  const second = await service.descend('visitor-a', { run_id: run.run_id });
+  assert.equal(second.level, 2, 'a cleared floor can be descended from the wider reach');
+  state.kills = caveLevel(2).required;
+  const passage = caveLevel(2).descent;
+  state.player.x = passage.x; state.player.y = passage.y;
+  const third = await service.descend('visitor-a', { run_id: run.run_id });
+  assert.equal(third.level, 3);
+  assert.equal(third.monsters.length, 6, 'the deepest floor has its stronger roster');
 });
