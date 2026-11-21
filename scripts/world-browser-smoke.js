@@ -302,7 +302,8 @@ try{
  await wait('[...document.querySelectorAll("#arena-feed-list .feed-item")].every(item=>!item.classList.contains("is-entering")&&getComputedStyle(item).opacity==="1")');
  assert.ok(await evaluate('getComputedStyle(document.querySelector("#arena-feed-list .feed-item")).opacity==="1"'),'feed items must settle at full opacity after entering');
  assert.ok(await evaluate('document.querySelectorAll("#arena-feed-list .feed-item").length<=8'),'the feed must keep a bounded history');
- assert.ok(await evaluate('document.getElementById("survival-result").hidden||["is-visible","is-entering"].some(name=>document.getElementById("survival-result").classList.contains(name))'),'the result banner may only appear for a finished snapshot');
+ await wait('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")',5000);
+ assert.ok(await evaluate('document.getElementById("survival-result").hidden||document.getElementById("survival-result").classList.contains("is-visible")'),'the result banner may only appear for a finished snapshot');
  for(const [id,game] of [['rps-1','rps'],['ttt-1','tictactoe']]){
   await send('Page.navigate',{url:base+`/arena/${game}/${id}`});
   await wait('document.getElementById("run-status")?.textContent.includes("SHARED")');
@@ -509,6 +510,7 @@ try{
  // Cave lighting and controls must survive the two required mobile sizes.
  for(const [width,height] of [[390,844],[430,932]]){
   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+  await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
   await send('Page.reload');
   await waitCaveReady();
   assert.equal(await evaluate(`document.documentElement.scrollWidth<=${width}`),true,`${width}px cave must not overflow horizontally`);
@@ -519,6 +521,7 @@ try{
   await screenshot(`cave-mobile-${width}`);
  }
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Emulation.setTouchEmulationEnabled',{enabled:false});
  await send('Page.reload');
  await waitCaveReady();
  const holdCaveKey=async(key,ms)=>{
