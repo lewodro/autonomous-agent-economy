@@ -500,8 +500,8 @@ try{
  await waitCaveReady();
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
- assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===3&&s.run.required===3&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
- assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 3','the cave HUD shows the floor objective');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 4','the cave HUD shows the floor objective');
  assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
  assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
@@ -557,8 +557,8 @@ try{
  }
  assert.ok(await caveHpTotal()<beforeStrike,'desktop E strikes a nearby monster');
  assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run.kills>=1)"),'the E strike advances the floor kill count');
- await wait("document.getElementById('cave-monsters').textContent.startsWith('MONSTERS 1 / 3')",5000);
- assert.ok((await evaluate("document.getElementById('cave-monsters').textContent")).startsWith('MONSTERS 1 / 3'),'the HUD follows the authoritative kill count');
+ await wait("document.getElementById('cave-monsters').textContent.startsWith('MONSTERS 1 / 4')",5000);
+ assert.ok((await evaluate("document.getElementById('cave-monsters').textContent")).startsWith('MONSTERS 1 / 4'),'the HUD follows the authoritative kill count');
  await holdCaveKey('a',1500);
  await holdCaveKey('w',420);
  await wait("fetch('/api/world/cave').then(r=>r.json()).then(s=>Math.hypot(s.run.player.x-112,s.run.player.y-168)<64)",8000);

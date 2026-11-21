@@ -53,7 +53,8 @@ test('cave HTTP routes are per-visitor, validate intents and keep runs read-only
     assert.equal(started.data.run.player.hp, 100);
     assert.equal(started.data.run.monsters.every(monster => typeof monster.hp === 'number'), true);
     assert.equal(started.data.run.kills, 0);
-    assert.equal(started.data.run.required, 3);
+    assert.equal(started.data.run.monsters.length, 4);
+    assert.equal(started.data.run.required, 4);
     assert.equal(started.data.run.cleared, false);
     assert.equal(started.data.run.weapon.id, 'rusted');
     assert.equal(started.data.run.chests.length, 0);
