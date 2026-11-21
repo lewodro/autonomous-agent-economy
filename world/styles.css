@@ -844,9 +844,10 @@
 .cave-buttons{display:flex;gap:8px}
 .cave-attack,.cave-action{min-width:84px;min-height:48px;padding:8px 10px;border:2px solid #8f7550;background:#2b3325;color:#f0cf75;font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;box-shadow:2px 2px 0 #070d0a;touch-action:manipulation}
 .cave-action{border-color:#8fb37a;background:#26382f;color:#dcefc0}
-/* Desktop is keyboard + pointer first: no permanent joystick or oversized
-   touch buttons. The same elements stay visible for coarse-pointer devices. */
-@media (hover:hover) and (pointer:fine){
+/* Desktop/laptop is keyboard + pointer first: no permanent joystick or
+   oversized touch buttons. Width is the reliable signal here — headless and
+   kiosk browsers do not always report hover/pointer capabilities correctly. */
+@media (min-width:601px){
   .cave-joystick,.cave-buttons{display:none}
   .cave-controls{justify-content:center;min-height:0;margin-top:6px}
   .cave-hint{margin:8px 0 0}
