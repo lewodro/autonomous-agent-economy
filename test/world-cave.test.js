@@ -135,6 +135,7 @@ test('attacks are server-owned: range, malformed IDs, duplicates and dead-mob re
   const first = await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000001' });
   assert.equal(first.hit, true);
   assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').hp, 12);
+  assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').max_hp, 24);
   const duplicate = await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000001' });
   assert.equal(duplicate.duplicate, true);
   assert.equal(calls.rewards.length, 0, 'a duplicate attack must not duplicate damage or rewards');

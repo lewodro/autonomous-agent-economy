@@ -44,7 +44,7 @@ export class CaveService {
 
   spawn(level) {
     return caveLevel(level).monsters.map(monster => ({
-      ...monster, home: { x: monster.x, y: monster.y }, hp: monster.hp, alive: true,
+      ...monster, home: { x: monster.x, y: monster.y }, hp: monster.hp, maxHp: monster.hp, alive: true,
       state: 'idle', lastAttack: 0,
     }));
   }
@@ -66,7 +66,7 @@ export class CaveService {
       monsters: run.monsters.map(monster => ({
         id: monster.id, kind: monster.kind, boss: Boolean(monster.boss),
         x: Math.round(monster.x), y: Math.round(monster.y), hp: monster.hp,
-        max_hp: monster.hp <= 0 ? config.monsters.find(m => m.id === monster.id).hp : monster.maxHp,
+        max_hp: monster.maxHp ?? config.monsters.find(m => m.id === monster.id)?.hp ?? monster.hp,
         alive: monster.alive, state: monster.state,
       })),
       chests: run.chests.map(chest => ({ id: chest.id, x: chest.x, y: chest.y, opened: chest.opened })),
@@ -228,7 +228,7 @@ export class CaveService {
   async chest(visitorId, input = {}) {
     this.prune();
     const run = this.require(visitorId, input.run_id);
-    if (typeof input.chest_id !== 'string' || !REAL_ID.test(input.chest_id)) throw fail('INVALID_CHEST', 'A chest ID is required', 400);
+    if (typeof input.chest_id !== 'string' || !REAL_ID.test(input.chest_id)) throw fail('CAVE_INVALID_CHEST', 'A chest ID is required', 400);
     await this.advance(run);
     if (run.status !== 'playing') return { ...this.view(run), opened: false, player_defeated: true };
     const chest = run.chests.find(value => value.id === input.chest_id);
