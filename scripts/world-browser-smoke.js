@@ -507,20 +507,6 @@ try{
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
  assert.ok(await evaluate("document.getElementById('cave-hint').textContent.includes('E')&&document.getElementById('cave-hint').textContent.includes('click')"),'desktop hint teaches WASD/click/E');
  await screenshot('cave-level-1');
- // The header "Exit to World" link must end the run before navigating.
- // Otherwise the visitor returns to the world with a run still marked
- // playing and the next cave entry reports "leave the current run first".
- await evaluate("document.getElementById('cave-exit-link').click()");
- await wait("location.pathname==='/world'",10000);
- await wait('document.getElementById("character-dialog").open');
- await evaluate('document.getElementById("enter-world").click()');
- await wait('!document.getElementById("character-dialog").open');
- assert.notEqual(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.status)"),'playing','the header exit settles the active run');
- const caveReentry=await evaluate(`fetch('/api/world/cave/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({exterior:${JSON.stringify(caveExterior)}})}).then(async r=>({status:r.status,...await r.json()}))`);
- assert.equal(caveReentry.status,200,'the cave can be entered again right after the header exit');
- assert.equal(caveReentry.run.status,'playing');
- await send('Page.navigate',{url:base+'/cave'});
- await waitCaveReady();
  // Cave lighting and controls must survive the two required mobile sizes.
  for(const [width,height] of [[390,844],[430,932]]){
   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});

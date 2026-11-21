@@ -821,7 +821,6 @@
 .cave-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #334238}
 .cave-brand{color:#f0cf75!important;font-size:10px;letter-spacing:.16em;text-decoration:none}
 .cave-depth{padding:3px 7px;border:1px solid #6f8a70;background:#15231d;color:#cfe7b6;font-size:9px;letter-spacing:.12em}
-.cave-exit{color:#c9d4b7;font-size:9px;letter-spacing:.1em}
 .cave-stage{position:relative;border:2px solid #3f5348;background:#0d1411;box-shadow:5px 5px 0 #070d0a;overflow:hidden}
 #cave-canvas{display:block;width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;touch-action:none}
 .cave-overlay{position:absolute;inset:0;z-index:3;display:grid;align-content:center;justify-items:center;gap:12px;padding:20px;background:#060a08ee;text-align:center}

@@ -249,9 +249,8 @@ async function action(): Promise<void> {
   else flash('NO EXIT, CHEST, PASSAGE OR MONSTER IN REACH');
 }
 /**
- * Ends the active run before any navigation away from the cave. The header
- * exit link used to be a plain anchor, which left the run 'playing' on the
- * server: coming back to the cave then reported "leave the current run first".
+ * Ends the active run before any navigation link takes the visitor out of
+ * the cave. Otherwise the server keeps the run 'playing' and re-entry fails.
  */
 async function leaveCave(destination: string): Promise<void> {
   if (endingRun) return;
@@ -275,7 +274,6 @@ function bindExitLink(id: string, destination: string): void {
     void leaveCave(destination);
   });
 }
-bindExitLink('cave-exit-link', '/world?return=cave');
 bindExitLink('cave-brand-link', '/arena');
 bindExitLink('cave-return', '/world?return=cave');
 
