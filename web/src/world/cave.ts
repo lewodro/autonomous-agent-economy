@@ -9,7 +9,7 @@ import { MAP } from './map.js';
 import { SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { appearanceKey, appearanceSprites } from './appearance.js';
 import { drawActorSprite } from './renderer.js';
-import { drawCaveChest, drawCaveMonster } from './cave-art.js';
+import { caveFloorCanvas, drawCaveChest, drawCaveMonster } from './cave-art.js';
 import { caveActionFor } from './cave-controls.js';
 
 interface RectLike extends Rect {}
@@ -67,6 +67,7 @@ let moveTarget: Position | null = null;
 let attackTargetId: string | null = null;
 let interactTarget: { kind: 'chest' | 'exit' | 'descent'; id?: string } | null = null;
 let targetStuck = 0, targetDistance = Infinity;
+let playerHitUntil = 0, lastSeenHp: number | null = null;
 
 async function request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -99,6 +100,8 @@ function applyView(next: View): void {
   canvas.dataset.hitMonsters = next.monsters.filter(monster => monster.hit).map(monster => monster.id).join(',');
   healthFill.style.width = `${Math.max(0, Math.round(next.player.hp / next.player.max_hp * 100))}%`;
   healthText.textContent = `${next.player.hp} / ${next.player.max_hp}`;
+  if (lastSeenHp !== null && next.player.hp < lastSeenHp && !reduced.matches) playerHitUntil = performance.now() + 180;
+  lastSeenHp = next.player.hp;
   monstersText.textContent = `MONSTERS ${next.kills} / ${next.required}`;
   if (passageJustUnlocked) flash('PASSAGE UNLOCKED');
   weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
@@ -149,45 +152,41 @@ function drawScene(time: number): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   rect(ctx, 0, 0, VIEW_W, VIEW_H, '#080c0a');
   ctx.save(); ctx.translate(-Math.round(camera.x), -Math.round(camera.y));
-  for (const room of current.rooms) {
-    rect(ctx, room.x, room.y, room.width, room.height, '#1d251f');
-    ctx.strokeStyle = '#2c3b31'; ctx.lineWidth = 2;
-    ctx.strokeRect(room.x + 1, room.y + 1, room.width - 2, room.height - 2);
-    for (let x = room.x + 12; x < room.x + room.width; x += 28) for (let y = room.y + 12; y < room.y + room.height; y += 28) {
-      if ((x + y) % 84 === 0) rect(ctx, x, y, 3, 2, '#2a352c');
-    }
-  }
-  for (const prop of current.props) {
-    const color = prop.kind === 'crystal' ? '#7fc7d9' : prop.kind === 'bones' ? '#c8c4a9'
-      : prop.kind === 'crate' ? '#8b6b46' : prop.kind === 'pillar' ? '#46534a' : '#596058';
-    rect(ctx, prop.x - 8, prop.y - 6, 16, 12, color);
-    rect(ctx, prop.x - 6, prop.y - 10, 12, 5, prop.kind === 'crystal' ? '#b6e8f2' : '#39443c');
-  }
+  ctx.drawImage(caveFloorCanvas({
+    level: current.level, bounds: current.bounds, rooms: current.rooms,
+    torches: current.torches, props: current.props,
+    descent: current.descent, exit: current.exit,
+  }), 0, 0);
   for (const [index, torch] of current.torches.entries()) {
     const flicker = reduced.matches ? 1 : 1 + 0.03 * Math.sin(time / 130 + index * 1.7);
     const radius = torch.radius * flicker;
     const glow = ctx.createRadialGradient(torch.x, torch.y, 2, torch.x, torch.y, radius);
     glow.addColorStop(0, '#f8d98a66'); glow.addColorStop(1, '#f8d98000');
     ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(torch.x, torch.y, radius, 0, Math.PI * 2); ctx.fill();
-    rect(ctx, torch.x - 3, torch.y - 2, 6, 14, '#4a3b2b');
     rect(ctx, torch.x - 2, torch.y - 8 - (reduced.matches ? 0 : Math.floor(time / 160) % 2), 4, 7, '#ffd27a');
-  }
-  if (current.descent) {
-    rect(ctx, current.descent.x - 18, current.descent.y - 12, 36, 24, '#39493c');
-    rect(ctx, current.descent.x - 12, current.descent.y - 7, 24, 14, '#141b16');
-  }
-  if (current.exit) {
-    rect(ctx, current.exit.x - 16, current.exit.y - 10, 32, 20, '#53614b');
-    rect(ctx, current.exit.x - 10, current.exit.y - 7, 20, 14, '#1a241c');
+    rect(ctx, torch.x - 1, torch.y - 10 - (reduced.matches ? 0 : Math.floor(time / 120) % 2), 2, 3, '#fff0b0');
   }
   for (const chest of view?.chests ?? []) drawCaveChest(ctx, chest, time, reduced.matches);
-  for (const monster of view?.monsters ?? []) drawCaveMonster(ctx, { ...monster, hit: monster.hit_until > Date.now() }, time, reduced.matches);
+  for (const monster of view?.monsters ?? []) {
+    const hit = monster.hit_until > Date.now();
+    ctx.save();
+    if (hit && !reduced.matches) ctx.translate(Math.round(Math.sin(time / 26) * 2), 0);
+    drawCaveMonster(ctx, { ...monster, hit }, time, reduced.matches);
+    ctx.restore();
+  }
   ctx.fillStyle = '#050a0880';
   ctx.beginPath(); ctx.ellipse(Math.round(local.x), Math.round(local.y + 8), 14, 5, 0, 0, Math.PI * 2); ctx.fill();
   const facing = (view?.player.facing ?? 'down') as 'up' | 'down' | 'left' | 'right';
   const composed = playerAppearance ? appearanceSprites.sheet(playerAppearance) ?? undefined : undefined;
   drawActorSprite(ctx, playerSprite, playerImage, { position: local, facing, movementState: moving ? 'walking' : 'idle' },
     time, reduced.matches, 44, composed);
+  if (time < playerHitUntil && !reduced.matches) {
+    // Small, short red pulse on the visitor, not a full-screen flash.
+    rect(ctx, local.x - 13, local.y - 20, 3, 5, '#e14b3f');
+    rect(ctx, local.x + 10, local.y - 20, 3, 5, '#e14b3f');
+    rect(ctx, local.x - 11, local.y + 9, 3, 3, '#e14b3f');
+    rect(ctx, local.x + 8, local.y + 9, 3, 3, '#e14b3f');
+  }
   ctx.restore();
 
   // One small darkness mask: solid ambient black with soft destination-out
