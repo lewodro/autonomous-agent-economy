@@ -66,24 +66,41 @@ export class CanvasWorldRenderer implements WorldRenderer {
     const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
     // Terrain areas keep the shared 32px dither pattern, retinted from their
     // own base colour so biomes never collapse into one flat solid fill.
+    const hash=(x:number,y:number):number=>{
+      let value=(Math.imul(x,374761393)+Math.imul(y,668265263))>>>0;
+      value=(value^(value>>>13))>>>0;value=Math.imul(value,1274126177)>>>0;
+      return (value^(value>>>16))>>>0;
+    };
     const ground=(x:number,y:number,w:number,h:number,base:string)=>{
-      const light=shiftColor(base,6),dark=shiftColor(base,-6),detail=shiftColor(base,24);
+      const tones=[shiftColor(base,-10),shiftColor(base,-5),base,shiftColor(base,5),shiftColor(base,12)];
+      const blade=shiftColor(base,-16),speck=shiftColor(base,20);
       const right=x+w,bottom=y+h,startX=Math.floor(x/32)*32,startY=Math.floor(y/32)*32;
       for(let gy=startY;gy<bottom;gy+=32)for(let gx=startX;gx<right;gx+=32){
         const px=Math.max(x,gx),py=Math.max(y,gy);
         const pw=Math.min(right,gx+32)-px,ph=Math.min(bottom,gy+32)-py;
         if(pw<=0||ph<=0)continue;
-        const sample=Math.abs(gx*7+gy*13)%55;
-        c.fillStyle=sample===0?dark:(sample%5===0?light:base);
+        const sample=hash(gx,gy);
+        c.fillStyle=tones[sample%tones.length]!;
         c.fillRect(px,py,pw,ph);
-        if(pw>12&&ph>26&&(gx+gy)%96===0){c.fillStyle=detail;c.fillRect(px+8,py+20,4,3);}
+        if(pw>20&&ph>20){
+          if(sample%7===0){c.fillStyle=blade;c.fillRect(px+5,py+9,2,5);c.fillRect(px+9,py+13,1,4);c.fillRect(px+13,py+8,2,3);}
+          if(sample%13===0){c.fillStyle=speck;c.fillRect(px+22,py+18,2,2);c.fillRect(px+25,py+21,1,1);}
+          if(sample%41===0){c.fillStyle='#c9b76e';c.fillRect(px+17,py+6,2,2);c.fillRect(px+20,py+8,1,1);}
+        }
       }
     };
     c.translate(-MAP.minX,-MAP.minY);
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
+    // The unclaimed ground still uses the shared 32px tone grid, but four
+    // deterministic grass tones and tiny blade/flower marks keep the widened
+    // outer bands from reading as one flat fill.
+    const grassTones=['#2b4537','#2e493a','#30483c','#334d3e','#294334'];
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
-      rect(x,y,32,32,(x*7+y*13)%5===0?'#344b3e':'#30483c');
-      if((x+y)%96===0)rect(x+8,y+20,4,3,'#4b6146');
+      const sample=hash(x,y);
+      rect(x,y,32,32,grassTones[sample%grassTones.length]!);
+      if(sample%6===0){rect(x+7,y+10,2,5,'#3f5c45');rect(x+11,y+14,1,4,'#3f5c45');}
+      if(sample%10===0)rect(x+22,y+19,2,2,'#48654c');
+      if(sample%47===0){rect(x+17,y+7,2,2,'#c9b76e');rect(x+20,y+9,1,1,'#b9a45f');}
     }
     // Large vegetation regions use stepped, overlapping pixel blocks. This
     // avoids the vector-like diagonal wedges created by arbitrary polygons.

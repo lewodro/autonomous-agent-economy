@@ -149,6 +149,14 @@ export const OUTER_TERRAIN_AREAS: GroundArea[] = [
   {x:MAP.minX+120,y:MAP.maxY-720,width:420,height:380,color:'#2a4739'},
   {x:2540,y:-1010,width:380,height:190,color:'#3a443c'},
   {x:MAP.minX+90,y:1420,width:420,height:230,color:'#3a443c'},
+  // Broad biome patches keep the widened ring varied: mossy north-west,
+  // dark pine east, dry quarry grass and a softer southern meadow.
+  {x:MAP.minX+260,y:OUTER_LOOP.top-260,width:760,height:330,color:'#35543f'},
+  {x:OUTER_LOOP.right-720,y:OUTER_LOOP.top-300,width:660,height:360,color:'#2f4d3a'},
+  {x:MAP.minX+220,y:OUTER_LOOP.bottom-220,width:820,height:300,color:'#3b5942'},
+  {x:OUTER_LOOP.right-760,y:OUTER_LOOP.bottom-260,width:700,height:340,color:'#31503d'},
+  {x:OUTER_LOOP.left-260,y:560,width:300,height:520,color:'#3d5c45'},
+  {x:OUTER_LOOP.right-80,y:980,width:280,height:520,color:'#2c4a38'},
 ];
 TERRAIN_AREAS.push(...OUTER_TERRAIN_AREAS);
 export interface WorldPath extends Rect {color?:string}

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, TERRAIN_AREAS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
@@ -81,6 +81,7 @@ test('terrain-aware decoration keeps trees and planting off every road surface',
   for(const bed of FLOWER_BEDS)assert.equal(canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}),true);
   for(const rock of ROCKS)assert.equal(canPlaceRock(rock),true);
   assert.equal(VEGETATION_GROUPS.length,17);assert.deepEqual(new Set(VEGETATION_GROUPS.map(group=>group.district)),new Set(['north','south','west','east']));
+  assert.ok(new Set(TERRAIN_AREAS.map(area=>area.color)).size>=6,'biome patches keep the widened ring from one solid green');
   assert.ok(TREES.filter(tree=>tree.y<-200).length>=8,'the northern belt keeps its woodland');
   for(const tree of TREES)assert.equal(isNaturalGround({x:tree.x+6*(tree.scale||1),y:tree.y+38*(tree.scale||1)},28),true,'tree trunk needs green terrain clear of road and buildings');
 });
