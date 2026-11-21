@@ -33,3 +33,25 @@ test('the Grizzly is original pixel creature art rather than a placeholder recta
   assert.ok(grizzly.colors.includes('#6f4932'));
   assert.ok(grizzly.colors.includes('#9a6845'));
 });
+
+import { paintCaveFloor } from '../web/dist/world/cave-art.js';
+import { CAVE_LEVELS } from '../service/cave-layout.js';
+
+test('cave floors are painted with clustered pixel scenery and depth-specific palettes', () => {
+  const paint = level => {
+    const config = CAVE_LEVELS[level - 1];
+    const colors = [];
+    const c = { fillStyle: '', fillRect() { colors.push(this.fillStyle); } };
+    paintCaveFloor(c, {
+      level, bounds: config.bounds, rooms: config.rooms, torches: config.torches,
+      props: config.props, descent: config.descent, exit: config.exit,
+    });
+    return colors;
+  };
+  const entrance = paint(1), deep = paint(3);
+  assert.ok(entrance.length > 500, 'the entrance floor is detailed rather than a flat rectangle');
+  assert.ok(deep.length > 500, 'the deep floor is detailed too');
+  assert.ok(entrance.includes('#6c5137'), 'entrance uses warm wooden supports');
+  assert.ok(deep.includes('#9adbe6'), 'deep floor uses bright crystal accents');
+  assert.notDeepEqual(entrance, deep, 'depth levels do not share one identical painting');
+});
