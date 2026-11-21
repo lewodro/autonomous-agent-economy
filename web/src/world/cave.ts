@@ -10,6 +10,7 @@ import { SPRITES, loadSettings, saveSettings } from './sprites.js';
 import { appearanceKey, appearanceSprites } from './appearance.js';
 import { drawActorSprite } from './renderer.js';
 import { drawCaveChest, drawCaveMonster } from './cave-art.js';
+import { caveActionFor } from './cave-controls.js';
 
 interface RectLike extends Rect {}
 interface Torch { x: number; y: number; radius: number }
@@ -100,20 +101,26 @@ function applyView(next: View): void {
   weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
   const current = level();
   const chest = nearbyChest();
-  if (chest) {
+  const exit = Boolean(current?.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64);
+  const descent = Boolean(current?.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64);
+  const choice = caveActionFor({ chest: Boolean(chest), exit, descent, monster: Boolean(nearbyMonster()) });
+  if (choice === 'chest') {
     actionButton.textContent = 'E · CHEST';
     hint.textContent = 'Press E or click the chest to open it. Chests hold the cave-only blades.';
-  } else if (current?.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64) {
+  } else if (choice === 'exit') {
     actionButton.textContent = 'E · EXIT';
     hint.textContent = 'Press E to leave through the entrance. Your outside position is saved.';
-  } else if (current?.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64) {
+  } else if (choice === 'descent') {
     actionButton.textContent = next.cleared ? 'E · DESCEND' : 'PASSAGE SEALED';
     hint.textContent = next.cleared
       ? 'Press E to take the descending passage. Deeper means darker and harder.'
       : `Clear the floor first: ${next.kills} / ${next.required} monsters defeated.`;
+  } else if (choice === 'attack') {
+    actionButton.textContent = 'E · STRIKE';
+    hint.textContent = 'Press E or click the monster to strike. Keep the floor clear to open the passage.';
   } else {
     actionButton.textContent = 'E · ACTION';
-    hint.textContent = config ? 'WASD / arrows or click to move · click a monster to attack · E to interact' : 'Loading cave…';
+    hint.textContent = config ? 'WASD / arrows or click to move · click a monster to attack · E interacts or strikes' : 'Loading cave…';
   }
   if (next.status === 'dead') {
     const settings = loadSettings(); settings.position = { ...MAP.spawn }; saveSettings(settings);
@@ -216,17 +223,28 @@ function nearbyChest(): View['chests'][number] | null {
   return view?.chests.find(chest => !chest.opened
     && Math.hypot(local.x - chest.x, local.y - chest.y) < 64) ?? null;
 }
+function nearbyMonster(): Monster | null {
+  if (!view) return null;
+  const range = view.weapon?.range ?? 62;
+  return view.monsters.filter(monster => monster.alive
+    && Math.hypot(local.x - monster.x, local.y - monster.y) <= range)
+    .sort((a, b) => Math.hypot(a.x - local.x, a.y - local.y) - Math.hypot(b.x - local.x, b.y - local.y))[0] ?? null;
+}
 async function action(): Promise<void> {
   const current = level(); if (!current || !view || view.status !== 'playing' || stopped) return;
   const chest = nearbyChest();
-  if (chest) { await send('chest', { chest_id: chest.id }); return; }
-  if (current.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64) {
+  const exit = Boolean(current.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64);
+  const descent = Boolean(current.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64);
+  const choice = caveActionFor({ chest: Boolean(chest), exit, descent, monster: Boolean(nearbyMonster()) });
+  if (choice === 'chest' && chest) { await send('chest', { chest_id: chest.id }); return; }
+  if (choice === 'exit') {
     await request(`/api/world/cave/exit`, { run_id: view.run_id });
     stopped = true; location.assign('/world?return=cave');
-  } else if (current.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64) {
+  } else if (choice === 'descent') {
     if (!view.cleared) { flash(`PASSAGE SEALED · MONSTERS ${view.kills} / ${view.required}`); return; }
     await send('descend', {});
-  } else flash('NO EXIT, CHEST OR PASSAGE HERE');
+  } else if (choice === 'attack') await attack();
+  else flash('NO EXIT, CHEST, PASSAGE OR MONSTER IN REACH');
 }
 function clearTargets(): void {
   moveTarget = null; attackTargetId = null; interactTarget = null;
