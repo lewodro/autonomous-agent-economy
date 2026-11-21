@@ -29,8 +29,10 @@ export const CAVE_LEVELS = [
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 340 }, exit: { x: 112, y: 168 }, descent: { x: 420, y: 590 },
     rooms: [
-      rect(80, 80, 360, 280), rect(440, 200, 180, 64), rect(620, 120, 260, 260),
-      rect(200, 360, 64, 160), rect(120, 520, 360, 140),
+      // Chambers overlap their corridors by more than the 12-unit actor
+      // radius, so the walkable union stays connected after collision shrink.
+      rect(80, 80, 380, 300), rect(420, 200, 240, 80), rect(600, 120, 280, 280),
+      rect(200, 340, 80, 200), rect(120, 500, 380, 160),
     ],
     torches: [
       { x: 128, y: 132, radius: 170 }, { x: 380, y: 132, radius: 150 },
@@ -43,10 +45,10 @@ export const CAVE_LEVELS = [
       { kind: 'pillar', x: 740, y: 330 }, { kind: 'crystal', x: 300, y: 612 },
     ],
     monsters: [
-      { id: 'crawler-1', kind: 'crawler', x: 340, y: 170, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
-      { id: 'crawler-2', kind: 'crawler', x: 250, y: 610, hp: 24, damage: 5, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
-      { id: 'crawler-3', kind: 'crawler', x: 760, y: 250, hp: 28, damage: 6, speed: 64, aggro: 215, range: 42, cooldownMs: 1150, reward: 3 },
-      { id: 'bat-1', kind: 'bat', x: 690, y: 330, hp: 20, damage: 5, speed: 84, aggro: 225, range: 38, cooldownMs: 1050, reward: 2 },
+      { id: 'crawler-1', kind: 'crawler', x: 340, y: 170, hp: 36, damage: 7, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
+      { id: 'crawler-2', kind: 'crawler', x: 250, y: 610, hp: 36, damage: 7, speed: 62, aggro: 210, range: 42, cooldownMs: 1200, reward: 2 },
+      { id: 'crawler-3', kind: 'crawler', x: 760, y: 250, hp: 40, damage: 8, speed: 64, aggro: 215, range: 42, cooldownMs: 1150, reward: 3 },
+      { id: 'bat-1', kind: 'bat', x: 690, y: 330, hp: 36, damage: 7, speed: 84, aggro: 225, range: 38, cooldownMs: 1050, reward: 2 },
     ],
   },
   {
@@ -55,8 +57,8 @@ export const CAVE_LEVELS = [
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: { x: 780, y: 650 },
     rooms: [
-      rect(80, 260, 280, 240), rect(360, 350, 200, 56),
-      rect(560, 180, 300, 260), rect(680, 440, 56, 160), rect(520, 600, 300, 100),
+      rect(80, 260, 300, 250), rect(340, 340, 220, 80),
+      rect(520, 180, 350, 280), rect(680, 420, 80, 180), rect(520, 570, 320, 110),
     ],
     torches: [
       { x: 120, y: 300, radius: 130 }, { x: 600, y: 220, radius: 120 }, { x: 820, y: 620, radius: 110 },
@@ -67,11 +69,11 @@ export const CAVE_LEVELS = [
       { kind: 'pillar', x: 860, y: 400 }, { kind: 'bones', x: 600, y: 640 },
     ],
     monsters: [
-      { id: 'bat-2-1', kind: 'bat', x: 260, y: 320, hp: 20, damage: 5, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
-      { id: 'crawler-2-1', kind: 'crawler', x: 700, y: 260, hp: 30, damage: 7, speed: 66, aggro: 220, range: 42, cooldownMs: 1100, reward: 3 },
-      { id: 'stone-2', kind: 'stone', x: 820, y: 380, hp: 44, damage: 9, speed: 48, aggro: 200, range: 46, cooldownMs: 1500, reward: 4 },
-      { id: 'bat-2-2', kind: 'bat', x: 620, y: 640, hp: 20, damage: 5, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
-      { id: 'crawler-2-2', kind: 'crawler', x: 200, y: 420, hp: 32, damage: 7, speed: 68, aggro: 225, range: 42, cooldownMs: 1050, reward: 3 },
+      { id: 'bat-2-1', kind: 'bat', x: 260, y: 320, hp: 40, damage: 9, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
+      { id: 'crawler-2-1', kind: 'crawler', x: 700, y: 260, hp: 44, damage: 10, speed: 66, aggro: 220, range: 42, cooldownMs: 1100, reward: 3 },
+      { id: 'stone-2', kind: 'stone', x: 820, y: 380, hp: 60, damage: 12, speed: 48, aggro: 200, range: 46, cooldownMs: 1500, reward: 4 },
+      { id: 'bat-2-2', kind: 'bat', x: 620, y: 640, hp: 40, damage: 9, speed: 88, aggro: 240, range: 38, cooldownMs: 1000, reward: 2 },
+      { id: 'crawler-2-2', kind: 'crawler', x: 200, y: 420, hp: 44, damage: 10, speed: 68, aggro: 225, range: 42, cooldownMs: 1050, reward: 3 },
     ],
   },
   {
@@ -80,7 +82,7 @@ export const CAVE_LEVELS = [
     bounds: rect(0, 0, 960, 720),
     entry: { x: 140, y: 360 }, exit: null, descent: null,
     rooms: [
-      rect(80, 260, 240, 220), rect(320, 340, 220, 56), rect(540, 160, 340, 420),
+      rect(80, 260, 260, 240), rect(310, 340, 220, 80), rect(495, 160, 385, 430),
     ],
     torches: [
       { x: 120, y: 300, radius: 110 }, { x: 600, y: 210, radius: 105 }, { x: 820, y: 540, radius: 95 },
@@ -91,10 +93,10 @@ export const CAVE_LEVELS = [
       { kind: 'pillar', x: 700, y: 320 }, { kind: 'crate', x: 600, y: 540 },
     ],
     monsters: [
-      { id: 'bat-3-1', kind: 'bat', x: 660, y: 260, hp: 24, damage: 6, speed: 92, aggro: 250, range: 38, cooldownMs: 950, reward: 3 },
-      { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 50, damage: 10, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
-      { id: 'grizzly', kind: 'grizzly', x: 780, y: 320, hp: 120, damage: 14, speed: 48, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
-      { id: 'stone-3-2', kind: 'stone', x: 620, y: 500, hp: 54, damage: 10, speed: 52, aggro: 225, range: 46, cooldownMs: 1350, reward: 5 },
+      { id: 'bat-3-1', kind: 'bat', x: 660, y: 260, hp: 44, damage: 11, speed: 92, aggro: 250, range: 38, cooldownMs: 950, reward: 3 },
+      { id: 'stone-3-1', kind: 'stone', x: 790, y: 470, hp: 64, damage: 13, speed: 50, aggro: 220, range: 46, cooldownMs: 1400, reward: 5 },
+      { id: 'grizzly', kind: 'grizzly', x: 780, y: 320, hp: 120, damage: 16, speed: 48, aggro: 280, range: 52, cooldownMs: 1300, reward: 10, boss: true },
+      { id: 'stone-3-2', kind: 'stone', x: 620, y: 500, hp: 64, damage: 13, speed: 52, aggro: 225, range: 46, cooldownMs: 1350, reward: 5 },
     ],
   },
 ];

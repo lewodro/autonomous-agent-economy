@@ -69,7 +69,7 @@ test('visitors cannot share cave combat state and movement is range and wall che
   await assert.rejects(() => service.move('visitor-b', { run_id: run.run_id, x: 140, y: 340 }), { code: 'CAVE_RUN_NOT_FOUND' });
   near(service, 'visitor-a', 'crawler-1');
   await service.attack('visitor-a', { run_id: run.run_id, request_id: 'visitor-a-strike-01' });
-  assert.equal(service.runs.get('visitor-b').monsters.find(monster => monster.id === 'crawler-1').hp, 24, 'another visitor keeps an isolated monster roster');
+  assert.equal(service.runs.get('visitor-b').monsters.find(monster => monster.id === 'crawler-1').hp, 36, 'another visitor keeps an isolated monster roster');
   await assert.rejects(() => service.move('visitor-a', { run_id: run.run_id, x: 900, y: 600 }), { code: 'CAVE_MOVE_TOO_FAR' });
   service.runs.get('visitor-a').player.x = 480; service.runs.get('visitor-a').player.y = 340;
   await assert.rejects(() => service.move('visitor-a', { run_id: run.run_id, x: 500, y: 340 }), { code: 'CAVE_WALL' });
@@ -143,16 +143,19 @@ test('attacks are server-owned: range, malformed IDs, duplicates and dead-mob re
   const first = await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000001' });
   assert.equal(first.hit, true);
   assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').hit, true, 'a successful hit starts the authoritative flash window');
-  assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').hp, 12);
-  assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').max_hp, 24);
+  assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').hp, 24, 'the starter blade removes 12 of 36 HP');
+  assert.equal(first.monsters.find(monster => monster.id === 'crawler-1').max_hp, 36);
   const duplicate = await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000001' });
   assert.equal(duplicate.duplicate, true);
   assert.equal(calls.rewards.length, 0, 'a duplicate attack must not duplicate damage or rewards');
   await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000002' });
+  assert.equal(calls.rewards.length, 0, 'a normal monster survives two starter hits');
+  const third = await service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000003' });
+  assert.equal(third.monsters.find(monster => monster.id === 'crawler-1').alive, false, 'three starter hits kill a normal monster');
   assert.equal(calls.rewards.length, 1, 'the defeated monster grants one bounded reward');
   assert.equal(service.runs.get('visitor-a').kills, 1, 'a dead monster increments the kill count once');
   assert.equal(calls.rewards[0].amount, 2);
-  await assert.rejects(() => service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000003' }), { code: 'CAVE_NO_TARGET' });
+  await assert.rejects(() => service.attack('visitor-a', { run_id: run.run_id, request_id: 'strike-00000004' }), { code: 'CAVE_NO_TARGET' });
 });
 
 test('client-supplied health, kills, weapon and monster state are ignored', async () => {
@@ -289,4 +292,80 @@ test('runs resume before the reset window and respawn base monsters after it', a
   const fresh = await start(service);
   assert.equal(fresh.resumed, false);
   assert.equal(fresh.run.monsters.every(monster => monster.alive), true, 'base mobs respawn after the reset interval');
+});
+
+/** Grid walk from a floor entry using the same collision rule as the server. */
+function reachableCells(level, start) {
+  const step = 2, seen = new Set([`${start.x},${start.y}`]), queue = [start];
+  while (queue.length) {
+    const current = queue.shift();
+    for (const [dx, dy] of [[step, 0], [-step, 0], [0, step], [0, -step]]) {
+      const next = { x: current.x + dx, y: current.y + dy };
+      const key = `${next.x},${next.y}`;
+      if (seen.has(key) || !isCaveWalkable(level, next)) continue;
+      seen.add(key); queue.push(next);
+    }
+  }
+  return point => [...seen].some(key => {
+    const [x, y] = key.split(',').map(Number);
+    return Math.hypot(x - point.x, y - point.y) <= 14;
+  });
+}
+
+test('every floor spawns unique, reachable monsters that take 3-4 starter hits', () => {
+  for (const config of CAVE_LEVELS) {
+    const ids = config.monsters.map(monster => monster.id);
+    assert.equal(new Set(ids).size, ids.length, `${config.name} has no duplicate spawns`);
+    assert.ok(config.monsters.length >= 4, `${config.name} has at least four enemies`);
+    const reachable = reachableCells(config.level, config.entry);
+    for (const monster of config.monsters) {
+      assert.equal(isCaveWalkable(config.level, monster), true, `${monster.id} is not inside a wall`);
+      assert.equal(reachable(monster), true, `${monster.id} is reachable from the floor entry`);
+      assert.ok(Math.hypot(monster.x - config.entry.x, monster.y - config.entry.y) > 60,
+        `${monster.id} does not spawn on top of the player`);
+      assert.ok(monster.damage >= 7, `${monster.id} deals meaningful damage`);
+      if (monster.kind === 'crawler' || monster.kind === 'bat') {
+        const hits = Math.ceil(monster.hp / CAVE_WEAPONS.rusted.damage);
+        assert.ok(hits >= 3 && hits <= 4, `${monster.id} needs ${hits} starter-sword hits`);
+      }
+    }
+    if (config.descent) assert.equal(reachable(config.descent), true, `${config.name} descent is reachable`);
+    // Deeper floors increase pressure rather than just adding more bodies.
+    const averageDamage = config.monsters.reduce((sum, monster) => sum + monster.damage, 0) / config.monsters.length;
+    if (config.level === 1) assert.ok(averageDamage < 8, 'the entrance is forgiving');
+    if (config.level === 3) assert.ok(averageDamage > 10, 'the deep chamber hits harder');
+    for (const chest of config.chests) assert.equal(reachable(chest), true, `${chest.id} is reachable`);
+  }
+});
+
+test('monsters on every floor reduce player health when the player stands still in range', async () => {
+  const { service, tick } = serviceAt();
+  await start(service);
+  const state = service.runs.get('visitor-a');
+  for (const config of CAVE_LEVELS) {
+    state.level = config.level;
+    state.monsters = service.spawn(config.level);
+    state.player.hp = CAVE_MAX_HP;
+    state.player.x = state.monsters[0].x + 20; state.player.y = state.monsters[0].y;
+    tick(1_200);
+    const active = (await service.snapshot('visitor-a')).run;
+    assert.equal(['attack', 'chase'].includes(active.monsters[0].state), true);
+    assert.ok(active.player.hp < CAVE_MAX_HP, `${config.name} monsters actually damage the player`);
+  }
+});
+
+
+test('standing still near cave monsters eventually kills the player', async () => {
+  const { service, tick, calls } = serviceAt();
+  await start(service);
+  const state = service.runs.get('visitor-a');
+  state.player.x = state.monsters[0].x + 20;
+  state.player.y = state.monsters[0].y;
+  let elapsed = 0;
+  while (state.status === 'playing' && elapsed < 60_000) {
+    tick(1_200); elapsed += 1_200;
+    await service.snapshot('visitor-a');
+  }
+  assert.equal(state.status, 'dead', `standing still should end the run (after ${elapsed}ms)`);
+  assert.equal(calls.defeats.length, 1, 'the defeat settles once');
 });
