@@ -21,7 +21,7 @@ interface Level {
   torches: Torch[]; props: Prop[]; monster_kinds: Array<{ id: string; kind: string; boss: boolean }>;
 }
 interface Config {
-  reset_ms: number; attack_range: number; attack_damage: number; max_hp: number; levels: Level[];
+  reset_ms: number; attack_range: number; attack_damage: number; max_hp: number; interact_radius: number; levels: Level[];
 }
 interface Monster {
   id: string; kind: string; boss: boolean; x: number; y: number; hp: number;
@@ -80,6 +80,16 @@ async function request<T>(path: string, body?: Record<string, unknown>): Promise
   return data;
 }
 function level(): Level | null { return config?.levels.find(value => value.level === view?.level) ?? null; }
+function inReach(point: Position): boolean {
+  return Math.hypot(local.x - point.x, local.y - point.y) < (config?.interact_radius ?? 96);
+}
+function directionTo(point: Position): string {
+  const dx = point.x - local.x, dy = point.y - local.y;
+  const eastWest = dx < 0 ? 'west' : 'east', northSouth = dy < 0 ? 'north' : 'south';
+  if (Math.abs(dx) > Math.abs(dy) * 1.6) return eastWest;
+  if (Math.abs(dy) > Math.abs(dx) * 1.6) return northSouth;
+  return `${northSouth}-${eastWest}`;
+}
 function walkable(point: Position, radius = 12): boolean {
   return Boolean(level()?.rooms.some(room => point.x >= room.x + radius && point.x <= room.x + room.width - radius
     && point.y >= room.y + radius && point.y <= room.y + room.height - radius));
@@ -107,8 +117,8 @@ function applyView(next: View): void {
   weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
   const current = level();
   const chest = nearbyChest();
-  const exit = Boolean(current?.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64);
-  const descent = Boolean(current?.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64);
+  const exit = Boolean(current?.exit && inReach(current.exit));
+  const descent = Boolean(current?.descent && inReach(current.descent));
   const choice = caveActionFor({ chest: Boolean(chest), exit, descent, monster: Boolean(nearbyMonster()) });
   if (choice === 'chest') {
     actionButton.textContent = 'E · CHEST';
@@ -126,7 +136,11 @@ function applyView(next: View): void {
     hint.textContent = 'Press E or click the monster to strike. Keep the floor clear to open the passage.';
   } else {
     actionButton.textContent = 'E · ACTION';
-    hint.textContent = config ? 'WASD / arrows or click to move · click a monster to attack · E interacts or strikes' : 'Loading cave…';
+    hint.textContent = config
+      ? next.cleared && current?.descent
+        ? `Floor cleared. Follow the marker ${directionTo(current.descent)} to the descending passage.`
+        : 'WASD / arrows or click to move · click a monster to attack · E interacts or strikes'
+      : 'Loading cave…';
   }
   if (next.status === 'dead') {
     const settings = loadSettings(); settings.position = { ...MAP.spawn }; saveSettings(settings);
@@ -210,6 +224,27 @@ function drawScene(time: number): void {
   }
   maskCtx.globalCompositeOperation = 'source-over';
   ctx.drawImage(mask, 0, 0);
+  // Once the floor is cleared, a small pixel marker keeps the exit from
+  // becoming a hidden treasure hunt without giving away the whole layout.
+  if (view?.cleared && current.descent) {
+    const targetX = current.descent.x - camera.x, targetY = current.descent.y - camera.y;
+    const onScreen = targetX > 10 && targetX < VIEW_W - 10 && targetY > 10 && targetY < VIEW_H - 10;
+    if (onScreen) {
+      const pulse = reduced.matches ? 0 : Math.floor(time / 280) % 2;
+      rect(ctx, targetX - 3, targetY - 20, 6, 4, '#f0cf75');
+      rect(ctx, targetX - 2, targetY - 24 + pulse, 4, 3, '#fff0b0');
+      rect(ctx, targetX - 13, targetY - 3, 3, 6, '#f0cf75');
+      rect(ctx, targetX + 10, targetY - 3, 3, 6, '#f0cf75');
+    } else {
+      const x = Math.max(14, Math.min(VIEW_W - 14, targetX));
+      const y = Math.max(14, Math.min(VIEW_H - 14, targetY));
+      const horizontal = Math.abs(targetX - x) > Math.abs(targetY - y);
+      const dx = horizontal ? (targetX > x ? 9 : -9) : 0;
+      const dy = horizontal ? 0 : (targetY > y ? 9 : -9);
+      rect(ctx, x - 5, y - 5, 10, 10, '#f0cf75');
+      rect(ctx, x - 2 + dx, y - 2 + dy, 4, 4, '#fff0b0');
+    }
+  }
 }
 async function send(action: string, body: Record<string, unknown>): Promise<void> {
   if (!view) return;
@@ -223,7 +258,7 @@ async function attack(): Promise<void> {
 }
 function nearbyChest(): View['chests'][number] | null {
   return view?.chests.find(chest => !chest.opened
-    && Math.hypot(local.x - chest.x, local.y - chest.y) < 64) ?? null;
+    && inReach(chest)) ?? null;
 }
 function nearbyMonster(): Monster | null {
   if (!view) return null;
@@ -235,8 +270,8 @@ function nearbyMonster(): Monster | null {
 async function action(): Promise<void> {
   const current = level(); if (!current || !view || view.status !== 'playing' || stopped) return;
   const chest = nearbyChest();
-  const exit = Boolean(current.exit && Math.hypot(local.x - current.exit.x, local.y - current.exit.y) < 64);
-  const descent = Boolean(current.descent && Math.hypot(local.x - current.descent.x, local.y - current.descent.y) < 64);
+  const exit = Boolean(current.exit && inReach(current.exit));
+  const descent = Boolean(current.descent && inReach(current.descent));
   const choice = caveActionFor({ chest: Boolean(chest), exit, descent, monster: Boolean(nearbyMonster()) });
   if (choice === 'chest' && chest) { await send('chest', { chest_id: chest.id }); return; }
   if (choice === 'exit') {

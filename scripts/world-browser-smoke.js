@@ -501,6 +501,7 @@ try{
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
  assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.equal(await evaluate("fetch('/api/world/cave/config').then(r=>r.json()).then(c=>c.interact_radius)"),96,'the cave shares a wider interaction reach for passages and chests');
  assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 4','the cave HUD shows the floor objective');
  assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
  assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
