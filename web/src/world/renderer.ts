@@ -13,6 +13,14 @@ const ORE_COLORS:Record<string,[string,string,string]> = {
   crystal:['#7fc7d9','#3f7d8c','#d3f4fb'],
 };
 const DEFAULT_ORE_COLORS:[string,string,string]=['#8d9288','#4f5952','#c8b66d'];
+/** Rune identities keep neighbouring shrines visually distinct. */
+const RUNE_ACCENTS:Record<string,[string,string]>={
+  moss:['#7fae6a','#cfe2a8'],
+  amber:['#d98f45','#f6d99a'],
+  violet:['#a885d6','#dcc4f2'],
+  frost:['#8fc8dd','#dff4ff'],
+};
+const DEFAULT_RUNES:[string,string]=['#d29dbb','#dce4a0'];
 /** Shift a hex colour by a fixed amount per channel, clamped to 0..255. */
 function shiftColor(hex:string,amount:number):string {
   const value=parseInt(hex.slice(1),16);
@@ -45,15 +53,27 @@ export function drawActorSprite(c:CanvasRenderingContext2D,sprite:SpriteDefiniti
   }else{c.fillStyle='#d5b882';c.fillRect(x-size*5/24,y-size*7/12,size*5/12,size*7/12);}
   return bob;
 }
+/** One pre-rendered surface of the static map. Four chunks keep every backing
+ * canvas below the per-canvas pixel ceiling used by mobile Safari. */
+interface MapChunk { canvas:HTMLCanvasElement; x:number; y:number; width:number; height:number }
 /** Rendering accepts presence snapshots only; it cannot advance or settle a game. */
 export class CanvasWorldRenderer implements WorldRenderer {
   private ctx:CanvasRenderingContext2D;
-  private map=document.createElement('canvas');
+  private chunks:MapChunk[]=[];
   private images=new Map<string,HTMLImageElement>();
   private scale=1;
   constructor(private canvas:HTMLCanvasElement) {
     const context=canvas.getContext('2d');if(!context)throw new Error('Your browser does not support the world renderer.');this.ctx=context;
-    this.map.width=MAP.width;this.map.height=MAP.height;this.paintMap();
+    // Two columns and two rows: each surface is about 8.8M pixels, comfortably
+    // under the 16.7M ceiling. Boundaries fall in open ground so labels and
+    // landmark art never straddle a seam.
+    const columns=[MAP.minX,950,MAP.maxX],rows=[MAP.minY,200,MAP.maxY];
+    for(let row=0;row<rows.length-1;row++)for(let column=0;column<columns.length-1;column++){
+      const x=columns[column]!,y=rows[row]!,width=columns[column+1]!-x,height=rows[row+1]!-y;
+      const surface=document.createElement('canvas');surface.width=width;surface.height=height;
+      this.chunks.push({canvas:surface,x,y,width,height});
+    }
+    this.paintMap();
     for(const sprite of SPRITES){const image=new Image();image.src=sprite.sheet;this.images.set(sprite.id,image);}
   }
   viewport():{width:number;height:number} {
@@ -62,7 +82,14 @@ export class CanvasWorldRenderer implements WorldRenderer {
     return {width:Math.min(MAP.width,width/this.scale),height:Math.min(MAP.height,height/this.scale)};
   }
   private paintMap():void {
-    const c=this.map.getContext('2d')!;c.imageSmoothingEnabled=false;
+    for(const chunk of this.chunks){
+      const c=chunk.canvas.getContext('2d');if(!c)continue;
+      c.imageSmoothingEnabled=false;
+      c.translate(-chunk.x,-chunk.y);
+      this.paintSurface(c);
+    }
+  }
+  private paintSurface(c:CanvasRenderingContext2D):void {
     const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
     // Terrain areas keep the shared 32px dither pattern, retinted from their
     // own base colour so biomes never collapse into one flat solid fill.
@@ -89,7 +116,6 @@ export class CanvasWorldRenderer implements WorldRenderer {
         }
       }
     };
-    c.translate(-MAP.minX,-MAP.minY);
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
     // The unclaimed ground still uses the shared 32px tone grid, but four
     // deterministic grass tones and tiny blade/flower marks keep the widened
@@ -239,7 +265,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(const [index,site] of EXPLORATION_SITES.entries()){
       const {x,y}=site.position;
       if(site.kind==='cave')this.paintCave(c,x,y,index,site.facing);
-      else this.paintRuin(c,x,y,index,site.kind);
+      else if(site.kind==='pass')this.paintPass(c,x,y,index);
+      else this.paintRuin(c,x,y,index,site.kind,site.accent);
     }
     // Junction signposts give the four city-to-loop connectors a readable
     // landmark without adding collision geometry or another UI surface.
@@ -257,7 +284,8 @@ export class CanvasWorldRenderer implements WorldRenderer {
     // Sparse outer-region lettering supports the short region badge without
     // turning the map into a debug overlay.
     c.fillStyle='#96a486';c.font='bold 10px monospace';c.globalAlpha=.72;
-    c.fillText('NORTH OUTCROP',-700,MAP.minY+154);c.fillText('SOUTH PERIMETER',1500,MAP.maxY-104);
+    c.fillText('FROSTLINE PASS',576,MAP.minY+154);c.fillText('NORTH OUTCROP',-700,-1100);
+    c.fillText('SOUTH PERIMETER',1500,MAP.maxY-104);
     c.fillText('WEST WOODS',MAP.minX+140,1200);c.fillText('EAST INDUSTRIAL',MAP.maxX-170,1100);
     c.globalAlpha=1;
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
@@ -311,8 +339,9 @@ export class CanvasWorldRenderer implements WorldRenderer {
       else{rect(19,-2,3,12,'#6b5138');rect(20,-2,2,3,'#7d5c40');}
     }
   }
-  private paintRuin(c:CanvasRenderingContext2D,x:number,y:number,index:number,kind:'ruin'|'shrine'):void {
+  private paintRuin(c:CanvasRenderingContext2D,x:number,y:number,index:number,kind:'ruin'|'shrine',accent?:'moss'|'amber'|'violet'|'frost'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    const [rune,runeLight]=(accent?RUNE_ACCENTS[accent]:undefined)??DEFAULT_RUNES;
     c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+21,50,14,0,0,Math.PI*2);c.fill();
     const stones:Array<[number,number,number,number,number]>=[
       [-36,6,13,22,1],[-22,-8,15,12,0],[0,-16,12,28,0],[22,-6,16,14,1],
@@ -327,16 +356,55 @@ export class CanvasWorldRenderer implements WorldRenderer {
     rect(-20,8,40,7,'#464f46');
     if(kind==='shrine'){
       rect(-7,-16,14,28,'#7e806b');rect(-4,-13,8,4,'#a29d7b');rect(-2,-5,4,11,'#4c5e4b');
+      rect(-1,-9,2,2,runeLight);
       c.fillStyle='#5f6654';c.beginPath();c.ellipse(x,y+15,20,7,0,0,Math.PI*2);c.fill();
       rect(-9,13,18,5,'#777a67');rect(-7,11,14,2,'#8e8d74');
-      rect(-28,-6,6,4,'#d29dbb');rect(24,2,5,4,'#dce4a0');rect(29,-12,3,4,'#55704b');
+      rect(-28,-6,6,4,rune);rect(24,2,5,4,runeLight);rect(29,-12,3,4,'#55704b');
     }else{
       rect(-17,2,34,6,'#565d50');rect(-8,-6,17,10,'#6c7161');rect(9,-2,5,5,'#8a8971');
-      rect(-30,14,6,4,'#dce4a0');rect(27,14,5,4,'#d29dbb');
+      rect(-30,14,6,4,runeLight);rect(27,14,5,4,rune);
       rect(-45,20,12,5,'#5c6455');rect(36,18,10,5,'#5c6455');
       rect(12,-21,4,5,'#55704b');rect(-25,-18,3,4,'#55704b');
     }
     rect(-41,27,9,3,'#4c574a');rect(30,27,8,3,'#4c574a');
+  }
+  /**
+   * The northern pass is a real threshold, not a doorway: stepped cliff
+   * shoulders, a carved lintel, snow on the high stone and a dark passage.
+   */
+  private paintPass(c:CanvasRenderingContext2D,x:number,y:number,index:number):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172b2866';c.beginPath();c.ellipse(x,y+34,90,20,0,0,Math.PI*2);c.fill();
+    // Left and right cliff shoulders step upward toward the gate.
+    for(const side of [-1,1]){
+      const ox=side*1;
+      rect(ox*(side<0?92:38),-18,54,72,'#4b5650');
+      rect(ox*(side<0?82:40),-44,42,40,'#56615a');
+      rect(ox*(side<0?72:42),-70,30,32,'#616d64');
+      rect(ox*(side<0?62:40),-92,22,26,'#6c7870');
+      rect(ox*(side<0?70:42),-74,28,5,'#c7d7d2');
+      rect(ox*(side<0?60:40),-96,20,4,'#e2efea');
+      rect(ox*(side<0?88:38),-22,4,64,'#5f6a62');
+      rect(ox*(side<0?78:40),-46,4,38,'#6d786f');
+      rect(ox*(side<0?68:42),-72,4,30,'#7a857b');
+    }
+    // Carved gate: two pillars, a lintel and a dark arched passage.
+    rect(-38,-66,76,14,'#727c72');rect(-36,-70,72,5,'#d7e6e2');rect(-20,-74,40,4,'#e8f4f1');
+    rect(-32,-54,14,80,'#6b746b');rect(18,-54,14,80,'#6b746b');
+    rect(-30,-52,4,74,'#7d877c');rect(20,-52,4,74,'#7d877c');
+    c.beginPath();c.moveTo(-18,26);c.lineTo(-18,-24);c.quadraticCurveTo(0,-54,18,-24);c.lineTo(18,26);c.closePath();
+    c.fillStyle='#0b1415';c.fill();
+    c.beginPath();c.moveTo(-14,26);c.lineTo(-14,-22);c.quadraticCurveTo(0,-48,14,-22);c.lineTo(14,26);c.closePath();
+    c.fillStyle='#050b0c';c.fill();
+    // Rune-cut keystone and cold glints on the inner faces.
+    rect(-8,-62,16,10,'#8f9a8e');rect(-4,-59,8,3,'#dff4ff');
+    rect(-24,-10,3,5,'#8fc8dd');rect(21,-4,3,5,'#8fc8dd');
+    rect(-16,-38,3,3,index%2?'#dff4ff':'#8fc8dd');rect(12,-32,2,4,'#8fc8dd');
+    // Snow drifts and a worn threshold lead into the pass.
+    rect(-70,20,140,8,'#c7d7d2');rect(-52,27,104,6,'#b8cac4');
+    rect(-46,24,92,7,'#5c675f');rect(-30,29,60,4,'#4f5a53');
+    rect(-54,10,8,6,'#7d877c');rect(46,12,7,5,'#7d877c');
+    rect(-42,-88,3,5,'#8fc8dd');rect(39,-84,3,4,'#8fc8dd');
   }
   render(frame:WorldFrame):void {
     const {width,height}=this.viewport();const ratio=Math.min(2,window.devicePixelRatio||1);
@@ -344,9 +412,11 @@ export class CanvasWorldRenderer implements WorldRenderer {
     if(this.canvas.width!==pixelWidth||this.canvas.height!==pixelHeight){this.canvas.width=pixelWidth;this.canvas.height=pixelHeight;}
     const c=this.ctx;c.setTransform(ratio*this.scale,0,0,ratio*this.scale,0,0);c.imageSmoothingEnabled=false;
     c.fillStyle='#1c2b28';c.fillRect(0,0,width,height);c.translate(-Math.round(frame.camera.x),-Math.round(frame.camera.y));
-    const sx=Math.max(0,Math.floor(frame.camera.x-MAP.minX)),sy=Math.max(0,Math.floor(frame.camera.y-MAP.minY));
-    const sw=Math.min(MAP.width-sx,Math.ceil(width)+2),sh=Math.min(MAP.height-sy,Math.ceil(height)+2);
-    c.drawImage(this.map,sx,sy,sw,sh,MAP.minX+sx,MAP.minY+sy,sw,sh);
+    for(const chunk of this.chunks){
+      const sx=Math.max(0,Math.floor(frame.camera.x-chunk.x)),sy=Math.max(0,Math.floor(frame.camera.y-chunk.y));
+      const sw=Math.min(chunk.width-sx,Math.ceil(width)+2),sh=Math.min(chunk.height-sy,Math.ceil(height)+2);
+      if(sw>0&&sh>0)c.drawImage(chunk.canvas,sx,sy,sw,sh,chunk.x+sx,chunk.y+sy,sw,sh);
+    }
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const flameFrames:[number,number,number,number][]=[[-7,-12,14,18],[-9,-9,14,16],[-6,-16,13,22],[-5,-10,15,17]];
     const flame=flameFrames[reduced?0:Math.floor(frame.time/190)%flameFrames.length]!;
@@ -478,5 +548,5 @@ export class CanvasWorldRenderer implements WorldRenderer {
       c.fillStyle='#f1cf78';c.fillRect(x-1,y-79-lift,3,8);c.fillRect(x-1,y-68-lift,3,3);
     }
   }
-  destroy():void {this.images.clear();}
+  destroy():void {this.images.clear();for(const chunk of this.chunks){chunk.canvas.width=0;chunk.canvas.height=0;}this.chunks=[];}
 }

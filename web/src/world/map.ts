@@ -1,25 +1,28 @@
 import type { Interactable, Position, Rect } from './model.js';
-// World coordinates retain the original plaza coordinates. The canvas extends
+// World coordinates retain the original plaza coordinates. The map extends
 // around them, so saved positions and every existing entrance remain valid.
-// The outer ring doubles the walkable area while staying below the 16.7M pixel
-// canvas ceiling used by mobile Safari.
-export const MAP = { minX: -1504, minY: -1152, maxX: 3296, maxY: 2304, width: 4800, height: 3456, tile: 32, spawn: { x: 560, y: 480 } };
+// The world is now roughly twice the old area. It is painted into four
+// offscreen chunks by the renderer so no single surface approaches the 16.7M
+// pixel canvas ceiling used by mobile Safari.
+export const MAP = { minX: -2200, minY: -2600, maxX: 4100, maxY: 2900, width: 6300, height: 5500, tile: 32, spawn: { x: 560, y: 480 } };
 export const WORLD_BOUNDS = { minX: MAP.minX + 52, minY: MAP.minY + 76,
   maxX: MAP.minX + MAP.width - 52, maxY: MAP.minY + MAP.height - 52 };
 /** The hand-authored town inside the procedural outer ring. */
 export const CORE_BOUNDS = { minX: -896, minY: -576, maxX: 2688, maxY: 1728 };
 export type RingSide = 'north' | 'south' | 'east' | 'west';
 /** Dirt loop through the outer districts. Caves and ruins branch from it.
- * The loop now pushes close to the four map edges so the outer wilderness feels
- * like a real journey while the canvas itself stays at 4800×3456. */
+ * The loop keeps the original town ring; the doubled map adds a long northern
+ * pass, deep outer woods and remote shrine trails beyond it. */
 export const OUTER_LOOP = { left: -1160, right: 2960, top: -880, bottom: 2000 };
 export interface ExplorationSite {
-  id:string; kind:'cave'|'ruin'|'shrine'; facing:RingSide; radius:number; position:Position;
+  id:string; kind:'cave'|'ruin'|'shrine'|'pass'; facing:RingSide; radius:number; position:Position;
   label:string; description:string; discovery:string;
+  /** Optional rune identity so neighbouring shrines never read as copies. */
+  accent?:'moss'|'amber'|'violet'|'frost';
 }
 /** Action wording is intentionally literal: only interactions that exist. */
 export const EXPLORATION_PROMPTS = {
-  cave:'Enter cave',ruin:'Inspect ruins',shrine:'Visit shrine',camp:'Rest at camp',
+  cave:'Enter cave',ruin:'Inspect ruins',shrine:'Visit shrine',pass:'Cross the pass',camp:'Rest at camp',
 } as const;
 /**
  * Generated landmarks sit on the outer dirt loop. They add destinations and
@@ -39,7 +42,7 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'cave-west',kind:'cave',facing:'east',position:{x:OUTER_LOOP.left,y:900},radius:78,label:'West hollow',
     description:'A wide, dry cave used by travellers as a windbreak on the western trail.',
     discovery:'Charcoal and a child-sized spiral carving remain on the back wall.'},
-  {id:'sunken-shrine',kind:'shrine',facing:'east',position:{x:OUTER_LOOP.left-204,y:420},radius:74,label:'Sunken shrine',
+  {id:'sunken-shrine',kind:'shrine',facing:'east',position:{x:OUTER_LOOP.left-204,y:420},radius:74,label:'Sunken shrine',accent:'moss',
     description:'Broken pillars lean out of the moss beside the outer loop.',
     discovery:'A mossy offering bowl rests at the centre of the stones, long since empty.'},
   {id:'mossy-ruin',kind:'ruin',facing:'west',position:{x:OUTER_LOOP.right+192,y:OUTER_LOOP.top},radius:74,label:'Mossy ruin',
@@ -48,7 +51,7 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'old-watchtower',kind:'ruin',facing:'north',position:{x:560,y:OUTER_LOOP.bottom+202},radius:74,label:'Old watchtower',
     description:'A wide stone footing is all that remains of a tower above the southern trail.',
     discovery:'From the fallen lintel the whole outer trail is visible in both directions.'},
-  {id:'whispering-grove',kind:'shrine',facing:'west',position:{x:OUTER_LOOP.right+192,y:1250},radius:74,label:'Whispering grove',
+  {id:'whispering-grove',kind:'shrine',facing:'west',position:{x:OUTER_LOOP.right+192,y:1250},radius:74,label:'Whispering grove',accent:'amber',
     description:'A ring of old trees surrounds a small standing stone east of the loop.',
     discovery:'A wind chime of bone and tin hangs from a branch, moving without wind.'},
   // Remote districts reward the walk: each sits off its own trail beyond the
@@ -56,7 +59,7 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'shattered-ridge',kind:'ruin',facing:'south',position:{x:2700,y:-1010},radius:82,label:'Shattered ridge',
     description:'A spine of split stone rises above the northern tree line. The path ends at a narrow gap between two slabs.',
     discovery:'Chisel marks on the inner face suggest the gap was once a doorway.'},
-  {id:'rift-monolith',kind:'shrine',facing:'east',position:{x:-1320,y:-790},radius:78,label:'Rift monolith',
+  {id:'rift-monolith',kind:'shrine',facing:'east',position:{x:-1320,y:-790},radius:78,label:'Rift monolith',accent:'violet',
     description:'A dark standing stone leans over a shallow depression in the north-west scrub.',
     discovery:'A ring of smaller stones holds rainwater; a cold draft rises from the centre.'},
   {id:'old-quarry',kind:'ruin',facing:'east',position:{x:-1320,y:1560},radius:84,label:'Old quarry',
@@ -65,9 +68,24 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'echo-cave',kind:'cave',facing:'west',position:{x:3090,y:1360},radius:78,label:'Echo cave',
     description:'A low black mouth in the eastern ridge returns every footstep a heartbeat late.',
     discovery:'Old torch brackets are fixed into the rock just inside the entrance.'},
-  {id:'lantern-grove',kind:'shrine',facing:'west',position:{x:3090,y:1760},radius:78,label:'Lantern grove',
+  {id:'lantern-grove',kind:'shrine',facing:'west',position:{x:3090,y:1760},radius:78,label:'Lantern grove',accent:'amber',
     description:'Dead lanterns hang from the outer trees beside the south-east trail.',
     discovery:'One lantern still holds a dry wick, as if someone meant to return and light it.'},
+  // The northern pass is the long approach to a separate snow destination.
+  // The other three sites sit deep in the widened ring, each with its own
+  // trail back to the loop and its own rune colour.
+  {id:'frostgate-pass',kind:'pass',facing:'south',position:{x:576,y:-2320},radius:94,label:'Frostgate Pass',accent:'frost',
+    description:'Two black cliffs close around a carved gate. Cold air pours through the gap and the stones are dusted with old snow.',
+    discovery:'Beyond the arch the trail turns white. A rune-cut keystone names the northern crossing: FROSTGATE.'},
+  {id:'starfall-circle',kind:'shrine',facing:'east',position:{x:-1820,y:-560},radius:78,label:'Starfall circle',accent:'violet',
+    description:'A ring of pale stones leans inward beneath the north-west trees. Violet marks catch the light along their inner faces.',
+    discovery:'The stones are warm to the touch. Fine silver grit fills the centre, as if something fell there long ago.'},
+  {id:'ember-shrine',kind:'shrine',facing:'west',position:{x:3720,y:520},radius:78,label:'Ember shrine',accent:'amber',
+    description:'A squat stone shrine stands alone in the far eastern grass, its runes banked like coals.',
+    discovery:'The bowl at its foot is still warm. A single ember turns over in the ash without going out.'},
+  {id:'hollow-arch',kind:'ruin',facing:'north',position:{x:900,y:2600},radius:82,label:'Hollow arch',accent:'moss',
+    description:'A broken arch spans the southern meadow trail. Grass grows through the fallen lintel.',
+    discovery:'The keystone is missing, but the arch still frames the old road back toward the city.'},
 ];
 /** Small deterministic PRNG keeps generated content stable between sessions. */
 function seededRandom(seed:number):()=>number {
@@ -157,6 +175,17 @@ export const OUTER_TERRAIN_AREAS: GroundArea[] = [
   {x:OUTER_LOOP.right-760,y:OUTER_LOOP.bottom-260,width:700,height:340,color:'#31503d'},
   {x:OUTER_LOOP.left-260,y:560,width:300,height:520,color:'#3d5c45'},
   {x:OUTER_LOOP.right-80,y:980,width:280,height:520,color:'#2c4a38'},
+  // The doubled ring adds cold tundra, deep woodland and meadow bands so the
+  // new outer distances never repeat the old edge as a flat green shelf.
+  {x:MAP.minX+120,y:MAP.minY+80,width:1900,height:760,color:'#394a42'},
+  {x:MAP.minX+1000,y:MAP.minY+40,width:2500,height:900,color:'#3c4b44'},
+  {x:MAP.maxX-1300,y:MAP.minY+120,width:1200,height:820,color:'#33453c'},
+  {x:MAP.minX+180,y:MAP.minY+260,width:2200,height:460,color:'#404f47'},
+  {x:MAP.minX+2400,y:MAP.minY+140,width:900,height:420,color:'#4a5850'},
+  {x:MAP.minX+80,y:MAP.maxY-820,width:1700,height:760,color:'#3a5841'},
+  {x:MAP.maxX-1500,y:MAP.maxY-900,width:1400,height:840,color:'#31503d'},
+  {x:MAP.minX+80,y:1360,width:720,height:980,color:'#355240'},
+  {x:MAP.maxX-720,y:920,width:640,height:1080,color:'#2f4d3a'},
 ];
 TERRAIN_AREAS.push(...OUTER_TERRAIN_AREAS);
 export interface WorldPath extends Rect {color?:string}
@@ -167,12 +196,23 @@ export const OUTER_EXPLORATION_PATHS: WorldPath[] = [
   {x:532,y:OUTER_LOOP.bottom-28,width:56,height:202,color:'#786b55'},
   {x:OUTER_LOOP.right,y:1222,width:192,height:56,color:'#786b55'},
   // Trails to the remote districts. They join the same outer loop, so every
-  // new site stays reachable without enlarging the walkable canvas.
+  // site stays reachable through one continuous route network.
   {x:2672,y:-1010,width:56,height:158,color:'#786b55'},
   {x:-1320,y:-818,width:188,height:56,color:'#786b55'},
   {x:-1320,y:1532,width:188,height:56,color:'#786b55'},
   {x:2840,y:1332,width:278,height:56,color:'#786b55'},
   {x:2840,y:1732,width:278,height:56,color:'#786b55'},
+  // The long northern approach to Frostgate. It joins the loop connector and
+  // widens into a stone forecourt at the gate.
+  {x:548,y:-2320,width:56,height:1468,color:'#6f6657'},
+  {x:452,y:-2352,width:248,height:84,color:'#6f6657'},
+  // Trails to the three new outer landmarks. Each starts on the loop.
+  {x:-1820,y:-588,width:688,height:56,color:'#786b55'},
+  {x:-1868,y:-616,width:132,height:112,color:'#6f6553'},
+  {x:2960,y:492,width:800,height:56,color:'#786b55'},
+  {x:3652,y:472,width:132,height:112,color:'#6f6553'},
+  {x:872,y:2000,width:56,height:632,color:'#786b55'},
+  {x:836,y:2540,width:132,height:112,color:'#6f6553'},
 ];
 export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
@@ -224,8 +264,11 @@ export const PATHS: WorldPath[] = [
 ];
 export interface GroundDetail extends Position {kind:'stone'|'crack'|'gravel';tone:0|1|2}
 const detailAreas=[{x:400,y:310,width:740,height:530},{x:-710,y:425,width:760,height:72},{x:310,y:1110,width:1120,height:440},
+  // The pass road and the new outer trails carry the same authored wear marks.
+  {x:548,y:-2300,width:56,height:1440},{x:-1800,y:-580,width:660,height:48},
+  {x:2980,y:500,width:760,height:48},{x:880,y:2020,width:48,height:600},
 ];
-export const GROUND_DETAILS: GroundDetail[] = Array.from({length:170},(_,index)=>{
+export const GROUND_DETAILS: GroundDetail[] = Array.from({length:260},(_,index)=>{
   const area=detailAreas[index%detailAreas.length]!;
   const seed=(Math.imul(index+19,1103515245)+12345)>>>0;
   return {x:area.x+8+seed%Math.max(1,area.width-16),y:area.y+8+((seed>>>9)+(index*37))%Math.max(1,area.height-16),
@@ -259,6 +302,11 @@ export const WORLD_SITES: Position[] = [
   {x:1550,y:-450},{x:1430,y:-430},{x:1800,y:1600},{x:1680,y:1560},{x:250,y:1600},{x:130,y:1560},
   {x:2600,y:300},{x:2480,y:260},{x:2600,y:1600},{x:2480,y:1560},{x:-800,y:-450},{x:-800,y:-370},
   {x:-490,y:210},{x:-420,y:170},{x:2080,y:820},{x:2040,y:760},
+  // Resource pools in the doubled outer ring. They stay far from the plaza
+  // and from one another, so finding one is a deliberate expedition.
+  {x:330,y:-2060},{x:250,y:-2140},{x:-420,y:-2280},{x:-500,y:-2210},
+  {x:-1960,y:700},{x:-1880,y:760},{x:-1930,y:1650},{x:-1850,y:1590},
+  {x:3820,y:1200},{x:3740,y:1140},{x:3300,y:2480},{x:3220,y:2540},
 ];
 export const WORLD_SITE_CLEARANCE = 110;
 /**
@@ -402,10 +450,10 @@ function generateOuterVegetation():OuterVegetation {
   const rand=seededRandom(0x0d1e5eed);
   const result:OuterVegetation={trees:[],bushes:[],flowers:[],rocks:[]};
   const bands:RingBand[]=[
-    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:MAP.minY+140,y1:OUTER_LOOP.top-80,count:20},
-    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:OUTER_LOOP.bottom+80,y1:MAP.maxY-140,count:20},
-    {x0:MAP.minX+140,x1:OUTER_LOOP.left-80,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:16},
-    {x0:OUTER_LOOP.right+80,x1:MAP.maxX-140,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:16},
+    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:MAP.minY+140,y1:OUTER_LOOP.top-80,count:34},
+    {x0:MAP.minX+140,x1:MAP.maxX-140,y0:OUTER_LOOP.bottom+80,y1:MAP.maxY-140,count:26},
+    {x0:MAP.minX+140,x1:OUTER_LOOP.left-80,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:24},
+    {x0:OUTER_LOOP.right+80,x1:MAP.maxX-140,y0:OUTER_LOOP.top-40,y1:OUTER_LOOP.bottom+40,count:24},
   ];
   const clusters:Position[]=[];
   const acceptable=(point:Position,clearance:number):boolean=>
@@ -444,7 +492,7 @@ function generateOuterVegetation():OuterVegetation {
     }
   }
   // Low planting and stones fill the fringe between the loop and the old town.
-  for(let index=0;index<120;index++){
+  for(let index=0;index<190;index++){
     const side=Math.floor(rand()*4);
     const point:RingBand=side===0
       ?{x0:MAP.minX+120,x1:MAP.maxX-120,y0:MAP.minY+120,y1:CORE_BOUNDS.minY-40,count:1}
@@ -512,6 +560,21 @@ const TREE_CANDIDATES: WorldTree[] = [
   {x:2590,y:1450,scale:.9,tint:2},{x:2350,y:1620,scale:.9,tint:1},
   {x:1150,y:-360,scale:.9,tint:2},{x:1700,y:780,scale:1,tint:1},
   {x:1150,y:1600,scale:.9,tint:1},{x:-690,y:-470,scale:.9,tint:2},{x:-680,y:-350,scale:.9,tint:1},
+  // Guaranteed companions and framing for the new outer resource clearings
+  // and the long northern pass.
+  {x:470,y:-1980,scale:1,tint:2},{x:-260,y:-2130,scale:.9,tint:1},
+  {x:-1820,y:620,scale:1,tint:2},{x:-1790,y:1730,scale:.9,tint:1},
+  {x:3960,y:1080,scale:1,tint:2},{x:3420,y:2380,scale:.9,tint:1},
+  {x:420,y:-1500,scale:1.1,tint:2},{x:760,y:-1600,scale:1,tint:1},
+  {x:300,y:-1900,scale:.9,tint:2},{x:850,y:-2050,scale:1.05,tint:1},
+  {x:-1680,y:-880,scale:1,tint:1},{x:-1980,y:-320,scale:.9,tint:2},
+  {x:3720,y:760,scale:1,tint:2},{x:3860,y:1660,scale:.9,tint:1},
+  {x:1020,y:2440,scale:1,tint:2},{x:640,y:2680,scale:.9,tint:1},
+  // Trees frame the gate and the three remote landmarks so none of them sits
+  // in an empty field. The normal placement filters still run over each one.
+  {x:410,y:-2280,scale:1,tint:2},{x:760,y:-2260,scale:.95,tint:1},
+  {x:-1960,y:-480,scale:1,tint:2},{x:3860,y:620,scale:.95,tint:1},
+  {x:780,y:2500,scale:1,tint:2},{x:1020,y:2520,scale:.9,tint:1},
   ...VEGETATION_GROUPS.flatMap(group=>group.trees),
   ...OUTER_VEGETATION.trees,
 ];
@@ -538,11 +601,17 @@ const BUSH_CANDIDATES: WorldBush[] = [
   {x:780,y:1595,size:22,tint:2},{x:1190,y:1580,size:30,solid:true,tint:1},{x:1570,y:1320,size:24,tint:2},
   {x:1480,y:1110,size:20,tint:1},{x:1870,y:1180,size:28,solid:true,tint:2},
   {x:-700,y:545,size:20,tint:1},{x:-330,y:345,size:22,tint:2},{x:-95,y:745,size:18,tint:1},
+  // Low scrub gathers beside the northern gate and the new outer landmarks.
+  {x:434,y:-2184,size:20,tint:2},{x:718,y:-2172,size:18,tint:1},
+  {x:-1904,y:-492,size:20,tint:1},{x:3796,y:632,size:18,tint:2},{x:742,y:2478,size:20,tint:2},
   ...VEGETATION_GROUPS.flatMap(group=>group.bushes),
   ...OUTER_VEGETATION.bushes,
 ];
 export const BUSHES: WorldBush[] = BUSH_CANDIDATES.filter(canPlaceBush);
-const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},...VEGETATION_GROUPS.flatMap(group=>group.rocks),...OUTER_VEGETATION.rocks];
+const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},
+  // Weathered stones gather at the far-north gate and the remote sites.
+  {x:390,y:-2200},{x:770,y:-2200},{x:-1980,y:-420},{x:3840,y:680},{x:760,y:2470},
+  ...VEGETATION_GROUPS.flatMap(group=>group.rocks),...OUTER_VEGETATION.rocks];
 export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
 const FLOWER_CANDIDATES: Rect[] = [
   {x:1510,y:600,width:90,height:42},{x:1620,y:830,width:98,height:46},{x:1770,y:570,width:96,height:40},
@@ -564,6 +633,8 @@ export const EXPLORATION_PROBES = {
   outerNorth:{x:-300,y:OUTER_LOOP.top},outerSouth:{x:1850,y:OUTER_LOOP.bottom},
   shrineWest:{x:OUTER_LOOP.left-204,y:420},ruinEast:{x:OUTER_LOOP.right+192,y:1250},
   campNorth:{x:OUTER_CAMPS[0]!.x,y:OUTER_CAMPS[0]!.y+64},
+  frostgate:{x:576,y:-2320},passApproach:{x:576,y:-1500},
+  starfall:{x:-1820,y:-560},emberShrine:{x:3720,y:520},hollowArch:{x:900,y:2600},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
