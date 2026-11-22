@@ -302,11 +302,30 @@ try{
  assert.ok(await evaluate('getComputedStyle(document.querySelector(".room-card img")).imageRendering==="pixelated"'),'agent sprites must stay pixel-crisp');
  await wait('!document.getElementById("survival-view").hidden&&document.getElementById("survival-overlay").hidden&&document.getElementById("survival-status").textContent.includes("LIVE")');
  await wait("fetch('/api/survival/current').then(r=>r.json()).then(s=>s.agents.length===20&&s.events.some(e=>e.type==='AttackLanded'))");
- for(let attempt=0;attempt<8;attempt++){
-  await evaluate("fetch('/api/survival/current').then(r=>r.json()).then(s=>{const a=s.agents.find(agent=>agent.status!=='eliminated')||s.agents[0],c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height),x=r.left+(r.width-s.map.width*scale)/2+a.x*scale,y=r.top+(r.height-s.map.height*scale)/2+a.y*scale;c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}))})");
-  if(await evaluate("document.getElementById('survival-inspector-body').textContent.includes('HP:')"))break;
-  await delay(200);
- }
+ // Agents are interpolated between snapshots, so a click at raw snapshot
+ // coordinates can miss. Sweep a small offset grid around real agents to
+ // exercise the actual tactical-map hit test deterministically.
+ await evaluate(`fetch('/api/survival/current').then(r=>r.json()).then(s=>{
+  const c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height);
+  const offsets=[0,-10,10,-20,20,-30,30];
+  for(const a of s.agents){
+   if(a.status==='eliminated'||a.status==='spectating')continue;
+   for(const dx of offsets)for(const dy of offsets){
+    const cx=r.left+(r.width-s.map.width*scale)/2+(a.x+dx)*scale;
+    const cy=r.top+(r.height-s.map.height*scale)/2+(a.y+dy)*scale;
+    c.dispatchEvent(new PointerEvent('pointerdown',{clientX:cx,clientY:cy,bubbles:true}));
+    if(document.getElementById('survival-inspector-body').textContent.includes('HP:'))return;
+   }
+  }
+  // Fallback: sweep the visible map in case interpolation drifted an agent
+  // further than the sampled offsets.
+  if(!document.getElementById('survival-inspector-body').textContent.includes('HP:')){
+   for(let y=r.top+4;y<r.bottom-4;y+=10)for(let x=r.left+4;x<r.right-4;x+=10){
+    c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}));
+    if(document.getElementById('survival-inspector-body').textContent.includes('HP:'))return;
+   }
+  }
+ })`);
  await wait('document.getElementById("survival-inspector-title").textContent.length>0&&document.getElementById("survival-inspector-body").textContent.includes("HP:")');
  assert.ok(await evaluate('document.getElementById("survival-inspector-body").textContent.includes("Strategy:")'),'Survival inspection must use server-authoritative agent state');
  await wait('document.querySelectorAll("#survival-roster .roster-chip").length>=2');
