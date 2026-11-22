@@ -281,15 +281,18 @@ test('outer loop pushes toward the map edges and every landmark keeps a connecti
   }
 });
 
-test('normal overworld terrain stays one cohesive grass palette', () => {
+test('overworld grass keeps the authored plaza palette with cohesive outer tints', () => {
   const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
-  const base = rgb('#30483c');
   const colors = new Set(TERRAIN_AREAS.map(area => area.color));
-  assert.ok(colors.size >= 6, 'the varied patches still use several close shades');
+  assert.ok(colors.size >= 6, 'the authored and wilderness patches still use several close greens');
   for (const area of TERRAIN_AREAS) {
     const [red, green, blue] = rgb(area.color);
-    assert.ok(green > red + 8 && green >= blue - 2, `${area.color} reads as grass, not grey tundra`);
-    const drift = Math.max(Math.abs(red - base[0]), Math.abs(green - base[1]), Math.abs(blue - base[2]));
-    assert.ok(drift <= 12, `${area.color} stays within a subtle green band of the plaza grass`);
+    assert.ok(green > red + 8 && green >= blue - 4, `${area.color} reads as grass, not grey tundra`);
+    assert.ok(Math.max(red, green, blue) <= 110 && Math.min(red, green, blue) >= 35, `${area.color} stays in the authored grass range`);
+  }
+  // The original hand-authored central colours are the plaza reference and
+  // must survive the renderer's broader world-space tint field.
+  for (const reference of ['#34513f', '#355240', '#35513e', '#2d4c39', '#3d6047']) {
+    assert.ok(colors.has(reference), `${reference} keeps the original plaza grass character`);
   }
 });

@@ -499,6 +499,7 @@ try{
  // Generated cave mouths are ordinary interaction zones on the outer loop.
  await teleportProbe('caveNorth',-700,OUTER_LOOP.top,'north-cave');
  await wait("!document.getElementById('interact').disabled");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).region==='NORTH OUTCROP'");
  const caveStart=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent)");
  assert.equal(caveStart.discovered.includes('cave-north'),false,'approaching a cave must not discover it passively');
  assert.equal(caveStart.minimap.outer,0,'undiscovered landmarks stay off the minimap');

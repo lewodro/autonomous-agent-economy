@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, OUTER_TERRAIN_AREAS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -42,12 +42,33 @@ function grassNoise(x:number,y:number,scale:number,seed:number):number {
   const a=hashUnit(gx,gy,seed),b=hashUnit(gx+1,gy,seed),c=hashUnit(gx,gy+1,seed),d=hashUnit(gx+1,gy+1,seed);
   return (a+(b-a)*sx)*(1-sy)+(c+(d-c)*sx)*sy;
 }
-function grassTone(value:number):number {
-  if(value<0.30)return 0;
-  if(value<0.44)return 1;
-  if(value<0.60)return 2;
-  if(value<0.74)return 3;
-  return 4;
+function clamp01(value:number):number { return Math.max(0,Math.min(1,value)); }
+/** Broad, softly blended tint field: a large region plus a smaller detail wave. */
+function tintField(x:number,y:number):number {
+  return grassNoise(x,y,460,11)*0.62 + grassNoise(x,y,190,29)*0.38;
+}
+/**
+ * How strongly the broad field is mixed in. Zero through the authored core so
+ * the plaza keeps its original tile grain, then a noise-driven envelope that
+ * breathes in and out instead of climbing steadily with distance.
+ */
+function tintEnvelope(x:number,y:number):number {
+  const distance=Math.hypot(x-MAP.spawn.x,y-MAP.spawn.y);
+  const gate=clamp01((distance-760)/900);
+  const pulse=grassNoise(x,y,1250,71)*0.62 + grassNoise(x,y,560,83)*0.38;
+  // The authored grain fades out toward the wilderness; the remaining breathing
+  // comes from the tint field's own value, not from tile-level alternation.
+  return clamp01(gate*(0.78+pulse*0.34));
+}
+/**
+ * Blend the original per-tile tone (plaza character) toward the smooth field
+ * (wilderness patches). All inputs are world coordinates, never chunk-local.
+ */
+function grassIndex(x:number,y:number,tileSeed:number):number {
+  const authored=tileSeed%5;
+  const soft=Math.round(tintField(x,y)*4);
+  const mix=tintEnvelope(x,y);
+  return Math.round(authored*(1-mix)+soft*mix);
 }
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
@@ -118,41 +139,58 @@ export class CanvasWorldRenderer implements WorldRenderer {
       value=(value^(value>>>13))>>>0;value=Math.imul(value,1274126177)>>>0;
       return (value^(value>>>16))>>>0;
     };
-    const ground=(x:number,y:number,w:number,h:number,base:string)=>{
-      // Close shades only. The dither is a subtle tint, not a checkerboard.
-      const tones=[shiftColor(base,-4),shiftColor(base,-2),base,shiftColor(base,2),shiftColor(base,4)];
-      const blade=shiftColor(base,-9),speck=shiftColor(base,9);
+    /**
+     * Paint one biome patch. The authored central areas keep hard, stepped
+     * pixel edges; only the far-out rings feather into their surroundings so
+     * large regions never read as giant hard rectangles.
+     */
+    const ground=(x:number,y:number,w:number,h:number,base:string,feather=0)=>{
+      // The original authored five-tone grain is restored. The tint field only
+      // decides which tone a tile takes, so the plaza keeps its familiar look.
+      const tones=[shiftColor(base,-10),shiftColor(base,-5),base,shiftColor(base,5),shiftColor(base,12)];
+      const blade=shiftColor(base,-16),speck=shiftColor(base,20);
       const right=x+w,bottom=y+h,startX=Math.floor(x/32)*32,startY=Math.floor(y/32)*32;
       for(let gy=startY;gy<bottom;gy+=32)for(let gx=startX;gx<right;gx+=32){
         const px=Math.max(x,gx),py=Math.max(y,gy);
         const pw=Math.min(right,gx+32)-px,ph=Math.min(bottom,gy+32)-py;
         if(pw<=0||ph<=0)continue;
         const sample=hash(gx,gy);
-        const patch=grassNoise(gx,gy,128,11)*0.72+grassNoise(gx,gy,32,29)*0.28;
-        c.fillStyle=tones[grassTone(patch)]!;
+        if(feather>0){
+          const edge=Math.max(0,Math.min(gx-x,x+w-(gx+32),gy-y,y+h-(gy+32)));
+          const t=clamp01(edge/feather);
+          const alpha=t*t*(3-2*t);
+          if(alpha<=0){c.globalAlpha=1;continue;}
+          c.globalAlpha=alpha;
+        }
+        c.fillStyle=tones[grassIndex(gx,gy,sample)]!;
         c.fillRect(px,py,pw,ph);
         if(pw>20&&ph>20){
           if(sample%7===0){c.fillStyle=blade;c.fillRect(px+5,py+9,2,5);c.fillRect(px+9,py+13,1,4);c.fillRect(px+13,py+8,2,3);}
           if(sample%13===0){c.fillStyle=speck;c.fillRect(px+22,py+18,2,2);c.fillRect(px+25,py+21,1,1);}
           if(sample%41===0){c.fillStyle='#c9b76e';c.fillRect(px+17,py+6,2,2);c.fillRect(px+20,py+8,1,1);}
         }
+        if(feather>0)c.globalAlpha=1;
       }
     };
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
-    // Unclaimed ground uses the same gently varying green as the plaza edge:
-    // clustered noise instead of an alternating tile palette.
-    const grassTones=['#2f473b','#30483c','#31493d','#2f493c','#324a3e'];
+    // Unclaimed ground keeps the original five greens and little grass marks.
+    // The same world-space tint field blends them into broader soft regions.
+    const grassTones=['#2b4537','#2e493a','#30483c','#334d3e','#294334'];
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
       const sample=hash(x,y);
-      const patch=grassNoise(x,y,160,41)*0.72+grassNoise(x,y,40,57)*0.28;
-      rect(x,y,32,32,grassTones[grassTone(patch)]!);
+      rect(x,y,32,32,grassTones[grassIndex(x,y,sample)]!);
       if(sample%6===0){rect(x+7,y+10,2,5,'#3f5c45');rect(x+11,y+14,1,4,'#3f5c45');}
       if(sample%10===0)rect(x+22,y+19,2,2,'#48654c');
       if(sample%47===0){rect(x+17,y+7,2,2,'#c9b76e');rect(x+20,y+9,1,1,'#b9a45f');}
     }
     // Large vegetation regions use stepped, overlapping pixel blocks. This
     // avoids the vector-like diagonal wedges created by arbitrary polygons.
-    for(const area of TERRAIN_AREAS)ground(area.x,area.y,area.width,area.height,area.color);
+    const authoredCount=TERRAIN_AREAS.length-OUTER_TERRAIN_AREAS.length;
+    for(const [index,area] of TERRAIN_AREAS.entries()){
+      // Six tiles of falloff blur the outer biome seams without touching the
+      // plaza's original hard-edged, stepped pixel terrain.
+      ground(area.x,area.y,area.width,area.height,area.color,index<authoredCount?0:192);
+    }
     ground(1088,128,360,780,'#294b3a');ground(1160,220,350,780,'#294b3a');ground(1260,340,290,620,'#294b3a');
     for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
     // Widen the four city-to-loop junctions with a lighter gravel cap so the
