@@ -187,6 +187,13 @@ export class WorldMinimap {
         c.fillRect(x - 1, y - 1, 3, 3);
         c.fillStyle = '#7b3d2b';
         c.fillRect(x - 2, y + 1, 5, 1);
+      } else if (marker.kind === 'pass') {
+        c.fillStyle = '#9fc9d8';
+        c.fillRect(x - 3, y - 2, 2, 6);
+        c.fillRect(x + 2, y - 2, 2, 6);
+        c.fillRect(x - 4, y - 3, 9, 2);
+        c.fillStyle = '#e2f4fa';
+        c.fillRect(x - 1, y, 3, 4);
       } else if (marker.kind === 'shrine') {
         c.fillStyle = '#d7b675';
         c.fillRect(x - 1, y - 3, 2, 7);

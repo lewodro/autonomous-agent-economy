@@ -2,7 +2,7 @@ import { CAMP_SITES, CORE_BOUNDS, EXPLORATION_SITES, MAP, OUTER_LOOP } from './m
 import type { Position } from './model.js';
 
 /** The journal and minimap share one discovery taxonomy. */
-export type DiscoveryKind = 'cave' | 'ruin' | 'shrine' | 'camp';
+export type DiscoveryKind = 'cave' | 'ruin' | 'shrine' | 'pass' | 'camp';
 export interface DiscoverySite {
   id: string; kind: DiscoveryKind; position: Position; label: string;
 }
@@ -13,6 +13,7 @@ export const DISCOVERY_GROUPS: ReadonlyArray<{ kind: DiscoveryKind; label: strin
   { kind: 'cave', label: 'CAVES' },
   { kind: 'ruin', label: 'RUINS' },
   { kind: 'shrine', label: 'SHRINES' },
+  { kind: 'pass', label: 'PASSES' },
   { kind: 'camp', label: 'CAMPS' },
 ];
 /**
@@ -78,15 +79,18 @@ export function discoveryGroups(discovered: ReadonlySet<string>): DiscoveryGroup
 }
 
 /** Broad orientation only. Names are anchored to the existing map geography. */
-export type RegionId = 'city' | 'north' | 'south' | 'west' | 'east';
+export type RegionId = 'city' | 'frostline' | 'north' | 'south' | 'west' | 'east';
 export const REGIONS: Record<RegionId, string> = {
-  city: 'CITY CENTER', north: 'NORTH OUTCROP', south: 'SOUTH PERIMETER',
-  west: 'WEST WOODS', east: 'EAST INDUSTRIAL',
+  city: 'CITY CENTER', frostline: 'FROSTLINE PASS', north: 'NORTH OUTCROP',
+  south: 'SOUTH PERIMETER', west: 'WEST WOODS', east: 'EAST INDUSTRIAL',
 };
+/** The far northern pass gets its own badge before the old north outcrop. */
+export const FROSTLINE_Y = -1600;
 export function regionAt(position: Position): RegionId {
   const insideCore = position.x >= CORE_BOUNDS.minX && position.x <= CORE_BOUNDS.maxX
     && position.y >= CORE_BOUNDS.minY && position.y <= CORE_BOUNDS.maxY;
   if (insideCore) return 'city';
+  if (position.y < FROSTLINE_Y) return 'frostline';
   const overshoot: Array<[RegionId, number]> = [
     ['north', CORE_BOUNDS.minY - position.y],
     ['south', position.y - CORE_BOUNDS.maxY],
@@ -100,7 +104,7 @@ export function regionLabel(position: Position): string {
 }
 
 /** Static minimap projection. The widget caches the terrain once and only
- * redraws this small marker layer, never the full 4800×3456 world canvas. */
+ * redraws this small marker layer, never the full chunked world surface. */
 export const MINIMAP_WIDTH = 208;
 export const MINIMAP_HEIGHT = 150;
 export const MINIMAP_PADDING = 5;
@@ -147,11 +151,18 @@ export const MINIMAP_PATHS: ReadonlyArray<{ x1: number; y1: number; x2: number; 
   { x1: OUTER_LOOP.left, y1: OUTER_LOOP.top, x2: OUTER_LOOP.left, y2: OUTER_LOOP.bottom },
   { x1: OUTER_LOOP.right, y1: OUTER_LOOP.top, x2: OUTER_LOOP.right, y2: OUTER_LOOP.bottom },
 ];
-const REMOTE_SITE_IDS = new Set(['shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove']);
+const REMOTE_SITE_IDS = new Set([
+  'shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove',
+  'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch',
+]);
 function nearestLoopAnchor(position: Position): Position {
+  // Clamp first so sites beyond a loop corner still connect to the nearest
+  // edge instead of to an imaginary point on the loop's extension.
+  const x = Math.max(OUTER_LOOP.left, Math.min(OUTER_LOOP.right, position.x));
+  const y = Math.max(OUTER_LOOP.top, Math.min(OUTER_LOOP.bottom, position.y));
   const candidates: Position[] = [
-    { x: position.x, y: OUTER_LOOP.top }, { x: position.x, y: OUTER_LOOP.bottom },
-    { x: OUTER_LOOP.left, y: position.y }, { x: OUTER_LOOP.right, y: position.y },
+    { x, y: OUTER_LOOP.top }, { x, y: OUTER_LOOP.bottom },
+    { x: OUTER_LOOP.left, y }, { x: OUTER_LOOP.right, y },
   ];
   return candidates.sort((a, b) => Math.hypot(a.x - position.x, a.y - position.y) - Math.hypot(b.x - position.x, b.y - position.y))[0]!;
 }
