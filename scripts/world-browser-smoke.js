@@ -384,7 +384,7 @@ try{
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
  assert.equal(await evaluate("document.querySelector('a[href=\"/world?return=arena\"]')?.getAttribute('href')"),'/world?return=arena');
  await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
- await send('Page.navigate',{url:base+'/world?return=arena'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
+ await send('Page.navigate',{url:base+'/world?return=arena'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog")?.open===true');
  assert.ok(await evaluate("document.querySelector('#character-dialog h2')?.textContent.includes('Step into the live world')"),'a returning visitor still sees the intro');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open&&document.activeElement?.id==="world-canvas"');
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
