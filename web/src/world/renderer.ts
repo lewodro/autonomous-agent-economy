@@ -29,6 +29,26 @@ function shiftColor(hex:string,amount:number):string {
   const b=Math.max(0,Math.min(255,(value&255)+amount));
   return `#${((r<<16)|(g<<8)|b).toString(16).padStart(6,'0')}`;
 }
+/** Deterministic 0..1 hash used by the one-time grass painter. */
+function hashUnit(x:number,y:number,seed=0):number {
+  let value=(Math.imul(x|0,374761393)+Math.imul(y|0,668265263)+Math.imul(seed,1597334677))>>>0;
+  value=(value^(value>>>13))>>>0;value=Math.imul(value,1274126177)>>>0;
+  return ((value^(value>>>16))>>>0)/4294967295;
+}
+/** Smooth value noise. Neighbouring tiles share a tone, so variation reads as patches. */
+function grassNoise(x:number,y:number,scale:number,seed:number):number {
+  const nx=x/scale,ny=y/scale,gx=Math.floor(nx),gy=Math.floor(ny);
+  const fx=nx-gx,fy=ny-gy,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
+  const a=hashUnit(gx,gy,seed),b=hashUnit(gx+1,gy,seed),c=hashUnit(gx,gy+1,seed),d=hashUnit(gx+1,gy+1,seed);
+  return (a+(b-a)*sx)*(1-sy)+(c+(d-c)*sx)*sy;
+}
+function grassTone(value:number):number {
+  if(value<0.30)return 0;
+  if(value<0.44)return 1;
+  if(value<0.60)return 2;
+  if(value<0.74)return 3;
+  return 4;
+}
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
   viewport():{width:number;height:number};
@@ -99,15 +119,17 @@ export class CanvasWorldRenderer implements WorldRenderer {
       return (value^(value>>>16))>>>0;
     };
     const ground=(x:number,y:number,w:number,h:number,base:string)=>{
-      const tones=[shiftColor(base,-10),shiftColor(base,-5),base,shiftColor(base,5),shiftColor(base,12)];
-      const blade=shiftColor(base,-16),speck=shiftColor(base,20);
+      // Close shades only. The dither is a subtle tint, not a checkerboard.
+      const tones=[shiftColor(base,-4),shiftColor(base,-2),base,shiftColor(base,2),shiftColor(base,4)];
+      const blade=shiftColor(base,-9),speck=shiftColor(base,9);
       const right=x+w,bottom=y+h,startX=Math.floor(x/32)*32,startY=Math.floor(y/32)*32;
       for(let gy=startY;gy<bottom;gy+=32)for(let gx=startX;gx<right;gx+=32){
         const px=Math.max(x,gx),py=Math.max(y,gy);
         const pw=Math.min(right,gx+32)-px,ph=Math.min(bottom,gy+32)-py;
         if(pw<=0||ph<=0)continue;
         const sample=hash(gx,gy);
-        c.fillStyle=tones[sample%tones.length]!;
+        const patch=grassNoise(gx,gy,128,11)*0.72+grassNoise(gx,gy,32,29)*0.28;
+        c.fillStyle=tones[grassTone(patch)]!;
         c.fillRect(px,py,pw,ph);
         if(pw>20&&ph>20){
           if(sample%7===0){c.fillStyle=blade;c.fillRect(px+5,py+9,2,5);c.fillRect(px+9,py+13,1,4);c.fillRect(px+13,py+8,2,3);}
@@ -117,13 +139,13 @@ export class CanvasWorldRenderer implements WorldRenderer {
       }
     };
     rect(MAP.minX,MAP.minY,MAP.width,MAP.height,'#253c36');
-    // The unclaimed ground still uses the shared 32px tone grid, but four
-    // deterministic grass tones and tiny blade/flower marks keep the widened
-    // outer bands from reading as one flat fill.
-    const grassTones=['#2b4537','#2e493a','#30483c','#334d3e','#294334'];
+    // Unclaimed ground uses the same gently varying green as the plaza edge:
+    // clustered noise instead of an alternating tile palette.
+    const grassTones=['#2f473b','#30483c','#31493d','#2f493c','#324a3e'];
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
       const sample=hash(x,y);
-      rect(x,y,32,32,grassTones[sample%grassTones.length]!);
+      const patch=grassNoise(x,y,160,41)*0.72+grassNoise(x,y,40,57)*0.28;
+      rect(x,y,32,32,grassTones[grassTone(patch)]!);
       if(sample%6===0){rect(x+7,y+10,2,5,'#3f5c45');rect(x+11,y+14,1,4,'#3f5c45');}
       if(sample%10===0)rect(x+22,y+19,2,2,'#48654c');
       if(sample%47===0){rect(x+17,y+7,2,2,'#c9b76e');rect(x+20,y+9,1,1,'#b9a45f');}
