@@ -20,8 +20,8 @@ async function load(){
     const details=element('details','entry-details');details.append(element('summary','', 'Technical notes'));
     for(const paragraph of item.detail.split(/\n\s*\n/))details.append(element('p','',paragraph.replace(/^##\s+/gm,'')));
     body.append(details);
-    const commit=element('a','commit-link','Source commit ↗');commit.href=item.commit;commit.rel='noreferrer';body.append(commit);
-    if(item.pr){const pr=element('a','commit-link secondary','Pull request ↗');pr.href=item.pr;pr.rel='noreferrer';body.append(pr);}
+    const commit=element('a','commit-link','Source commit \u2197\uFE0E');commit.href=item.commit;commit.rel='noreferrer';body.append(commit);
+    if(item.pr){const pr=element('a','commit-link secondary','Pull request \u2197\uFE0E');pr.href=item.pr;pr.rel='noreferrer';body.append(pr);}
     article.append(body);root.append(article);
   }
   setupEntryGlow();
