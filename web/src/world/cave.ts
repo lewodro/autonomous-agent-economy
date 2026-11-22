@@ -146,7 +146,11 @@ function applyView(next: View): void {
     const settings = loadSettings(); settings.position = { ...MAP.spawn }; saveSettings(settings);
     showOverlay('DEFEATED · RETURNING TO THE PLAZA · ALL INTERNAL GAME CREDITS LOST', 'RETURN TO PLAZA');
     $<HTMLAnchorElement>('cave-return').href = '/world';
-    setTimeout(() => { if (!stopped) location.assign('/world'); }, reduced.matches ? 0 : 900);
+    setTimeout(() => {
+      if (stopped) return;
+      try { sessionStorage.setItem('agent-world-skip-intro', '1'); } catch { /* storage is optional */ }
+      location.assign('/world');
+    }, reduced.matches ? 0 : 900);
     stopped = true;
   } else if (next.status === 'exited') {
     showOverlay('CAVE RUN ENDED', 'RETURN TO WORLD');
@@ -298,6 +302,9 @@ async function leaveCave(destination: string): Promise<void> {
       // page is being torn down. The run may simply have ended already.
     }
   } else endingRun = true;
+  // The visitor has already been in the world: skip the character creator on
+  // the way back so a normal venue return is not interrupted by a modal.
+  try { sessionStorage.setItem('agent-world-skip-intro', '1'); } catch { /* storage is optional */ }
   location.assign(destination);
 }
 function bindExitLink(id: string, destination: string): void {

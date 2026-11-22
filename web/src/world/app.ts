@@ -1324,7 +1324,13 @@ if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');
 // has finished. Wait for it so the character card does not cover the animation;
 // if the loader is missing or reduced motion is enabled, open immediately.
 void setupCharacterCreator();canvas.focus();
-void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(()=>openIntro(),()=>openIntro());
+// A venue exit (for example leaving a cave with E) sets a one-shot flag so the
+// world resumes straight into play. The Character/Profile button remains the
+// way to change appearance later.
+let skipIntroOnce=false;
+try{skipIntroOnce=sessionStorage.getItem('agent-world-skip-intro')==='1';sessionStorage.removeItem('agent-world-skip-intro');}catch{}
+const afterEntry=()=>{if(!skipIntroOnce)openIntro();};
+void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(afterEntry,afterEntry);
 const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
 // loading other visitor-scoped state so a concurrent request cannot mint a

@@ -586,9 +586,7 @@ try{
  await delay(80);
  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
  await wait("location.pathname==='/world'",10000);
- await wait('document.getElementById("character-dialog").open');
- await evaluate('document.getElementById("enter-world").click()');
- await wait('!document.getElementById("character-dialog").open');
+ await wait("!document.getElementById('character-dialog')?.open&&document.activeElement?.id==='world-canvas'",10000);
  const caveReturn=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
  assert.ok(Math.hypot(caveReturn.x-caveExterior.x,caveReturn.y-caveExterior.y)<1,'a normal cave exit returns to the exact saved exterior position');
  // Return to the lab view for the remaining deterministic movement probes.
