@@ -62,6 +62,13 @@ export class CaveService {
     const cleared = run.kills >= config.required;
     return {
       run_id: run.id, level: run.level, level_name: config.name,
+      // Generated depths are described by the server, so the browser never
+      // needs a second copy of the scaling rules or the geometry.
+      level_layout: {
+        level: config.level, name: config.name, ambient: config.ambient,
+        bounds: config.bounds, entry: config.entry, exit: config.exit, descent: config.descent,
+        rooms: config.rooms, torches: config.torches, props: config.props,
+      },
       status: run.status, player: { ...run.player },
       monsters: run.monsters.map(monster => ({
         id: monster.id, kind: monster.kind, boss: Boolean(monster.boss),

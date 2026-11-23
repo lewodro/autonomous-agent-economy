@@ -18,7 +18,7 @@ interface Prop { kind: string; x: number; y: number }
 interface Level {
   level: number; name: string; ambient: number; bounds: RectLike; entry: Position;
   exit: Position | null; descent: Position | null; rooms: RectLike[];
-  torches: Torch[]; props: Prop[]; monster_kinds: Array<{ id: string; kind: string; boss: boolean }>;
+  torches: Torch[]; props: Prop[]; monster_kinds?: Array<{ id: string; kind: string; boss: boolean }>;
 }
 interface Config {
   reset_ms: number; attack_range: number; attack_damage: number; max_hp: number; interact_radius: number; levels: Level[];
@@ -28,7 +28,7 @@ interface Monster {
   max_hp: number; alive: boolean; state: string; hit: boolean; hit_until: number;
 }
 interface View {
-  run_id: string; level: number; level_name: string; status: 'playing' | 'exited' | 'dead';
+  run_id: string; level: number; level_name: string; level_layout?: Level | null; status: 'playing' | 'exited' | 'dead';
   player: Position & { facing: string; hp: number; max_hp: number };
   monsters: Monster[]; chests: Array<{ id: string; x: number; y: number; opened: boolean }>;
   kills: number; required: number; cleared: boolean; can_descend: boolean;
@@ -79,7 +79,12 @@ async function request<T>(path: string, body?: Record<string, unknown>): Promise
   if (!response.ok) throw new Error(data?.error || 'Cave request failed');
   return data;
 }
-function level(): Level | null { return config?.levels.find(value => value.level === view?.level) ?? null; }
+function level(): Level | null {
+  // Depths beyond the authored floors are sent with each snapshot.
+  if (view?.level_layout) return view.level_layout;
+  return config?.levels.find(value => value.level === view?.level) ?? null;
+}
+
 function inReach(point: Position): boolean {
   return Math.hypot(local.x - point.x, local.y - point.y) < (config?.interact_radius ?? 96);
 }

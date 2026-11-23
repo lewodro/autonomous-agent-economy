@@ -83,7 +83,7 @@ export const CAVE_LEVELS = [
     level: 3, name: 'DEEP CHAMBER', ambient: 0.05, required: 6,
     chests: [{ id: 'chest-caveforged', x: 860, y: 520, weapon: 'caveforged' }],
     bounds: rect(0, 0, 960, 720),
-    entry: { x: 140, y: 360 }, exit: null, descent: null,
+    entry: { x: 140, y: 360 }, exit: null, descent: { x: 900, y: 430 },
     rooms: [
       rect(80, 260, 260, 240), rect(310, 340, 220, 80), rect(495, 160, 385, 430),
       rect(830, 300, 130, 180), rect(520, 560, 280, 130),
@@ -108,8 +108,46 @@ export const CAVE_LEVELS = [
   },
 ];
 
+/**
+ * Depth scaling for procedurally extended floors. The authored three floors
+ * step up by 0.1 per level, then the curve flattens to 0.05 through floor 5
+ * and 0.03 from floor 6 onward so a long run stays hard without exploding.
+ */
+export function caveScale(level) {
+  if (!Number.isFinite(level) || level < 1) return 1;
+  if (level <= 1) return 1;
+  if (level <= 3) return Number((1 + (level - 1) * 0.1).toFixed(2));
+  if (level <= 5) return Number((1.2 + (level - 3) * 0.05).toFixed(2));
+  return Number((1.3 + (level - 5) * 0.03).toFixed(2));
+}
+
+const generatedLevels = new Map();
+
+/** Authored floors stay byte-for-byte; deeper floors reuse floor 3 scaled. */
 export function caveLevel(level) {
-  return CAVE_LEVELS.find(value => value.level === level) ?? null;
+  const authored = CAVE_LEVELS.find(value => value.level === level);
+  if (authored) return authored;
+  if (!Number.isInteger(level) || level < 4) return null;
+  const cached = generatedLevels.get(level);
+  if (cached) return cached;
+  const base = CAVE_LEVELS[2], scale = caveScale(level);
+  const generated = {
+    ...base,
+    level,
+    name: `DEEP CHAMBER ${level}`,
+    ambient: Math.max(0.015, Number((base.ambient * 0.9).toFixed(3))),
+    chests: [],
+    monsters: base.monsters.map(monster => ({
+      ...monster,
+      id: `${monster.id}-d${level}`,
+      hp: Math.round(monster.hp * scale),
+      damage: Math.min(40, Math.round(monster.damage * scale)),
+      speed: Math.min(110, Math.round(monster.speed * (1 + (scale - 1) * 0.25))),
+      reward: Math.min(20, Math.round(monster.reward * scale)),
+    })),
+  };
+  generatedLevels.set(level, generated);
+  return generated;
 }
 
 /** Walkable space is the union of chambers and passages, shrunk by the actor radius. */
