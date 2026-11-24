@@ -77,7 +77,9 @@ try {
 
   await send('Runtime.enable');
   await wait("document.getElementById('intro-google') && !document.getElementById('intro-google').disabled", 'configured Google button');
+  assert.equal(await evaluate("document.getElementById('character-dialog').open"), true, 'the intro starts in the native top layer');
   await evaluate("document.getElementById('intro-google').click()");
+  await wait("!document.getElementById('character-dialog').open", 'the native intro to yield the top layer');
   try {
     await wait("document.body.textContent.includes('Sign in') && !!document.querySelector('[data-clerk-component], .cl-modalBackdrop, .cl-rootBox')", 'Clerk sign-in dialog');
   } catch (error) {
@@ -87,7 +89,8 @@ try {
   assert.equal(await evaluate("document.getElementById('intro-auth-note').textContent.includes('did not complete')"), false);
   await evaluate("window.Clerk.closeSignIn()");
   await wait("!document.querySelector('.cl-modalBackdrop')", 'Clerk sign-in dialog to close');
-  console.log('Clerk browser smoke passed: the sign-in dialog opened and closed.');
+  await wait("document.getElementById('character-dialog').open", 'the character intro to return after sign-in cancellation');
+  console.log('Clerk browser smoke passed: the native intro yielded to Clerk and returned after cancellation.');
 } finally {
   socket?.close();
   await stop();

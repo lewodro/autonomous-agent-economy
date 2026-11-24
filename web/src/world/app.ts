@@ -75,6 +75,13 @@ const auth=createAuth(async()=>{
   if(!response.ok)throw new Error('Sign-in service unavailable');
   return await response.json() as {configured:boolean;publishable_key:string|null};
 });
+/** Native dialogs occupy the browser top layer, above Clerk's portal regardless of z-index. */
+async function signInAbove(source:HTMLDialogElement):Promise<boolean>{
+  const restore=source.open;
+  if(restore)source.close();
+  try{return await auth.signIn();}
+  finally{if(restore&&!source.open)source.showModal();}
+}
 function emit(event:WorldEvent):void {events.push(event);if(events.length>20)events.shift();}
 function persist():void {saveSettings({...settings,avatar:player.spriteId,appearance:player.appearance??null,position:player.position});savedProfileDirty=true;scheduleSavedProfile();}
 function updateDiscoverySummary():void {minimap.setSummary(`DISCOVERIES ${discoveries.size}/${DISCOVERY_SITES.length}`);}
@@ -743,7 +750,7 @@ function accountSection():void{
   if(farmSnapshot?.auth.configured){
     text('p','Sign in with Google or GitHub to link this temporary account and keep it on other devices.');
     const sign=document.createElement('button');sign.type='button';sign.className='primary';sign.textContent='Sign in and link this account';
-    sign.onclick=()=>{sign.disabled=true;void auth.signIn().then(async signed=>{if(signed){farmHud.notice('Signed in · your temporary farm progress was linked','good');await loadFarm();showAccount();}else sign.disabled=false;}).catch(error=>{sign.disabled=false;farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn');});};
+    sign.onclick=()=>{sign.disabled=true;void signInAbove(dialog).then(async signed=>{if(signed){farmHud.notice('Signed in · your temporary farm progress was linked','good');await loadFarm();showAccount();}else sign.disabled=false;}).catch(error=>{sign.disabled=false;farmHud.notice(error instanceof Error?error.message:'Sign-in failed','warn');});};
     content.append(sign);
   }else{
     text('p','Google sign-in is not enabled yet. Keep playing — this temporary account is already saved on this browser.');
@@ -1077,7 +1084,7 @@ $('intro-google').onclick=async()=>{
   if(!authConfigured){setIntroNote('Google sign-in is not configured on this deployment yet.','warn');return;}
   const button=$<HTMLButtonElement>('intro-google');button.disabled=true;setIntroNote('Opening Google sign-in…');
   try{
-    const signed=await auth.signIn();
+    const signed=await signInAbove(character);
     if(signed){savedProfileApplied=false;setIntroNote('Signed in. Loading your saved instance…','good');await loadFarm();}
     else setIntroNote('Sign-in did not complete. You can keep playing on your temporary account.','warn');
   }catch(error){setIntroNote(error instanceof Error?error.message:'Sign-in failed','warn');}

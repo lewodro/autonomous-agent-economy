@@ -210,10 +210,16 @@ export function createAuth(getConfig: () => Promise<{ configured: boolean; publi
       if (!clerk.user) {
         await new Promise<void>((resolve, reject) => {
           let settled = false;
+          let modalSeen = false;
           const finish = () => { if (settled) return; settled = true; unsubscribe(); clearInterval(poll); resolve(); };
           const fail = (error: unknown) => { if (settled) return; settled = true; unsubscribe(); clearInterval(poll); reject(error); };
           const unsubscribe = clerk.addListener(state => { if (state.user) finish(); });
-          const poll = setInterval(() => { if (clerk.user) finish(); }, 500);
+          const poll = setInterval(() => {
+            if (clerk.user) { finish(); return; }
+            const modalOpen = Boolean(document.querySelector('.cl-modalBackdrop'));
+            if (modalOpen) modalSeen = true;
+            else if (modalSeen) finish();
+          }, 100);
           try { clerk.openSignIn(); } catch (error) { fail(error); }
         });
       }
