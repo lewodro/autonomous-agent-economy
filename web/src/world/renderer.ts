@@ -66,13 +66,17 @@ function tintEnvelope(x:number,y:number):number {
  * coordinates, never chunk-local, so chunk seams cannot appear.
  */
 export function grassTone(x:number,y:number,tileSeed:number):number {
-  const authored=tileSeed%5;
   const soft=tintField(x,y)*4;
   const mix=tintEnvelope(x,y);
-  // A small per-tile nudge keeps the authored grain from snapping to whole
-  // tones, so its rectangles break into dithered pixel edges too.
-  const grain=(hashUnit(x>>5,y>>5,17)-0.5)*0.55;
-  return Math.max(0,Math.min(4,authored*(1-mix)+soft*mix+grain));
+  // The old rule snapped each tile to one of five authored tones near the
+  // plaza and only blended the smooth field in past ~760 units, which produced
+  // the high-contrast checkerboard band north of the Agent House. The authored
+  // grain is now a low-amplitude jitter and the field amplitude simply breathes
+  // with the envelope, so the same grass reads calm near the plaza and livelier
+  // farther out without any palette cutoff.
+  const amplitude=0.55+0.45*mix;
+  const grain=((tileSeed%5)-2)*0.16+(hashUnit(x>>5,y>>5,17)-0.5)*0.45;
+  return Math.max(0,Math.min(4,2+(soft-2)*amplitude+grain));
 }
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
