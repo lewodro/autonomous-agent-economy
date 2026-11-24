@@ -296,3 +296,32 @@ test('overworld grass keeps the authored plaza palette with cohesive outer tints
     assert.ok(colors.has(reference), `${reference} keeps the original plaza grass character`);
   }
 });
+
+test('outskirts grass tone varies gradually instead of in rectangular bands', async () => {
+  const { grassTone } = await import('../web/dist/world/renderer.js');
+  const toneAt = (x, y) => grassTone(x, y, Math.abs(Math.imul(x, 374761393) + Math.imul(y, 668265263)) >>> 0);
+  const probes = [];
+  for (let x = -1800; x <= 3600; x += 320) probes.push([x, -1400]);
+  for (let y = -2200; y <= 2500; y += 320) probes.push([2600, y]);
+  for (let x = -1500; x <= 1200; x += 320) probes.push([x, 2300]);
+  let worst = 0;
+  for (const [x, y] of probes) {
+    worst = Math.max(worst, Math.abs(toneAt(x + 32, y) - toneAt(x, y)), Math.abs(toneAt(x, y + 32) - toneAt(x, y)));
+  }
+  assert.ok(worst <= 1.5, `neighbouring tiles keep close tones (worst step ${worst.toFixed(2)})`);
+});
+
+test('the band north of the Agent House never returns to a high-contrast checkerboard', async () => {
+  const { grassTone } = await import('../web/dist/world/renderer.js');
+  const toneAt = (x, y) => grassTone(x, y, Math.abs(Math.imul(x, 374761393) + Math.imul(y, 668265263)) >>> 0);
+  let worst = 0, low = 9, high = -9;
+  for (let y = -400; y <= 100; y += 32) {
+    for (let x = 140; x <= 360; x += 32) {
+      const value = toneAt(x, y);
+      low = Math.min(low, value); high = Math.max(high, value);
+      worst = Math.max(worst, Math.abs(toneAt(x + 32, y) - value), Math.abs(toneAt(x, y + 32) - value));
+    }
+  }
+  assert.ok(worst <= 1.2, `neighbouring tiles stay close in tone (worst step ${worst.toFixed(2)})`);
+  assert.ok(high - low <= 2, `the whole band keeps a narrow tone range (spread ${(high - low).toFixed(2)})`);
+});

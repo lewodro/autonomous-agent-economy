@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, OUTER_TERRAIN_AREAS, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -61,14 +61,22 @@ function tintEnvelope(x:number,y:number):number {
   return clamp01(gate*(0.78+pulse*0.34));
 }
 /**
- * Blend the original per-tile tone (plaza character) toward the smooth field
- * (wilderness patches). All inputs are world coordinates, never chunk-local.
+ * Continuous 0..4 grass tone: the authored per-tile grain through the plaza,
+ * blending into the smooth tint field outside it. All inputs are world
+ * coordinates, never chunk-local, so chunk seams cannot appear.
  */
-function grassIndex(x:number,y:number,tileSeed:number):number {
-  const authored=tileSeed%5;
-  const soft=Math.round(tintField(x,y)*4);
+export function grassTone(x:number,y:number,tileSeed:number):number {
+  const soft=tintField(x,y)*4;
   const mix=tintEnvelope(x,y);
-  return Math.round(authored*(1-mix)+soft*mix);
+  // The old rule snapped each tile to one of five authored tones near the
+  // plaza and only blended the smooth field in past ~760 units, which produced
+  // the high-contrast checkerboard band north of the Agent House. The authored
+  // grain is now a low-amplitude jitter and the field amplitude simply breathes
+  // with the envelope, so the same grass reads calm near the plaza and livelier
+  // farther out without any palette cutoff.
+  const amplitude=0.55+0.45*mix;
+  const grain=((tileSeed%5)-2)*0.16+(hashUnit(x>>5,y>>5,17)-0.5)*0.45;
+  return Math.max(0,Math.min(4,2+(soft-2)*amplitude+grain));
 }
 export interface WorldFrame { actors:WorldActor[];camera:Position;nearby?:Interactable;time:number;resources?:WorldResource[];particles?:WorldParticle[];farmTiles?:FarmTile[];guide?:{target:Position;label:string}|null;moveTarget?:Position|null }
 export interface WorldRenderer {
@@ -140,10 +148,27 @@ export class CanvasWorldRenderer implements WorldRenderer {
       return (value^(value>>>16))>>>0;
     };
     /**
-     * Paint one biome patch. The authored central areas keep hard, stepped
-     * pixel edges; only the far-out rings feather into their surroundings so
-     * large regions never read as giant hard rectangles.
+     * Paint one biome patch. Every patch feathers into its surroundings with a
+     * noise-warped falloff, so no region reads as a giant hard rectangle.
      */
+    // Dithered two-tone fill: where the field sits between two tones the tile
+    // is split into pixel quadrants instead of snapping to one shade, so tone
+    // contours read as soft speckled edges rather than hard rectangular bands.
+    const paintGrass=(px:number,py:number,pw:number,ph:number,value:number,tones:string[])=>{
+      const low=Math.floor(value),frac=value-low;
+      if(frac<0.02||low>=tones.length-1){c.fillStyle=tones[low]!;c.fillRect(px,py,pw,ph);return;}
+      const halfW=Math.ceil(pw/2),halfH=Math.ceil(ph/2);
+      for(let qy=0;qy<2;qy++)for(let qx=0;qx<2;qx++){
+        const qx0=px+qx*halfW,qy0=py+qy*halfH;
+        const qw=Math.min(halfW,px+pw-qx0),qh=Math.min(halfH,py+ph-qy0);
+        if(qw<=0||qh<=0)continue;
+        // A little fine noise keeps the quadrants from forming a visible grid.
+        const jitter=(grassNoise(qx0,qy0,72,131)-0.5)*0.34;
+        const pick=Math.abs(frac+jitter)>0.5?low+1:low;
+        c.fillStyle=tones[Math.min(tones.length-1,pick)]!;
+        c.fillRect(qx0,qy0,qw,qh);
+      }
+    };
     const ground=(x:number,y:number,w:number,h:number,base:string,feather=0)=>{
       // The original authored five-tone grain is restored. The tint field only
       // decides which tone a tile takes, so the plaza keeps its familiar look.
@@ -156,14 +181,16 @@ export class CanvasWorldRenderer implements WorldRenderer {
         if(pw<=0||ph<=0)continue;
         const sample=hash(gx,gy);
         if(feather>0){
-          const edge=Math.max(0,Math.min(gx-x,x+w-(gx+32),gy-y,y+h-(gy+32)));
-          const t=clamp01(edge/feather);
+          // The falloff edge is warped by world-space noise, so a patch
+          // boundary is an irregular soft edge instead of a straight cutoff.
+          const edge=Math.min(gx-x,x+w-(gx+32),gy-y,y+h-(gy+32));
+          const warp=(grassNoise(gx,gy,96,97)-0.5)*feather*1.1;
+          const t=clamp01((edge+warp)/feather);
           const alpha=t*t*(3-2*t);
           if(alpha<=0){c.globalAlpha=1;continue;}
           c.globalAlpha=alpha;
         }
-        c.fillStyle=tones[grassIndex(gx,gy,sample)]!;
-        c.fillRect(px,py,pw,ph);
+        paintGrass(px,py,pw,ph,grassTone(gx,gy,sample),tones);
         if(pw>20&&ph>20){
           if(sample%7===0){c.fillStyle=blade;c.fillRect(px+5,py+9,2,5);c.fillRect(px+9,py+13,1,4);c.fillRect(px+13,py+8,2,3);}
           if(sample%13===0){c.fillStyle=speck;c.fillRect(px+22,py+18,2,2);c.fillRect(px+25,py+21,1,1);}
@@ -178,20 +205,20 @@ export class CanvasWorldRenderer implements WorldRenderer {
     const grassTones=['#2b4537','#2e493a','#30483c','#334d3e','#294334'];
     for(let y=MAP.minY+64;y<MAP.minY+MAP.height-40;y+=32)for(let x=MAP.minX+40;x<MAP.minX+MAP.width-40;x+=32){
       const sample=hash(x,y);
-      rect(x,y,32,32,grassTones[grassIndex(x,y,sample)]!);
+      paintGrass(x,y,32,32,grassTone(x,y,sample),grassTones);
       if(sample%6===0){rect(x+7,y+10,2,5,'#3f5c45');rect(x+11,y+14,1,4,'#3f5c45');}
       if(sample%10===0)rect(x+22,y+19,2,2,'#48654c');
       if(sample%47===0){rect(x+17,y+7,2,2,'#c9b76e');rect(x+20,y+9,1,1,'#b9a45f');}
     }
     // Large vegetation regions use stepped, overlapping pixel blocks. This
     // avoids the vector-like diagonal wedges created by arbitrary polygons.
-    const authoredCount=TERRAIN_AREAS.length-OUTER_TERRAIN_AREAS.length;
-    for(const [index,area] of TERRAIN_AREAS.entries()){
-      // Six tiles of falloff blur the outer biome seams without touching the
-      // plaza's original hard-edged, stepped pixel terrain.
-      ground(area.x,area.y,area.width,area.height,area.color,index<authoredCount?0:192);
+    for(const area of TERRAIN_AREAS){
+      // Every patch feathers, including the authored core: hard rectangular
+      // cutoffs were the last visible artifact of the biome rectangles. A wide,
+      // noise-warped falloff turns each one into an irregular soft patch.
+      ground(area.x,area.y,area.width,area.height,area.color,320);
     }
-    ground(1088,128,360,780,'#294b3a');ground(1160,220,350,780,'#294b3a');ground(1260,340,290,620,'#294b3a');
+    ground(1088,128,360,780,'#294b3a',320);ground(1160,220,350,780,'#294b3a',320);ground(1260,340,290,620,'#294b3a',320);
     for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
     // Widen the four city-to-loop junctions with a lighter gravel cap so the
     // connection reads as an intentional crossing rather than two path seams.
