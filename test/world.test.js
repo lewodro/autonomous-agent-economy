@@ -95,7 +95,7 @@ test('east road connects the plaza, Agency door, and botanical trail at walkable
   for(const [name,point] of Object.entries(EXPLORATION_PROBES))assert.equal(collides(point),false,`${name} browser probe must be walkable`);
 });
 test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
-  assert.equal(GROUND_DETAILS.length,170);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
+  assert.equal(GROUND_DETAILS.length,260);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
     {x:544,y:725,kind:'stone',tone:0},{x:-425,y:454,kind:'crack',tone:1},
   ]);
   assert.ok(PATHS.length>=20,'the west and south districts need connected streets');
@@ -122,7 +122,7 @@ test('procedural outer ring adds deterministic woodland, camps, caves and ruins'
     assert.equal(collides(site.position),false,`${site.label} must stay walkable`);
     assert.ok(LANDMARKS.some(landmark=>landmark.id===site.id),`${site.label} must be discoverable`);
   }
-  const outerCamps=CAMPFIRES.filter(fire=>fire.y<WORLD_BOUNDS.minY+300||fire.y>WORLD_BOUNDS.maxY-300||fire.x<WORLD_BOUNDS.minX+300||fire.x>WORLD_BOUNDS.maxX-300);
+  const outerCamps=CAMPFIRES.filter(fire=>fire.x<CORE_BOUNDS.minX||fire.x>CORE_BOUNDS.maxX||fire.y<CORE_BOUNDS.minY||fire.y>CORE_BOUNDS.maxY);
   assert.ok(outerCamps.length>=6,'outer camps provide rest points beyond the old edge');
 });
 test('all plaza interactions remain reachable from the visitor spawn',()=>{
@@ -145,8 +145,8 @@ test('camera remains inside the map',()=>{
   assert.deepEqual(followCamera({x:0,y:0},{x:9999,y:9999},600,400,100),{x:MAP.minX+MAP.width-600,y:MAP.minY+MAP.height-400});
 });
 test('the old edge is now walkable in all four directions while the new edge blocks',()=>{
-  assert.equal(MAP.width*MAP.height,4800*3456);
-  assert.ok(MAP.width*MAP.height>4*1792*1152,'the outer ring grows the walkable world');
+  assert.equal(MAP.width*MAP.height,6300*5500);
+  assert.ok(MAP.width*MAP.height>2*4800*3456,'the expanded world roughly doubles the old walkable area');
   for(const point of [{x:-200,y:600},{x:2020,y:600},{x:600,y:-200},{x:600,y:1400}])assert.equal(collides(point),false,`extension ${JSON.stringify(point)} should be walkable`);
   for(const point of [{x:WORLD_BOUNDS.minX-1,y:600},{x:WORLD_BOUNDS.maxX+1,y:600},{x:600,y:WORLD_BOUNDS.minY-1},{x:600,y:WORLD_BOUNDS.maxY+1}])assert.equal(collides(point),true,'the new edge should block movement');
 });
@@ -251,8 +251,11 @@ test('arena gateway derives relative room routes and rejects invalid game/slot c
  for(const room of [{game:'rps',id:'ttt-1'},{game:'tictactoe',id:'../secret'},{game:'chess',id:'rps-1'}])assert.throws(()=>gateway.watchMatch(room),/Unsupported/);
 });
 
-test('remote wilderness districts add destinations without enlarging the canvas', () => {
-  const remote = ['shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove'];
+test('remote wilderness districts span the doubled map without one oversized canvas', () => {
+  const remote = [
+    'shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove',
+    'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch',
+  ];
   for (const id of remote) {
     const site = EXPLORATION_SITES.find(value => value.id === id);
     assert.ok(site, `${id} exists`);
@@ -261,7 +264,8 @@ test('remote wilderness districts add destinations without enlarging the canvas'
     assert.ok(PATHS.some(path => site.position.x >= path.x - site.radius && site.position.x <= path.x + path.width + site.radius
       && site.position.y >= path.y - site.radius && site.position.y <= path.y + path.height + site.radius), `${id} has a connecting trail`);
   }
-  assert.equal(MAP.width * MAP.height, 4800 * 3456, 'the static world canvas stays under the mobile Safari ceiling');
+  assert.equal(MAP.width * MAP.height, 6300 * 5500, 'the expanded world area is intentional');
+  assert.ok(MAP.width * MAP.height > 2 * 4800 * 3456, 'the expansion roughly doubles the old area');
 });
 
 test('outer loop pushes toward the map edges and every landmark keeps a connecting trail', () => {
@@ -274,5 +278,21 @@ test('outer loop pushes toward the map edges and every landmark keeps a connecti
   for (const site of EXPLORATION_SITES) {
     assert.ok(PATHS.some(path => site.position.x >= path.x - site.radius && site.position.x <= path.x + path.width + site.radius
       && site.position.y >= path.y - site.radius && site.position.y <= path.y + path.height + site.radius), `${site.id} must connect to the trail network`);
+  }
+});
+
+test('overworld grass keeps the authored plaza palette with cohesive outer tints', () => {
+  const rgb = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+  const colors = new Set(TERRAIN_AREAS.map(area => area.color));
+  assert.ok(colors.size >= 6, 'the authored and wilderness patches still use several close greens');
+  for (const area of TERRAIN_AREAS) {
+    const [red, green, blue] = rgb(area.color);
+    assert.ok(green > red + 8 && green >= blue - 4, `${area.color} reads as grass, not grey tundra`);
+    assert.ok(Math.max(red, green, blue) <= 110 && Math.min(red, green, blue) >= 35, `${area.color} stays in the authored grass range`);
+  }
+  // The original hand-authored central colours are the plaza reference and
+  // must survive the renderer's broader world-space tint field.
+  for (const reference of ['#34513f', '#355240', '#35513e', '#2d4c39', '#3d6047']) {
+    assert.ok(colors.has(reference), `${reference} keeps the original plaza grass character`);
   }
 });

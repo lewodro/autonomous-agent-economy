@@ -865,3 +865,35 @@
   .cave-health__bar i{transition:none}
 }
 .cave-entry-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.snow-page{min-height:100vh;margin:0;background:#111d23;color:#e6f1f5;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.snow-shell{width:min(720px,calc(100% - 20px));margin:0 auto;padding:14px 0 32px}
+.snow-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #35505c}
+.snow-brand{color:#dff4ff!important;font-size:10px;letter-spacing:.16em;text-decoration:none}
+.snow-depth{padding:3px 7px;border:1px solid #6f93a2;background:#162832;color:#cfeaf3;font-size:9px;letter-spacing:.12em}
+.snow-stage{position:relative;border:2px solid #4a6672;background:#13242c;box-shadow:5px 5px 0 #091318;overflow:hidden}
+#snow-canvas{display:block;width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;touch-action:none}
+.snow-toast{position:absolute;left:50%;top:14px;z-index:2;transform:translateX(-50%);width:min(92%,520px);padding:8px 10px;border:2px solid #a9c6d4;background:#12242df2;color:#e6f6fb;font-size:9px;line-height:1.55;letter-spacing:.05em;text-align:center}
+.snow-toast[hidden]{display:none}
+.snow-hud{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:6px 0;border-top:1px solid #2b4652;border-bottom:1px solid #2b4652;font-size:9px;letter-spacing:.1em}
+.snow-hud__left{display:flex;flex-direction:column;gap:3px;color:#bcd9e3}
+.snow-hud__right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;color:#f0cf75;text-align:right}
+.snow-return{color:#dff4ff!important;font-size:8px;letter-spacing:.1em;text-decoration:underline}
+.snow-hint{margin:10px 0;color:#9fb8c1;font-size:9px;line-height:1.5;letter-spacing:.06em;text-align:center}
+.snow-controls{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:56px}
+.snow-joystick{position:relative;width:72px;height:72px;flex:none;border:2px solid #6f93a2;border-radius:50%;background:#172a33;box-shadow:2px 2px 0 #091318;touch-action:none}
+.snow-joystick span{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border:2px solid #b7d9e5;border-radius:50%;background:#294753}
+.snow-action{min-width:132px;min-height:44px;padding:12px 14px;border:2px solid #a9c6d4;background:#213d49;color:#e6f6fb;font-size:10px;letter-spacing:.1em;touch-action:manipulation}
+.snow-action:hover{background:#2a4d5b;border-color:#dff4ff}
+@media (min-width:601px){
+  .snow-joystick,.snow-action{display:none}
+  .snow-controls{justify-content:center;min-height:0;margin-top:6px}
+  .snow-hint{margin:8px 0 0}
+}
+@media(max-width:600px){
+  .snow-shell{padding:10px 0 26px}
+  .snow-brand{font-size:9px}
+  #snow-canvas{min-height:220px}
+  .snow-hud{flex-wrap:wrap;gap:6px 10px;font-size:8px}
+  .snow-hud__right{flex-basis:100%;align-items:flex-start;text-align:left}
+  .snow-hint{font-size:8px;margin:8px 0}
+}

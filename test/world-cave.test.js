@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CaveService } from '../service/world-cave.js';
-import { CAVE_LEVELS, CAVE_RESET_MS, CAVE_MAX_HP, CAVE_WEAPONS, caveLevel, isCaveWalkable, publicCaveLayout } from '../service/cave-layout.js';
+import { CAVE_LEVELS, CAVE_RESET_MS, CAVE_MAX_HP, CAVE_WEAPONS, caveLevel, caveScale, isCaveWalkable, publicCaveLayout } from '../service/cave-layout.js';
 
 const exterior = { x: -700, y: -736 };
 const credential = { farmIdentity: { key: 'guest:visitor-a', provider: 'guest' }, economyOwner: 'visitor-a' };
@@ -241,7 +241,9 @@ test('one authoritative run can clear all three floors through combat and cave-o
   await clearFloor();
   assert.equal(state.status, 'playing');
   assert.equal(service.view(state).cleared, true);
-  assert.equal(service.view(state).can_descend, false);
+  assert.equal(service.view(state).can_descend, true, 'the authored deep floor now opens into endless depths');
+  assert.equal((await descend()).level, 4, 'the run continues past floor three');
+  assert.equal(state.player.hp > 0, true);
 });
 
 test('monsters chase, attack using server-owned damage and reset when the visitor escapes', async () => {
@@ -387,4 +389,70 @@ test('descending uses the shared interaction reach and deeper floors are reachab
   const third = await service.descend('visitor-a', { run_id: run.run_id });
   assert.equal(third.level, 3);
   assert.equal(third.monsters.length, 6, 'the deepest floor has its stronger roster');
+});
+
+
+test('depth scaling flattens after floor three and again after floor five', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 10].map(caveScale), [1, 1.1, 1.2, 1.25, 1.3, 1.33, 1.36, 1.45]);
+  assert.ok(Number((caveScale(4) - caveScale(3)).toFixed(2)) <= 0.05);
+  assert.ok(Number((caveScale(6) - caveScale(5)).toFixed(2)) <= 0.03);
+});
+
+test('generated floors scale both monster health and damage without duplicate spawns', () => {
+  const authored = caveLevel(3);
+  const seen = new Set();
+  for (const level of [4, 5, 6, 8]) {
+    const config = caveLevel(level);
+    assert.ok(config, `floor ${level} exists`);
+    assert.equal(config.name, `DEEP CHAMBER ${level}`);
+    assert.ok(config.ambient <= authored.ambient, 'deeper floors stay darker');
+    assert.ok(config.descent, 'every generated floor has a further passage');
+    const ids = config.monsters.map(monster => monster.id);
+    assert.equal(new Set(ids).size, ids.length, 'no duplicate monster IDs');
+    for (const id of ids) assert.equal(seen.has(id), false, `${id} is unique across depths`);
+    ids.forEach(id => seen.add(id));
+    for (const monster of config.monsters) {
+      assert.ok(monster.hp > (authored.monsters.find(base => base.kind === monster.kind)?.hp ?? 0), 'health scales up');
+      assert.ok(monster.damage > (authored.monsters.find(base => base.kind === monster.kind)?.damage ?? 0), 'damage scales up');
+      assert.ok(monster.reward <= 20, 'rewards stay within the existing ledger cap');
+      assert.equal(isCaveWalkable(level, monster), true, 'generated monsters stay out of walls');
+    }
+  }
+});
+
+test('a run can descend through endless generated floors and receives their layout', async () => {
+  const { service, tick } = serviceAt();
+  await start(service);
+  const state = service.runs.get('visitor-a');
+  for (let floor = 1; floor <= 8; floor++) {
+    const config = caveLevel(floor);
+    state.kills = config.required;
+    state.player.x = config.descent.x; state.player.y = config.descent.y;
+    const view = service.view(state);
+    assert.equal(view.level, floor);
+    assert.ok(view.level_layout, `floor ${floor} publishes its layout to the client`);
+    assert.equal(view.level_layout.level, floor);
+    if (floor === 8) break;
+    const next = await service.descend('visitor-a', { run_id: state.id });
+    assert.equal(next.level, floor + 1);
+    assert.equal(next.level_name, floor + 1 <= 3 ? caveLevel(floor + 1).name : `DEEP CHAMBER ${floor + 1}`);
+    assert.equal(next.kills, 0);
+  }
+  const floorEight = caveLevel(8);
+  assert.ok(Number(floorEight.monsters[0].hp) > Number(caveLevel(4).monsters[0].hp), 'floor 8 is harder than floor 4');
+});
+
+test('generated floor monsters respawn after the existing reset interval', async () => {
+  const { service, tick } = serviceAt({ resetMs: 60_000 });
+  const first = await start(service);
+  const state = service.runs.get('visitor-a');
+  state.kills = caveLevel(1).required;
+  state.player.x = caveLevel(1).descent.x; state.player.y = caveLevel(1).descent.y;
+  await service.descend('visitor-a', { run_id: first.run.run_id });
+  state.monsters[0].alive = false;
+  tick(CAVE_RESET_MS + 1);
+  const reset = await start(service);
+  assert.equal(reset.resumed, false);
+  assert.equal(reset.run.level, 1, 'a fully lapsed run restarts at the entrance');
+  assert.equal(reset.run.monsters.every(monster => monster.alive), true);
 });

@@ -34,11 +34,12 @@ test('exploration sites and seeded camps form one deterministic discovery list',
   }
 });
 
-test('cave, ruin, shrine and camp prompts describe real contextual actions', () => {
+test('cave, ruin, shrine, pass and camp prompts describe real contextual actions', () => {
   const prompts = new Map(LANDMARKS.filter(landmark => landmark.prompt).map(landmark => [landmark.id, landmark.prompt]));
   assert.equal(prompts.get('cave-north'), 'Enter cave');
   assert.equal(prompts.get('mossy-ruin'), 'Inspect ruins');
   assert.equal(prompts.get('sunken-shrine'), 'Visit shrine');
+  assert.equal(prompts.get('frostgate-pass'), 'Cross the pass');
   assert.equal(prompts.get('camp-west-1'), 'Rest at camp');
 });
 
@@ -57,11 +58,11 @@ test('discoveries persist per browser and ignore stale or duplicate ids', () => 
 
 test('discovery journal groups stay compact and counts follow interactions', () => {
   const none = discoveryGroups(new Set());
-  assert.deepEqual(none.map(group => group.label), ['CAVES', 'RUINS', 'SHRINES', 'CAMPS']);
-  assert.deepEqual(none.map(group => group.total), [DISCOVERY_SITES.filter(site => site.kind === 'cave').length, DISCOVERY_SITES.filter(site => site.kind === 'ruin').length, DISCOVERY_SITES.filter(site => site.kind === 'shrine').length, DISCOVERY_SITES.filter(site => site.kind === 'camp').length]);
-  assert.deepEqual(none.map(group => group.discoveredCount), [0, 0, 0, 0]);
+  assert.deepEqual(none.map(group => group.label), ['CAVES', 'RUINS', 'SHRINES', 'PASSES', 'CAMPS']);
+  assert.deepEqual(none.map(group => group.total), ['cave', 'ruin', 'shrine', 'pass', 'camp'].map(kind => DISCOVERY_SITES.filter(site => site.kind === kind).length));
+  assert.deepEqual(none.map(group => group.discoveredCount), [0, 0, 0, 0, 0]);
   const some = discoveryGroups(new Set(['cave-north', 'cave-east', 'mossy-ruin', 'camp-west-1']));
-  assert.deepEqual(some.map(group => group.discoveredCount), [2, 1, 0, 1]);
+  assert.deepEqual(some.map(group => group.discoveredCount), [2, 1, 0, 0, 1]);
   assert.equal(some[0].entries.find(entry => entry.id === 'cave-north')?.discovered, true);
   assert.equal(some[0].entries.find(entry => entry.id === 'cave-south')?.discovered, false);
 });
@@ -72,6 +73,8 @@ test('region feedback uses the actual outer ring geography', () => {
   assert.equal(regionAt({ x: -1400, y: 500 }), 'west');
   assert.equal(regionAt({ x: 3000, y: 500 }), 'east');
   assert.equal(regionAt({ x: 500, y: -1000 }), 'north');
+  assert.equal(regionAt({ x: 576, y: -2320 }), 'frostline');
+  assert.equal(regionLabel({ x: 576, y: -2320 }), 'FROSTLINE PASS');
   assert.equal(regionAt({ x: 500, y: 2100 }), 'south');
   assert.equal(regionLabel({ x: 3000, y: 500 }), 'EAST INDUSTRIAL');
 });
@@ -96,7 +99,7 @@ test('compact minimap keeps public location names visible', () => {
 });
 
 test('minimap keeps the expanded loop and its remote trails in projection', () => {
-  assert.equal(MINIMAP_TRAILS.length, 5);
+  assert.equal(MINIMAP_TRAILS.length, 9);
   for (const trail of MINIMAP_TRAILS) {
     assert.ok(trail.from.x === OUTER_LOOP.left || trail.from.x === OUTER_LOOP.right
       || trail.from.y === OUTER_LOOP.top || trail.from.y === OUTER_LOOP.bottom, 'a remote trail starts on the loop');

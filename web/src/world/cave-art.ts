@@ -271,7 +271,8 @@ const CLUSTER_KINDS = ['stones', 'crack', 'rubble', 'bones', 'crystal', 'moss', 
 
 /** Paints floors, rough walls and clustered props. Monsters and torches stay dynamic. */
 export function paintCaveFloor(c: CanvasRenderingContext2D, layout: CaveFloorLayout): void {
-  const pal = CAVE_PALETTES[layout.level] ?? CAVE_PALETTES[1]!;
+  // Generated depths keep the deepest palette instead of falling back to the bright entrance.
+  const pal = CAVE_PALETTES[Math.min(layout.level, 3)] ?? CAVE_PALETTES[3]!;
   rect(c, layout.bounds.x, layout.bounds.y, layout.bounds.width, layout.bounds.height, pal.rock);
   for (let index = 0; index < layout.rooms.length; index++) {
     const room = layout.rooms[index]!;

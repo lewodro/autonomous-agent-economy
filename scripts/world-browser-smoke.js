@@ -279,8 +279,18 @@ try{
  assert.ok(Array.isArray(publicBoard.live)&&Array.isArray(publicBoard.recent),'the Arena board reads the public duel list');
  assert.ok(Array.isArray(publicBoard.recent),'completed shared duels use the public recent list');
  assert.equal(publicBoard.live.some(duel=>JSON.stringify(duel).includes('visitorId')),false,'public duels never expose visitor sessions');
- const visibleRecent=publicBoard.recent.filter(duel=>duel.status!=='expired').length;
- await wait(`document.querySelectorAll('#recent-list .recent-row__tag[data-source=\\"human\\"]').length>=${visibleRecent}`,10000);
+ await wait(`Promise.all([
+   fetch('/api/world/duels').then(r=>r.json()),
+   fetch('/api/arena/history').then(r=>r.json()),
+ ]).then(([duels,history])=>{
+   const rows=[
+     ...duels.recent.filter(d=>d.status!=='expired').map(d=>({stamp:d.finished_at||d.created_at,human:true})),
+     ...history.matches.map(m=>({stamp:m.completedAt,human:false})),
+   ].sort((a,b)=>String(b.stamp).localeCompare(String(a.stamp))).slice(0,8);
+   const expected=rows.filter(row=>row.human).length;
+   const actual=document.querySelectorAll('#recent-list .recent-row__tag[data-source="human"]').length;
+   return actual===expected;
+ })`,10000);
  await wait('document.querySelectorAll("#live-matches .live-match").length>0||!document.getElementById("live-empty").hidden');
  assert.ok(await evaluate('document.querySelector("#live-matches .live-match")?document.querySelectorAll("#live-matches .live-match__watch").length>0:document.getElementById("live-empty").textContent.includes("NO LIVE HUMAN DUELS")'),'live rows expose a WATCH link or the honest empty state');
  assert.ok(await evaluate('document.querySelector(".survival-map-key")&&document.getElementById("agents")&&document.getElementById("rooms-view")'),'tactical map must retain the existing room and agent sections');
@@ -292,7 +302,30 @@ try{
  assert.ok(await evaluate('getComputedStyle(document.querySelector(".room-card img")).imageRendering==="pixelated"'),'agent sprites must stay pixel-crisp');
  await wait('!document.getElementById("survival-view").hidden&&document.getElementById("survival-overlay").hidden&&document.getElementById("survival-status").textContent.includes("LIVE")');
  await wait("fetch('/api/survival/current').then(r=>r.json()).then(s=>s.agents.length===20&&s.events.some(e=>e.type==='AttackLanded'))");
- await evaluate("fetch('/api/survival/current').then(r=>r.json()).then(s=>{const a=s.agents[0],c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height),x=r.left+(r.width-s.map.width*scale)/2+a.x*scale,y=r.top+(r.height-s.map.height*scale)/2+a.y*scale;c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}))})");
+ // Agents are interpolated between snapshots, so a click at raw snapshot
+ // coordinates can miss. Sweep a small offset grid around real agents to
+ // exercise the actual tactical-map hit test deterministically.
+ await evaluate(`fetch('/api/survival/current').then(r=>r.json()).then(s=>{
+  const c=document.getElementById('survival-field'),r=c.getBoundingClientRect(),scale=Math.min(r.width/s.map.width,r.height/s.map.height);
+  const offsets=[0,-10,10,-20,20,-30,30];
+  for(const a of s.agents){
+   if(a.status==='eliminated'||a.status==='spectating')continue;
+   for(const dx of offsets)for(const dy of offsets){
+    const cx=r.left+(r.width-s.map.width*scale)/2+(a.x+dx)*scale;
+    const cy=r.top+(r.height-s.map.height*scale)/2+(a.y+dy)*scale;
+    c.dispatchEvent(new PointerEvent('pointerdown',{clientX:cx,clientY:cy,bubbles:true}));
+    if(document.getElementById('survival-inspector-body').textContent.includes('HP:'))return;
+   }
+  }
+  // Fallback: sweep the visible map in case interpolation drifted an agent
+  // further than the sampled offsets.
+  if(!document.getElementById('survival-inspector-body').textContent.includes('HP:')){
+   for(let y=r.top+4;y<r.bottom-4;y+=10)for(let x=r.left+4;x<r.right-4;x+=10){
+    c.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,clientY:y,bubbles:true}));
+    if(document.getElementById('survival-inspector-body').textContent.includes('HP:'))return;
+   }
+  }
+ })`);
  await wait('document.getElementById("survival-inspector-title").textContent.length>0&&document.getElementById("survival-inspector-body").textContent.includes("HP:")');
  assert.ok(await evaluate('document.getElementById("survival-inspector-body").textContent.includes("Strategy:")'),'Survival inspection must use server-authoritative agent state');
  await wait('document.querySelectorAll("#survival-roster .roster-chip").length>=2');
@@ -351,7 +384,7 @@ try{
  await wait('location.pathname==="/arena"&&document.querySelectorAll(".room-card").length===4');
  assert.equal(await evaluate("document.querySelector('a[href=\"/world?return=arena\"]')?.getAttribute('href')"),'/world?return=arena');
  await evaluate("localStorage.setItem('agent-world-settings-v1',JSON.stringify({version:1,avatar:'visitor_ember',position:{x:928,y:674},muted:true}))");
- await send('Page.navigate',{url:base+'/world?return=arena'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog").open');
+ await send('Page.navigate',{url:base+'/world?return=arena'});await wait('location.pathname==="/world"&&document.getElementById("character-dialog")?.open===true');
  assert.ok(await evaluate("document.querySelector('#character-dialog h2')?.textContent.includes('Step into the live world')"),'a returning visitor still sees the intro');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open&&document.activeElement?.id==="world-canvas"');
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
@@ -466,6 +499,7 @@ try{
  // Generated cave mouths are ordinary interaction zones on the outer loop.
  await teleportProbe('caveNorth',-700,OUTER_LOOP.top,'north-cave');
  await wait("!document.getElementById('interact').disabled");
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).region==='NORTH OUTCROP'");
  const caveStart=await evaluate("JSON.parse(document.querySelector('#world-lab pre').textContent)");
  assert.equal(caveStart.discovered.includes('cave-north'),false,'approaching a cave must not discover it passively');
  assert.equal(caveStart.minimap.outer,0,'undiscovered landmarks stay off the minimap');
@@ -553,9 +587,7 @@ try{
  await delay(80);
  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
  await wait("location.pathname==='/world'",10000);
- await wait('document.getElementById("character-dialog").open');
- await evaluate('document.getElementById("enter-world").click()');
- await wait('!document.getElementById("character-dialog").open');
+ await wait("!document.getElementById('character-dialog')?.open&&document.activeElement?.id==='world-canvas'",10000);
  const caveReturn=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
  assert.ok(Math.hypot(caveReturn.x-caveExterior.x,caveReturn.y-caveExterior.y)<1,'a normal cave exit returns to the exact saved exterior position');
  // Return to the lab view for the remaining deterministic movement probes.
@@ -574,9 +606,9 @@ try{
  await evaluate("document.getElementById('minimap-journal').click()");
  await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DISCOVERIES'");
  const journalText=await evaluate("document.getElementById('interaction-content').textContent");
- assert.ok(journalText.includes('CAVES')&&journalText.includes('Northern cave')&&journalText.includes('???')&&journalText.includes('CAMPS'),'discovery journal must group found and unknown landmarks');
+ assert.ok(journalText.includes('CAVES')&&journalText.includes('Northern cave')&&journalText.includes('???')&&journalText.includes('PASSES')&&journalText.includes('CAMPS'),'discovery journal must group found and unknown landmarks');
  assert.ok(journalText.includes('saved in this browser only'),'the visitor-local persistence limitation must be documented in the journal');
- assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===4&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/5'"),'journal keeps one compact group per landmark kind');
+ assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===5&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/5'"),'journal keeps one compact group per landmark kind');
  await screenshot('discovery-journal');
  await evaluate("document.getElementById('interaction-close').click()");
  await wait("!document.getElementById('interaction-dialog').open");
@@ -602,6 +634,49 @@ try{
  await delay(80);
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:-108,y:430},direction:'right',animation_state:'walk'})}).then(r=>r.status)"),200,'second visitor moves beyond the former west boundary');
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200);
+ // The far-north pass is a real threshold: it records a discovery, then opens
+ // a separate snow destination with its own landmarks and return path.
+ await teleportProbe('frostgate',576,-2320,'frostgate-pass');
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).region==='FROSTLINE PASS'");
+ await wait("document.getElementById('world-hint').textContent.includes('CROSS THE PASS')");
+ await evaluate("document.getElementById('interact').click()");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='FROSTGATE PASS'&&document.getElementById('interaction-content').textContent.includes('CROSS THE PASS')");
+ await evaluate("[...document.querySelectorAll('#interaction-content button')].find(button=>button.textContent==='CROSS THE PASS').click()");
+ await wait("location.pathname==='/snow'",10000);
+ await wait("document.body.dataset.snowReady==='1'",10000);
+ assert.equal(await evaluate('document.getElementById("snow-canvas").width'),480,'the snow destination keeps a bounded pixel canvas');
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 0 / 3','snow landmarks start unrecorded');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.snow"),'frostgate');
+ assert.ok(await evaluate("document.getElementById('snow-canvas').dataset.appearance.length>0"),'the snow destination keeps the saved visitor appearance');
+ // Walk north to the watch beacon and inspect it with the same E interaction.
+ await evaluate("document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}))");
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='watch-beacon'",10000);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}))");
+ await evaluate("document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+ await delay(80);
+ await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('watch-beacon')");
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 1 / 3','snow landmark counts update after inspection');
+ await screenshot('snow-destination');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+ await delay(220);
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=390'),'the snow destination must fit a 390px viewport');
+ assert.ok(await evaluate('(()=>{const c=document.getElementById("snow-canvas").getBoundingClientRect(),a=document.getElementById("snow-action").getBoundingClientRect();return c.width>0&&a.width>=44&&a.height>=44&&a.right<=390})()'),'snow touch controls stay usable at 390px');
+ assert.notEqual(await evaluate("getComputedStyle(document.getElementById('snow-joystick')).display"),'none','the snow destination keeps its joystick on touch sizes');
+ await screenshot('snow-mobile');
+ await send('Emulation.setTouchEmulationEnabled',{enabled:false});
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ await evaluate("document.getElementById('snow-return').click()");
+ await wait("location.pathname==='/world'",10000);
+ await wait('document.getElementById("character-dialog").open');
+ await evaluate('document.getElementById("enter-world").click()');
+ await wait('!document.getElementById("character-dialog").open');
+ const passReturn=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+ assert.ok(Math.hypot(passReturn.x-576,passReturn.y-(-2320))<1,'returning from the snow restores the Frostgate position');
+ await send('Page.navigate',{url:base+'/labs/world'});
+ await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  // The lab teleport intentionally bypasses movement rules. Rejoin from the
  // persisted location before testing client movement against server speed limits.
  const releasedPresence=await evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");assert.equal(releasedPresence,200,'test player should leave cleanly before reconnecting at its teleported lab position');

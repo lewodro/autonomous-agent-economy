@@ -20,6 +20,14 @@ export const RESOURCE_NODES=Object.freeze([
   {id:'ore-perimeter-1',kind:'ore',variant:'crystal',zone:'remote_perimeter',rarity:'very_rare',position:{x:-800,y:-450},spawn_pool:[{x:-800,y:-450},{x:-800,y:-370}],reward:7,respawn_ms:20*60_000},
   {id:'ore-northwest-1',kind:'ore',variant:'silver',zone:'northwest_outcrop',rarity:'uncommon',position:{x:-490,y:210},spawn_pool:[{x:-490,y:210},{x:-420,y:170}],reward:3,respawn_ms:17*60_000},
   {id:'ore-east-2',kind:'ore',variant:'obsidian',zone:'east_outcrop',rarity:'rare',position:{x:2080,y:820},spawn_pool:[{x:2080,y:820},{x:2040,y:760}],reward:5,respawn_ms:19*60_000},
+  // Sparse expedition nodes in the doubled outer ring. Long respawns keep the
+  // opportunity rate low while the larger rewards make the walk worthwhile.
+  {id:'ore-north-remote',kind:'ore',variant:'silver',zone:'frostline_outcrop',rarity:'rare',position:{x:330,y:-2060},spawn_pool:[{x:330,y:-2060},{x:250,y:-2140}],reward:8,respawn_ms:32*60_000},
+  {id:'ore-west-remote',kind:'ore',variant:'gold',zone:'far_west_rocks',rarity:'rare',position:{x:-1960,y:700},spawn_pool:[{x:-1960,y:700},{x:-1880,y:760}],reward:9,respawn_ms:34*60_000},
+  {id:'ore-east-remote',kind:'ore',variant:'crystal',zone:'far_east_ridge',rarity:'very_rare',position:{x:3820,y:1200},spawn_pool:[{x:3820,y:1200},{x:3740,y:1140}],reward:12,respawn_ms:42*60_000},
+  {id:'herb-north-remote',kind:'herb',zone:'frostline_meadow',rarity:'common',position:{x:-420,y:-2280},spawn_pool:[{x:-420,y:-2280},{x:-500,y:-2210}],reward:3,respawn_ms:30*60_000},
+  {id:'herb-west-remote',kind:'herb',zone:'far_west_meadow',rarity:'common',position:{x:-1930,y:1650},spawn_pool:[{x:-1930,y:1650},{x:-1850,y:1590}],reward:3,respawn_ms:33*60_000},
+  {id:'herb-south-remote',kind:'herb',zone:'far_south_meadow',rarity:'common',position:{x:3300,y:2480},spawn_pool:[{x:3300,y:2480},{x:3220,y:2540}],reward:4,respawn_ms:36*60_000},
 ]);
 
 function initialNodeState(index,now){return{generation:0,availableAt:index<INITIAL_AVAILABLE?0:now+(index-(INITIAL_AVAILABLE-1))*INITIAL_STAGGER_MS};}

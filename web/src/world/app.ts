@@ -31,8 +31,8 @@ const navigation=performance.getEntriesByType('navigation')[0] as PerformanceNav
 let referrerPath='';
 try{referrerPath=document.referrer?new URL(document.referrer,location.href).pathname:'';}catch{}
 const returnTarget=new URLSearchParams(location.search).get('return');
-const venueReturns=new Set(['arena','treasury','compound','duel','cave']);
-const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound','/duel','/cave'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
+const venueReturns=new Set(['arena','treasury','compound','duel','cave','snow']);
+const returningFromVenue=venueReturns.has(returnTarget??'')||['/arena','/treasury','/compound','/duel','/cave','/snow'].some(path=>referrerPath===path||referrerPath.startsWith(path+'/'));
 if(!returningFromVenue&&navigation?.type!=='reload'&&!['/world','/labs/world'].includes(referrerPath)){settings.position={...MAP.spawn};saveSettings(settings);}
 const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.position,facing:'down',movementState:'idle',spriteId:settings.avatar,appearance:settings.appearance,activity:'Exploring',recentWinner:false};
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas,{holdDelayMs:QUICK_CHAT_HOLD_MS,onHold:openQuickChat,onHoldEnd:closeQuickChatFromHold}),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
@@ -123,7 +123,7 @@ function recordDiscovery(id:string):void {
 }
 function showDiscoveries():void {
   show('DISCOVERIES');
-  text('p',`${discoveries.size} of ${DISCOVERY_SITES.length} landmarks recorded. Interact with caves, ruins, shrines and camps to add them to this journal and the minimap.`);
+  text('p',`${discoveries.size} of ${DISCOVERY_SITES.length} landmarks recorded. Interact with caves, ruins, shrines, passes and camps to add them to this journal and the minimap.`);
   const grid=document.createElement('div');grid.className='discovery-groups';content.append(grid);
   for(const group of discoveryGroups(discoveries)){
     const section=document.createElement('section');section.className='discovery-group';
@@ -926,10 +926,23 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
         actions.append(enter,cancel);
         return;
       }
+      if(site.kind==='pass'){
+        const version=show('FROSTGATE PASS');
+        text('p',site.description);
+        text('p',site.discovery);
+        text('p','The trail beyond the arch leaves the overworld and opens onto the northern snowfield. Your world position is saved before you cross.');
+        const actions=document.createElement('div');actions.className='cave-entry-actions';content.append(actions);
+        const enter=document.createElement('button');enter.type='button';enter.className='primary';enter.textContent='CROSS THE PASS';
+        enter.onclick=()=>{persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/snow'),reducedMotion?0:220);};
+        const cancel=document.createElement('button');cancel.type='button';cancel.textContent='NOT YET';
+        cancel.onclick=()=>{if(dialog.open&&version===interactionVersion)dialog.close();};
+        actions.append(enter,cancel);
+        return;
+      }
       show(site.label);
       text('p',site.description);
       text('p',site.discovery);
-      text('p','Follow the outer loop to find the other caves and stone markers.');
+      text('p','Follow the outer loop to find the other caves, shrines and the northern pass.');
       return;
     }
     const camp=CAMP_SITES.find(value=>value.id===target.id);
@@ -1318,7 +1331,13 @@ if(!entered){entered=true;try{sessionStorage.setItem('agent-world-entered','1');
 // has finished. Wait for it so the character card does not cover the animation;
 // if the loader is missing or reduced motion is enabled, open immediately.
 void setupCharacterCreator();canvas.focus();
-void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(()=>openIntro(),()=>openIntro());
+// A venue exit (for example leaving a cave with E) sets a one-shot flag so the
+// world resumes straight into play. The Character/Profile button remains the
+// way to change appearance later.
+let skipIntroOnce=false;
+try{skipIntroOnce=sessionStorage.getItem('agent-world-skip-intro')==='1';sessionStorage.removeItem('agent-world-skip-intro');}catch{}
+const afterEntry=()=>{if(!skipIntroOnce)openIntro();};
+void (((window as Window & {entryGate?:Promise<unknown>}).entryGate)??Promise.resolve()).then(afterEntry,afterEntry);
 const joined=startPresence();lastPlayTick=Date.now();
 // The presence join owns the anonymous visitor cookie. Wait for it before
 // loading other visitor-scoped state so a concurrent request cannot mint a
