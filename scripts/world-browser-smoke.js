@@ -253,20 +253,30 @@ try{
  // exercising the real interaction and navigation handoff.
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  // Farm guidance must be local: the plot is a known minimap destination, but
  // its contextual arrow/help appears only within ~20 in-world metres (320 units).
  const farmTile=await evaluate("fetch('/api/world/farm').then(r=>r.json()).then(s=>s.tiles[0]||null)");
  assert.ok(farmTile&&Number.isFinite(farmTile.position.x),'the world has a farm plot to probe');
- const farmSign=farmTile.anchor==='west-road'?-1:1;
- const farmAt=distance=>({x:Math.round(farmTile.position.x+16*distance*farmSign),y:Math.round(farmTile.position.y)});
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
- await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(21).x}'`);
+ // A jittered plot can put the straight-line probe on a tree or rock. Try the
+ // eight compass directions and keep the first the world can actually place.
+ const teleportFarm=async distance=>{
+  for(let step=0;step<8;step++){
+   const angle=step*Math.PI/4;
+   const point={x:Math.round(farmTile.position.x+Math.cos(angle)*16*distance),y:Math.round(farmTile.position.y+Math.sin(angle)*16*distance)};
+   await evaluate(`window.__worldTeleport(${JSON.stringify(point)})`);
+   await delay(150);
+   const actual=await evaluate("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return {x:p.x,y:p.y}})()");
+   if(Math.abs(actual.x-point.x)<1&&Math.abs(actual.y-point.y)<1)return actual;
+  }
+  throw new Error('the farm probe could not find a safe approach point');
+ };
+ await teleportFarm(21);
  await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(19))})`);
- await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(19).x}'`);
+ await teleportFarm(19);
  await wait("document.getElementById('world-canvas').dataset.farmGuide.length>0");
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
+ await teleportFarm(21);
  await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
