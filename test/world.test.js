@@ -296,3 +296,17 @@ test('overworld grass keeps the authored plaza palette with cohesive outer tints
     assert.ok(colors.has(reference), `${reference} keeps the original plaza grass character`);
   }
 });
+
+test('outskirts grass tone varies gradually instead of in rectangular bands', async () => {
+  const { grassTone } = await import('../web/dist/world/renderer.js');
+  const toneAt = (x, y) => grassTone(x, y, Math.abs(Math.imul(x, 374761393) + Math.imul(y, 668265263)) >>> 0);
+  const probes = [];
+  for (let x = -1800; x <= 3600; x += 320) probes.push([x, -1400]);
+  for (let y = -2200; y <= 2500; y += 320) probes.push([2600, y]);
+  for (let x = -1500; x <= 1200; x += 320) probes.push([x, 2300]);
+  let worst = 0;
+  for (const [x, y] of probes) {
+    worst = Math.max(worst, Math.abs(toneAt(x + 32, y) - toneAt(x, y)), Math.abs(toneAt(x, y + 32) - toneAt(x, y)));
+  }
+  assert.ok(worst <= 1.5, `neighbouring tiles keep close tones (worst step ${worst.toFixed(2)})`);
+});
