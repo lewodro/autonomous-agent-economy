@@ -18,10 +18,12 @@ function memoryStorage(initial = null) {
   };
 }
 
-test('exploration sites and seeded camps form one deterministic discovery list', () => {
+test('exploration sites, seeded camps and Frostgate landmarks form one discovery list', () => {
   assert.equal(CAMP_SITES.length, OUTER_CAMPS.length);
   assert.equal(CAMP_SITES.length, 8);
-  assert.equal(DISCOVERY_SITES.length, EXPLORATION_SITES.length + CAMP_SITES.length);
+  const venueSites = DISCOVERY_SITES.filter(site => site.venue === 'snow');
+  assert.equal(DISCOVERY_SITES.length, EXPLORATION_SITES.length + CAMP_SITES.length + venueSites.length);
+  assert.equal(venueSites.length, 7);
   assert.equal(new Set(DISCOVERY_SITES.map(site => site.id)).size, DISCOVERY_SITES.length);
   assert.deepEqual(CAMP_SITES.map(site => site.id), [
     'camp-north-1', 'camp-north-2', 'camp-south-1', 'camp-south-2',
@@ -30,7 +32,9 @@ test('exploration sites and seeded camps form one deterministic discovery list',
   for (const site of DISCOVERY_SITES) {
     assert.ok(site.label.length > 2, `${site.id} needs a readable journal name`);
     assert.equal(Number.isFinite(site.position.x) && Number.isFinite(site.position.y), true);
-    assert.ok(LANDMARKS.some(landmark => landmark.id === site.id), `${site.id} must be interactable`);
+    // Venue sites are interacted with inside their own scene, not on the
+    // main-world landmark list.
+    if (!site.venue) assert.ok(LANDMARKS.some(landmark => landmark.id === site.id), `${site.id} must be interactable`);
   }
 });
 
@@ -91,6 +95,9 @@ test('minimap projection covers the world and hides undiscovered landmarks', () 
   assert.equal(found.filter(marker => marker.kind === 'cave').length, 1);
   assert.equal(found.filter(marker => marker.kind === 'camp').length, 1);
   assert.equal(found.length, CITY_MAP_MARKERS.length + 2);
+  // Frostgate discoveries share the journal but stay off the green-world map.
+  const withVenue = minimapMarkers(new Set(['cave-north', 'camp-east-1', 'summit-beacon']));
+  assert.equal(withVenue.length, found.length, 'snow landmark discoveries must not plot on the main minimap');
 });
 
 test('compact minimap keeps public location names visible', () => {
