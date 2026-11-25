@@ -308,7 +308,50 @@ test('wallet ownership challenges are account-bound, expiring and single use', a
     await assert.rejects(()=>farm.verifyWalletChallenge(member,{challenge_id:expiring.challenge.id,wallet_address:address,signature:base58(signMessage(null,Buffer.from(expiring.challenge.message),privateKey))},'lastseat.ing'),{code:'CHALLENGE_EXPIRED'});
     const duplicate=await farm.createWalletChallenge(other,{wallet_address:address,domain:'lastseat.ing'});const duplicateSignature=base58(signMessage(null,Buffer.from(duplicate.challenge.message),privateKey));
     await assert.rejects(()=>farm.verifyWalletChallenge(other,{challenge_id:duplicate.challenge.id,wallet_address:address,signature:duplicateSignature},'lastseat.ing'),{code:'WALLET_ALREADY_LINKED'});
+    await farm.setWalletAddress(member,{wallet_address:address});
+    assert.equal(farm.view(member).wallet.status,'unverified','manual relinking never inherits a prior signature');
+    assert.equal(farm.view(member).wallet.links.length,0);
+    await farm.setWalletAddress(member,{wallet_address:null});
+    assert.equal(farm.view(member).wallet.status,'unlinked');
+    assert.equal((await farm.verifyWalletChallenge(other,{challenge_id:duplicate.challenge.id,wallet_address:address,signature:duplicateSignature},'lastseat.ing')).account.wallet.status,'verified','removing an active verified association frees it');
   }finally{await close();}
+});
+
+test('manual wallet links persist by Clerk account, allow unverified duplicates, and change or remove cleanly', async () => {
+  const {farm,directory,close}=await setup();
+  const a={key:'clerk:user_wallet_a',provider:'clerk',subject:'user_wallet_a'};
+  const b={key:'clerk:user_wallet_b',provider:'clerk',subject:'user_wallet_b'};
+  const addressA=wallet;
+  const {publicKey}=generateKeyPairSync('ed25519');
+  const addressB=base58(Buffer.from(publicKey.export({format:'jwk'}).x,'base64url'));
+  try{
+    await assert.rejects(()=>farm.setWalletAddress(guest,{wallet_address:addressA}),{code:'SIGN_IN_REQUIRED'});
+    Object.assign(farm.account(guest),{wallet_address:addressA,wallet_status:'unverified'});
+    assert.equal(farm.view(guest).wallet.address,null,'legacy guest wallet claims stay out of account projections');
+    Object.assign(farm.account(a),{wallet_address:addressA,wallet_status:'verified'});
+    assert.equal(farm.view(a).wallet.status,'unverified','a stored status flag alone never proves ownership');
+    await assert.rejects(()=>farm.setWalletAddress(a,{wallet_address:'https://example.com'}),{code:'INVALID_WALLET'});
+    await farm.setWalletAddress(a,{wallet_address:addressA});
+    await farm.setWalletAddress(b,{wallet_address:addressA});
+    assert.equal(farm.account(a).wallet_address,addressA,'full address is stored on A');
+    assert.equal(farm.account(a).clerk_user_id,a.subject);
+    assert.equal(farm.view(a).wallet.status,'unverified');
+    assert.equal(farm.view(b).wallet.address,addressA,'unverified addresses do not reserve ownership');
+    await farm.setWalletAddress(b,{wallet_address:addressB});
+    assert.equal(farm.view(a).wallet.address,addressA);
+    assert.equal(farm.view(b).wallet.address,addressB);
+    await farm.close();
+    const store=new WorldStore({directory});await store.open();
+    const restored=new WorldFarm(store);await restored.restore();
+    try{
+      assert.equal(restored.view({key:a.key,provider:'clerk'}).wallet.address,addressA,'same Clerk identity survives restart and another session');
+      assert.equal(restored.view({key:b.key,provider:'clerk'}).wallet.address,addressB);
+      await restored.setWalletAddress(a,{wallet_address:null});
+      assert.equal(restored.view(a).wallet.address,null);
+      assert.equal(restored.view(a).wallet.status,'unlinked');
+      assert.equal(restored.view(b).wallet.address,addressB);
+    }finally{await restored.close();}
+  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
 test('guest adoption is idempotent and preserves one stable internal user', async()=>{

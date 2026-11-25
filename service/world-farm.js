@@ -287,6 +287,8 @@ export class WorldFarm {
     const account = this.account(identity);
     const { level, progress, next } = levelFor(account.xp);
     const active = Object.values(this.state.tiles).filter(tile => tile.owner === identity.key && tile.stage !== 'wild').length;
+    const walletLink = account.provider === 'guest' ? null : account.wallet_links.find(link => link.primary);
+    const walletAddress = account.provider === 'guest' ? null : walletLink?.address || account.wallet_address || null;
     return {
       id: publicId(account.key),
       user_id: account.user_id,
@@ -312,9 +314,9 @@ export class WorldFarm {
         saved_at: account.profile.saved_at || null,
       } : { avatar: null, appearance: null, position: null, saved_at: null },
       wallet: {
-        address: account.wallet_links.find(link => link.primary)?.address || account.wallet_address,
-        status: account.wallet_links.find(link => link.primary)?.verified_at ? 'verified' : account.wallet_status,
-        links: account.wallet_links.map(link => ({ id: link.id, chain: link.chain, address: link.address, verified_at: link.verified_at, created_at: link.created_at, primary: link.primary })),
+        address: walletAddress,
+        status: walletLink?.verified_at ? 'verified' : walletAddress ? 'unverified' : 'unlinked',
+        links: account.provider === 'guest' ? [] : account.wallet_links.map(link => ({ id: link.id, chain: link.chain, address: link.address, verified_at: link.verified_at, created_at: link.created_at, primary: link.primary })),
       },
       ledger: this.state.ledger.filter(event => event.owner === account.key).slice(-20).reverse().map(({ owner, ...event }) => event),
       payouts: this.state.payouts.filter(payout => payout.key === account.key).slice(-8).reverse().map(({ key, ...payout }) => payout),
@@ -531,6 +533,19 @@ export class WorldFarm {
     return { account: this.view(identity) };
   }
 
+  /** A public address can be provided without a signature, but is never owned by that act. */
+  async setWalletAddress(identity, { wallet_address } = {}) {
+    const account = this.account(identity);
+    if (account.provider === 'guest') throw fail('SIGN_IN_REQUIRED', 'Sign in before linking a wallet', 403);
+    if (wallet_address !== null && !validSolanaAddress(wallet_address)) throw fail('INVALID_WALLET', 'Enter a valid public Solana address');
+    account.wallet_address = wallet_address;
+    account.wallet_status = wallet_address === null ? 'unlinked' : 'unverified';
+    account.wallet_links = [];
+    account.updated_at = new Date(this.now()).toISOString();
+    await this.persist();
+    return { account: this.view(identity) };
+  }
+
   async createWalletChallenge(identity, { wallet_address, domain } = {}) {
     const account = this.account(identity);
     if (account.provider === 'guest') throw fail('SIGN_IN_REQUIRED', 'Sign in before linking a wallet', 403);
@@ -564,7 +579,7 @@ export class WorldFarm {
     if (challenge.domain !== String(domain || '').toLowerCase()) throw fail('CHALLENGE_DOMAIN_MISMATCH', 'Wallet challenge belongs to another domain', 403);
     if (challenge.address !== String(wallet_address || '')) throw fail('WALLET_MISMATCH', 'The signing wallet does not match the challenge', 403);
     if (!verifySolanaMessage(challenge.address, challenge.message, String(signature || ''))) throw fail('INVALID_SIGNATURE', 'Wallet signature could not be verified', 403);
-    const linkedElsewhere = Object.values(this.state.accounts).some(value => value.key !== account.key && value.wallet_links?.some(link => link.chain === 'solana' && link.address === challenge.address && link.verified_at));
+    const linkedElsewhere = Object.values(this.state.accounts).some(value => value.key !== account.key && value.wallet_links?.some(link => link.chain === 'solana' && link.address === challenge.address && link.primary && link.verified_at));
     if (linkedElsewhere) throw fail('WALLET_ALREADY_LINKED', 'That wallet is already verified by another account', 409);
     challenge.consumed_at = new Date(this.now()).toISOString();
     for (const link of account.wallet_links) link.primary = false;

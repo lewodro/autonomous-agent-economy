@@ -22,3 +22,12 @@ export function solscanAccountUrl(address: unknown, network: unknown): string | 
   if (network === 'devnet' || network === 'testnet') return `https://solscan.io/account/${address}?cluster=${network}`;
   return null;
 }
+
+export function shortPublicSolanaAddress(address: unknown): string | null {
+  return validPublicSolanaAddress(address) ? `${address.slice(0, 6)}...${address.slice(-5)}` : null;
+}
+
+export async function copyPublicSolanaAddress(address: unknown, clipboard: Pick<Clipboard, 'writeText'>): Promise<void> {
+  if (!validPublicSolanaAddress(address)) throw new Error('Invalid public Solana address');
+  await clipboard.writeText(address);
+}

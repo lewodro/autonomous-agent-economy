@@ -40,6 +40,16 @@ Last Seat user ID, intended wallet, issued time, expiry and random nonce. The se
 verifies the Ed25519 signature, consumes the challenge once, and stores a verified
 Solana wallet link. A verified wallet cannot be claimed by another Last Seat account.
 
+Signed-in users may also provide a public address without signing. The server stores the
+complete address on the durable Clerk-backed Last Seat account with status `unverified`.
+The owner Account view shortens it by default and offers full-address Copy and Solscan
+actions. A manual change resets verification; removal clears the active association.
+Multiple accounts may provide the same unverified address because a public key alone
+does not reserve ownership. A signature may verify an address for only one active
+account. Account APIs select the account from the signed server session, never a
+browser-provided account ID. The public `verified` status is derived from an active
+signature-verified link; a stored status flag by itself is not ownership evidence.
+
 The challenge explicitly states that it links a public address and does not authorize a
 transaction. Last Seat never asks for or stores a seed phrase or private key.
 

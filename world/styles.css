@@ -337,6 +337,7 @@
 .treasury-metric strong,.treasury-metric span{display:block}.treasury-metric strong{font-size:1.15rem;color:#f4e8c3;overflow-wrap:anywhere}.treasury-metric span{margin-top:8px;color:#9eb3a5;font-size:.78rem;letter-spacing:.08em}
 .treasury-panel{margin-top:16px}.treasury-panel h2{font-size:1rem;color:#d8b865;letter-spacing:.1em}.treasury-events{padding-left:24px;line-height:1.7}.treasury-separation{border-color:#7b6d46}
 .treasury-address{font-size:1.5rem;color:#f4e8c3;overflow-wrap:anywhere}.treasury-actions{display:flex;flex-wrap:wrap;gap:10px}.treasury-actions a,.treasury-actions button{display:inline-flex;align-items:center;min-height:44px;padding:9px 13px;border:1px solid #d8b865;background:#203c30;color:#f4e8c3;font:700 11px ui-monospace,monospace;letter-spacing:.07em;text-decoration:none;cursor:pointer}
+.wallet-link-form{display:grid;gap:8px;margin:12px 0}.wallet-link-form label{display:grid;gap:6px;font-size:12px}.wallet-link-form input{width:100%;min-width:0;min-height:44px;padding:8px;border:2px solid #77806a;background:#172820;color:#f4e8c3}.wallet-link-form button{justify-self:start}
 
 /* Exploration layer: pixel minimap, discovery journal, region feedback. */
 .world-minimap{position:absolute;left:14px;bottom:16px;z-index:8;width:150px;max-width:calc(100% - 28px);padding:4px;border:2px solid #6d7c62;background:#14231ee8;box-shadow:3px 3px 0 #0d1a16;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;pointer-events:auto;transition:opacity .18s ease,transform .18s ease}
