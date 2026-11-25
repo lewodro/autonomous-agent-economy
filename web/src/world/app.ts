@@ -16,6 +16,7 @@ import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type P
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { withinFarmGuidance } from './scale.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
+import { solscanAccountUrl } from './solscan.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -764,11 +765,15 @@ async function showAccount():Promise<void>{
   content.replaceChildren();
   accountSection();
 }
-function walletSection(payoutsEnabled:boolean):void{
+function walletSection(payoutsEnabled:boolean,network:string):void{
   const account=farmSnapshot?.account;if(!account)return;
   text('h3','SOLANA WALLET');
-  text('p','Credits are not SOL or wallet funds. Wallet linking proves control of a public address for a future, separately enabled payout program.');
-  const status=text('p',account.wallet.status==='verified'&&account.wallet.address?`${account.wallet.address.slice(0,7)}…${account.wallet.address.slice(-5)} · VERIFIED`:'No verified wallet. Never enter a seed phrase or private key.');
+  text('p','Credits are not SOL or wallet funds. Last Seat verifies wallet ownership only after a signed challenge. Viewing an address on Solscan does not verify it.');
+  const walletAddress=account.wallet.address;
+  const verified=account.wallet.status==='verified';
+  const status=text('p',walletAddress?`${walletAddress.slice(0,7)}…${walletAddress.slice(-5)} · ${verified?'VERIFIED':'UNVERIFIED'}`:'No linked wallet. Never enter a seed phrase or private key.');
+  const walletExplorer=solscanAccountUrl(walletAddress,network);
+  if(walletExplorer){const link=document.createElement('a');link.href=walletExplorer;link.target='_blank';link.rel='noopener noreferrer';link.textContent='VIEW ON SOLSCAN';content.append(link);text('p','Solscan shows public on-chain activity. Viewing an address does not verify wallet ownership in Last Seat.');}
   if(!account.signed_in){text('p','Sign in before linking a wallet.');return;}
   const connect=document.createElement('button');connect.type='button';connect.className='primary';connect.textContent=account.wallet.address?'Verify another wallet':'Connect and verify wallet';content.append(connect);
   connect.onclick=()=>{connect.disabled=true;status.textContent='Waiting for your wallet…';void connectAndSignWallet(async address=>{
@@ -777,16 +782,17 @@ function walletSection(payoutsEnabled:boolean):void{
   }).then(async proof=>{
     const result=await farmClient.post('wallet-verify',proof);mergeFarmAccount(result.account as FarmAccount|undefined);
     status.textContent=`${proof.wallet_address.slice(0,7)}…${proof.wallet_address.slice(-5)} · VERIFIED`;
+    void showBazaar();
     farmHud.notice('Wallet ownership verified','good');
   }).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet verification failed';}).finally(()=>connect.disabled=false);};
-  if(account.wallet.address&&payoutsEnabled){
+  if(walletAddress&&verified&&payoutsEnabled){
     const min=farmSnapshot?.rates.min_withdrawal_credits||50;
     const button=document.createElement('button');button.type='button';button.textContent=`Request payout · ${account.credits} CR`;button.disabled=account.credits<min;
     button.onclick=()=>{button.disabled=true;void farmClient.post('payout',{amount_credits:account.credits}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Payout queued for the treasury','good');void showBazaar();}).catch(error=>{button.disabled=false;farmHud.notice(error instanceof Error?error.message:'Payout request failed','warn');});};
     content.append(button);
     if(account.credits<min)text('p',`Withdrawals open at ${min} credits.`);
-  }else if(account.wallet.address){
-    text('p','Real payouts are disabled. Linking an address does not convert credits into SOL or create a payable balance.');
+  }else if(walletAddress){
+    text('p',payoutsEnabled?'This wallet is unverified. A signed challenge is required before payout requests.':'Real payouts are disabled. Linking an address does not convert credits into SOL or create a payable balance.');
   }
   for(const payout of account.payouts)text('p',`${payout.amount_credits} CR · ${payout.status} · ${new Date(payout.requested_at).toLocaleDateString()}`);
 }
@@ -794,11 +800,11 @@ async function showBazaar():Promise<void>{
   const version=show('BAZAAR · farm exchange');
   text('p','Loading the exchange ledger…');
   try{
-    const [,economy]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null)]);
+    const [,economy,treasury]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null),fetch('/api/treasury/public').then(response=>response.ok?response.json():null).catch(()=>null) as Promise<{network:string}|null>]);
     if(!dialog.open||version!==interactionVersion)return;
     content.replaceChildren();
     text('p','Bring produce here from the farm plots. Produce sells for internal world credits; credits are not SOL or wallet funds.');
-    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
+    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled),treasury?.network||'not_configured');
     if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY CONFIGURATION');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'A separately configured real-payout program is enabled.':'Real payouts are disabled; internal credits remain in-game only.');}
     text('h3','GATHERING RECEIPTS');
     if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');
