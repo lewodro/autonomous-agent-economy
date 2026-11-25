@@ -18,6 +18,12 @@ import {
   interiorBlocks, buildingAt,
   type Interior, type InteriorProp, type FrostgateLandmark,
 } from './frostgate.js';
+import {
+  MOB_DEFINITIONS, MOB_WALK_FRAMES, PLAYER_MAX_HP, PLAYER_STRIKE_RANGE,
+  PLAYER_STRIKE_COOLDOWN_MS, PLAYER_HURT_INVULNERABLE_MS, PLAYER_REGEN_DELAY_MS,
+  PLAYER_REGEN_PER_SECOND, createMob, createMobs, stepMobs, strikeMob, nearestMob, mobAt, aliveMobs,
+  type Mob, type MobKind,
+} from './frostgate-mobs.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('snow-canvas');
@@ -25,6 +31,9 @@ const ctx = canvas.getContext('2d')!;
 const toast = $<HTMLDivElement>('snow-toast');
 const positionText = $<HTMLElement>('snow-position');
 const landmarkText = $<HTMLElement>('snow-landmarks');
+const mobText = $<HTMLElement>('snow-mobs');
+const vigorText = $<HTMLElement>('snow-vigor');
+const vigorFill = $<HTMLElement>('snow-vigor-fill');
 const regionText = $<HTMLElement>('snow-region');
 const actionButton = $<HTMLButtonElement>('snow-action');
 const keyboard = new KeyboardInput(canvas);
@@ -44,6 +53,7 @@ if (playerAppearance) appearanceSprites.preload(playerAppearance);
 canvas.dataset.appearance = playerAppearance ? appearanceKey(playerAppearance) : `preset:${settings.avatar}`;
 
 const discovered = new Set(loadDiscoveries());
+const mobs: Mob[] = createMobs(performance.now());
 let mode: 'exterior' | 'interior' = 'exterior';
 let activeInterior: Interior | null = null;
 let exteriorReturn: Position | null = null;
@@ -54,6 +64,12 @@ let facing: 'up' | 'down' | 'left' | 'right' = 'up';
 let moving = false, stopped = false, lastFrame = performance.now();
 let moveTarget: Position | null = null, toastUntil = 0;
 let snowfall: Array<{ x: number; y: number; speed: number; drift: number; size: number }> = [];
+let health = PLAYER_MAX_HP;
+let safeSpot: Position = { ...SNOW_SPAWN };
+let lastHurtAt = -Infinity, lastStrikeAt = -Infinity;
+let hurtFlashUntil = 0, strikeUntil = 0, mobRespawns = 0;
+let attackTargetId: string | null = null;
+let strikePoint: Position | null = null;
 
 function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, value)); }
 function distance(a: Position, b: Position): number { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -109,14 +125,29 @@ function flash(text: string): void {
 function updateHud(): void {
   const site = mode === 'exterior' ? nearestLandmark() : null;
   const door = mode === 'exterior' ? buildingAt(local.x, local.y) : null;
+  const mob = mode === 'exterior' ? nearestMob(mobs, local) : null;
+  const alive = aliveMobs(mobs);
+  const aggro = alive.filter(value => value.aggro).length;
   positionText.textContent = `X ${Math.round(local.x)} · Y ${Math.round(local.y)}`;
   const found = FROSTGATE_LANDMARKS.filter(site => discovered.has(site.id)).length;
   landmarkText.textContent = `LANDMARKS ${found} / ${FROSTGATE_LANDMARKS.length}`;
+  mobText.textContent = `MOBS ${alive.length}${aggro ? ` · ${aggro} ALERT` : ''}`;
+  vigorText.textContent = `VIGOR ${Math.ceil(health)} / ${PLAYER_MAX_HP}`;
+  vigorFill.style.width = `${Math.max(0, health / PLAYER_MAX_HP * 100)}%`;
+  vigorFill.dataset.low = health <= 30 ? '1' : '0';
   regionText.textContent = mode === 'interior' ? activeInterior?.label ?? 'INTERIOR' : regionAtElevation(local.y);
   canvas.dataset.player = `${Math.round(local.x)},${Math.round(local.y)}`;
   canvas.dataset.landmarks = FROSTGATE_LANDMARKS.filter(site => discovered.has(site.id)).map(site => site.id).join(',');
   canvas.dataset.nearest = site?.id ?? '';
   canvas.dataset.nearestDoor = door?.id ?? '';
+  canvas.dataset.nearestMob = mob?.id ?? '';
+  canvas.dataset.mobMode = mob?.mode ?? '';
+  canvas.dataset.mobs = String(alive.length);
+  canvas.dataset.mobTotal = String(mobs.length);
+  canvas.dataset.mobAggro = String(aggro);
+  canvas.dataset.mobRespawns = String(mobRespawns);
+  canvas.dataset.mobFrame = String(Math.floor(performance.now() / 105) % MOB_WALK_FRAMES);
+  canvas.dataset.health = String(Math.ceil(health));
   canvas.dataset.mode = mode;
   canvas.dataset.elevation = String(mode === 'interior' ? 0 : elevationAt(local.y));
   canvas.dataset.climb = String(mode === 'interior' ? 0 : climbAt(local.y));
@@ -126,12 +157,40 @@ function updateHud(): void {
   canvas.dataset.return = inReturnGate() ? '1' : '0';
   if (inInteriorExit()) actionButton.textContent = 'E · EXIT';
   else if (inReturnGate()) actionButton.textContent = 'E · RETURN TO WORLD';
+  else if (mob) actionButton.textContent = `E · STRIKE ${MOB_DEFINITIONS[mob.kind].label}`;
   else if (door) actionButton.textContent = door.enterable ? `E · ENTER ${door.label}` : 'E · INSPECT';
   else if (site) actionButton.textContent = 'E · INSPECT';
   else actionButton.textContent = 'E · LOOK';
 }
 
 function persistDiscoveries(): void { saveDiscoveries(discovered); }
+function strike(): void {
+  if (stopped || mode !== 'exterior') return;
+  const now = performance.now();
+  if (now - lastStrikeAt < PLAYER_STRIKE_COOLDOWN_MS) return;
+  lastStrikeAt = now;
+  const result = strikeMob(mobs, local, now, walkable);
+  if (!result) return;
+  strikeUntil = now + 220;
+  strikePoint = { ...result.mob.position };
+  flash(result.killed
+    ? `${MOB_DEFINITIONS[result.mob.kind].label} · DOWN`
+    : `${MOB_DEFINITIONS[result.mob.kind].label} · ${Math.ceil(result.mob.hp)} / ${result.mob.maxHp}`);
+}
+function takeDamage(amount: number): void {
+  if (stopped || mode !== 'exterior') return;
+  const now = performance.now();
+  if (now - lastHurtAt < PLAYER_HURT_INVULNERABLE_MS) return;
+  lastHurtAt = now;
+  hurtFlashUntil = now + 220;
+  health = Math.max(0, health - amount);
+  if (health > 0) { flash(`-${amount} VIGOR · STRIKE BACK OR CLIMB AWAY`); return; }
+  health = PLAYER_MAX_HP;
+  local = { ...safeSpot };
+  camera = cameraFor(local);
+  moveTarget = null; attackTargetId = null;
+  flash('THE COLD TAKES YOU · BACK AT THE LAST HEARTH');
+}
 function returnToWorld(): void {
   if (stopped) return;
   stopped = true;
@@ -144,6 +203,7 @@ function enterBuilding(id: string): void {
   const interior = building?.interior ? INTERIORS[building.interior] : null;
   if (!building || !interior) return;
   exteriorReturn = { ...local };
+  safeSpot = { ...local };
   activeDoor = building.id;
   activeInterior = interior;
   mode = 'interior';
@@ -169,6 +229,7 @@ function interact(): void {
   if (inInteriorExit()) { exitBuilding(); return; }
   if (mode === 'exterior' && inReturnGate()) { returnToWorld(); return; }
   if (mode === 'exterior') {
+    if (nearestMob(mobs, local)) { strike(); return; }
     const door = buildingAt(local.x, local.y);
     if (door) {
       if (door.enterable && door.interior) enterBuilding(door.id);
@@ -179,6 +240,7 @@ function interact(): void {
     if (!site) { flash('NOTHING WITHIN REACH · FOLLOW THE TRAIL NORTH'); return; }
     const first = !discovered.has(site.id);
     discovered.add(site.id);
+    if (site.id === 'frostgate-village') safeSpot = { ...site.position };
     persistDiscoveries();
     updateHud();
     flash(`${first ? 'RECORDED · ' : ''}${site.label} · ${site.note}`);
@@ -524,6 +586,176 @@ function drawFlame(phase: number): void {
   rect(ctx, cx + 10, base - 4, 4, 4, '#d7a667');
 }
 
+function drawMobBar(mob: Mob): void {
+  if (mob.hp >= mob.maxHp && !mob.aggro) return;
+  const width = mob.kind === 'barbarian' ? 32 : 26;
+  const x = Math.round(mob.position.x - width / 2), y = Math.round(mob.position.y - (mob.kind === 'barbarian' ? 66 : 52));
+  rect(ctx, x - 1, y - 1, width + 2, 5, '#13242c');
+  rect(ctx, x, y, width, 3, '#5a3a36');
+  rect(ctx, x, y, Math.max(0, Math.round(width * mob.hp / mob.maxHp)), 3, mob.hp / mob.maxHp < .35 ? '#ed6d65' : '#b9eb69');
+}
+function drawAlert(mob: Mob): void {
+  if (!mob.aggro) return;
+  const x = Math.round(mob.position.x), y = Math.round(mob.position.y - (mob.kind === 'barbarian' ? 70 : 56));
+  rect(ctx, x - 1, y - 7, 3, 8, '#f0cf75');
+  rect(ctx, x - 1, y + 2, 3, 3, '#f0cf75');
+  rect(ctx, x, y - 6, 1, 6, '#fff3b8');
+}
+function drawGoat(mob: Mob, time: number): void {
+  const moving = mob.moving && !reduced.matches;
+  const gait = Math.floor(time / 105 + mob.phase) % MOB_WALK_FRAMES;
+  const swing = moving ? Math.sin(gait / MOB_WALK_FRAMES * Math.PI * 2) : 0;
+  const bob = moving ? Math.abs(swing) * 1.7 : Math.sin(time / 900 + mob.phase) * .7;
+  const hurt = time < mob.hurtUntil;
+  const attack = time < mob.attackUntil;
+  const lunge = attack ? 4 : 0;
+  const body = hurt ? '#f2b6ac' : '#d8d2c4';
+  const light = hurt ? '#ffe3dc' : '#efeae0';
+  const dark = hurt ? '#c98b82' : '#b3ac9e';
+  const horn = hurt ? '#b98b82' : '#6b5a45';
+  ctx.save();
+  ctx.translate(Math.round(mob.position.x), Math.round(mob.position.y));
+  ctx.fillStyle = '#1b2f3855';
+  ctx.beginPath(); ctx.ellipse(0, 1, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+  if (mob.facing === 'left') ctx.scale(-1, 1);
+  ctx.translate(lunge, 0);
+  const legY = -11;
+  for (let leg = 0; leg < 4; leg++) {
+    const phase = leg % 2 === 0 ? 1 : -1;
+    const sx = [-11, -4, 5, 12][leg]! + swing * 2.6 * phase;
+    rect(ctx, sx - 1.5, legY, 3, 10, leg < 2 ? dark : body);
+    rect(ctx, sx - 2, legY + 9, 4, 2, '#4d4a44');
+  }
+  rect(ctx, -15, -24 + bob, 30, 13, body);
+  rect(ctx, -13, -26 + bob, 24, 3, light);
+  rect(ctx, -13, -12 + bob, 24, 2, dark);
+  rect(ctx, -9, -22 + bob, 7, 2, light);
+  rect(ctx, 3, -18 + bob, 6, 2, dark);
+  rect(ctx, -18, -22 + bob, 3, 7, dark);
+  rect(ctx, -20, -20 + bob, 3, 3, body);
+  const headDrop = mob.mode === 'graze' && !moving ? 3 : 0;
+  const hx = 14, hy = -30 + bob + headDrop;
+  rect(ctx, hx - 4, hy + 2, 8, 10, body);
+  rect(ctx, hx, hy - 4, 13, 10, body);
+  rect(ctx, hx + 10, hy - 2, 5, 5, light);
+  rect(ctx, hx + 14, hy - 1, 2, 2, '#3a3833');
+  rect(ctx, hx + 4, hy - 2, 2, 2, '#2b2a26');
+  rect(ctx, hx + 2, hy + 6, 4, 7, dark);
+  rect(ctx, hx + 2, hy - 6, 5, 3, body);
+  rect(ctx, hx + 3, hy - 10, 3, 6, horn);
+  rect(ctx, hx - 2, hy - 12, 6, 3, horn);
+  rect(ctx, hx - 5, hy - 11, 3, 3, horn);
+  rect(ctx, hx + 1, hy - 11, 2, 2, horn);
+  ctx.restore();
+  drawAlert(mob);
+  drawMobBar(mob);
+}
+function drawBarbarian(mob: Mob, time: number): void {
+  const moving = mob.moving && !reduced.matches;
+  const gait = Math.floor(time / 95 + mob.phase) % MOB_WALK_FRAMES;
+  const swing = moving ? Math.sin(gait / MOB_WALK_FRAMES * Math.PI * 2) : 0;
+  const bob = moving ? Math.abs(swing) * 2 : Math.sin(time / 760 + mob.phase) * .8;
+  const hurt = time < mob.hurtUntil;
+  const attack = time < mob.attackUntil;
+  const lunge = attack ? 5 : 0;
+  const fur = hurt ? '#e9a39a' : '#4b3b33';
+  const cloak = hurt ? '#f7c0b7' : '#6a5447';
+  const skin = hurt ? '#ffd9ce' : '#c99a75';
+  const leather = hurt ? '#d79a86' : '#7c5a45';
+  ctx.save();
+  ctx.translate(Math.round(mob.position.x), Math.round(mob.position.y));
+  ctx.fillStyle = '#1b2f3855';
+  ctx.beginPath(); ctx.ellipse(0, 1, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+  if (mob.facing === 'left') ctx.scale(-1, 1);
+  ctx.translate(lunge, 0);
+  for (let leg = 0; leg < 2; leg++) {
+    const phase = leg === 0 ? 1 : -1;
+    const sx = (leg === 0 ? -6 : 3) + swing * 3 * phase;
+    rect(ctx, sx - 2, -12, 5, 12, leg === 0 ? '#3f322b' : '#4a3b33');
+    rect(ctx, sx - 3, -2, 7, 3, '#2c2622');
+  }
+  rect(ctx, -11, -36 + bob, 22, 22, fur);
+  rect(ctx, -13, -38 + bob, 26, 7, cloak);
+  rect(ctx, -8, -33 + bob, 16, 14, leather);
+  rect(ctx, -10, -18 + bob, 20, 4, '#3a2c25');
+  rect(ctx, -2, -17 + bob, 4, 3, '#c9a86a');
+  rect(ctx, -14, -32 + bob, 5, 13, '#5d4638');
+  rect(ctx, 9, -32 + bob, 5, 13, leather);
+  rect(ctx, 13 + swing * 2, -39 + bob, 3, 26, '#6b513a');
+  rect(ctx, 16 + swing * 2, -43 + bob, 9, 8, '#9aa6a8');
+  rect(ctx, 18 + swing * 2, -42 + bob, 5, 3, '#d7e2e4');
+  rect(ctx, 16 + swing * 2, -36 + bob, 8, 2, '#6f7c7f');
+  rect(ctx, -6, -50 + bob, 12, 13, skin);
+  rect(ctx, -6, -42 + bob, 12, 5, '#6b4a35');
+  rect(ctx, -8, -54 + bob, 16, 6, '#6d7478');
+  rect(ctx, -10, -56 + bob, 4, 4, '#e8e1cf');
+  rect(ctx, 6, -56 + bob, 4, 4, '#e8e1cf');
+  rect(ctx, -4, -46 + bob, 2, 2, '#3a2a24');
+  rect(ctx, 2, -46 + bob, 2, 2, '#c94b3f');
+  rect(ctx, -2, -47 + bob, 1, 4, '#8f3a32');
+  ctx.restore();
+  drawAlert(mob);
+  drawMobBar(mob);
+}
+function drawCorpse(mob: Mob, time: number): void {
+  const age = time - mob.deadAt;
+  if (age < 0 || age > 2600) return;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - age / 2600);
+  ctx.translate(Math.round(mob.position.x), Math.round(mob.position.y));
+  ctx.fillStyle = '#1b2f3855';
+  ctx.beginPath(); ctx.ellipse(0, 1, 16, 4, 0, 0, Math.PI * 2); ctx.fill();
+  if (mob.kind === 'goat') {
+    rect(ctx, -14, -8, 28, 8, '#b9b3a5');
+    rect(ctx, -12, -11, 12, 5, '#d8d2c4');
+    rect(ctx, 10, -10, 8, 4, '#b9b3a5');
+    rect(ctx, 13, -14, 2, 4, '#6b5a45');
+    rect(ctx, 8, -14, 4, 2, '#6b5a45');
+  } else {
+    rect(ctx, -14, -8, 26, 8, '#4b3b33');
+    rect(ctx, 6, -10, 9, 7, '#c99a75');
+    rect(ctx, 8, -14, 8, 3, '#6d7478');
+    rect(ctx, 14, -16, 2, 3, '#e8e1cf');
+    rect(ctx, -12, -3, 18, 3, '#6b4a35');
+  }
+  ctx.restore();
+}
+function drawMobs(time: number, foreground: boolean): void {
+  const visible = mobs.filter(mob => mob.position.x > camera.x - 60 && mob.position.x < camera.x + VIEW_W + 60
+    && mob.position.y > camera.y - 80 && mob.position.y < camera.y + VIEW_H + 40
+    && (foreground ? mob.position.y > local.y : mob.position.y <= local.y));
+  visible.sort((a, b) => a.position.y - b.position.y);
+  for (const mob of visible) {
+    if (mob.mode === 'dead') { drawCorpse(mob, time); continue; }
+    if (time < mob.spawnFadeUntil && Math.floor(time / 90) % 2 === 0) continue;
+    if (mob.kind === 'goat') drawGoat(mob, time);
+    else drawBarbarian(mob, time);
+  }
+}
+function drawStrike(time: number): void {
+  if (time > strikeUntil || !strikePoint) return;
+  const fade = Math.max(0, (strikeUntil - time) / 220);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = '#ffe7a8';
+  ctx.lineWidth = 2;
+  const p = strikePoint;
+  for (let mark = 0; mark < 4; mark++) {
+    const angle = mark * Math.PI / 2 + Math.PI / 4;
+    ctx.beginPath();
+    ctx.moveTo(p.x + Math.cos(angle) * 8, p.y - 12 + Math.sin(angle) * 8);
+    ctx.lineTo(p.x + Math.cos(angle) * 20, p.y - 12 + Math.sin(angle) * 20);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#fff6d2';
+  ctx.beginPath();
+  if (facing === 'left') { ctx.moveTo(local.x - 10, local.y - 24); ctx.lineTo(local.x - 28, local.y - 14); }
+  else if (facing === 'right') { ctx.moveTo(local.x + 10, local.y - 24); ctx.lineTo(local.x + 28, local.y - 14); }
+  else if (facing === 'up') { ctx.moveTo(local.x - 8, local.y - 34); ctx.lineTo(local.x + 8, local.y - 48); }
+  else { ctx.moveTo(local.x - 8, local.y - 10); ctx.lineTo(local.x + 8, local.y + 2); }
+  ctx.stroke();
+  ctx.restore();
+}
 function drawSnow(time: number): void {
   if (reduced.matches) {
     for (let index = 0; index < 34; index++) rect(ctx, (index * 97) % VIEW_W, (index * 53) % VIEW_H, 2, 2, '#f4fbff');
@@ -578,13 +810,16 @@ function drawScene(time: number): void {
       const pulse = Math.floor(time / 260) % 2;
       rect(ctx, door.door.x - 10, door.door.y - 26 - pulse, 20, 3, '#f4d69a');
     }
+    drawMobs(time, false);
   }
   ctx.fillStyle = '#1b2f3866';
   ctx.beginPath(); ctx.ellipse(Math.round(local.x), Math.round(local.y + 8), 14, 5, 0, 0, Math.PI * 2); ctx.fill();
   const composed = playerAppearance ? appearanceSprites.sheet(playerAppearance) ?? undefined : undefined;
   drawActorSprite(ctx, playerSprite, playerImage, { position: local, facing, movementState: moving ? 'walking' : 'idle' },
     time, reduced.matches, 44, composed);
+  if (mode === 'exterior') { drawMobs(time, true); drawStrike(time); }
   ctx.restore();
+  if (time < hurtFlashUntil) rect(ctx, 0, 0, VIEW_W, VIEW_H, '#b93a2e16');
   if (mode === 'exterior') drawSnow(time);
 }
 function setFacingFromInput(x: number, y: number): void {
@@ -613,6 +848,12 @@ function pointerTarget(event: PointerEvent): void {
     moveTarget = point;
     return;
   }
+  const mob = mobAt(mobs, point, 30);
+  if (mob) {
+    if (distance(local, mob.position) <= PLAYER_STRIKE_RANGE) strike();
+    else { attackTargetId = mob.id; moveTarget = { ...mob.position }; }
+    return;
+  }
   if (inReturnGate() || distance(point, SNOW_RETURN) < 46) { interact(); return; }
   const door = FROSTGATE_BUILDINGS.find(value => distance(point, value.door) < 42);
   if (door) { moveTarget = { ...door.door }; return; }
@@ -627,6 +868,17 @@ function frame(time: number): void {
   const k = keyboard.read(), t = touch.read();
   const input = normalizeInput(k.x + t.x, k.y + t.y, k.interact || t.interact);
   moving = false;
+  if (input.x || input.y) attackTargetId = null;
+  if (attackTargetId) {
+    const target = mobs.find(mob => mob.id === attackTargetId && mob.mode !== 'dead');
+    if (!target) { attackTargetId = null; moveTarget = null; }
+    else {
+      moveTarget = { ...target.position };
+      if (distance(local, target.position) <= PLAYER_STRIKE_RANGE) {
+        strike(); attackTargetId = null; moveTarget = null;
+      }
+    }
+  }
   if (input.x || input.y) {
     moveTarget = null;
     setFacingFromInput(input.x, input.y);
@@ -640,6 +892,14 @@ function frame(time: number): void {
     }
   }
   camera = cameraFor(local);
+  if (mode === 'exterior') {
+    const result = stepMobs(mobs, local, dt, time, walkable);
+    if (result.damage) takeDamage(result.damage);
+    if (result.respawned.length) mobRespawns += result.respawned.length;
+    if (health < PLAYER_MAX_HP && time - lastHurtAt > PLAYER_REGEN_DELAY_MS) {
+      health = Math.min(PLAYER_MAX_HP, health + PLAYER_REGEN_PER_SECOND * dt);
+    }
+  }
   if (input.interact) interact();
   if (toastUntil && time > toastUntil) { toast.hidden = true; toastUntil = 0; }
   updateSnow(dt, time);
@@ -666,9 +926,35 @@ window.addEventListener('pagehide', () => { stopped = true; keyboard.destroy(); 
 // the local visitor; it cannot change discoveries, server state or other plays.
 (window as Window & { __frostgateTeleport?: (x: number, y: number) => void }).__frostgateTeleport = (x, y) => {
   if (stopped) return;
-  mode = 'exterior'; activeInterior = null; exteriorReturn = null; activeDoor = null; moveTarget = null;
+  mode = 'exterior'; activeInterior = null; exteriorReturn = null; activeDoor = null; moveTarget = null; attackTargetId = null;
   local = { x, y }; camera = cameraFor(local); updateHud();
 };
+// Mob inspection hooks for the browser regression journey. They can only touch
+// this browser's local mobs; no server, discovery or economy state is exposed.
+const debugWindow = window as Window & {
+  __frostgateMobs?: () => Array<Record<string, string | number | boolean>>;
+  __frostgatePlaceMob?: (kind: MobKind, x: number, y: number) => string;
+  __frostgateClearDebugMobs?: () => number;
+  __frostgateStrike?: () => void;
+};
+debugWindow.__frostgateMobs = () => mobs.map(mob => ({
+  id: mob.id, kind: mob.kind, x: Math.round(mob.position.x), y: Math.round(mob.position.y),
+  hp: Math.round(mob.hp), maxHp: mob.maxHp, mode: mob.mode, aggro: mob.aggro,
+  moving: mob.moving, frame: Math.floor(performance.now() / 105) % MOB_WALK_FRAMES,
+}));
+debugWindow.__frostgatePlaceMob = (kind, x, y) => {
+  const id = `debug-${kind}-${mobs.length}-${Math.floor(performance.now())}`;
+  mobs.push(createMob({ id, kind, position: { x, y }, terrace: 'debug' }, performance.now()));
+  updateHud();
+  return id;
+};
+debugWindow.__frostgateClearDebugMobs = () => {
+  const before = mobs.length;
+  for (let index = mobs.length - 1; index >= 0; index--) if (mobs[index]!.id.startsWith('debug-')) mobs.splice(index, 1);
+  updateHud();
+  return before - mobs.length;
+};
+debugWindow.__frostgateStrike = () => strike();
 
 camera = cameraFor(local);
 updateHud();

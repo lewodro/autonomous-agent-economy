@@ -877,6 +877,9 @@
 .snow-hud{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:6px 0;border-top:1px solid #2b4652;border-bottom:1px solid #2b4652;font-size:9px;letter-spacing:.1em}
 .snow-hud__left{display:flex;flex-direction:column;gap:3px;color:#bcd9e3}
 .snow-hud__right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;color:#f0cf75;text-align:right}
+.snow-vigor{display:block;width:120px;height:6px;border:1px solid #6f93a2;background:#13242c}
+.snow-vigor i{display:block;height:100%;width:100%;background:#b9eb69;transition:width .12s linear}
+.snow-vigor i[data-low="1"]{background:#ed6d65}
 .snow-return{color:#dff4ff!important;font-size:8px;letter-spacing:.1em;text-decoration:underline}
 .snow-hint{margin:10px 0;color:#9fb8c1;font-size:9px;line-height:1.5;letter-spacing:.06em;text-align:center}
 .snow-controls{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:56px}
