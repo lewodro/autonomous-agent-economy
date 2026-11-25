@@ -1,14 +1,22 @@
 import { CAMP_SITES, CORE_BOUNDS, EXPLORATION_SITES, MAP, OUTER_LOOP } from './map.js';
+import { FROSTGATE_LANDMARKS } from './frostgate.js';
 import type { Position } from './model.js';
 
 /** The journal and minimap share one discovery taxonomy. */
 export type DiscoveryKind = 'cave' | 'ruin' | 'shrine' | 'pass' | 'camp';
 export interface DiscoverySite {
   id: string; kind: DiscoveryKind; position: Position; label: string;
+  /** Venue sites share the journal but are not plotted on the main-world map. */
+  venue?: 'snow';
 }
-export const DISCOVERY_SITES: DiscoverySite[] = [...EXPLORATION_SITES, ...CAMP_SITES].map(site => ({
-  id: site.id, kind: site.kind, position: { ...site.position }, label: site.label,
-}));
+export const DISCOVERY_SITES: DiscoverySite[] = [
+  ...[...EXPLORATION_SITES, ...CAMP_SITES].map(site => ({
+    id: site.id, kind: site.kind, position: { ...site.position }, label: site.label,
+  })),
+  ...FROSTGATE_LANDMARKS.map(site => ({
+    id: site.id, kind: site.kind, position: { ...site.position }, label: site.label, venue: 'snow' as const,
+  })),
+];
 export const DISCOVERY_GROUPS: ReadonlyArray<{ kind: DiscoveryKind; label: string }> = [
   { kind: 'cave', label: 'CAVES' },
   { kind: 'ruin', label: 'RUINS' },
@@ -135,7 +143,7 @@ export const CITY_MAP_MARKERS: ReadonlyArray<MapMarker> = [
 export function minimapMarkers(discovered: ReadonlySet<string>): MapMarker[] {
   return [
     ...CITY_MAP_MARKERS.map(marker => ({ ...marker, position: { ...marker.position } })),
-    ...DISCOVERY_SITES.filter(site => discovered.has(site.id))
+    ...DISCOVERY_SITES.filter(site => discovered.has(site.id) && !site.venue)
       .map(site => ({ id: site.id, label: site.label.toUpperCase(), kind: site.kind, position: { ...site.position } })),
   ];
 }

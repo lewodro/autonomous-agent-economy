@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#1b2a31">
-  <meta name="description" content="Frostgate, the snowy northern pass beyond the shared overworld.">
-  <title>Frostgate · Agent World</title>
+  <meta name="description" content="Frostgate, the explorable snowy mountain beyond the northern pass, with goats, frost barbarians, a village and a summit.">
+  <title>Frostgate Mountain · Agent World</title>
   <link rel="stylesheet" href="/world/styles.css">
 </head>
 <body class="snow-page">
@@ -14,15 +14,18 @@
       <a id="snow-brand-link" class="snow-brand" href="/world?return=snow">▦ AGENT WORLD</a>
       <span class="snow-depth">FROSTGATE · NORTHERN PASS</span>
     </header>
-    <section class="snow-stage" aria-label="Snowy northern pass">
-      <canvas id="snow-canvas" width="480" height="360" tabindex="0" aria-label="Snowy mountain pass with a frozen shrine, an ice circle and a watch beacon"></canvas>
+    <section class="snow-stage" aria-label="Snowy northern mountain">
+      <canvas id="snow-canvas" width="480" height="360" tabindex="0" aria-label="Frostgate mountain: a village, climbing trails, cliffs, roaming mountain goats and frost barbarians, a frozen shrine, an ice bridge, a watchtower and a summit beacon"></canvas>
       <div id="snow-toast" class="snow-toast" role="status" aria-live="polite" hidden></div>
     </section>
     <div class="snow-hud">
-      <div class="snow-hud__left"><span id="snow-region">FROSTGATE</span><span id="snow-position">X 800 · Y 900</span></div>
-      <div class="snow-hud__right"><span id="snow-landmarks">LANDMARKS 0 / 3</span><a id="snow-return" class="snow-return" href="/world?return=snow">RETURN TO WORLD</a></div>
+      <div class="snow-hud__left">
+        <span id="snow-region">LOWER FROSTGATE</span><span id="snow-position">X 1500 · Y 19620</span>
+        <span id="snow-vigor">VIGOR 100 / 100</span><span class="snow-vigor"><i id="snow-vigor-fill"></i></span>
+      </div>
+      <div class="snow-hud__right"><span id="snow-mobs">MOBS 27</span><span id="snow-landmarks">LANDMARKS 0 / 7</span><a id="snow-return" class="snow-return" href="/world?return=snow">RETURN TO WORLD</a></div>
     </div>
-    <p id="snow-hint" class="snow-hint">WASD / arrows or click to move · E near a landmark to inspect · the return path is always open</p>
+    <p id="snow-hint" class="snow-hint">North is higher · WASD / arrows or click to move · E to strike, enter doors, inspect landmarks or return south</p>
     <div class="snow-controls">
       <div id="snow-joystick" class="snow-joystick" aria-label="Snow movement joystick"><span id="snow-joystick-knob"></span></div>
       <button id="snow-action" class="snow-action" type="button">E · INSPECT</button>

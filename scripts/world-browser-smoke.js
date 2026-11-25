@@ -253,20 +253,30 @@ try{
  // exercising the real interaction and navigation handoff.
  await send('Page.navigate',{url:base+'/labs/world'});
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
+ await wait('document.getElementById("character-dialog").open');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  // Farm guidance must be local: the plot is a known minimap destination, but
  // its contextual arrow/help appears only within ~20 in-world metres (320 units).
  const farmTile=await evaluate("fetch('/api/world/farm').then(r=>r.json()).then(s=>s.tiles[0]||null)");
  assert.ok(farmTile&&Number.isFinite(farmTile.position.x),'the world has a farm plot to probe');
- const farmSign=farmTile.anchor==='west-road'?-1:1;
- const farmAt=distance=>({x:Math.round(farmTile.position.x+16*distance*farmSign),y:Math.round(farmTile.position.y)});
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
- await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(21).x}'`);
+ // A jittered plot can put the straight-line probe on a tree or rock. Try the
+ // eight compass directions and keep the first the world can actually place.
+ const teleportFarm=async distance=>{
+  for(let step=0;step<8;step++){
+   const angle=step*Math.PI/4;
+   const point={x:Math.round(farmTile.position.x+Math.cos(angle)*16*distance),y:Math.round(farmTile.position.y+Math.sin(angle)*16*distance)};
+   await evaluate(`window.__worldTeleport(${JSON.stringify(point)})`);
+   await delay(150);
+   const actual=await evaluate("(()=>{const p=JSON.parse(document.querySelector('#world-lab pre').textContent).player;return {x:p.x,y:p.y}})()");
+   if(Math.abs(actual.x-point.x)<1&&Math.abs(actual.y-point.y)<1)return actual;
+  }
+  throw new Error('the farm probe could not find a safe approach point');
+ };
+ await teleportFarm(21);
  await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(19))})`);
- await wait(`document.getElementById('minimap-canvas').dataset.player.split(',')[0]==='${farmAt(19).x}'`);
+ await teleportFarm(19);
  await wait("document.getElementById('world-canvas').dataset.farmGuide.length>0");
- await evaluate(`window.__worldTeleport(${JSON.stringify(farmAt(21))})`);
+ await teleportFarm(21);
  await wait("document.getElementById('world-canvas').dataset.farmGuide===''");
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
  await evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Enter Arena').click()");
@@ -645,19 +655,123 @@ try{
  await wait("location.pathname==='/snow'",10000);
  await wait("document.body.dataset.snowReady==='1'",10000);
  assert.equal(await evaluate('document.getElementById("snow-canvas").width'),480,'the snow destination keeps a bounded pixel canvas');
- assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 0 / 3','snow landmarks start unrecorded');
+ const initialLandmarks=await evaluate("document.getElementById('snow-canvas').dataset.landmarks");
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 0 / 7',`Frostgate starts with seven unrecorded landmarks (found ${initialLandmarks})`);
  assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.snow"),'frostgate');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mode"),'exterior');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.elevation"),'0','the gate is the lowest elevation');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.climb"),'0');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.climbTotal"),'28','the mountain has 28 climbed ridges');
+ assert.equal(await evaluate("document.getElementById('snow-region').textContent"),'LOWER FROSTGATE');
  assert.ok(await evaluate("document.getElementById('snow-canvas').dataset.appearance.length>0"),'the snow destination keeps the saved visitor appearance');
- // Walk north to the watch beacon and inspect it with the same E interaction.
- await evaluate("document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true}))");
- await wait("document.getElementById('snow-canvas').dataset.nearest==='watch-beacon'",10000);
- await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true}))");
- await evaluate("document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
- await delay(80);
- await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
- await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('watch-beacon')");
- assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 1 / 3','snow landmark counts update after inspection');
- await screenshot('snow-destination');
+ await screenshot('snow-gate');
+ // Mountain journey helpers. Teleports place the visitor near a climb; each
+ // elevation change is still walked through the real ridge collision.
+ const snowTeleport=async(x,y)=>{await evaluate(`window.__frostgateTeleport(${x},${y})`);await delay(140);};
+ const snowWalk=async(key,ms)=>{
+  await evaluate(`document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'${key}',bubbles:true}))`);
+  await delay(ms);
+  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:'${key}',bubbles:true}))`);
+  await delay(160);
+ };
+ const snowPress=async()=>{
+  await evaluate("document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
+  await delay(80);
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
+  await delay(160);
+ };
+ // Mountain mobs: the population is spread across the whole region, the gait
+ // advances, goats stay neutral until struck, and barbarians attack on sight.
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mobs"),'27');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mobTotal"),'27');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.health"),'100');
+ assert.ok(await evaluate("window.__frostgateMobs().length>=27&&window.__frostgateMobs().every(m=>m.kind==='goat'||m.kind==='barbarian')"),'the mountain seeds goats and barbarians');
+ const mobFrame=await evaluate("document.getElementById('snow-canvas').dataset.mobFrame");
+ await delay(260);
+ assert.notEqual(await evaluate("document.getElementById('snow-canvas').dataset.mobFrame"),mobFrame,'mob gait animation advances');
+ await snowTeleport(1500,19540);
+ await evaluate("window.__frostgatePlaceMob('barbarian',1560,19540)");
+ await wait("document.getElementById('snow-canvas').dataset.health!=='100'",6000);
+ assert.ok(Number(await evaluate("document.getElementById('snow-canvas').dataset.health"))<100,'a frost barbarian attacks on sight');
+ assert.ok(Number(await evaluate("document.getElementById('snow-canvas').dataset.mobAggro"))>=1);
+ await screenshot('snow-mob-attack');
+ await evaluate("window.__frostgateClearDebugMobs()");
+ await snowTeleport(1500,19540);
+ await evaluate("window.__frostgatePlaceMob('goat',1544,19540)");
+ await wait("document.getElementById('snow-canvas').dataset.nearestMob!==''");
+ assert.ok((await evaluate("document.getElementById('snow-action').textContent")).includes('STRIKE'),'the action button offers a strike');
+ assert.equal(await evaluate("window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat').aggro"),false,'an untouched goat is peaceful');
+ await screenshot('snow-mobs');
+ await evaluate("window.__frostgateStrike()");
+ await wait("(()=>{const m=window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat');return m&&m.hp<34})()");
+ assert.equal(await evaluate("window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat').aggro"),true,'a struck goat fights back');
+ await evaluate("window.__frostgateClearDebugMobs()");
+ // Two switchback ridges: west, then east. Climb count must rise steadily.
+ await snowTeleport(520,19680);await snowWalk('w',1000);
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.climb"),'1','the first west ramp is climbable');
+ await snowTeleport(3080,18980);await snowWalk('w',1000);
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.climb"),'2','the east switchback continues the climb');
+ await screenshot('snow-lower-snowfields');
+ // Village discovery and two enterable buildings with exact-position returns.
+ await snowTeleport(1500,15050);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='frostgate-village'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('frostgate-village')");
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 1 / 7');
+ await screenshot('snow-village');
+ await snowTeleport(1330,15052);
+ await wait("document.getElementById('snow-canvas').dataset.nearestDoor==='frostgate-hall'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.mode==='interior'");
+ assert.equal(await evaluate("document.getElementById('snow-region').textContent"),'HEARTH HALL');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.fireplace"),'1','the hall has a warm fireplace');
+ assert.ok((await evaluate("document.getElementById('snow-action').textContent")).includes('EXIT'));
+ await screenshot('snow-interior-hall');
+ await snowPress();await wait("document.getElementById('snow-canvas').dataset.mode==='exterior'");
+ const hallReturn=await evaluate("document.getElementById('snow-canvas').dataset.player");
+ assert.ok(Math.abs(Number(hallReturn.split(',')[0])-1330)<2&&Math.abs(Number(hallReturn.split(',')[1])-15052)<2,'leaving a house returns to its exact doorway');
+ await snowTeleport(1822,14964);
+ await wait("document.getElementById('snow-canvas').dataset.nearestDoor==='winter-supply'");
+ await snowPress();await wait("document.getElementById('snow-canvas').dataset.mode==='interior'");
+ assert.equal(await evaluate("document.getElementById('snow-region').textContent"),'WINTER SUPPLY');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.fireplace"),'0','a shop has no fireplace');
+ await screenshot('snow-interior-shop');
+ await snowPress();await wait("document.getElementById('snow-canvas').dataset.mode==='exterior'");
+ // Mid-mountain discoveries spread off the main trail.
+ await snowTeleport(600,10560);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='frozen-shrine'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('frozen-shrine')");
+ await snowTeleport(2900,9400);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='frozen-lake'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('frozen-lake')");
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 3 / 7');
+ // The ice-bridge ridge is the boundary into the upper snowfield.
+ await snowTeleport(520,7090);await snowWalk('w',1000);
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.elevation"),'3','the ice bridge reaches the upper snowfield');
+ await snowTeleport(520,6900);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='ice-bridge'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('ice-bridge')");
+ await snowTeleport(3000,5300);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='high-pass'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('high-pass')");
+ await screenshot('snow-upper-mountain');
+ await snowTeleport(1500,3560);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='frost-watchtower'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('frost-watchtower')");
+ // The central summit stair is the last climb.
+ await snowTeleport(1800,2200);await snowWalk('w',1100);
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.elevation"),'4','the summit stair reaches the outpost');
+ await snowTeleport(1560,900);
+ await wait("document.getElementById('snow-canvas').dataset.nearest==='summit-beacon'");
+ await snowPress();
+ await wait("document.getElementById('snow-canvas').dataset.landmarks.includes('summit-beacon')");
+ assert.equal(await evaluate("document.getElementById('snow-landmarks').textContent"),'LANDMARKS 7 / 7','all seven Frostgate landmarks can be found by climbing');
+ await screenshot('snow-summit');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  await delay(220);
@@ -665,8 +779,16 @@ try{
  assert.ok(await evaluate('(()=>{const c=document.getElementById("snow-canvas").getBoundingClientRect(),a=document.getElementById("snow-action").getBoundingClientRect();return c.width>0&&a.width>=44&&a.height>=44&&a.right<=390})()'),'snow touch controls stay usable at 390px');
  assert.notEqual(await evaluate("getComputedStyle(document.getElementById('snow-joystick')).display"),'none','the snow destination keeps its joystick on touch sizes');
  await screenshot('snow-mobile');
+ await send('Emulation.setDeviceMetricsOverride',{width:430,height:932,deviceScaleFactor:1,mobile:true});
+ await delay(200);
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=430'),'the snow destination must fit a 430px viewport');
+ assert.ok(await evaluate('(()=>{const c=document.getElementById("snow-canvas").getBoundingClientRect(),a=document.getElementById("snow-action").getBoundingClientRect();return c.width>0&&a.width>=44&&a.height>=44&&a.right<=430})()'),'snow touch controls stay usable at 430px');
+ await screenshot('snow-mobile-430');
  await send('Emulation.setTouchEmulationEnabled',{enabled:false});
  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+ // Descend to the gate before leaving, then confirm the main-world position.
+ await snowTeleport(1500,19840);
+ await wait("document.getElementById('snow-canvas').dataset.return==='1'");
  await evaluate("document.getElementById('snow-return').click()");
  await wait("location.pathname==='/world'",10000);
  await wait('document.getElementById("character-dialog").open');
