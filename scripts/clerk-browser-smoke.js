@@ -77,6 +77,7 @@ try {
 
   await send('Runtime.enable');
   await wait("document.getElementById('intro-google') && !document.getElementById('intro-google').disabled", 'configured Google button');
+  await wait("document.getElementById('character-dialog').open", 'native character intro');
   assert.equal(await evaluate("document.getElementById('character-dialog').open"), true, 'the intro starts in the native top layer');
   await evaluate("document.getElementById('intro-google').click()");
   await wait("!document.getElementById('character-dialog').open", 'the native intro to yield the top layer');
