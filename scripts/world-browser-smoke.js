@@ -680,6 +680,32 @@ try{
   await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
   await delay(160);
  };
+ // Mountain mobs: the population is spread across the whole region, the gait
+ // advances, goats stay neutral until struck, and barbarians attack on sight.
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mobs"),'27');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mobTotal"),'27');
+ assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.health"),'100');
+ assert.ok(await evaluate("window.__frostgateMobs().length>=27&&window.__frostgateMobs().every(m=>m.kind==='goat'||m.kind==='barbarian')"),'the mountain seeds goats and barbarians');
+ const mobFrame=await evaluate("document.getElementById('snow-canvas').dataset.mobFrame");
+ await delay(260);
+ assert.notEqual(await evaluate("document.getElementById('snow-canvas').dataset.mobFrame"),mobFrame,'mob gait animation advances');
+ await snowTeleport(1500,19540);
+ await evaluate("window.__frostgatePlaceMob('barbarian',1560,19540)");
+ await wait("document.getElementById('snow-canvas').dataset.health!=='100'",6000);
+ assert.ok(Number(await evaluate("document.getElementById('snow-canvas').dataset.health"))<100,'a frost barbarian attacks on sight');
+ assert.ok(Number(await evaluate("document.getElementById('snow-canvas').dataset.mobAggro"))>=1);
+ await screenshot('snow-mob-attack');
+ await evaluate("window.__frostgateClearDebugMobs()");
+ await snowTeleport(1500,19540);
+ await evaluate("window.__frostgatePlaceMob('goat',1544,19540)");
+ await wait("document.getElementById('snow-canvas').dataset.nearestMob!==''");
+ assert.ok((await evaluate("document.getElementById('snow-action').textContent")).includes('STRIKE'),'the action button offers a strike');
+ assert.equal(await evaluate("window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat').aggro"),false,'an untouched goat is peaceful');
+ await screenshot('snow-mobs');
+ await evaluate("window.__frostgateStrike()");
+ await wait("(()=>{const m=window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat');return m&&m.hp<34})()");
+ assert.equal(await evaluate("window.__frostgateMobs().find(m=>m.id.startsWith('debug-')&&m.kind==='goat').aggro"),true,'a struck goat fights back');
+ await evaluate("window.__frostgateClearDebugMobs()");
  // Two switchback ridges: west, then east. Climb count must rise steadily.
  await snowTeleport(520,19680);await snowWalk('w',1000);
  assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.climb"),'1','the first west ramp is climbable');
