@@ -293,6 +293,43 @@ export function isNaturalGround(point:Position,radius=0):boolean {
   return !PATHS.some(path=>overlaps(path,point,radius))&&!BUILDINGS.some(building=>overlaps(building,point,radius));
 }
 /**
+ * Decoration geometry lives in one place so placement rules, the renderer and
+ * the collision masks cannot drift apart. The numbers mirror the painted
+ * footprints exactly: a tree crown is the dense 48x46 block, a rock is the
+ * 24x21 body plus highlight.
+ */
+export function treeTrunkRect(tree:Position&{scale?:number}):Rect {
+  const scale=tree.scale||1;
+  return {x:tree.x,y:tree.y+24*scale,width:12*scale,height:28*scale};
+}
+export function treeCanopyRect(tree:Position&{scale?:number}):Rect {
+  const scale=tree.scale||1;
+  return {x:tree.x-18*scale,y:tree.y-12*scale,width:48*scale,height:46*scale};
+}
+export function rockRect(point:Position):Rect { return {x:point.x-12,y:point.y-13,width:24,height:21}; }
+function rectsIntersect(a:Rect,b:Rect):boolean {
+  return a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+}
+function inflate(rect:Rect,pad:number):Rect {
+  return {x:rect.x-pad,y:rect.y-pad,width:rect.width+pad*2,height:rect.height+pad*2};
+}
+/** Distance from a point to the polyline the NPCs actually walk, not just its waypoints. */
+export function distanceToNpcRoute(point:Position):number {
+  let closest=Infinity;
+  for(let index=0;index<NPC_WAYPOINTS.length;index++){
+    const from=NPC_WAYPOINTS[index]!,to=NPC_WAYPOINTS[(index+1)%NPC_WAYPOINTS.length]!;
+    const dx=to.x-from.x,dy=to.y-from.y;
+    const t=Math.max(0,Math.min(1,((point.x-from.x)*dx+(point.y-from.y)*dy)/(dx*dx+dy*dy)));
+    closest=Math.min(closest,Math.hypot(point.x-from.x-t*dx,point.y-from.y-t*dy));
+  }
+  return closest;
+}
+/** True when a decoration footprint touches a tree trunk or its dense crown. */
+export function touchesTree(point:Position,tree:Position&{scale?:number},footprint:Rect,pad=0):boolean {
+  const rock=inflate(footprint,pad);
+  return rectsIntersect(rock,inflate(treeTrunkRect(tree),pad))||rectsIntersect(rock,treeCanopyRect(tree));
+}
+/**
  * Authoritative sites for farm plots and resource nodes. Trees keep a clearing
  * around every one so soil and ore grow beside a trunk, never underneath it.
  * Kept in sync with service/world-farm.js and service/world-economy.js by
@@ -379,16 +416,42 @@ export function canPlaceTree(point:Position):boolean {
     && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>40)
     && clearsExploration(point,40);
 }
-export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12)&&clearsExploration(point,24); }
+export function canPlaceBush(point:Position):boolean {
+  if(!isNaturalGround(point,16)||!clearsExploration(point,36))return false;
+  if(WORLD_SITES.some(site=>Math.hypot(site.x-point.x,site.y-point.y)<WORLD_SITE_CLEARANCE-16))return false;
+  if(CAMPFIRES.some(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)<60))return false;
+  if(NPC_WAYPOINTS.some(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)<30))return false;
+  if(distanceToNpcRoute(point)<26)return false;
+  return !TREES.some(tree=>touchesTree(point,tree,{x:point.x-13,y:point.y-13,width:26,height:26},2));
+}
 export function canPlaceFlower(point:Position):boolean {
-  return isNaturalGround(point,6)
+  return isNaturalGround(point,10)
     && TREES.every(tree=>{const scale=tree.scale||1;return Math.hypot(tree.x+6*scale-point.x,tree.y+38*scale-point.y)>46;})
     && ROCKS.every(rock=>Math.hypot(rock.x-point.x,rock.y-point.y)>44)
     && BUSHES.every(bush=>!bush.solid||Math.hypot(bush.x-point.x,bush.y-point.y)>bush.size/2+16)
-    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34)
-    && clearsExploration(point,20);
+    && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>38)
+    && clearsExploration(point,28);
 }
-export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10)&&clearsExploration(point,24); }
+/** Stones stay apart unless deliberately grouped by the authored town data. */
+const ROCK_MIN_DISTANCE = 42;
+/**
+ * Rocks are solid scenery, so they need a full exclusion pass: ground surface,
+ * landmarks, farm/resource sites, camps, routes, trunks, crowns, other rocks
+ * and soft planting. `placed` carries the rocks accepted so far because ROCKS
+ * does not exist yet while its own candidates are being filtered.
+ */
+export function canPlaceRock(point:Position,placed:Position[]=[]):boolean {
+  if(!isNaturalGround(point,16)||!clearsExploration(point,44))return false;
+  if(WORLD_SITES.some(site=>Math.hypot(site.x-point.x,site.y-point.y)<WORLD_SITE_CLEARANCE-8))return false;
+  if(CAMPFIRES.some(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)<82))return false;
+  if(NPC_WAYPOINTS.some(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)<48))return false;
+  if(distanceToNpcRoute(point)<30)return false;
+  if(MARKET_PROPS.some(prop=>Math.hypot(prop.x-point.x,prop.y-point.y)<42))return false;
+  if(TREES.some(tree=>touchesTree(point,tree,rockRect(point),3)))return false;
+  if(BUSHES.some(bush=>Math.hypot(bush.x-point.x,bush.y-point.y)<bush.size/2+16))return false;
+  return placed.every(other=>Math.hypot(other.x-point.x,other.y-point.y)>=ROCK_MIN_DISTANCE);
+}
 
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
 export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
@@ -468,6 +531,14 @@ function generateOuterVegetation():OuterVegetation {
     && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>80)
     && clearsExploration(point,92)
     && clusters.every(cluster=>Math.hypot(cluster.x-point.x,cluster.y-point.y)>140);
+  /** Site/camp/route clearances for an individual plant or stone, not a whole cluster. */
+  const localClear=(point:Position,extra=0):boolean=>
+    isNaturalGround(point,18+extra)
+    && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE+18+extra)
+    && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>110+extra)
+    && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>80+extra)
+    && distanceToNpcRoute(point)>72+extra
+    && clearsExploration(point,92+extra);
   for(const band of bands){
     for(let index=0;index<band.count;index++){
       for(let attempt=0;attempt<32;attempt++){
@@ -478,22 +549,45 @@ function generateOuterVegetation():OuterVegetation {
   }
   for(const [index,center] of clusters.entries()){
     const tint=(index%3) as 0|1|2;
-    result.trees.push({x:center.x+Math.round((rand()-.5)*24),y:center.y+Math.round((rand()-.5)*22),
-      scale:.85+Math.round(rand()*30)/100,tint});
-    if(rand()>.58)result.trees.push({x:center.x+Math.round((rand()-.5)*92),y:center.y+Math.round((rand()-.5)*80),
-      scale:.8+Math.round(rand()*25)/100,tint:((index+1)%3) as 0|1|2});
+    const localTrees:WorldTree[]=[];
+    const firstTree:WorldTree={x:center.x+Math.round((rand()-.5)*24),y:center.y+Math.round((rand()-.5)*22),
+      scale:.85+Math.round(rand()*30)/100,tint};
+    localTrees.push(firstTree);result.trees.push(firstTree);
+    if(rand()>.58){
+      const companion:WorldTree={x:center.x+Math.round((rand()-.5)*92),y:center.y+Math.round((rand()-.5)*80),
+        scale:.8+Math.round(rand()*25)/100,tint:((index+1)%3) as 0|1|2};
+      localTrees.push(companion);result.trees.push(companion);
+    }
     const bushCount=2+Math.floor(rand()*3);
     for(let bush=0;bush<bushCount;bush++){
-      const angle=rand()*Math.PI*2,distance=24+rand()*54;
-      result.bushes.push({x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance),
-        size:17+Math.round(rand()*12),tint:((index+bush)%3) as 0|1|2,solid:rand()>.76});
+      let chosen:Position|undefined;
+      for(let attempt=0;attempt<14;attempt++){
+        const angle=rand()*Math.PI*2,distance=34+rand()*60;
+        const point={x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance)};
+        if(!localClear(point))continue;
+        if(localTrees.some(tree=>touchesTree(point,tree,{x:point.x-13,y:point.y-13,width:26,height:26},2)))continue;
+        if(result.bushes.some(other=>Math.hypot(other.x-point.x,other.y-point.y)<22+other.size/2))continue;
+        chosen=point;break;
+      }
+      if(chosen)result.bushes.push({...chosen,size:17+Math.round(rand()*12),tint:((index+bush)%3) as 0|1|2,solid:rand()>.76});
     }
-    if(rand()>.3)result.flowers.push({x:center.x-24-Math.round(rand()*30),y:center.y+18+Math.round(rand()*24),
-      width:44+Math.round(rand()*26),height:20+Math.round(rand()*10)});
+    if(rand()>.3){
+      const flower={x:center.x-24-Math.round(rand()*30),y:center.y+18+Math.round(rand()*24)};
+      if(localClear(flower))result.flowers.push({...flower,width:44+Math.round(rand()*26),height:20+Math.round(rand()*10)});
+    }
+    // Stones circle the grove rather than sitting on its trunks or under its
+    // crowns: the old 30-76px band overlapped nearly every planted tree.
     const rockCount=1+(rand()>.55?1:0);
     for(let rock=0;rock<rockCount;rock++){
-      const angle=rand()*Math.PI*2,distance=30+rand()*46;
-      result.rocks.push({x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance)});
+      for(let attempt=0;attempt<28;attempt++){
+        const angle=rand()*Math.PI*2,distance=68+rand()*58;
+        const point={x:center.x+Math.round(Math.cos(angle)*distance),y:center.y+Math.round(Math.sin(angle)*distance)};
+        if(!localClear(point,6))continue;
+        if(localTrees.some(tree=>touchesTree(point,tree,rockRect(point),3)))continue;
+        if(result.bushes.some(bush=>Math.hypot(bush.x-point.x,bush.y-point.y)<bush.size/2+18))continue;
+        if(result.rocks.some(other=>Math.hypot(other.x-point.x,other.y-point.y)<ROCK_MIN_DISTANCE))continue;
+        result.rocks.push(point);break;
+      }
     }
   }
   // Low planting and stones fill the fringe between the loop and the old town.
@@ -514,7 +608,16 @@ function generateOuterVegetation():OuterVegetation {
     result.bushes.push({x:sample.x,y:sample.y,size:16+Math.round(rand()*12),tint:(index%3) as 0|1|2,solid:rand()>.86});
     if(rand()>.62)result.flowers.push({x:sample.x-16-Math.round(rand()*24),y:sample.y+16+Math.round(rand()*18),
       width:38+Math.round(rand()*22),height:18+Math.round(rand()*10)});
-    if(rand()>.58)result.rocks.push({x:sample.x+Math.round((rand()-.5)*46),y:sample.y+Math.round((rand()-.5)*34)});
+    if(rand()>.58){
+      for(let attempt=0;attempt<8;attempt++){
+        const point={x:sample.x+Math.round((rand()-.5)*46),y:sample.y+Math.round((rand()-.5)*34)};
+        if(!localClear(point,4))continue;
+        if(result.trees.some(tree=>touchesTree(point,tree,rockRect(point),3)))continue;
+        if(result.bushes.some(bush=>Math.hypot(bush.x-point.x,bush.y-point.y)<bush.size/2+16))continue;
+        if(result.rocks.some(other=>Math.hypot(other.x-point.x,other.y-point.y)<ROCK_MIN_DISTANCE))continue;
+        result.rocks.push(point);break;
+      }
+    }
   }
   return result;
 }
@@ -612,12 +715,19 @@ const BUSH_CANDIDATES: WorldBush[] = [
   ...VEGETATION_GROUPS.flatMap(group=>group.bushes),
   ...OUTER_VEGETATION.bushes,
 ];
-export const BUSHES: WorldBush[] = BUSH_CANDIDATES.filter(canPlaceBush);
+const BUSH_MIN_DISTANCE = 24;
+export const BUSHES: WorldBush[] = BUSH_CANDIDATES.reduce<WorldBush[]>((placed,bush)=>{
+  if(canPlaceBush(bush)&&placed.every(other=>Math.hypot(other.x-bush.x,other.y-bush.y)>=BUSH_MIN_DISTANCE))placed.push(bush);
+  return placed;
+},[]);
 const ROCK_CANDIDATES: Position[] = [{x:1210,y:260},{x:1360,y:320},{x:1250,y:520},{x:1390,y:650},{x:2240,y:540},{x:-620,y:1180},{x:-760,y:720},{x:1760,y:1200},{x:2380,y:1420},
   // Weathered stones gather at the far-north gate and the remote sites.
   {x:390,y:-2200},{x:770,y:-2200},{x:-1980,y:-420},{x:3840,y:680},{x:760,y:2470},
   ...VEGETATION_GROUPS.flatMap(group=>group.rocks),...OUTER_VEGETATION.rocks];
-export const ROCKS: Position[] = ROCK_CANDIDATES.filter(canPlaceRock);
+export const ROCKS: Position[] = ROCK_CANDIDATES.reduce<Position[]>((placed,rock)=>{
+  if(canPlaceRock(rock,placed))placed.push(rock);
+  return placed;
+},[]);
 const FLOWER_CANDIDATES: Rect[] = [
   {x:1510,y:600,width:90,height:42},{x:1620,y:830,width:98,height:46},{x:1770,y:570,width:96,height:40},
   {x:1900,y:845,width:102,height:44},{x:2050,y:970,width:94,height:40},
@@ -628,6 +738,48 @@ const FLOWER_CANDIDATES: Rect[] = [
   ...OUTER_VEGETATION.flowers,
 ];
 export const FLOWER_BEDS: Rect[] = FLOWER_CANDIDATES.filter(bed=>canPlaceFlower({x:bed.x+bed.width/2,y:bed.y+bed.height/2}));
+/**
+ * Small non-blocking scenery fills the empty ground between the major props.
+ * Logs, stumps, mushrooms, pebbles and ferns share the same exclusion rules as
+ * rocks, but never enter WALLS: they decorate pathsides without changing routes.
+ */
+export type GroundPropKind = 'log'|'stump'|'mushroom'|'pebbles'|'fern';
+export interface GroundProp extends Position { kind:GroundPropKind; tint:0|1|2; flip:boolean }
+export function groundPropRect(point:Position):Rect { return {x:point.x-16,y:point.y-10,width:32,height:20}; }
+export function canPlaceGroundProp(point:Position,placed:Position[]=[]):boolean {
+  if(!isNaturalGround(point,20)||!clearsExploration(point,70))return false;
+  if(WORLD_SITES.some(site=>Math.hypot(site.x-point.x,site.y-point.y)<WORLD_SITE_CLEARANCE+10))return false;
+  if(CAMPFIRES.some(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)<84))return false;
+  if(NPC_WAYPOINTS.some(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)<52))return false;
+  if(distanceToNpcRoute(point)<32)return false;
+  const footprint=inflate(groundPropRect(point),2);
+  if(TREES.some(tree=>rectsIntersect(footprint,inflate(treeTrunkRect(tree),6))))return false;
+  if(ROCKS.some(rock=>rectsIntersect(inflate(groundPropRect(point),4),rockRect(rock))))return false;
+  if(BUSHES.some(bush=>Math.hypot(bush.x-point.x,bush.y-point.y)<bush.size/2+20))return false;
+  if(FLOWER_BEDS.some(bed=>rectsIntersect(footprint,bed)))return false;
+  return placed.every(other=>Math.hypot(other.x-point.x,other.y-point.y)>=64);
+}
+function generateGroundProps():GroundProp[] {
+  const rand=seededRandom(0x0a3e5c1);
+  const kinds:GroundPropKind[]=['log','stump','mushroom','pebbles','fern'];
+  const bands:RingBand[]=[
+    {x0:MAP.minX+150,x1:MAP.maxX-150,y0:MAP.minY+150,y1:CORE_BOUNDS.minY-60,count:70},
+    {x0:MAP.minX+150,x1:MAP.maxX-150,y0:CORE_BOUNDS.maxY+60,y1:MAP.maxY-150,count:70},
+    {x0:MAP.minX+150,x1:CORE_BOUNDS.minX-60,y0:CORE_BOUNDS.minY-60,y1:CORE_BOUNDS.maxY+60,count:36},
+    {x0:CORE_BOUNDS.maxX+60,x1:MAP.maxX-150,y0:CORE_BOUNDS.minY-60,y1:CORE_BOUNDS.maxY+60,count:36},
+  ];
+  const placed:GroundProp[]=[];
+  for(const band of bands)for(let index=0;index<band.count;index++){
+    for(let attempt=0;attempt<18;attempt++){
+      const point={x:Math.round(band.x0+rand()*(band.x1-band.x0)),y:Math.round(band.y0+rand()*(band.y1-band.y0))};
+      if(!canPlaceGroundProp(point,placed))continue;
+      placed.push({...point,kind:kinds[placed.length%kinds.length]!,tint:(placed.length%3) as 0|1|2,flip:rand()>.5});
+      break;
+    }
+  }
+  return placed;
+}
+export const GROUND_PROPS: GroundProp[] = generateGroundProps();
 export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===900&&point.y===760);
 /** Developer-only browser probes start just inside the former map edges. */
 export const EXPLORATION_PROBES = {
@@ -641,7 +793,7 @@ export const EXPLORATION_PROBES = {
   frostgate:{x:576,y:-2320},passApproach:{x:576,y:-1500},
   starfall:{x:-1820,y:-560},emberShrine:{x:3720,y:520},hollowArch:{x:900,y:2600},
 } satisfies Record<string,Position>;
-const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
+const TREE_TRUNKS: Rect[] = TREES.map(treeTrunkRect);
 export const WALLS: Rect[] = [...BUILDINGS,
   { x: 500, y: 340, width: 112, height: 64 }, // plaza fountain
   { x: 184, y: 530, width: 80, height: 48 }, // free table
