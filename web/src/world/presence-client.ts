@@ -7,7 +7,7 @@ export interface PresencePlayer {
 }
 export interface PresenceAgent extends PresencePlayer {agent_id:string;strategy:string;sprite:string;recent_winner:boolean;kind:'canonical_agent'}
 export interface PresenceQuickChat {player_id:string;phrase_id:string;text:string;direction:'up'|'down'|'left'|'right';sent_at:string}
-export type PresenceChallengeGame='tictactoe'|'rps';
+export type PresenceChallengeGame='tictactoe'|'rps'|'swordduel';
 export interface PresenceChallenge {challenge_id:string;game:PresenceChallengeGame;from_player_id:string;from_name:string;to_player_id:string;expires_at:string}
 export interface PresenceChallengeAccepted {challenge_id:string;duel_id:string;game:PresenceChallengeGame;from_player_id:string;to_player_id:string}
 export interface PresenceChallengeClosed {challenge_id:string;by_player_id:string}
@@ -39,7 +39,7 @@ interface PresenceOptions {
   now?:()=>number;moveIntervalMs?:number;heartbeatIntervalMs?:number;sleep?:(ms:number)=>Promise<void>;
 }
 const eventNames=['WorldJoined','PlayerJoined','PlayerMoved','PlayerUpdated','PlayerLeft','PlayerQuickChat','PlayerChallenged','ChallengeAccepted','ChallengeDeclined','ChallengeCancelled','ChallengeExpired','AgentJoined','AgentMoved','AgentUpdated','AgentLeft'] as const;
-const challengeGames:ReadonlyArray<PresenceChallengeGame>=['tictactoe','rps'];
+const challengeGames:ReadonlyArray<PresenceChallengeGame>=['tictactoe','rps','swordduel'];
 const identifier=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=80;
 function parseChallenge(value:unknown):PresenceChallenge|null{
   if(!value||typeof value!=='object')return null;

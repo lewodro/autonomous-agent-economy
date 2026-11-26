@@ -8,7 +8,7 @@
  */
 export type QuickChatDirection = 'up' | 'right' | 'down' | 'left';
 export type QuickChatPage = 'social' | 'game';
-export type QuickChatGame = 'tictactoe' | 'rps';
+export type QuickChatGame = 'tictactoe' | 'rps' | 'swordduel';
 export interface QuickChatPhrase {id: string; page: QuickChatPage; direction: QuickChatDirection; text: string; challenge?: QuickChatGame}
 
 export const QUICK_CHAT_OPTIONS: ReadonlyArray<QuickChatPhrase> = Object.freeze([
@@ -18,7 +18,7 @@ export const QUICK_CHAT_OPTIONS: ReadonlyArray<QuickChatPhrase> = Object.freeze(
   {id: 'wait', page: 'social', direction: 'left', text: 'wait here'},
   {id: 'ttt', page: 'game', direction: 'up', text: 'tic-tac-toe?', challenge: 'tictactoe'},
   {id: 'rps', page: 'game', direction: 'right', text: 'rps?', challenge: 'rps'},
-  {id: 'arena', page: 'game', direction: 'down', text: 'arena?'},
+  {id: 'sword', page: 'game', direction: 'down', text: 'sword duel?', challenge: 'swordduel'},
   {id: 'explore', page: 'game', direction: 'left', text: "let's explore"},
 ]);
 

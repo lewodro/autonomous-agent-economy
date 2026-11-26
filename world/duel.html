@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#142620">
-  <meta name="description" content="A live Tic-Tac-Toe or Rock Paper Scissors match between two visitors of the shared world, with read-only spectating.">
-  <title>Shared match · Last Seat Arena</title>
+  <meta name="description" content="A live Tic-Tac-Toe, Rock Paper Scissors or Sword Duel match between two visitors of the shared world, with read-only spectating.">
+  <title>Shared duel · Last Seat Arena</title>
   <link rel="stylesheet" href="/world/styles.css">
 </head>
 <body class="duel-page">
@@ -29,6 +29,19 @@
       <p id="duel-status" class="duel-status" role="status" aria-live="polite">Opening the match…</p>
       <div id="duel-players" class="duel-players" aria-label="Players"></div>
       <div class="duel-center">
+        <div id="duel-arena-wrap" class="duel-arena-wrap" hidden>
+          <canvas id="duel-arena" width="960" height="540" tabindex="0" aria-label="Pixel-art Sword Duel arena with two fighters, stone floor, banners and torches"></canvas>
+          <div id="duel-arena-controls" class="duel-arena-controls" hidden>
+            <div id="duel-arena-pad" class="duel-arena-pad" aria-label="Movement pad">
+              <button type="button" data-dir="up" aria-label="Move up">▲</button>
+              <button type="button" data-dir="left" aria-label="Move left">◀</button>
+              <button type="button" data-dir="down" aria-label="Move down">▼</button>
+              <button type="button" data-dir="right" aria-label="Move right">▶</button>
+            </div>
+            <button id="duel-dodge" type="button" class="duel-combat-button">DODGE · SHIFT</button>
+            <button id="duel-strike" type="button" class="duel-combat-button is-strike">STRIKE · SPACE</button>
+          </div>
+        </div>
         <div id="duel-board" class="duel-board" hidden aria-label="Tic-Tac-Toe board"></div>
         <div id="duel-actions" class="duel-actions" hidden aria-label="Rock Paper Scissors moves"></div>
         <p id="duel-hint" class="duel-hint"></p>

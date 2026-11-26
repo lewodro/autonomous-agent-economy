@@ -33,6 +33,8 @@ interface View {
   monsters: Monster[]; chests: Array<{ id: string; x: number; y: number; opened: boolean }>;
   kills: number; required: number; cleared: boolean; can_descend: boolean;
   weapon: { id: string; name: string; damage: number; range: number };
+  armor: { id: string; name: string; mitigation: number } | null;
+  potion: { available: number; heal: number };
   reset_at: string;
 }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -41,7 +43,7 @@ const message = $<HTMLElement>('cave-message'), depth = $<HTMLElement>('cave-dep
 const healthFill = $<HTMLElement>('cave-health-fill'), healthText = $<HTMLElement>('cave-health-text');
 const hint = $<HTMLElement>('cave-hint'), notice = $<HTMLElement>('cave-notice');
 const monstersText = $<HTMLElement>('cave-monsters'), weaponText = $<HTMLElement>('cave-weapon');
-const actionButton = $<HTMLButtonElement>('cave-action'), attackButton = $<HTMLButtonElement>('cave-attack');
+const actionButton = $<HTMLButtonElement>('cave-action'), attackButton = $<HTMLButtonElement>('cave-attack'), potionButton = $<HTMLButtonElement>('cave-potion');
 const keyboard = new KeyboardInput(canvas);
 const touch = new TouchJoystickInput($('cave-joystick'), $('cave-joystick-knob'), actionButton);
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -119,7 +121,9 @@ function applyView(next: View): void {
   lastSeenHp = next.player.hp;
   monstersText.textContent = `MONSTERS ${next.kills} / ${next.required}`;
   if (passageJustUnlocked) flash('PASSAGE UNLOCKED');
-  weaponText.textContent = next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE';
+  weaponText.textContent = `${next.weapon ? next.weapon.name.toUpperCase() : 'STARTER BLADE'}${next.armor ? ` · ${next.armor.name.toUpperCase()}` : ''}`;
+  potionButton.textContent = `POTION × ${next.potion?.available || 0}`;
+  potionButton.disabled = next.status !== 'playing' || !(next.potion?.available);
   const current = level();
   const chest = nearbyChest();
   const exit = Boolean(current?.exit && inReach(current.exit));
@@ -446,7 +450,17 @@ function frame(time: number): void {
   drawScene(time);
   requestAnimationFrame(frame);
 }
+async function usePotion():Promise<void> {
+  if(!view||view.status!=='playing'||!view.potion?.available)return;
+  potionButton.disabled=true;
+  try{
+    const result=await request<View & { healed: number }>('/api/world/cave/potion',{run_id:view.run_id,request_id:crypto.randomUUID()});
+    applyView(result);
+    flash(`+${result.healed} HP · POTION USED`);
+  }catch(error){flash(error instanceof Error?error.message:'Potion failed');}
+}
 attackButton.addEventListener('click', () => void attack());
+potionButton.addEventListener('click', () => void usePotion());
 canvas.addEventListener('pointerdown', pointerTarget);
 window.addEventListener('pagehide', () => { stopped = true; keyboard.read(); touch.destroy(); });
 

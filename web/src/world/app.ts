@@ -15,7 +15,8 @@ import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type PresenceChallengeAccepted, type PresenceChallengeUpdate, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { withinFarmGuidance } from './scale.js';
-import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
+import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind, type DiscoveryGroupView, type EquipmentItem } from './farm.js';
+import { equipmentIconCanvas } from './equipment-art.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -68,6 +69,7 @@ let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldPar
 let moveTarget:{x:number;y:number}|null=null,lastFootstepAt=0,targetStuckMs=0,targetLastPosition={x:0,y:0};
 const farmClient=new FarmClient(),farmHud=new FarmHud();
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
+let discoveryReportTimer=0,discoveryReporting=false,discoveryRewardSeen=new Set<string>();
 let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
 const knownTiles=new Map<string,string>();
 const auth=createAuth(async()=>{
@@ -88,6 +90,9 @@ function updateDiscoverySummary():void {minimap.setSummary(`DISCOVERIES ${discov
 function showDiscoveryToast(label:string):void {
   const title=discoveryToast.querySelector('strong');
   if(title)title.textContent=label.toUpperCase();
+  const tag=discoveryToast.querySelector('span');
+  if(tag)tag.textContent='DISCOVERED';
+  discoveryToast.dataset.reward='';
   if(discoveryToastTimer)window.clearTimeout(discoveryToastTimer);
   discoveryToast.hidden=false;
   discoveryToast.classList.remove('is-visible');
@@ -96,6 +101,21 @@ function showDiscoveryToast(label:string):void {
     discoveryToast.classList.remove('is-visible');
     discoveryToastTimer=window.setTimeout(()=>{discoveryToast.hidden=true;discoveryToastTimer=0;},220);
   },1_350);
+}
+function showRewardToast(label:string,credits:number):void {
+  const tag=discoveryToast.querySelector('span'),title=discoveryToast.querySelector('strong');
+  if(tag)tag.textContent=`${label} COMPLETE`;
+  if(title)title.textContent=`+${credits} CREDITS`;
+  discoveryToast.dataset.reward='1';
+  if(discoveryToastTimer)window.clearTimeout(discoveryToastTimer);
+  discoveryToast.hidden=false;
+  discoveryToast.classList.remove('is-visible');
+  requestAnimationFrame(()=>discoveryToast.classList.add('is-visible'));
+  sparkle(player.position,['#f7d979','#fff3cf','#d8b35c'],16);
+  discoveryToastTimer=window.setTimeout(()=>{
+    discoveryToast.classList.remove('is-visible');
+    discoveryToastTimer=window.setTimeout(()=>{discoveryToast.hidden=true;discoveryToast.dataset.reward='';discoveryToastTimer=0;},220);
+  },2_000);
 }
 function showRegionBadge(id:keyof typeof REGIONS):void {
   if(regionLabelTimer)window.clearTimeout(regionLabelTimer);
@@ -120,10 +140,62 @@ function recordDiscovery(id:string):void {
   discoveryMarkers=minimapMarkers(discoveries);
   updateDiscoverySummary();
   showDiscoveryToast(site.label);
+  scheduleDiscoveryReport();
+}
+/** The server owns rewards; a debounced report batches several quick finds. */
+function scheduleDiscoveryReport():void {
+  if(discoveryReportTimer)window.clearTimeout(discoveryReportTimer);
+  discoveryReportTimer=window.setTimeout(()=>{discoveryReportTimer=0;void reportDiscoveries();},240);
+}
+async function reportDiscoveries():Promise<void> {
+  if(discoveryReporting)return;
+  discoveryReporting=true;
+  try{
+    const result=await farmClient.reportDiscoveries([...discoveries]);
+    const account=result.account as FarmAccount|undefined;
+    const serverSites=account?.discovery?.sites||[];
+    let changed=false;
+    for(const id of serverSites)if(!discoveries.has(id)){discoveries.add(id);changed=true;}
+    if(changed){saveDiscoveries(discoveries);discoveryMarkers=minimapMarkers(discoveries);updateDiscoverySummary();}
+    mergeFarmAccount(account);
+    const rewards=(result.rewards||[]) as Array<{group_id:string;label:string;credits:number}>;
+    for(const reward of rewards){
+      if(discoveryRewardSeen.has(reward.group_id))continue;
+      discoveryRewardSeen.add(reward.group_id);
+      showRewardToast(reward.label,reward.credits);
+      farmHud.notice(`${reward.label} complete · +${reward.credits} credits`,'good');
+      if(dialog.open&&$('interaction-title').textContent==='DISCOVERIES')showDiscoveries();
+    }
+  }catch{/* the local journal still works; the next interaction retries */}
+  finally{discoveryReporting=false;}
 }
 function showDiscoveries():void {
   show('DISCOVERIES');
   text('p',`${discoveries.size} of ${DISCOVERY_SITES.length} landmarks recorded. Interact with caves, ruins, shrines, passes and camps to add them to this journal and the minimap.`);
+  const serverSites=farmSnapshot?.account?.discovery?.sites||[];
+  const recorded=new Set([...discoveries,...serverSites]);
+  const rewarded=new Set(farmSnapshot?.account?.discovery?.rewarded_groups||[]);
+  const groups=(farmSnapshot?.discovery?.groups||[]) as DiscoveryGroupView[];
+  if(groups.length){
+    const rewards=document.createElement('div');rewards.className='discovery-reward-groups';content.append(rewards);
+    text('h3','COMPLETION REWARDS',rewards);
+    for(const group of groups){
+      const found=group.sites.filter(id=>recorded.has(id)).length,complete=found===group.sites.length;
+      const section=document.createElement('section');section.className=`discovery-reward${rewarded.has(group.id)?' is-rewarded':''}`;
+      section.dataset.group=group.id;section.dataset.count=`${found}/${group.sites.length}`;
+      text('h3',`${group.label} · ${found} / ${group.sites.length}`,section);
+      text('p',rewarded.has(group.id)
+        ? `COMPLETE · ${group.reward} CREDITS CLAIMED`
+        : `${found}/${group.sites.length} DISCOVERED · REWARD: ${group.reward} CREDITS`,section).className='discovery-reward__progress';
+      const list=document.createElement('div');list.className='discovery-reward__sites';section.append(list);
+      for(const id of group.sites){
+        const label=DISCOVERY_SITES.find(site=>site.id===id)?.label||id.toUpperCase();
+        const row=text('span',recorded.has(id)?`✓ ${label}`:'???',list);
+        row.className=recorded.has(id)?'is-found':'is-unknown';
+      }
+      rewards.append(section);
+    }
+  }
   const grid=document.createElement('div');grid.className='discovery-groups';content.append(grid);
   for(const group of discoveryGroups(discoveries)){
     const section=document.createElement('section');section.className='discovery-group';
@@ -135,7 +207,7 @@ function showDiscoveries():void {
     }
     grid.append(section);
   }
-  text('p','Discoveries are saved in this browser only. They are not yet linked to a signed-in world account.',content).className='world-discovery-note';
+  text('p','Browser journal history stays in this browser; reward progress and claimed credits are saved on your world account.',content).className='world-discovery-note';
 }
 async function flushSavedProfile():Promise<void>{
   if(!savedProfileDirty||!farmSnapshot?.account?.signed_in)return;
@@ -362,7 +434,7 @@ function receiveQuickChat(chat:PresenceQuickChat):void {
   if(!own&&Math.hypot(position.x-player.position.x,position.y-player.position.y)>QUICK_CHAT_VISIBLE_RADIUS)return;
   showQuickChatBubble(chat,position,own);
 }
-const CHALLENGE_GAME_LABELS:Record<PresenceChallenge['game'],string>={tictactoe:'TIC-TAC-TOE',rps:'ROCK PAPER SCISSORS'};
+const CHALLENGE_GAME_LABELS:Record<PresenceChallenge['game'],string>={tictactoe:'TIC-TAC-TOE',rps:'ROCK PAPER SCISSORS',swordduel:'SWORD DUEL'};
 function challengeRemainingMs(challenge:PresenceChallenge):number {
   const until=Date.parse(challenge.expires_at);
   return Number.isFinite(until)?Math.max(0,until-Date.now()):0;
@@ -631,6 +703,11 @@ async function loadFarm():Promise<void>{
   try{
     const snapshot=await farmClient.load(),previous=farmSnapshot;
     farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);updateIntroAccount(snapshot);
+    const known=snapshot.account?.discovery?.rewarded_groups||[];
+    for(const id of known)discoveryRewardSeen.add(id);
+    let synced=false;
+    for(const id of snapshot.account?.discovery?.sites||[])if(!discoveries.has(id)){discoveries.add(id);synced=true;}
+    if(synced){saveDiscoveries(discoveries);discoveryMarkers=minimapMarkers(discoveries);updateDiscoverySummary();}
     if(snapshot.account?.signed_in&&savedProfileDirty)scheduleSavedProfile();
     for(const tile of snapshot.tiles){
       const before=knownTiles.get(tile.id);
@@ -721,6 +798,61 @@ function farmSection():void{
     row.append(one,all);content.append(row);
   }
 }
+function equipmentStats(item:EquipmentItem):string {
+  if(item.slot==='weapon')return `${item.damage??0} DMG · ${item.range??0} REACH`;
+  if(item.slot==='armor')return `${Math.round((item.mitigation??0)*100)}% LESS DAMAGE · +${item.bonus_hp??0} HP`;
+  return `RESTORE ${item.heal??0} HP IN CAVES`;
+}
+function equipmentSection():void {
+  const account=farmSnapshot?.account;
+  if(!account){text('p','The equipment ledger is still loading.');return;}
+  const catalog=(farmSnapshot?.equipment?.catalog||[]) as EquipmentItem[];
+  text('h3','ADVENTURING EQUIPMENT');
+  text('p','Gear lives in the same inventory as your produce. Swords and armor change cave combat; Arena duels use standardised stats so purchases cannot buy a win.');
+  const equipped=account.equipment.equipped;
+  text('p',`Equipped · ${equipped.weapon||'none'} · ${equipped.armor||'no armor'} · ${account.equipment.owned.health_potion||0} potions in bag.`);
+  const grid=document.createElement('div');grid.className='equipment-grid';content.append(grid);
+  for(const item of catalog){
+    const card=document.createElement('article');card.className='equipment-card';card.dataset.item=item.id;
+    card.append(equipmentIconCanvas(item.id,3));
+    text('strong',item.name.toUpperCase(),card);
+    text('p',item.description,card);
+    text('p',equipmentStats(item),card).className='equipment-stats';
+    const owned=account.equipment.owned[item.id]||0;
+    const isEquipped=equipped.weapon===item.id||equipped.armor===item.id;
+    text('p',item.starter?'STARTER · ALWAYS YOURS':isEquipped?'EQUIPPED':owned?`OWNED × ${owned}`:`${item.price} CREDITS`,card).className='equipment-status';
+    if(!item.starter){
+      const buy=document.createElement('button');buy.type='button';buy.textContent=`Buy · ${item.price} CR`;
+      buy.disabled=account.credits<item.price;
+      buy.onclick=()=>void buyEquipment(item);
+      card.append(buy);
+    }
+    if(item.slot==='weapon'||item.slot==='armor'){
+      const toggle=document.createElement('button');toggle.type='button';
+      toggle.textContent=isEquipped?'Unequip':'Equip';toggle.disabled=!owned&&!isEquipped;
+      toggle.onclick=()=>void toggleEquipment(item,isEquipped);
+      card.append(toggle);
+    }
+    grid.append(card);
+  }
+}
+async function buyEquipment(item:EquipmentItem):Promise<void> {
+  try{
+    const result=await farmClient.equipment('buy',{item_id:item.id});
+    mergeFarmAccount(result.account as FarmAccount|undefined);
+    farmHud.notice(`${item.name} purchased · −${item.price} credits`,'good');
+    sparkle(player.position,['#f7d979','#d8fbff'],12);
+    await showBazaar();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Purchase failed','warn');}
+}
+async function toggleEquipment(item:EquipmentItem,currentlyEquipped:boolean):Promise<void> {
+  try{
+    const result=await farmClient.equipment(currentlyEquipped?'unequip':'equip',currentlyEquipped?{slot:item.slot}:{item_id:item.id});
+    mergeFarmAccount(result.account as FarmAccount|undefined);
+    farmHud.notice(currentlyEquipped?`${item.name} unequipped`:`${item.name} equipped`,'good');
+    await showBazaar();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Equipment change failed','warn');}
+}
 async function sellProduce(crop:CropKind,quantity:number):Promise<void>{
   try{
     const result=await farmPost('sell',{crop,quantity});
@@ -798,7 +930,7 @@ async function showBazaar():Promise<void>{
     if(!dialog.open||version!==interactionVersion)return;
     content.replaceChildren();
     text('p','Bring produce here from the farm plots. Produce sells for internal world credits; credits are not SOL or wallet funds.');
-    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
+    farmSection();equipmentSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
     if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY CONFIGURATION');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'A separately configured real-payout program is enabled.':'Real payouts are disabled; internal credits remain in-game only.');}
     text('h3','GATHERING RECEIPTS');
     if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');

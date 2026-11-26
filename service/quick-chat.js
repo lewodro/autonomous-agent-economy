@@ -20,7 +20,7 @@ export const QUICK_CHAT_PHRASES = Object.freeze({
   wait: Object.freeze({page: 'social', direction: 'left', text: 'wait here'}),
   ttt: Object.freeze({page: 'game', direction: 'up', text: 'tic-tac-toe?', challenge: 'tictactoe'}),
   rps: Object.freeze({page: 'game', direction: 'right', text: 'rps?', challenge: 'rps'}),
-  arena: Object.freeze({page: 'game', direction: 'down', text: 'arena?'}),
+  sword: Object.freeze({page: 'game', direction: 'down', text: 'sword duel?', challenge: 'swordduel'}),
   explore: Object.freeze({page: 'game', direction: 'left', text: "let's explore"}),
 });
 

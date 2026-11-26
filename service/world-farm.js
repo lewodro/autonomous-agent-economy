@@ -1,6 +1,8 @@
 import { createHash, createPublicKey, randomBytes, randomUUID, verify as verifySignature } from 'node:crypto';
 import { validSolanaAddress } from './world-economy.js';
 import { sanitizeAppearance } from './avatar-appearance.js';
+import { completedDiscoveryGroups, DISCOVERY_SITE_IDS, publicDiscoveryGroups } from '../src/world-discovery.js';
+import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS, equipmentLoadout, publicEquipmentCatalog, STARTER_EQUIPMENT } from '../src/world-equipment.js';
 
 const VERSION = 3;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
@@ -99,8 +101,10 @@ function defaultAccount(identity, now) {
     xp: 0,
     seconds_played: 0,
     time_credits: 0,
-    inventory: { wheat: 0, carrot: 0, pumpkin: 0 },
+    inventory: { wheat: 0, carrot: 0, pumpkin: 0, ...Object.fromEntries(EQUIPMENT_IDS.map(id => [id, id === STARTER_EQUIPMENT.weapon ? 1 : 0])) },
+    equipped: { ...STARTER_EQUIPMENT },
     stats: { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 },
+    discovery: { sites: [], rewarded_groups: [] },
     profile: { avatar: null, appearance: null, position: null, saved_at: null },
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
@@ -172,7 +176,21 @@ export class WorldFarm {
     for (const key of Object.keys(this.state.accounts)) {
       const account = this.state.accounts[key];
       account.inventory ||= { wheat: 0, carrot: 0, pumpkin: 0 };
+      for (const id of EQUIPMENT_IDS) {
+        account.inventory[id] = Math.max(0, Math.floor(Number(account.inventory[id]) || 0));
+        if (id === STARTER_EQUIPMENT.weapon && account.inventory[id] === 0) account.inventory[id] = 1;
+      }
+      account.equipped ||= { ...STARTER_EQUIPMENT };
+      const savedWeapon = EQUIPMENT[account.equipped.weapon];
+      if (!savedWeapon || savedWeapon.slot !== 'weapon' || (account.inventory[account.equipped.weapon] || 0) < 1) account.equipped.weapon = STARTER_EQUIPMENT.weapon;
+      const savedArmor = EQUIPMENT[account.equipped.armor];
+      if (!savedArmor || savedArmor.slot !== 'armor' || (account.inventory[account.equipped.armor] || 0) < 1) account.equipped.armor = null;
       account.stats ||= { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 };
+      account.discovery ||= { sites: [], rewarded_groups: [] };
+      account.discovery.sites ||= [];
+      account.discovery.rewarded_groups ||= [];
+      const knownSites = new Set(DISCOVERY_SITE_IDS);
+      account.discovery.sites = account.discovery.sites.filter(id => typeof id === 'string' && knownSites.has(id));
       account.seconds_played ||= 0;
       account.time_credits ||= 0;
       account.xp ||= 0;
@@ -303,6 +321,14 @@ export class WorldFarm {
       time_credits: account.time_credits,
       inventory: { ...account.inventory },
       stats: { ...account.stats },
+      discovery: {
+        sites: [...account.discovery.sites],
+        rewarded_groups: [...account.discovery.rewarded_groups],
+      },
+      equipment: {
+        owned: Object.fromEntries(EQUIPMENT_IDS.map(id => [id, account.inventory[id] || 0])),
+        equipped: { ...account.equipped },
+      },
       plots_used: active,
       plots_limit: this.maxPlotsPerPlayer,
       profile: account.profile ? {
@@ -351,6 +377,8 @@ export class WorldFarm {
       mode: 'farm_v1',
       account,
       tiles: this.tiles(identity?.key || null),
+      discovery: { groups: publicDiscoveryGroups() },
+      equipment: { catalog: publicEquipmentCatalog(), slots: [...EQUIPMENT_SLOTS] },
       bazaar: { position: { ...BAZAAR.position }, radius: BAZAAR.radius, prices: Object.fromEntries(CROP_KINDS.map(kind => [kind, CROPS[kind].sell])) },
       crops: Object.fromEntries(CROP_KINDS.map(kind => [kind, {
         label: CROPS[kind].label,
@@ -482,6 +510,124 @@ export class WorldFarm {
       });
       return { account: this.view(identity), sold: amount, crop, credits: total, event_id };
     });
+  }
+
+  /**
+   * Discovery progress is reported by the browser but rewarded here. Each
+   * landmark is checked against the server catalog, and every completed group
+   * pays once through the same idempotent command + ledger used by selling.
+   * A replayed request, a refreshed journal or a second browser cannot claim
+   * the same group twice.
+   */
+  async reportDiscoveries(identity, input = {}) {
+    if (!Array.isArray(input.found)) throw fail('INVALID_DISCOVERIES', 'Discovery reports need a list of landmarks');
+    const known = new Set(DISCOVERY_SITE_IDS);
+    const found = input.found.filter(id => typeof id === 'string' && known.has(id));
+    const requestId = input?.request_id == null ? `server:${randomUUID()}` : String(input.request_id);
+    const replay = this.state.idempotency.some(entry => entry.key === `${identity.key}:discovery:${requestId}`);
+    const result = await this.command(identity, 'discovery', input, () => {
+      const account = this.account(identity);
+      let added = 0;
+      for (const id of [...new Set(found)]) {
+        if (account.discovery.sites.includes(id)) continue;
+        account.discovery.sites.push(id);
+        added += 1;
+      }
+      const rewards = [];
+      for (const group of completedDiscoveryGroups(account.discovery.sites)) {
+        if (account.discovery.rewarded_groups.includes(group.id)) continue;
+        account.discovery.rewarded_groups.push(group.id);
+        account.credits += group.reward;
+        this.event(account, 'discovery_reward', {
+          group_id: group.id, group_label: group.label, credits: group.reward, sites: [...group.sites],
+        });
+        rewards.push({ group_id: group.id, label: group.label, credits: group.reward });
+      }
+      if (added || rewards.length) account.updated_at = new Date(this.now()).toISOString();
+      return { account: this.view(identity), added, rewards };
+    });
+    // A retry must not replay the celebratory "+5" prompt even though the
+    // stored settlement result is identical.
+    return replay ? { ...result, added: 0, rewards: [] } : result;
+  }
+
+  /** Equipment commands all run through the same idempotent account transaction. */
+  async equipmentCommand(identity, input = {}) {
+    if (input.action === 'buy') return this.buyEquipment(identity, input);
+    if (input.action === 'equip') return this.equipItem(identity, input);
+    if (input.action === 'unequip') return this.unequipItem(identity, input);
+    if (input.action === 'use_potion') return this.usePotion(identity, input);
+    throw fail('INVALID_EQUIPMENT_ACTION', 'Unknown equipment action');
+  }
+
+  requireEquipmentRequest(input) {
+    if (typeof input?.request_id !== 'string' || !REQUEST_ID.test(input.request_id)) throw fail('INVALID_REQUEST_ID', 'Equipment requests need a valid request ID');
+    return input.request_id;
+  }
+
+  async buyEquipment(identity, input = {}) {
+    this.requireEquipmentRequest(input);
+    const item = EQUIPMENT[input.item_id];
+    if (!item || item.starter) throw fail('ITEM_NOT_FOR_SALE', 'That item cannot be purchased');
+    return this.command(identity, 'equipment_buy', input, () => {
+      const account = this.account(identity);
+      if (account.credits < item.price) throw fail('INSUFFICIENT_CREDITS', `${item.name} costs ${item.price} credits`, 409);
+      const creditsBefore = account.credits;
+      account.credits -= item.price;
+      account.inventory[item.id] = (account.inventory[item.id] || 0) + 1;
+      account.updated_at = new Date(this.now()).toISOString();
+      this.event(account, 'equipment_purchase', {
+        item_id: item.id, price: item.price, credits_before: creditsBefore, credits_after: account.credits,
+      });
+      return { account: this.view(identity), item: { ...item }, owned: account.inventory[item.id], credits_spent: item.price };
+    });
+  }
+
+  async equipItem(identity, input = {}) {
+    this.requireEquipmentRequest(input);
+    const item = EQUIPMENT[input.item_id];
+    if (!item || !EQUIPMENT_SLOTS.includes(item.slot)) throw fail('INVALID_EQUIPMENT', 'Choose a weapon or armor to equip');
+    return this.command(identity, 'equipment_equip', input, () => {
+      const account = this.account(identity);
+      if ((account.inventory[item.id] || 0) < 1) throw fail('NOT_OWNED', `You do not own ${item.name}`, 403);
+      account.equipped[item.slot] = item.id;
+      account.updated_at = new Date(this.now()).toISOString();
+      this.event(account, 'equipment_equipped', { item_id: item.id, slot: item.slot });
+      return { account: this.view(identity), item: { ...item }, equipped: { ...account.equipped } };
+    });
+  }
+
+  async unequipItem(identity, input = {}) {
+    this.requireEquipmentRequest(input);
+    if (!EQUIPMENT_SLOTS.includes(input.slot)) throw fail('INVALID_EQUIPMENT', 'Choose a weapon or armor slot to clear');
+    return this.command(identity, 'equipment_unequip', input, () => {
+      const account = this.account(identity);
+      const previous = account.equipped[input.slot];
+      account.equipped[input.slot] = null;
+      account.updated_at = new Date(this.now()).toISOString();
+      this.event(account, 'equipment_unequipped', { item_id: previous, slot: input.slot });
+      return { account: this.view(identity), slot: input.slot, equipped: { ...account.equipped } };
+    });
+  }
+
+  /** Consumable settlement is server-owned so cave hits cannot forge a potion. */
+  async usePotion(identity, input = {}) {
+    this.requireEquipmentRequest(input);
+    return this.command(identity, 'potion_used', input, () => {
+      const account = this.account(identity);
+      const held = account.inventory.health_potion || 0;
+      if (held < 1) throw fail('POTION_NOT_OWNED', 'You have no health potions', 409);
+      account.inventory.health_potion = held - 1;
+      account.updated_at = new Date(this.now()).toISOString();
+      this.event(account, 'potion_used', { heal: EQUIPMENT.health_potion.heal, run_id: input.run_id || null });
+      return { account: this.view(identity), heal: EQUIPMENT.health_potion.heal, remaining: account.inventory.health_potion };
+    });
+  }
+
+  /** The cave receives a snapshot of owned gear; it never reads the browser. */
+  loadout(identity) {
+    const account = this.account(identity, { touch: false });
+    return equipmentLoadout(account.inventory, account.equipped);
   }
 
   /** Play time accrues credits; the client sends elapsed seconds, the server caps and audits them. */
@@ -647,7 +793,19 @@ export class WorldFarm {
     target.seconds_played += guest.seconds_played;
     target.time_credits += guest.time_credits;
     for (const kind of CROP_KINDS) target.inventory[kind] = (target.inventory[kind] || 0) + (guest.inventory[kind] || 0);
+    for (const id of EQUIPMENT_IDS) {
+      const inherent = id === STARTER_EQUIPMENT.weapon ? 1 : 0;
+      target.inventory[id] = (target.inventory[id] || 0) + Math.max(0, (guest.inventory?.[id] || 0) - inherent);
+    }
+    for (const slot of EQUIPMENT_SLOTS) {
+      const carried = guest.equipped?.[slot];
+      if (carried && EQUIPMENT[carried]?.slot === slot && (target.inventory[carried] || 0) > 0) target.equipped[slot] = carried;
+    }
     for (const stat of Object.keys(target.stats)) target.stats[stat] += guest.stats[stat] || 0;
+    // The guest's rewarded groups travel with its credits, so signing in can
+    // never claim the same completion a second time.
+    for (const id of guest.discovery?.sites || []) if (!target.discovery.sites.includes(id)) target.discovery.sites.push(id);
+    for (const id of guest.discovery?.rewarded_groups || []) if (!target.discovery.rewarded_groups.includes(id)) target.discovery.rewarded_groups.push(id);
     for (const tile of Object.values(this.state.tiles)) if (tile.owner === visitorKey) tile.owner = identity.key;
     this.state.merge_receipts.push({ key: receiptKey, guest_key: visitorKey, account_key: identity.key, user_id: target.user_id, merged_at: new Date(this.now()).toISOString() });
     this.state.merge_receipts = this.state.merge_receipts.slice(-5_000);
