@@ -79,9 +79,13 @@ try{
   const [servedApp,builtApp]=await Promise.all([fetch(`${base}/web/dist/world/app.js`).then(response=>response.text()),readFile(path.join(root,'web/dist/world/app.js'),'utf8')]);
   if(servedApp!==builtApp)throw new Error(`Browser test server is not serving this worktree's built app (response ${servedApp.length} bytes, local bundle ${builtApp.length} bytes). Server output: ${server.output()}`);
   const [debug,secondDebug]=await Promise.all([waitForDevTools(profile,chrome),waitForDevTools(secondProfile,secondChrome)]);
-  const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:{...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug,CHROME_DEBUG_URL_2:secondDebug}});
+  const browserEnv={...process.env,GAME_URL:base,CHROME_DEBUG_URL:debug,CHROME_DEBUG_URL_2:secondDebug};
+  const smoke=launch(process.execPath,['scripts/world-browser-smoke.js'],{stdio:'inherit',env:browserEnv});
   const [code,signal]=await once(smoke,'exit');
   if(code!==0)throw new Error(`World browser journey failed (${signal||code}):\n${smoke.output()}`);
+  const progression=launch(process.execPath,['scripts/world-progression-browser-smoke.js'],{stdio:'inherit',env:browserEnv});
+  const [progressionCode,progressionSignal]=await once(progression,'exit');
+  if(progressionCode!==0)throw new Error(`Progression browser journey failed (${progressionSignal||progressionCode}):\n${progression.output()}`);
 }catch(error){failed=true;console.error(error);}
 finally{
   for(const child of tracked.slice().reverse())await stop(child);

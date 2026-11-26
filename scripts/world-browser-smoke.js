@@ -113,7 +113,7 @@ try{
  // the challenge phrases. Switching back restores the social page.
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"ttt\\"]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['arena','down'],['explore','left']],'the game page keeps the four approved directions');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['sword','down'],['explore','left']],'the game page keeps the four approved directions, including Sword Duel');
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"hi\\"]")');
@@ -544,10 +544,10 @@ try{
  await waitCaveReady();
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
- assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='wooden_sword')"),'the entrance level has its own authoritative monsters, floor target and starter equipment');
  assert.equal(await evaluate("fetch('/api/world/cave/config').then(r=>r.json()).then(c=>c.interact_radius)"),96,'the cave shares a wider interaction reach for passages and chests');
  assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 4','the cave HUD shows the floor objective');
- assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
+ assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'WOODEN SWORD','the cave HUD names the equipped starter weapon');
  assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
  assert.ok(await evaluate("document.getElementById('cave-hint').textContent.includes('E')&&document.getElementById('cave-hint').textContent.includes('click')"),'desktop hint teaches WASD/click/E');
@@ -617,7 +617,7 @@ try{
  await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DISCOVERIES'");
  const journalText=await evaluate("document.getElementById('interaction-content').textContent");
  assert.ok(journalText.includes('CAVES')&&journalText.includes('Northern cave')&&journalText.includes('???')&&journalText.includes('PASSES')&&journalText.includes('CAMPS'),'discovery journal must group found and unknown landmarks');
- assert.ok(journalText.includes('saved in this browser only'),'the visitor-local persistence limitation must be documented in the journal');
+ assert.ok(journalText.includes('Browser journal history stays in this browser'),'the journal documents browser-local history alongside account-backed rewards');
  assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===5&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/5'"),'journal keeps one compact group per landmark kind');
  await screenshot('discovery-journal');
  await evaluate("document.getElementById('interaction-close').click()");
@@ -849,7 +849,7 @@ try{
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'SOCIAL ▸');
  await evaluate('document.getElementById("quick-chat-page").click()');
  await wait('document.querySelector(".quick-chat__option[data-phrase=ttt]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','arena','explore']);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','sword','explore']);
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate('document.querySelector(".quick-chat__option[data-phrase=ttt]").click()');
  await wait('!document.getElementById("challenge-outgoing").hidden',5000);

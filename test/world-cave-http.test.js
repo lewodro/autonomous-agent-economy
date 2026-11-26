@@ -56,7 +56,9 @@ test('cave HTTP routes are per-visitor, validate intents and keep runs read-only
     assert.equal(started.data.run.monsters.length, 4);
     assert.equal(started.data.run.required, 4);
     assert.equal(started.data.run.cleared, false);
-    assert.equal(started.data.run.weapon.id, 'rusted');
+    assert.equal(started.data.run.weapon.id, 'wooden_sword', 'a fresh account enters caves with its starter marketplace sword');
+    assert.equal(started.data.run.weapon.damage, 12);
+    assert.equal(started.data.run.weapon.range, 62);
     assert.equal(started.data.run.chests.length, 0);
     const live = await request('/api/world/cave');
     assert.equal(live.data.run.run_id, runId, 'a visitor resumes its own active run');
