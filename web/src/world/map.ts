@@ -19,6 +19,10 @@ export interface ExplorationSite {
   label:string; description:string; discovery:string;
   /** Optional rune identity so neighbouring shrines never read as copies. */
   accent?:'moss'|'amber'|'violet'|'frost';
+  /** Optional action wording when the default kind prompt would be misleading. */
+  prompt?:string;
+  /** Locked thresholds show a level requirement and never transfer the visitor. */
+  requiredLevel?:number;
 }
 /** Action wording is intentionally literal: only interactions that exist. */
 export const EXPLORATION_PROMPTS = {
@@ -29,6 +33,8 @@ export const EXPLORATION_PROMPTS = {
  * interaction text without another map or a second renderer. The coordinates
  * are deterministic and remain outside every hand-authored path and building.
  */
+/** The southern darklands are teased now and stay sealed until their update. */
+export const DUSKFALL_REQUIRED_LEVEL = 12;
 export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'cave-north',kind:'cave',facing:'south',position:{x:-700,y:OUTER_LOOP.top},radius:78,label:'Northern cave',
     description:'A cold draft slips from a crack in the hillside. Stacked stones mark the entrance.',
@@ -86,6 +92,12 @@ export const EXPLORATION_SITES: ExplorationSite[] = [
   {id:'hollow-arch',kind:'ruin',facing:'north',position:{x:900,y:2600},radius:82,label:'Hollow arch',accent:'moss',
     description:'A broken arch spans the southern meadow trail. Grass grows through the fallen lintel.',
     discovery:'The keystone is missing, but the arch still frames the old road back toward the city.'},
+  // A sealed southern threshold. The darklands beyond are intentionally not
+  // built yet: the gate only advertises the future region and its level band.
+  {id:'duskfall-gate',kind:'pass',facing:'north',position:{x:300,y:2660},radius:94,label:'Duskfall Gate',accent:'violet',
+    prompt:'Inspect the sealed gate',requiredLevel:DUSKFALL_REQUIRED_LEVEL,
+    description:'A black iron gate is set into a sunken throat of basalt. Warm air leaks through the bars and carries the smell of ash.',
+    discovery:'Violet runes pulse along the lintel. A worn plate reads: DUSKFALL — LEVEL 12. The gate is barred from the far side.'},
 ];
 /** Small deterministic PRNG keeps generated content stable between sessions. */
 function seededRandom(seed:number):()=>number {
@@ -218,6 +230,9 @@ export const OUTER_EXPLORATION_PATHS: WorldPath[] = [
   {x:3652,y:472,width:132,height:112,color:'#6f6553'},
   {x:872,y:2000,width:56,height:632,color:'#786b55'},
   {x:836,y:2540,width:132,height:112,color:'#6f6553'},
+  // The sealed southern approach: a darker spur from the loop to Duskfall.
+  {x:272,y:OUTER_LOOP.bottom-28,width:56,height:700,color:'#5d5850'},
+  {x:176,y:2628,width:248,height:84,color:'#55514b'},
 ];
 export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:OUTER_LOOP.left-28,y:OUTER_LOOP.top-28,width:OUTER_LOOP.right-OUTER_LOOP.left+56,height:56,color:'#786b55'},
@@ -639,6 +654,7 @@ export const EXPLORATION_PROBES = {
   shrineWest:{x:OUTER_LOOP.left-204,y:420},ruinEast:{x:OUTER_LOOP.right+192,y:1250},
   campNorth:{x:OUTER_CAMPS[0]!.x,y:OUTER_CAMPS[0]!.y+64},
   frostgate:{x:576,y:-2320},passApproach:{x:576,y:-1500},
+  duskfall:{x:300,y:2660},duskApproach:{x:300,y:OUTER_LOOP.bottom},
   starfall:{x:-1820,y:-560},emberShrine:{x:3720,y:520},hollowArch:{x:900,y:2600},
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
@@ -663,7 +679,7 @@ export const LANDMARKS: Interactable[] = [
   { id: 'treasury-house', type: 'zone', position: { x: 1105, y: 1292 }, radius: 72, label: 'Enter Treasury House' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
   ...EXPLORATION_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},
-    radius:site.radius, label:site.label, prompt:EXPLORATION_PROMPTS[site.kind] })),
+    radius:site.radius, label:site.label, prompt:site.prompt??EXPLORATION_PROMPTS[site.kind] })),
   ...CAMP_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},
     radius:site.radius, label:site.label, prompt:EXPLORATION_PROMPTS.camp })),
 ];
