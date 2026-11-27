@@ -212,11 +212,12 @@ const server = http.createServer(async (req, res) => {
         // A Sword Duel invite is only meaningful inside the Colosseum. Check
         // before relaying the bubble so a rejected challenge cannot spam chat.
         if(data.phrase_id==='sword'){
-          const player=worldPresence.player(worldId,visitor.id);
-          const target=data.target_player_id?worldPresence.player(worldId,data.target_player_id):worldPresence.nearestHuman(worldId,visitor.id)?.player;
+          const player=worldPresence.requireVisitor(worldId,visitor.id);
+          const target=data.target_player_id?worldPresence.player(worldId,data.target_player_id):worldPresence.nearestHuman(worldId,player.player_id)?.player;
           if(!player||!target||!colosseumReady(player.position,target.position))return json(res,409,{error:'Both fighters must stand inside the Colosseum',code:'NOT_AT_COLOSSEUM'},cookie);
         }
-        const {target_player_id,...chat}=worldPresence.quickChat(worldId,visitor.id,data);
+        const {target_player_id,...chatData}=data;
+        const chat=worldPresence.quickChat(worldId,visitor.id,chatData);
         const challenge=worldChallenges.create(worldId,visitor.id,data.phrase_id,target_player_id);
         return json(res,200,{...chat,...(challenge?{challenge}:{})},cookie);
       }

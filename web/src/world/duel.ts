@@ -17,7 +17,7 @@ interface DuelView {
   created_at: string; expires_at: string;
   you: DuelPlayerView; opponent: DuelPlayerView; result: Marker | 'draw' | null; winner_player_id: string | null;
   board?: Array<Marker | null>; moves?: Array<{ player_id: string; cell: number }>; turn_player_id?: string | null;
-  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[];
+  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[]; countdown_ms?: number;
 }
 interface SpectateView {
   duel_id: string; game: Game; status: 'playing' | 'finished' | 'expired'; revision: number; spectating: true;
@@ -26,7 +26,7 @@ interface SpectateView {
   result: Marker | 'draw' | null; winner_player_id: string | null;
   board?: Array<Marker | null>; moves?: Array<{ player_id: string; cell: number }>; turn_player_id?: string | null;
   locked?: boolean[]; picks?: Array<{ player_id: string; move: RpsMove | null }>;
-  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[];
+  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[]; countdown_ms?: number;
 }
 interface Seat { id: string; name: string; marker: Marker; avatar: string; picked: boolean; pick: RpsMove | null; hp?: number; maxHp?: number }
 interface Snapshot {
@@ -88,7 +88,8 @@ function seatOf(player: DuelPlayerView, picked: boolean, pick: RpsMove | null): 
 }
 function swordFrom(view: DuelView | SpectateView): SwordView | null {
   if (!view.combat || !view.fighters || view.fighters.length !== 2) return null;
-  return { combat: view.combat, fighters: [view.fighters[0]!, view.fighters[1]!], events: view.events ?? [] };
+  return { combat: view.combat, fighters: [view.fighters[0]!, view.fighters[1]!], events: view.events ?? [],
+    countdown_ms: view.countdown_ms ?? view.combat.countdown_ms };
 }
 function fromParticipant(view: DuelView): Snapshot {
   const sword = swordFrom(view);
@@ -315,7 +316,9 @@ function render(): void {
   if (isSword && state.sword) {
     arena?.update(state.sword, state.youId, state.spectating);
     const countdown = state.sword.countdown_ms ?? state.sword.combat.countdown_ms ?? 0;
-    const mine = state.sword.fighters[state.seats[0].id === state.youId ? 0 : 1];
+    const youId = state.youId;
+    const fighterIndex = state.sword.fighters.findIndex(fighter => fighter.player_id === youId);
+    const mine = state.sword.fighters[Math.max(0, fighterIndex)];
     const charges = mine?.block_charges ?? state.sword.combat.block_charges;
     const total = state.sword.combat.block_charges;
     shieldHud.textContent = `SHIELD ${Array.from({ length: total }, (_, index) => index < charges ? '●' : '○').join(' ')}`

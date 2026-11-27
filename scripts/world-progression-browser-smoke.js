@@ -129,8 +129,20 @@ try {
   assert.ok(await first.evaluate("document.querySelector('.equipment-card[data-item=\\'iron_sword\\']').textContent.includes('EQUIPPED')"), 'the bazaar shows owned and equipped gear');
   assert.ok(await first.evaluate("document.querySelector('.equipment-card[data-item=iron_sword] canvas') instanceof HTMLCanvasElement"), 'equipment icons are original pixel-art canvases');
   await screenshot(first, 'bazaar-equipment');
+  // Assign an owned starter item from the Bazaar into a persistent hotbar slot.
+  await first.evaluate("document.querySelector('.equipment-card[data-item=wooden_sword] .hotbar-assign button[data-hotbar-slot=\"0\"]').click()");
+  await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"]').classList.contains('is-filled')", 5_000);
+  assert.ok(await first.evaluate("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"] .hotbar__qty').textContent==='1'"), 'the hotbar shows the owned stack quantity');
+  await screenshot(first, 'bazaar-hotbar');
   await first.evaluate("document.getElementById('interaction-close').click()");
   await first.wait('document.getElementById("interaction-dialog").open === false');
+  // Hotbar keys stay inert while a dialog owns the top layer, then select slots.
+  await first.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'2',bubbles:true}))");
+  await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"1\"]').classList.contains('is-selected')");
+  await first.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',bubbles:true}))");
+  await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"]').classList.contains('is-selected')");
+  await first.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'u',bubbles:true}))");
+  await first.wait("document.querySelector('#farm-notices').textContent.includes('cannot be used here')", 5_000);
 
   await first.wait("document.querySelector('#world-lab pre')?.textContent.includes('player')");
   await first.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Northern cave').click()");
@@ -145,21 +157,30 @@ try {
   await enterWorld(first);
 
   // --- Sword Duel with two real browser sessions ---
-  // Both visitors walk the same northern trail so the challenge is genuinely
-  // proximity-based; the lab teleport keeps the headless journey deterministic.
+  // Both visitors must physically reach the walled Colosseum; the lab teleport
+  // keeps the headless journey deterministic while preserving server checks.
   await second.navigate(base + '/labs/world');
   await second.wait('document.getElementById("world-lab") && !document.getElementById("world-lab").hidden');
   await enterWorld(second);
   await second.wait("document.querySelector('#world-lab pre')?.textContent.includes('player')");
-  await second.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Northern cave').click()");
-  await second.wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.x < -600");
-  const homeA = await first.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+  await second.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Walk probe: colosseum').click()");
+  await second.wait("(()=>{const t=document.querySelector('#world-lab pre')?.textContent||'';if(!t)return false;try{return Math.abs(JSON.parse(t).player.y-1120)<8}catch{return false}})()");
   const homeB = await second.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+  await first.navigate(base + '/labs/world');
+  await first.wait('document.getElementById("world-lab") && !document.getElementById("world-lab").hidden');
   await enterWorld(first);
+  await first.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Walk probe: colosseum').click()");
+  await first.wait("(()=>{const t=document.querySelector('#world-lab pre')?.textContent||'';if(!t)return false;try{return Math.abs(JSON.parse(t).player.y-1120)<8}catch{return false}})()");
+  const homeA = await first.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+  await first.wait('!document.getElementById("interact").disabled', 8000);
   await first.wait('!document.getElementById("quick-chat-open").hidden', 8000);
-  const challenge = await first.evaluate("fetch('/api/worlds/main/presence/quick-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phrase_id:'sword'})}).then(async r=>({status:r.status,...await r.json()}))");
-  assert.equal(challenge.status, 200);
-  assert.equal(challenge.challenge.game, 'swordduel');
+  await first.evaluate('document.getElementById("interact").click()');
+  await first.wait("document.getElementById('interaction-title').textContent==='COLOSSEUM'", 8_000);
+  assert.ok(await first.evaluate("document.querySelector('#interaction-content').textContent.includes('standardised')"), 'the Colosseum explains standardised equipment');
+  await first.evaluate("[...document.querySelectorAll('#interaction-content button')].find(b=>b.textContent==='CHALLENGE').click()");
+  await first.wait('!document.getElementById("challenge-outgoing").hidden', 8000);
+  const challengeId = await first.evaluate('document.getElementById("challenge-outgoing").dataset.challengeId');
+  assert.match(challengeId, /^chal-[a-f0-9-]{36}$/);
   await second.wait('!document.getElementById("challenge-prompt").hidden&&document.getElementById("challenge-game").textContent.includes("SWORD DUEL")', 8000);
   await second.evaluate('document.getElementById("challenge-accept").click()');
   await first.wait("location.pathname.startsWith('/duel/')", 10_000);
@@ -167,13 +188,24 @@ try {
   await first.wait("document.getElementById('duel-title').textContent.includes('SWORD DUEL')&&!document.getElementById('duel-arena').hidden", 10_000);
   await second.wait("document.getElementById('duel-title').textContent.includes('SWORD DUEL')&&!document.getElementById('duel-arena').hidden", 10_000);
   assert.ok(await first.evaluate("document.getElementById('duel-hint').textContent.includes('standardised')"), 'duel UI states that gear is standardised');
+  assert.ok(await first.evaluate("document.getElementById('duel-hint').textContent.includes('countdown')"), 'the duel opens with a countdown');
+  assert.ok(await first.evaluate("document.getElementById('duel-shield-hud').textContent.includes('SHIELD ● ●')"), 'the shield HUD starts with two charges');
   assert.equal(await first.evaluate(`fetch('/api/world/duels/'+location.pathname.split('/')[2]).then(r=>r.json()).then(s=>s.combat.standardized)`), true);
+  // The server countdown blocks combat until three seconds have elapsed.
+  await first.wait("document.getElementById('duel-status').textContent.includes('FIGHT')", 6_000);
+  await second.wait("document.getElementById('duel-status').textContent.includes('FIGHT')", 6_000);
+  await second.evaluate('document.getElementById("duel-shield").click()');
+  await second.wait("document.getElementById('duel-shield-hud').textContent.includes('SHIELD ● ○')", 6_000);
+  await delay(800);
+  await second.evaluate('document.getElementById("duel-shield").click()');
+  await second.wait("document.getElementById('duel-shield-hud').textContent.includes('SHIELD ○ ○')", 6_000);
+  assert.ok(await second.evaluate("document.getElementById('duel-shield').disabled"), 'no charges left disables the shield control');
 
   // Mobile layout keeps touch controls reachable in the arena.
   await second.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await delay(300);
   assert.ok(await second.evaluate('document.documentElement.scrollWidth<=390'), 'the Sword Duel arena fits a 390px viewport');
-  assert.ok(await second.evaluate(`(()=>{const s=document.getElementById('duel-strike').getBoundingClientRect(),d=document.getElementById('duel-dodge').getBoundingClientRect();return s.height>=44&&d.height>=44})()`), 'mobile combat controls stay tappable');
+  assert.ok(await second.evaluate(`(()=>{const ids=['duel-strike','duel-dodge','duel-shield'];return ids.every(id=>document.getElementById(id).getBoundingClientRect().height>=44)})()`), 'mobile attack, dodge and shield controls stay tappable');
   await screenshot(second, 'sword-duel-mobile');
 
   // Walk both fighters into range with the real keyboard path, then strike.
@@ -206,7 +238,8 @@ try {
       await hold(first, toward, Math.min(240, Math.max(70, (distance - 50) / SWORD_DUEL.speed * 1000)));
     }
     await first.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true}));window.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}))");
-    await delay(620);
+    // Windup + active strike + recovery is 670ms; wait past the next window.
+    await delay(920);
   }
   await first.wait("!document.getElementById('duel-result').hidden&&document.getElementById('duel-result').textContent.includes('VICTORY')", 12_000);
   await second.wait("!document.getElementById('duel-result').hidden&&document.getElementById('duel-status').textContent.includes('DEFEAT')", 12_000);
@@ -217,6 +250,10 @@ try {
   await second.evaluate('document.getElementById("duel-return").click()');
   await first.wait("location.pathname==='/world'", 10_000);
   await second.wait("location.pathname==='/world'", 10_000);
+  await first.send('Page.reload');
+  await first.wait('document.readyState === "complete"');
+  await first.wait("document.getElementById('hotbar') && !document.getElementById('hotbar').hidden", 10_000);
+  assert.ok(await first.evaluate("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"]').classList.contains('is-filled')"), 'the hotbar assignment survives a full browser refresh');
   await enterWorld(first); await enterWorld(second);
   const returnA = await first.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
   const returnB = await second.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');

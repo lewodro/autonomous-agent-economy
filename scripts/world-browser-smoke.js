@@ -113,7 +113,7 @@ try{
  // the challenge phrases. Switching back restores the social page.
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"ttt\\"]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['sword','down'],['explore','left']],'the game page keeps the four approved directions, including Sword Duel');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['explore','left']],'Sword Duel is issued at the Colosseum, not from the quick-chat wheel');
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"hi\\"]")');
@@ -400,9 +400,9 @@ try{
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect();return r.width>0&&r.width<=160})()'),'the desktop local map must stay compact');
  await wait("document.getElementById('minimap-canvas').dataset.locationLabels?.includes('ARENA')");
- assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map must keep its public location names');
- await wait('document.querySelectorAll(".world-minimap__label").length===6');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map renders all six destination labels');
+ assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the compact map must keep its public location names');
+ await wait('document.querySelectorAll(".world-minimap__label").length===7');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the compact map renders every public destination label');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&getComputedStyle(node).fontSize!=="0px"})})()'),'destination labels stay inside the compact map with readable text');
  assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:928,y:674},'returning from Arena must restore the saved world position');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
@@ -810,7 +810,7 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
 
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap"),r=m.getBoundingClientRect(),v=document.querySelector(".world-viewport").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect(),s=getComputedStyle(m);return r.width<=112&&r.right<=390&&r.left>=0&&c.width>=90&&c.height>45&&s.left==="6px"&&s.bottom==="118px"&&r.left-v.left<=12&&v.bottom-r.bottom<=124})()'),'mobile minimap stays compact at the bottom-left of the viewport above touch controls');
- await wait('document.querySelectorAll(".world-minimap__label").length===6');
+ await wait('document.querySelectorAll(".world-minimap__label").length===7');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&parseFloat(getComputedStyle(node).fontSize)>=5})})()'),'all six labels stay inside a 390px compact map');
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  assert.ok(await evaluate('(()=>{const d=document.getElementById("character-dialog");return d.scrollWidth<=d.clientWidth+1&&document.documentElement.scrollWidth<=390})()'),'the character creator must not overflow a 390px viewport');
@@ -849,7 +849,7 @@ try{
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'SOCIAL ▸');
  await evaluate('document.getElementById("quick-chat-page").click()');
  await wait('document.querySelector(".quick-chat__option[data-phrase=ttt]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','sword','explore']);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','explore']);
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate('document.querySelector(".quick-chat__option[data-phrase=ttt]").click()');
  await wait('!document.getElementById("challenge-outgoing").hidden',5000);
@@ -877,7 +877,7 @@ try{
  await delay(240);
  assert.ok(await evaluate('document.documentElement.scrollWidth<=430'),'the exploration UI must fit a 430px viewport');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect(),h=document.getElementById("world-hint").getBoundingClientRect();return m.right<=430&&m.left>=0&&m.bottom<=932&&h.right<=430})()'),'minimap and contextual hint stay inside a 430×932 viewport');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the 430px map keeps every public destination label');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the 430px map keeps every public destination label');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1})})()'),'no label escapes the 430px compact map');
  const position430=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
  const guest430=await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:${position430.x+36},y:${position430.y}},direction:'left',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))`);

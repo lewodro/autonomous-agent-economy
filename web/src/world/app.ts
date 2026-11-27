@@ -570,7 +570,7 @@ async function sendQuickChatPhrase(phraseId:string,targetPlayerId?:string):Promi
   }
   catch(error){
     const code=typeof error==='object'&&error&&'code'in error?String((error as{code:unknown}).code):'';
-    const message=code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':code==='CHALLENGE_RATE_LIMITED'?'CHALLENGE COOLDOWN':code==='CHALLENGE_BUSY'?'ALREADY CHALLENGED':'QUICK CHAT UNAVAILABLE';
+    const message=code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':code==='CHALLENGE_RATE_LIMITED'?'CHALLENGE COOLDOWN':code==='CHALLENGE_BUSY'?'ALREADY CHALLENGED':code==='NOT_AT_COLOSSEUM'?'GO TO THE COLOSSEUM':'QUICK CHAT UNAVAILABLE';
     if(phrase.challenge)flashChallengeNotice(message);else flashQuickChatNotice(message);
   }finally{quickChatSending=false;}
 }
@@ -1131,6 +1131,7 @@ function showColosseum():void {
     const row=document.createElement('div');row.className='colosseum-row';
     const name=document.createElement('strong');name.textContent=actor.name.toUpperCase();
     const button=document.createElement('button');button.type='button';button.textContent='CHALLENGE';
+    button.dataset.targetPlayerId=actor.id.slice('presence:'.length);
     button.disabled=challengeBusy||duelNavigating||Boolean(outgoingChallenge);
     button.onclick=()=>{
       if(!dialog.open||version!==interactionVersion)return;
