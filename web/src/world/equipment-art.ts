@@ -1,7 +1,7 @@
 /**
- * Original 12×12 pixel-art icons for the adventuring equipment catalog.
- * The same tiny matrices power the bazaar cards, the equipped badge and the
- * cave HUD, so icons stay consistent without shipping new sprite sheets.
+ * Original 12×12 pixel-art icons for the world's items.
+ * The same tiny matrices power the bazaar cards, the item HUD, the equipped
+ * badge and the cave HUD, so icons stay consistent without sprite sheets.
  */
 const PALETTE: Record<string, string | null> = {
   '.': null,
@@ -9,6 +9,9 @@ const PALETTE: Record<string, string | null> = {
   b: '#4c6d8c', c: '#66d4e8', C: '#d8fbff',
   w: '#8a5a32', W: '#c79256', l: '#6b4a2e', L: '#a97948',
   r: '#b5353f', R: '#f07a72', g: '#d8bd73', p: '#f4e6bb',
+  // Field resources, shields and ore/crystal facets.
+  G: '#5c9c4a', H: '#8fc46a', y: '#f0d37f', a: '#d27436', A: '#ef9a4f',
+  v: '#7b5aa6', V: '#b69ad6', u: '#a86b3c', U: '#d29455',
 };
 
 const ICONS: Record<string, readonly string[]> = {
@@ -18,18 +21,18 @@ const ICONS: Record<string, readonly string[]> = {
     '.....ll.....', '.....ll.....', '....ollO....', '....oooo....',
   ],
   iron_sword: [
-    '.....SS.....', '.....Ss.....', '.....Ss.....', '.....Ss.....',
-    '.....Ss.....', '.....Ss.....', '...bssssb...', '..bbggggbb..',
+    '.....SS.....', '....SSS.....', '.....Ss.....', '.....Ss.....',
+    '.....Ss.....', '.....Ss.....', '..bsssssb...', '.bbgggggbb..',
     '.....ll.....', '.....Ll.....', '....ollO....', '....oooo....',
   ],
   steel_sword: [
-    '.....SS.....', '.....SS.....', '.....Ss.....', '.....Ss.....',
+    '.....SS.....', '.....SS.....', '....SSS.....', '.....Ss.....',
     '.....Ss.....', '.....Ss.....', '...bSSSSb...', '..bbddddbb..',
     '.....Ll.....', '.....Ll.....', '....ollO....', '....oooo....',
   ],
   frostblade: [
-    '.....CC.....', '....CcC.....', '....CcC.....', '...CcCcC...',
-    '...CcCcC...', '..CcCCcC...', '..bcCCcb...', '.bbccccbb..',
+    '.....CC.....', '....CcC.....', '....CcC.....', '...CcCcC....',
+    '...CcCcC....', '..CcCCcC....', '..bcCCcb....', '.bbccccbb...',
     '.....Ll.....', '.....Ll.....', '....oclO....', '....oooo....',
   ],
   light_armor: [
@@ -42,9 +45,56 @@ const ICONS: Record<string, readonly string[]> = {
     '..o..pp..o..', '..oRrrrrRo..', '..oRRRRRRo..', '..oRRRRRRo..',
     '..oRrrrrRo..', '...oRRRRo...', '...oooooo...', '............',
   ],
+  wooden_shield: [
+    '....wwww....', '..wwWWWWww..', '.wWWWWWWWWw.', '.wWWLLLLWWw.',
+    '.wWLllllLWw.', '.wWWLLLLWWw.', '..wWWWWWWw..', '...wwWWww...',
+    '.....ww.....', '............', '............', '............',
+  ],
+  iron_shield: [
+    '..SSSSSSSS..', '.SSSSSSSSSS.', '.SsSSSSSSsS.', '.SsSddddSsS.',
+    '.SsSdbbdSsS.', '.SsSddddSsS.', '..SsSddSsS..', '...SsSSsS...',
+    '....SssS....', '.....SS.....', '............', '............',
+  ],
+  wheat: [
+    '.....y......', '....ygy.....', '...ygygy....', '....ygy.....',
+    '...ygygy....', '....ygy.....', '..ygygygy...', '...ygygy....',
+    '..ygygygy...', '...ggggg....', '.....w......', '............',
+  ],
+  carrot: [
+    '.....G......', '....GHG.....', '.....G......', '....GHG.....',
+    '.....aa.....', '....aAa.....', '...aAaa.....', '...aAAa.....',
+    '....aaa.....', '.....aa.....', '......a.....', '............',
+  ],
+  pumpkin: [
+    '......G.....', '.....G......', '...GGGGG....', '..gAaAAAg...',
+    '.gAAAAAAA.g.', '.gAAAAAAA.g.', '.gAAAAAAA.g.', '..gAAAAAg...',
+    '...ggGGG....', '............', '............', '............',
+  ],
+  herb: [
+    '......V.....', '.....VvV....', '....GvHvG...', '...GHGHGHG..',
+    '..GHHGHGHHG.', '...GGGGG....', '.....G......', '.....G......',
+    '....HH......', '............', '............', '............',
+  ],
+  iron_ore: [
+    '............', '....sss.....', '...sSSss....', '..sSsSSs....',
+    '..ssSSsss...', '...sssss....', '....ddd.....', '...ddddd....',
+    '....dd......', '............', '............', '............',
+  ],
+  copper_ore: [
+    '............', '.....uu.....', '....uUUu....', '...uUUUUu...',
+    '..uUUaaUUu..', '..uUUUUUUu..', '...uuuuuu...', '....ddd.....',
+    '...ddddd....', '............', '............', '............',
+  ],
+  crystal: [
+    '.....C......', '....CcC.....', '...CcCCcC...', '..CcCCCCCc..',
+    '..cCCbbCCc..', '...cCbbCc...', '....cCCc....', '.....cc.....',
+    '............', '............', '............', '............',
+  ],
 };
 
 export const EQUIPMENT_ICON_IDS = Object.freeze(Object.keys(ICONS));
+/** Crops, field resources and equipment share one icon set and one 12×12 grid. */
+export const ITEM_ICON_IDS = Object.freeze(Object.keys(ICONS));
 
 /** Throws during build if any hand-written sprite drifts off the grid. */
 export function verifyEquipmentIcons(): boolean {
@@ -66,6 +116,10 @@ export function drawEquipmentIcon(context: CanvasRenderingContext2D, id: string,
       context.fillRect(originX + x * scale, originY + y * scale, scale, scale);
     }
   }
+}
+
+export function itemIconCanvas(id: string, scale = 2): HTMLCanvasElement {
+  return equipmentIconCanvas(id, scale);
 }
 
 export function equipmentIconCanvas(id: string, scale = 3): HTMLCanvasElement {

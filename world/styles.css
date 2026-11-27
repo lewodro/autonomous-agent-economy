@@ -938,26 +938,44 @@
   .snow-hint{font-size:8px;margin:8px 0}
 }
 
-/* Persistent three-slot equipment hotbar and Colosseum challenge list. */
-.hotbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;gap:6px;padding:5px;background:#14231ed9;border:2px solid #8c9b78;box-shadow:3px 3px 0 #0d1a16;pointer-events:auto}
-.hotbar[hidden]{display:none}
-.hotbar__slot{position:relative;width:38px;height:38px;padding:2px;display:grid;place-items:center;border:2px solid #5d6b57;background:#25372dcc;opacity:.9;image-rendering:pixelated;transition:border-color .14s ease,opacity .14s ease,transform .14s ease}
+/* Bottom-right item HUD: movement hint, field resources and three gear slots. */
+.world-hint{bottom:104px}
+.item-hud{position:absolute;right:18px;bottom:16px;z-index:6;display:grid;gap:5px;justify-items:end;pointer-events:none}
+.item-hud[hidden]{display:none}
+.item-hud__resources,.hotbar{display:flex;gap:5px;pointer-events:auto}
+.item-slot{position:relative;width:38px;height:38px;padding:2px;display:grid;place-items:center;border:2px solid #53604f;border-radius:7px;background:#1b2b24cc;opacity:.92;image-rendering:pixelated;transition:border-color .14s ease,background .14s ease,opacity .14s ease}
+.item-slot--resource{cursor:help}
+.item-slot--resource:hover{border-color:#9bb28d;background:#25392d;opacity:1}
+.item-slot canvas{width:26px;height:26px;image-rendering:pixelated;pointer-events:none}
+.item-slot__qty{position:absolute;right:3px;bottom:1px;font:bold 9px ui-monospace,monospace;color:#ffe6a6;text-shadow:1px 1px 0 #0d1a16}
+.item-slot__key{position:absolute;left:3px;top:1px;font:8px ui-monospace,monospace;color:#dbe2c9;opacity:.8}
+.item-slot__empty{font:bold 18px ui-monospace,monospace;color:#5f6d58}
+.hotbar__slot{border-color:#6d7c62}
 .hotbar__slot:hover{border-color:#c5d7af;opacity:1}
 .hotbar__slot.is-selected{border-color:var(--gold);background:#344a3b;opacity:1;box-shadow:0 0 0 2px #14231e,0 0 0 4px #d8bd73}
-.hotbar__slot.is-filled canvas{width:26px;height:26px;image-rendering:pixelated;pointer-events:none}
 .hotbar__slot.is-consumable{border-style:dashed}
-.hotbar__key{position:absolute;left:2px;top:0;font:8px ui-monospace,monospace;color:#dbe2c9;opacity:.8}
-.hotbar__qty{position:absolute;right:2px;bottom:0;font:bold 9px ui-monospace,monospace;color:#ffe6a6;text-shadow:1px 1px 0 #0d1a16}
-.hotbar__empty{font:bold 18px ui-monospace,monospace;color:#6c7a64}
-.world-hint{bottom:72px}
+.item-tooltip{position:absolute;z-index:9;width:184px;padding:7px 9px;border:2px solid #d8bd73;background:#14231ef5;color:#e9e6d2;box-shadow:3px 3px 0 #0d1a16;pointer-events:none}
+.item-tooltip[hidden]{display:none}
+.item-tooltip strong{display:block;font:bold 10px ui-monospace,monospace;color:var(--gold);letter-spacing:.06em}
+.item-tooltip span{display:block;margin-top:3px;font:9px/1.35 ui-monospace,monospace;color:#c5d7af}
+.hotbar-picker{position:absolute;right:0;bottom:94px;z-index:9;width:210px;max-height:210px;overflow:auto;padding:7px;border:2px solid #8c9b78;background:#14231ef7;box-shadow:3px 3px 0 #0d1a16;pointer-events:auto}
+.hotbar-picker[hidden]{display:none}
+.hotbar-picker p{margin:0 0 5px;font:bold 9px ui-monospace,monospace;letter-spacing:.08em;color:var(--gold)}
+.hotbar-picker__row{display:flex;gap:4px;align-items:center;margin-top:3px}
+.hotbar-picker__pick{flex:1;display:flex;align-items:center;gap:5px;min-width:0;padding:3px 5px;font:9px ui-monospace,monospace;text-align:left}
+.hotbar-picker__pick canvas{width:20px;height:20px;image-rendering:pixelated;flex:none}
+.hotbar-picker__pick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hotbar-picker__pick small{margin-left:auto;color:#ffe6a6}
+.hotbar-picker__action{padding:3px 5px;font:8px ui-monospace,monospace}
 .colosseum-list{display:grid;gap:6px;margin:14px 0}
 .colosseum-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:2px solid #64765e;background:#20342b;font-size:11px}
 .colosseum-row button{padding:5px 10px;font-size:10px}
 .hotbar-assign{display:flex;align-items:center;gap:3px;margin-top:8px}
 .hotbar-assign span{font:8px ui-monospace,monospace;color:var(--muted);letter-spacing:.1em;margin-right:2px}
 .hotbar-assign button{width:22px;height:20px;padding:0;font:9px ui-monospace,monospace;line-height:1}
-@media (pointer:coarse){.hotbar{bottom:calc(112px + env(safe-area-inset-bottom));padding:3px;gap:4px}.hotbar__slot{width:34px;height:34px}.hotbar__slot.is-filled canvas{width:22px;height:22px}}
-@media(max-width:680px){.world-hint{bottom:calc(154px + env(safe-area-inset-bottom))}.hotbar{bottom:calc(104px + env(safe-area-inset-bottom))}}
+@media (pointer:coarse){.item-hud{right:10px;bottom:calc(134px + env(safe-area-inset-bottom))}.item-slot{width:34px;height:34px;border-radius:6px}.item-slot canvas{width:22px;height:22px}.hotbar-picker{right:0;bottom:92px}}
+@media(max-width:680px){.world-hint{left:auto;right:10px;transform:none;bottom:calc(224px + env(safe-area-inset-bottom))}.item-hud{bottom:calc(134px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.item-slot,.duel-combat-button{transition:none}}
 
 /* Sword Duel guard indicator and mobile shield control. */
 .duel-shield-hud{position:absolute;left:12px;top:12px;z-index:4;padding:5px 8px;border:2px solid #7fa9bb;background:#14231ee8;color:#bde5ff;font:bold 10px ui-monospace,monospace;letter-spacing:.08em;box-shadow:3px 3px 0 #0d1a16;pointer-events:none}
@@ -965,4 +983,4 @@
 .duel-combat-button.is-shield{border-color:#7fa9bb;background:#254552;color:#d8f3ff}
 .duel-combat-button.is-shield:hover{background:#326173;border-color:#bde5ff}
 @media(max-width:680px){.duel-combat-button.is-shield{font-size:9px;padding:8px 6px}}
-@media(prefers-reduced-motion:reduce){.hotbar__slot,.duel-combat-button{transition:none}}
+@media(prefers-reduced-motion:reduce){.item-slot,.duel-combat-button{transition:none}}

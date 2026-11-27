@@ -19,7 +19,6 @@
           <div class="hud-meter"><span id="hud-credits">0 CR</span></div>
           <div class="hud-meter"><span id="hud-plots">PLOTS 0/3</span></div>
         </div>
-        <div class="world-hud__bag" id="hud-bag"></div>
         <div class="world-hud__hint" id="hud-hint">Explore beyond the plaza for resources</div>
       </div>
       <section id="world-minimap" class="world-minimap" aria-label="World minimap">
@@ -58,7 +57,12 @@
           <button id="quick-chat-cancel" class="quick-chat__cancel" type="button">Cancel · Esc</button>
         </div>
       </div>
-      <div id="hotbar" class="hotbar" aria-label="Equipment hotbar" hidden></div>
+      <div id="item-hud" class="item-hud" hidden aria-label="Inventory and equipment">
+        <div id="item-hud-resources" class="item-hud__resources" aria-label="Resources"></div>
+        <div id="hotbar" class="hotbar" aria-label="Equipment hotbar"></div>
+        <div id="hotbar-picker" class="hotbar-picker" hidden aria-label="Assign an owned item to a hotbar slot"></div>
+        <div id="item-tooltip" class="item-tooltip" hidden role="status" aria-live="polite"></div>
+      </div>
       <div id="discovery-toast" class="discovery-toast" role="status" aria-live="polite" hidden><span>DISCOVERED</span><strong></strong></div>
       <div id="farm-notices" class="farm-notices" aria-live="polite" aria-label="World notifications"></div>
       <details class="world-legend" aria-label="Landmark directions"><summary>Directions</summary><div class="world-legend__grid"><b>AROUND YOU</b><span>HOUSE ↖</span><span>LAB ↑</span><span>TABLE ↙</span><span>ARENA ↘</span><span>AGENCY ↗</span><span>ARCHIVE ↓</span><span>MARKET ↓</span><span>COMPOUND ↙</span><button type="button" class="world-sheet-close" data-close-legend>Close directions</button></div></details>

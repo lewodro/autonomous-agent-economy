@@ -17,7 +17,7 @@ import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type P
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { withinFarmGuidance } from './scale.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind, type DiscoveryGroupView, type EquipmentItem } from './farm.js';
-import { equipmentIconCanvas } from './equipment-art.js';
+import { equipmentIconCanvas, itemIconCanvas, ITEM_ICON_IDS } from './equipment-art.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -66,11 +66,12 @@ let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
 let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
-let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
+let worldResources:WorldResource[]=[],resourceRefresh=0,economyReceipts:Array<{node_id?:string;source_action:string}>=[];const particles:WorldParticle[]=[];
 let moveTarget:{x:number;y:number}|null=null,lastFootstepAt=0,targetStuckMs=0,targetLastPosition={x:0,y:0};
 const farmClient=new FarmClient(),farmHud=new FarmHud();
-const hotbarRoot=$<HTMLDivElement>('hotbar');
-let hotbarSelection=0;
+const itemHudRoot=$<HTMLDivElement>('item-hud'),hotbarRoot=$<HTMLDivElement>('hotbar');
+const resourceRoot=$<HTMLDivElement>('item-hud-resources'),hotbarPicker=$<HTMLDivElement>('hotbar-picker'),itemTooltip=$<HTMLDivElement>('item-tooltip');
+let hotbarSelection=0,pickerSlot:number|null=null;
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
 let discoveryReportTimer=0,discoveryReporting=false,discoveryRewardSeen=new Set<string>();
 let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
@@ -608,6 +609,10 @@ $('quick-chat-cancel').addEventListener('click',()=>closeQuickChat());
 challengeAccept.addEventListener('click',()=>{void acceptIncomingChallenge();});
 challengeDecline.addEventListener('click',()=>{void declineIncomingChallenge();});
 quickChatRoot.addEventListener('pointerdown',event=>{if(event.target===quickChatRoot)closeQuickChat();});
+document.addEventListener('pointerdown',event=>{
+  if(pickerSlot!==null&&!itemHudRoot.contains(event.target as Node)){pickerSlot=null;renderHotbarPicker();}
+  if(!itemTooltip.hidden&&!itemTooltip.contains(event.target as Node)&&!(event.target as Element)?.closest?.('[data-item-id]'))itemTooltip.hidden=true;
+});
 quickChatOpenButton.addEventListener('click',()=>{openQuickChat();});
 window.addEventListener('keydown',event=>{
   if(!quickChatOpen)return;
@@ -627,7 +632,8 @@ window.addEventListener('keydown',event=>{
   const target=event.target;
   if(target instanceof HTMLElement&&(target.matches('input,select,textarea')||target.isContentEditable))return;
   if(event.altKey||event.ctrlKey||event.metaKey)return;
-  if(['1','2','3'].includes(event.key)){event.preventDefault();hotbarSelection=Number(event.key)-1;renderHotbar();return;}
+  if(event.key==='Escape'&&pickerSlot!==null){pickerSlot=null;renderHotbarPicker();return;}
+  if(['1','2','3'].includes(event.key)){event.preventDefault();hotbarSelection=Number(event.key)-1;pickerSlot=null;renderHotbar();renderHotbarPicker();return;}
   if(event.key.toLowerCase()==='u'){event.preventDefault();void useHotbarSlot(hotbarSelection);}
 });
 renderQuickChatOptions();
@@ -637,7 +643,7 @@ function show(title:string):number {stopResearchLive();resetInput();$('interacti
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
 interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string}>}
-async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;return result;}
+async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;economyReceipts=result.receipts||[];renderResourceBar();return result;}
 const ANCHORS:Record<string,string>={
   'garden-north':'the botanical garden','garden-east':'the garden east beds','garden-south':'the garden south beds',
   'garden-west':'the garden west beds','garden-path':'the garden path','market-north':'the north market','market-east':'the east market',
@@ -666,52 +672,143 @@ function footstepPuff(position:{x:number;y:number},time:number):void{
 function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
   return {x:Math.max(WORLD_BOUNDS.minX,Math.min(WORLD_BOUNDS.maxX,position.x)),y:Math.max(WORLD_BOUNDS.minY,Math.min(WORLD_BOUNDS.maxY,position.y))};
 }
-function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);renderHotbar();}
+function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);renderItemHud();}
 
-/* -------------------------------------------------------------- hotbar */
+/* ------------------------------------------------ inventory / equipment HUD */
 function equipmentCatalog():EquipmentItem[] {return (farmSnapshot?.equipment?.catalog||[]) as EquipmentItem[];}
+const RESOURCE_ITEMS: ReadonlyArray<{id:string;name:string;detail:string}> = [
+  {id:'wheat',name:'Wheat',detail:'A staple crop. Sell it at the bazaar for credits.'},
+  {id:'carrot',name:'Carrot',detail:'A hardy crop. Carried produce sells at the bazaar.'},
+  {id:'pumpkin',name:'Pumpkin',detail:'A heavy crop. Sell it with the rest of your harvest.'},
+  {id:'herb',name:'Herbs',detail:'Field herb gathered on the outer trails. Credited on collection; not equippable.'},
+  {id:'iron_ore',name:'Iron ore',detail:'Field ore from the mining nodes. Credited on collection; not equippable.'},
+  {id:'crystal',name:'Crystal',detail:'Rare field crystal. Credited on collection; not equippable.'},
+];
+function resourceQuantities():Record<string,number> {
+  const counts:Record<string,number>={wheat:0,carrot:0,pumpkin:0,herb:0,iron_ore:0,crystal:0};
+  const account=farmSnapshot?.account;
+  for(const kind of CROPS)counts[kind]=account?.inventory[kind]||0;
+  for(const receipt of economyReceipts){
+    const node=receipt.node_id?worldResources.find(value=>value.id===receipt.node_id):undefined;
+    if(!node)continue;
+    if(node.kind==='herb')counts.herb=(counts.herb||0)+1;
+    else if(node.variant==='crystal')counts.crystal=(counts.crystal||0)+1;
+    else counts.iron_ore=(counts.iron_ore||0)+1;
+  }
+  return counts;
+}
+function bindItemTooltip(node:HTMLElement,id:string,name:string,detail:string):void {
+  node.dataset.itemId=id;
+  const hide=()=>{if(itemTooltip.dataset.for===id){itemTooltip.hidden=true;delete itemTooltip.dataset.for;}};
+  const show=()=>{
+    const rootRect=itemHudRoot.getBoundingClientRect(),nodeRect=node.getBoundingClientRect();
+    itemTooltip.replaceChildren();
+    const strong=document.createElement('strong');strong.textContent=name;
+    const small=document.createElement('span');small.textContent=detail;
+    itemTooltip.append(strong,small);
+    itemTooltip.dataset.for=id;itemTooltip.hidden=false;
+    itemTooltip.style.left=`${Math.min(Math.max(nodeRect.left-rootRect.left-12,0),Math.max(0,rootRect.width-188))}px`;
+    itemTooltip.style.bottom=`${Math.max(0,rootRect.bottom-nodeRect.top+6)}px`;
+  };
+  node.addEventListener('pointerenter',show);node.addEventListener('pointerleave',hide);
+  node.addEventListener('focus',show);node.addEventListener('blur',hide);
+  node.addEventListener('click',event=>{
+    if(!touchFirst)return;
+    event.stopPropagation();
+    if(!itemTooltip.hidden&&itemTooltip.dataset.for===id)hide();else show();
+  });
+}
+function renderResourceBar():void {
+  if(!entered||!farmSnapshot?.account)return;
+  const counts=resourceQuantities();resourceRoot.replaceChildren();
+  for(const resource of RESOURCE_ITEMS){
+    if(!ITEM_ICON_IDS.includes(resource.id))continue;
+    const slot=document.createElement('div');slot.className='item-slot item-slot--resource';
+    slot.append(itemIconCanvas(resource.id,2));
+    const quantity=document.createElement('span');quantity.className='item-slot__qty';quantity.textContent=String(counts[resource.id]||0);slot.append(quantity);
+    slot.setAttribute('role','img');slot.setAttribute('aria-label',`${resource.name}: ${counts[resource.id]||0}`);
+    bindItemTooltip(slot,resource.id,resource.name,resource.detail);
+    resourceRoot.append(slot);
+  }
+}
 /** Three tiny pixel slots owned by the account; selection stays in this browser. */
 function renderHotbar():void {
   const account=farmSnapshot?.account;
-  if(!entered||!account){hotbarRoot.hidden=true;return;}
-  hotbarRoot.hidden=false;
   hotbarSelection=Math.max(0,Math.min(2,hotbarSelection));
   hotbarRoot.replaceChildren();
   const catalog=equipmentCatalog();
-  (account.hotbar||[null,null,null]).slice(0,3).forEach((id,index)=>{
-    const button=document.createElement('button');button.type='button';button.className='hotbar__slot';button.dataset.slot=String(index);
+  (account?.hotbar||[null,null,null]).slice(0,3).forEach((id,index)=>{
+    const button=document.createElement('button');button.type='button';button.className='item-slot hotbar__slot';button.dataset.slot=String(index);
     button.setAttribute('aria-pressed',String(index===hotbarSelection));
     if(index===hotbarSelection)button.classList.add('is-selected');
-    const key=document.createElement('span');key.className='hotbar__key';key.textContent=String(index+1);button.append(key);
+    const key=document.createElement('span');key.className='item-slot__key';key.textContent=String(index+1);button.append(key);
     const item=id?catalog.find(value=>value.id===id):undefined;
     if(id){
       button.classList.add('is-filled');
       if(item?.slot==='consumable')button.classList.add('is-consumable');
       button.append(equipmentIconCanvas(id,2));
-      const quantity=document.createElement('span');quantity.className='hotbar__qty';quantity.textContent=String(account.inventory[id]||0);button.append(quantity);
-      button.title=`${item?.name||id}${item?.slot==='consumable'?' · usable in caves':''} · click again to use`;
-      button.setAttribute('aria-label',`Slot ${index+1}: ${item?.name||id}, ${account.inventory[id]||0} owned`);
+      const quantity=document.createElement('span');quantity.className='item-slot__qty';quantity.textContent=String(account?.inventory[id]||0);button.append(quantity);
+      button.setAttribute('aria-label',`Slot ${index+1}: ${item?.name||id}, ${account?.inventory[id]||0} owned`);
+      bindItemTooltip(button,`hotbar-${index}`,item?.name||id,`${item?equipmentStats(item):'An owned item'} · press ${index+1} to select`);
     }else{
-      const empty=document.createElement('span');empty.className='hotbar__empty';empty.textContent='·';button.append(empty);
-      button.title=`Slot ${index+1} empty · assign an owned item at the Bazaar`;
+      const empty=document.createElement('span');empty.className='item-slot__empty';empty.textContent='·';button.append(empty);
       button.setAttribute('aria-label',`Slot ${index+1}: empty`);
+      bindItemTooltip(button,`hotbar-${index}`,`Slot ${index+1}`,'Empty · click to assign one of your owned items');
     }
     button.onclick=()=>{
-      if(index===hotbarSelection){if(id)void useHotbarSlot(index);}
-      else{hotbarSelection=index;renderHotbar();}
+      if(index===hotbarSelection){
+        if(id)void useHotbarSlot(index);
+        else{hotbarSelection=index;pickerSlot=index;renderHotbar();renderHotbarPicker();}
+      }else{hotbarSelection=index;pickerSlot=index;renderHotbar();renderHotbarPicker();}
     };
     hotbarRoot.append(button);
   });
 }
+/** A compact inventory picker opened by clicking a hotbar slot. */
+function renderHotbarPicker():void {
+  if(pickerSlot===null){hotbarPicker.hidden=true;return;}
+  const account=farmSnapshot?.account;
+  const owned=Object.entries(account?.equipment?.owned||{}).filter(([,quantity])=>quantity>0);
+  hotbarPicker.replaceChildren();
+  if(!owned.length){hotbarPicker.hidden=true;return;}
+  const heading=document.createElement('p');heading.textContent=`SLOT ${pickerSlot+1} · ASSIGN`;hotbarPicker.append(heading);
+  for(const [id,quantity] of owned){
+    const item=equipmentCatalog().find(value=>value.id===id);if(!item)continue;
+    const row=document.createElement('div');row.className='hotbar-picker__row';
+    const pick=document.createElement('button');pick.type='button';pick.className='hotbar-picker__pick';pick.dataset.item=id;
+    pick.append(itemIconCanvas(id,2));
+    const name=document.createElement('span');name.textContent=item.name.toUpperCase();pick.append(name);
+    const count=document.createElement('small');count.textContent=`×${quantity}`;pick.append(count);
+    pick.title=item.description;
+    const slot=pickerSlot;
+    pick.onclick=()=>{pickerSlot=null;renderHotbarPicker();void hotbarCommand('assign',slot,id);};
+    row.append(pick);
+    const action=document.createElement('button');action.type='button';action.className='hotbar-picker__action';
+    action.textContent=item.slot==='consumable'?'USE':'EQUIP';action.dataset.actionItem=id;
+    action.onclick=()=>{
+      if(item.slot==='consumable')void hotbarCommand('use',slot);
+      else void farmClient.equipment('equip',{item_id:id}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice(`${item.name} equipped`,'good');}).catch(error=>farmHud.notice(error instanceof Error?error.message:'Equip failed','warn'));
+    };
+    row.append(action);hotbarPicker.append(row);
+  }
+  hotbarPicker.hidden=false;
+}
+function renderItemHud():void {
+  const account=farmSnapshot?.account;
+  if(!entered||!account){itemHudRoot.hidden=true;return;}
+  itemHudRoot.hidden=false;
+  renderResourceBar();renderHotbar();renderHotbarPicker();
+}
 async function hotbarCommand(action:'assign'|'clear'|'use',slot:number,itemId?:string):Promise<void> {
   try{
     const result=await farmClient.hotbar(action,{slot,...(itemId?{item_id:itemId}:{})});
-    mergeFarmAccount(result.account as FarmAccount|undefined);renderHotbar();
+    mergeFarmAccount(result.account as FarmAccount|undefined);renderItemHud();
     if(action==='use'){
       const heal=Number(result.heal)||0;
       farmHud.notice(heal?`Hotbar consumable used · +${heal} HP`:'Hotbar item used','good');
       sparkle(player.position,['#f7d979','#d8fbff'],8);
-    }else if(action==='clear')farmHud.notice(`Hotbar slot ${slot+1} cleared`,'info');
+    }else if(action==='assign')farmHud.notice(`Hotbar slot ${slot+1} assigned`,'good');
+    else if(action==='clear')farmHud.notice(`Hotbar slot ${slot+1} cleared`,'info');
   }catch(error){farmHud.notice(error instanceof Error?error.message:'Hotbar action failed','warn');}
 }
 async function useHotbarSlot(slot:number):Promise<void> {
@@ -775,7 +872,7 @@ function applySavedProfile(snapshot:FarmSnapshot):void{
 async function loadFarm():Promise<void>{
   try{
     const snapshot=await farmClient.load(),previous=farmSnapshot;
-    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);renderHotbar();updateIntroAccount(snapshot);
+    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);renderItemHud();updateIntroAccount(snapshot);
     const known=snapshot.account?.discovery?.rewarded_groups||[];
     for(const id of known)discoveryRewardSeen.add(id);
     let synced=false;

@@ -68,6 +68,13 @@ try{
  assert.ok((await evaluate("document.getElementById('minimap-journal').textContent")).includes('DISCOVERIES 0/'),'fresh visitors start with an empty discovery journal count');
  assert.equal(await evaluate("document.getElementById('minimap-region').textContent"),'CITY CENTER');
  assert.ok(await evaluate("document.getElementById('minimap-canvas').dataset.player.includes(',')"),'minimap publishes the current player marker position');
+ // Visual item HUD replaces the WH/CA/PU text chips under the account strip.
+ await wait("document.getElementById('item-hud')&&!document.getElementById('item-hud').hidden&&document.querySelectorAll('#item-hud-resources .item-slot canvas').length===6");
+ assert.ok(await evaluate("!/\\b(WH|CA|PU)\\b/.test(document.getElementById('world-hud').textContent)"),'account strip no longer shows abbreviated resource counters');
+ assert.ok(await evaluate("[...document.querySelectorAll('#item-hud canvas')].every(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n>8})"),'every HUD slot draws real pixel artwork');
+ assert.equal(await evaluate("document.querySelectorAll('#hotbar .hotbar__slot').length"),3,'three equipment slots live inside the item HUD');
+ assert.ok(await evaluate("(()=>{const h=document.getElementById('world-hint').getBoundingClientRect(),i=document.getElementById('item-hud').getBoundingClientRect(),m=document.getElementById('world-minimap').getBoundingClientRect();const overlap=!(m.right<i.left||m.left>i.right||m.bottom<i.top||m.top>i.bottom);return h.bottom<=i.top+1&&i.right<=innerWidth+1&&i.bottom<=innerHeight+1&&!overlap})()"),'the item strip sits below the movement hint and clear of the minimap');
+ await screenshot('item-hud');
  await evaluate("document.getElementById('minimap-toggle').click()");
  await wait("document.getElementById('minimap-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('world-minimap').classList.contains('is-collapsed')");
  await evaluate("document.getElementById('minimap-toggle').click()");
@@ -810,6 +817,7 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
 
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap"),r=m.getBoundingClientRect(),v=document.querySelector(".world-viewport").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect(),s=getComputedStyle(m);return r.width<=112&&r.right<=390&&r.left>=0&&c.width>=90&&c.height>45&&s.left==="6px"&&s.bottom==="118px"&&r.left-v.left<=12&&v.bottom-r.bottom<=124})()'),'mobile minimap stays compact at the bottom-left of the viewport above touch controls');
+ assert.ok(await evaluate('(()=>{const rect=id=>document.getElementById(id).getBoundingClientRect(),i=rect("item-hud"),j=rect("joystick"),b=rect("interact"),h=rect("world-hint"),m=rect("world-minimap");const hit=(a,c)=>!(a.right<c.left||a.left>c.right||a.bottom<c.top||a.top>c.bottom);return !hit(i,j)&&!hit(i,b)&&!hit(i,h)&&!hit(i,m)&&i.left>=0&&i.right<=390})()'),'touch item HUD clears the joystick, interact, hint and minimap');
  await wait('document.querySelectorAll(".world-minimap__label").length===7');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&parseFloat(getComputedStyle(node).fontSize)>=5})})()'),'all six labels stay inside a 390px compact map');
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");

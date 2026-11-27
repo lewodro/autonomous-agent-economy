@@ -60,6 +60,12 @@ async function enterWorld(page) {
     await page.wait('document.getElementById("character-dialog").open === false');
   }
 }
+async function dismissIntro(page) {
+  if (await page.evaluate('document.getElementById("character-dialog")?.open === true')) {
+    await page.evaluate('document.getElementById("enter-world").click()');
+    await page.wait('document.getElementById("character-dialog").open === false');
+  }
+}
 const screenshot = async (page, name) => {
   if (process.env.WORLD_SCREENSHOTS !== '1') return;
   const result = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -132,7 +138,7 @@ try {
   // Assign an owned starter item from the Bazaar into a persistent hotbar slot.
   await first.evaluate("document.querySelector('.equipment-card[data-item=wooden_sword] .hotbar-assign button[data-hotbar-slot=\"0\"]').click()");
   await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"]').classList.contains('is-filled')", 5_000);
-  assert.ok(await first.evaluate("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"] .hotbar__qty').textContent==='1'"), 'the hotbar shows the owned stack quantity');
+  assert.ok(await first.evaluate("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"] .item-slot__qty').textContent==='1'"), 'the hotbar shows the owned stack quantity');
   await screenshot(first, 'bazaar-hotbar');
   await first.evaluate("document.getElementById('interaction-close').click()");
   await first.wait('document.getElementById("interaction-dialog").open === false');
@@ -143,11 +149,23 @@ try {
   await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"0\"]').classList.contains('is-selected')");
   await first.evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'u',bubbles:true}))");
   await first.wait("document.querySelector('#farm-notices').textContent.includes('cannot be used here')", 5_000);
+  // Compact tooltips and the inventory picker are part of the item HUD itself.
+  await first.evaluate("document.querySelector('#item-hud-resources .item-slot[data-item-id=\"wheat\"]').dispatchEvent(new PointerEvent('pointerenter',{bubbles:false}))");
+  await first.wait("!document.getElementById('item-tooltip').hidden&&document.getElementById('item-tooltip').textContent.includes('Wheat')");
+  await first.evaluate("document.querySelector('#hotbar .hotbar__slot[data-slot=\"1\"]').click()");
+  await first.wait("!document.getElementById('hotbar-picker').hidden");
+  await first.evaluate("document.querySelector('#hotbar-picker .hotbar-picker__pick[data-item=\"iron_sword\"]').click()");
+  await first.wait("document.querySelector('#hotbar .hotbar__slot[data-slot=\"1\"]').classList.contains('is-filled')", 5_000);
+  assert.ok(await first.evaluate("document.getElementById('hotbar-picker').hidden"), 'the picker closes after an authoritative assignment');
 
   await first.wait("document.querySelector('#world-lab pre')?.textContent.includes('player')");
   await first.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Teleport: Northern cave').click()");
   await first.wait("JSON.parse(document.querySelector('#world-lab pre').textContent).player.x < -600");
+  await dismissIntro(first);
+  await delay(250); // let the frame loop pick the cave entrance as the nearest target
   await first.wait('!document.getElementById("interact").disabled');
+  await first.evaluate("document.getElementById('character-dialog').open&&document.getElementById('enter-world').click()");
+  await first.wait('document.getElementById("character-dialog").open === false');
   await first.evaluate('document.getElementById("interact").click()');
   await first.wait("document.getElementById('interaction-title').textContent==='DANGEROUS AREA'");
   await first.evaluate("[...document.querySelectorAll('#interaction-content button')].find(b=>b.textContent==='ENTER').click()");
@@ -172,6 +190,9 @@ try {
   await first.evaluate("[...document.querySelectorAll('#world-lab button')].find(b=>b.textContent==='Walk probe: colosseum').click()");
   await first.wait("(()=>{const t=document.querySelector('#world-lab pre')?.textContent||'';if(!t)return false;try{return Math.abs(JSON.parse(t).player.y-1120)<8}catch{return false}})()");
   const homeA = await first.evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
+  await dismissIntro(first);
+  await delay(250);
+  await first.evaluate("document.getElementById('character-dialog').open&&document.getElementById('enter-world').click()");
   await first.wait('!document.getElementById("interact").disabled', 8000);
   await first.wait('!document.getElementById("quick-chat-open").hidden', 8000);
   await first.evaluate('document.getElementById("interact").click()');
@@ -200,6 +221,7 @@ try {
   await second.evaluate('document.getElementById("duel-shield").click()');
   await second.wait("document.getElementById('duel-shield-hud').textContent.includes('SHIELD ○ ○')", 6_000);
   assert.ok(await second.evaluate("document.getElementById('duel-shield').disabled"), 'no charges left disables the shield control');
+  await delay(800); // let the last shield stance end before walking into range
 
   // Mobile layout keeps touch controls reachable in the arena.
   await second.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
@@ -215,7 +237,7 @@ try {
     await delay(ms);
     await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
   };
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     const state = await positions();
     // Stop before the fighters cross so the challenger is still facing the
     // opponent; a later tick can otherwise swap their left/right order.

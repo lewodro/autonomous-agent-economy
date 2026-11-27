@@ -305,17 +305,8 @@ export class FarmHud {
     const bar = this.$('hud-xp-bar'); if (bar) bar.style.width = `${Math.round(account.level_progress * 100)}%`;
     this.text('hud-credits', `${account.credits} CR`);
     this.text('hud-plots', `PLOTS ${account.plots_used}/${account.plots_limit}`);
-    const bag = this.$('hud-bag');
-    if (bag) {
-      bag.replaceChildren();
-      for (const kind of CROPS) {
-        const amount = account.inventory[kind] || 0;
-        const chip = document.createElement('span');
-        chip.className = `hud-crop hud-crop--${kind}${amount ? '' : ' empty'}`;
-        chip.textContent = `${kind.slice(0, 2).toUpperCase()} ${amount}`;
-        bag.append(chip);
-      }
-    }
+    // Resource quantities are shown as pixel-art items in the bottom-right
+    // item HUD; the account strip deliberately stays free of counters.
     const carrying = CROPS.reduce((sum, kind) => sum + (account.inventory[kind] || 0), 0);
     this.text('hud-hint', carrying ? 'Carry produce to the bazaar in the lower market' : 'Explore beyond the plaza for soil and resources');
   }
