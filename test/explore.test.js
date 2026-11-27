@@ -44,6 +44,7 @@ test('cave, ruin, shrine, pass and camp prompts describe real contextual actions
   assert.equal(prompts.get('mossy-ruin'), 'Inspect ruins');
   assert.equal(prompts.get('sunken-shrine'), 'Visit shrine');
   assert.equal(prompts.get('frostgate-pass'), 'Cross the pass');
+  assert.equal(prompts.get('duskfall-gate'), 'Inspect the sealed gate');
   assert.equal(prompts.get('camp-west-1'), 'Rest at camp');
 });
 
@@ -106,7 +107,7 @@ test('compact minimap keeps public location names visible', () => {
 });
 
 test('minimap keeps the expanded loop and its remote trails in projection', () => {
-  assert.equal(MINIMAP_TRAILS.length, 9);
+  assert.equal(MINIMAP_TRAILS.length, 10);
   for (const trail of MINIMAP_TRAILS) {
     assert.ok(trail.from.x === OUTER_LOOP.left || trail.from.x === OUTER_LOOP.right
       || trail.from.y === OUTER_LOOP.top || trail.from.y === OUTER_LOOP.bottom, 'a remote trail starts on the loop');

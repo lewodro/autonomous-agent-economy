@@ -352,7 +352,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     for(const [index,site] of EXPLORATION_SITES.entries()){
       const {x,y}=site.position;
       if(site.kind==='cave')this.paintCave(c,x,y,index,site.facing);
-      else if(site.kind==='pass')this.paintPass(c,x,y,index);
+      else if(site.kind==='pass')site.requiredLevel?this.paintLockedGate(c,x,y,index):this.paintPass(c,x,y,index);
       else this.paintRuin(c,x,y,index,site.kind,site.accent);
     }
     // Junction signposts give the four city-to-loop connectors a readable
@@ -493,6 +493,42 @@ export class CanvasWorldRenderer implements WorldRenderer {
     rect(-54,10,8,6,'#7d877c');rect(46,12,7,5,'#7d877c');
     rect(-42,-88,3,5,'#8fc8dd');rect(39,-84,3,4,'#8fc8dd');
   }
+  /**
+   * The southern threshold is deliberately hostile: black basalt, iron bars
+   * and a violet seal instead of Frostgate's pale snow-cut stone. The gate is
+   * closed from the far side, so the darklands beyond can open in a later PR.
+   */
+  private paintLockedGate(c:CanvasRenderingContext2D,x:number,y:number,index:number):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#0d171666';c.beginPath();c.ellipse(x,y+34,94,22,0,0,Math.PI*2);c.fill();
+    // Basalt shoulders lean inward and swallow the light.
+    for(const side of [-1,1]){
+      const ox=side;
+      rect(ox*(side<0?94:40),-20,54,76,'#2f3a36');
+      rect(ox*(side<0?84:42),-48,42,42,'#37433e');
+      rect(ox*(side<0?74:44),-76,30,34,'#404b45');
+      rect(ox*(side<0?64:42),-100,22,28,'#49544d');
+      rect(ox*(side<0?90:40),-24,4,68,'#3d4842');
+      rect(ox*(side<0?80:42),-50,4,40,'#48534c');
+      rect(ox*(side<0?70:44),-78,4,32,'#525d55');
+      rect(ox*(side<0?86:44),-30,5,7,'#55704b');
+    }
+    // Iron gate: dark pillars, a heavy lintel and crossed bars.
+    rect(-40,-72,80,15,'#3a403d');rect(-38,-76,76,5,'#59635c');
+    rect(-34,-58,16,84,'#2c322f');rect(18,-58,16,84,'#2c322f');
+    rect(-32,-56,4,78,'#414843');rect(20,-56,4,78,'#414843');
+    c.beginPath();c.moveTo(-18,26);c.lineTo(-18,-28);c.quadraticCurveTo(0,-58,18,-28);c.lineTo(18,26);c.closePath();
+    c.fillStyle='#050a09';c.fill();
+    for(let bar=-14;bar<=14;bar+=7)rect(bar,-34,3,58,'#1b2220');
+    rect(-20,-12,40,3,'#232b28');rect(-18,4,36,3,'#232b28');
+    // Violet seal, warning rune and a barred chain across the threshold.
+    rect(-9,-68,18,11,'#5a4a70');rect(-5,-65,10,4,'#dcc4f2');
+    rect(-25,-16,4,7,'#a885d6');rect(22,-10,4,7,'#a885d6');
+    rect(-16,-44,4,4,index%2?'#dcc4f2':'#a885d6');rect(11,-38,3,5,'#a885d6');
+    rect(-48,22,96,7,'#3f4541');rect(-32,28,64,4,'#333a36');
+    for(const [dx,dy] of [[-56,10],[-50,2],[48,8],[54,0]] as [number,number][])rect(dx,dy,5,14,'#2c322f');
+    rect(-62,8,12,4,'#4a514b');rect(50,6,12,4,'#4a514b');
+  }
   render(frame:WorldFrame):void {
     const {width,height}=this.viewport();const ratio=Math.min(2,window.devicePixelRatio||1);
     const pixelWidth=Math.round(this.canvas.clientWidth*ratio),pixelHeight=Math.round(this.canvas.clientHeight*ratio);
@@ -505,6 +541,19 @@ export class CanvasWorldRenderer implements WorldRenderer {
       if(sw>0&&sh>0)c.drawImage(chunk.canvas,sx,sy,sw,sh,chunk.x+sx,chunk.y+sy,sw,sh);
     }
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // The sealed gate breathes a slow violet ward so it reads as locked even
+    // before the visitor is close enough to interact.
+    const lockedGate=EXPLORATION_SITES.find(site=>site.requiredLevel);
+    if(lockedGate){
+      const {x,y}=lockedGate.position;
+      if(x>frame.camera.x-120&&x<frame.camera.x+width+120&&y>frame.camera.y-120&&y<frame.camera.y+height+120){
+        const wave=reduced?0.5:0.5+0.5*Math.sin(frame.time/460);
+        const glow=c.createRadialGradient(x,y-48,3,x,y-48,54);
+        glow.addColorStop(0,`rgba(168,133,214,${0.16+wave*0.14})`);glow.addColorStop(1,'rgba(168,133,214,0)');
+        c.fillStyle=glow;c.fillRect(x-58,y-104,116,112);
+        c.fillStyle=`rgba(220,196,242,${0.3+wave*0.4})`;c.fillRect(x-5,y-66,10,3);
+      }
+    }
     const flameFrames:[number,number,number,number][]=[[-7,-12,14,18],[-9,-9,14,16],[-6,-16,13,22],[-5,-10,15,17]];
     const flame=flameFrames[reduced?0:Math.floor(frame.time/190)%flameFrames.length]!;
     for(const {x,y} of CAMPFIRES){

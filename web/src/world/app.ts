@@ -927,6 +927,25 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
         return;
       }
       if(site.kind==='pass'){
+        if(site.requiredLevel){
+          const version=show(site.label.toUpperCase());
+          const level=farmSnapshot?.account?.level??1;
+          const reached=level>=site.requiredLevel;
+          text('p',site.description);
+          text('p',site.discovery);
+          text('p',reached
+            ? 'The gate is sealed from the far side. The darklands beyond are not open yet.'
+            : `You have not reached level ${site.requiredLevel} yet. The gate will not answer until then.`);
+          text('p',`Required level ${site.requiredLevel} · your level ${level}.`);
+          farmHud.notice(reached
+            ? `${site.label} is sealed until the darklands open`
+            : `LOCKED · You have not reached level ${site.requiredLevel} yet`,'warn');
+          const actions=document.createElement('div');actions.className='cave-entry-actions';content.append(actions);
+          const cancel=document.createElement('button');cancel.type='button';cancel.textContent='NOT YET';
+          cancel.onclick=()=>{if(dialog.open&&version===interactionVersion)dialog.close();};
+          actions.append(cancel);
+          return;
+        }
         const version=show('FROSTGATE PASS');
         text('p',site.description);
         text('p',site.discovery);

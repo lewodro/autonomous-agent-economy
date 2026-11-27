@@ -161,7 +161,7 @@ export const MINIMAP_PATHS: ReadonlyArray<{ x1: number; y1: number; x2: number; 
 ];
 const REMOTE_SITE_IDS = new Set([
   'shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove',
-  'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch',
+  'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch', 'duskfall-gate',
 ]);
 function nearestLoopAnchor(position: Position): Position {
   // Clamp first so sites beyond a loop corner still connect to the nearest
