@@ -644,6 +644,24 @@ try{
  await delay(80);
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:{x:-108,y:430},direction:'right',animation_state:'walk'})}).then(r=>r.status)"),200,'second visitor moves beyond the former west boundary');
  assert.equal(await secondBrowser.evaluate("fetch('/api/worlds/main/presence/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)"),200);
+ // The southern gate is deliberately sealed. It records a discovery, reports
+ // the level-12 requirement, and never transfers the visitor into the darklands.
+ await teleportProbe('duskfall',300,2660,'duskfall-gate');
+ await wait("JSON.parse(document.querySelector('#world-lab pre').textContent).region==='SOUTH PERIMETER'");
+ await wait("document.getElementById('world-hint').textContent.includes('INSPECT THE SEALED GATE')");
+ await evaluate("document.getElementById('interact').click()");
+ await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DUSKFALL GATE'");
+ await wait("document.getElementById('interaction-content').textContent.includes('You have not reached level 12 yet')");
+ await wait("document.getElementById('interaction-content').textContent.includes('Required level 12')");
+ await wait("(()=>{const s=JSON.parse(document.querySelector('#world-lab pre').textContent);return s.discovered.includes('duskfall-gate')&&s.minimap.outer>=1})()");
+ await wait("!document.getElementById('discovery-toast').hidden&&document.getElementById('discovery-toast').textContent.includes('DUSKFALL GATE')");
+ assert.equal(await evaluate("['/world','/labs/world'].includes(location.pathname)"),true,'the sealed gate never leaves the overworld');
+ assert.equal(await evaluate("[...document.querySelectorAll('#interaction-content button')].map(button=>button.textContent).join(',')"),'NOT YET','the sealed gate offers no entry action');
+ await screenshot('duskfall-gate');
+ await evaluate("document.getElementById('interaction-close').click()");
+ await wait("!document.getElementById('interaction-dialog').open");
+ await wait('document.activeElement?.id==="world-canvas"');
+ await screenshot('duskfall-gate-closed');
  // The far-north pass is a real threshold: it records a discovery, then opens
  // a separate snow destination with its own landmarks and return path.
  await teleportProbe('frostgate',576,-2320,'frostgate-pass');

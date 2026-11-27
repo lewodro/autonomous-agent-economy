@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, TERRAIN_AREAS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, DUSKFALL_REQUIRED_LEVEL, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, TERRAIN_AREAS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
@@ -254,7 +254,7 @@ test('arena gateway derives relative room routes and rejects invalid game/slot c
 test('remote wilderness districts span the doubled map without one oversized canvas', () => {
   const remote = [
     'shattered-ridge', 'rift-monolith', 'old-quarry', 'echo-cave', 'lantern-grove',
-    'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch',
+    'frostgate-pass', 'starfall-circle', 'ember-shrine', 'hollow-arch', 'duskfall-gate',
   ];
   for (const id of remote) {
     const site = EXPLORATION_SITES.find(value => value.id === id);
@@ -266,6 +266,24 @@ test('remote wilderness districts span the doubled map without one oversized can
   }
   assert.equal(MAP.width * MAP.height, 6300 * 5500, 'the expanded world area is intentional');
   assert.ok(MAP.width * MAP.height > 2 * 4800 * 3456, 'the expansion roughly doubles the old area');
+});
+
+test('the southern darklands gate is a sealed level-12 threshold with a clear approach', () => {
+  const gate = EXPLORATION_SITES.find(site => site.id === 'duskfall-gate');
+  assert.ok(gate, 'Duskfall Gate exists');
+  assert.equal(gate.kind, 'pass');
+  assert.equal(gate.requiredLevel, DUSKFALL_REQUIRED_LEVEL);
+  assert.equal(DUSKFALL_REQUIRED_LEVEL, 12, 'the darklands sit in the 10-15 level band');
+  assert.ok(gate.position.y > OUTER_LOOP.bottom, 'the gate sits south of the outer loop');
+  assert.equal(collides(gate.position), false, 'the gate threshold stays walkable');
+  assert.equal(LANDMARKS.find(landmark => landmark.id === gate.id)?.prompt, 'Inspect the sealed gate');
+  assert.ok(PATHS.some(path => gate.position.x >= path.x - gate.radius && gate.position.x <= path.x + path.width + gate.radius
+    && gate.position.y >= path.y - gate.radius && gate.position.y <= path.y + path.height + gate.radius), 'the gate keeps a connecting trail');
+  assert.equal(EXPLORATION_PROBES.duskfall.x, gate.position.x);
+  assert.equal(EXPLORATION_PROBES.duskfall.y, gate.position.y);
+  // The shared placement rules keep the threshold itself free of scenery.
+  for (const tree of TREES) assert.ok(Math.hypot(tree.x - gate.position.x, tree.y - gate.position.y) > gate.radius + 30);
+  for (const rock of ROCKS) assert.ok(Math.hypot(rock.x - gate.position.x, rock.y - gate.position.y) > gate.radius + 30);
 });
 
 test('outer loop pushes toward the map edges and every landmark keeps a connecting trail', () => {
