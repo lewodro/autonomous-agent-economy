@@ -288,6 +288,141 @@
       "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/89",
       "detail": "## Restart evidence\nThe persistence harness writes durable state, stops the service, boots it again against Postgres and verifies the records remain intact. Legacy local history can be imported without duplicating already-reconciled events, and CI now runs the database-backed restart job.\n\n## Main commits\nba97b5b closed restart and import gaps. 3928b43 added the real Postgres harness. 2bd54dd wired the persistence job into CI.",
       "source": "2026-11-16-postgres-restart-ci.md"
+    },
+    {
+      "date": "2026-11-17",
+      "title": "Open the Arena live board to spectators",
+      "summary": "Ongoing Arena matches are now visible from the lobby, with read-only spectating and results that stay server-owned.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/a5c84e773c86be3d26f162161607455759dc9541",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/92",
+      "detail": "## Why\nWatching a match meant already knowing which room to open. The lobby now advertises what is actually running, so a visitor can see the live board first and decide whether to spectate or join.\n\n## Frontend\nThe lobby renders ongoing matches with their game, round and participant state. Spectating is read-only: a visitor can follow the action without taking a seat or influencing the outcome.\n\n## Backend\nSpectate endpoints expose the same authoritative view the match already uses. No new write path was added, and results, damage and winners still come from the server.\n\n## Tests\nBrowser regressions cover the live board, opening a spectated match and returning to the lobby.",
+      "source": "2026-11-17-arena-live-match-board.md"
+    },
+    {
+      "date": "2026-11-17",
+      "title": "Keep compact minimap labels readable",
+      "summary": "The minimap keeps its small labels as DOM text, so they stay crisp on high-density screens and clear of the touch controls.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/a51443c8ebcacfcb771c52870e37a953503f185c",
+      "pr": null,
+      "detail": "## Why\nDrawing place names into the canvas blurred them on retina and mobile screens, and the smallest labels collided once the map gained more points of interest.\n\n## Frontend\nLabels are rendered as positioned DOM elements over the canvas rather than baked pixels. The compact set keeps short names, avoids overlap and stays out of the bottom-left touch area.\n\n## Tests\nResponsive browser runs cover the minimap at desktop and mobile sizes.",
+      "source": "2026-11-17-compact-minimap-labels.md"
+    },
+    {
+      "date": "2026-11-17",
+      "title": "Make short duels readable at a glance",
+      "summary": "Duel staging, game feel and an eight-phrase quick chat make RPS and Tic-Tac-Toe easy to follow and easy to play with someone nearby.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/d93135d937919b59d98c44ad6e3f1add0197d0ff",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/92",
+      "detail": "## Why\nRPS and Tic-Tac-Toe resolve in seconds. Without staging and readable feedback the result arrives before a visitor understands what happened.\n\n## Frontend\nThe duel stage now frames both players, shows the deciding line, and uses restrained motion so the outcome is obvious without confetti. Quick chat expanded to eight phrases across two pages, which is enough for short social matches without a full chat system.\n\n## Boundaries\nChat stays a fixed phrase list. It never accepts free text, so nothing enters match records or public history from it.\n\n## Tests\nBrowser regressions cover the duel stage, the winning line and both quick-chat pages.",
+      "source": "2026-11-17-duel-stage-and-quick-chat.md"
+    },
+    {
+      "date": "2026-11-19",
+      "title": "Make cave defeat a real setback",
+      "summary": "Dying in a cave returns the visitor to the plaza and clears internal test credits once, through the existing ledger rather than a new table.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/c763ab8d498299c288e2a1a4880554168de480e8",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/93",
+      "detail": "## Why\nA cave with no cost is a treadmill. Defeat needed a consequence that is visible, bounded and cannot be triggered twice by a retry.\n\n## Economy\nDefeat settles as a `cave_defeat` entry that zeroes internal test credits once. Wallets, SOL and treasury balances are untouched, and the settlement reuses the existing credit ledger.\n\n## Recovery\nThe run ends, the overlay explains the loss, and the visitor returns to the plaza. A lapsed run resets after seven minutes, and defeated monsters stay dead for the active run.\n\n## Tests\nLedger idempotency and HTTP tests confirm one settlement per defeat and no effect on wallets or treasury.",
+      "source": "2026-11-19-cave-defeat-and-return.md"
+    },
+    {
+      "date": "2026-11-19",
+      "title": "Make the caves enterable and authoritative",
+      "summary": "Caves are real places now: a visitor enters, fights server-owned monsters in torch-lit rooms, and can descend into deeper floors.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/265393dacac3b6bf1def5069dd0dc9c06c4e30a2",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/93",
+      "detail": "## Why\nThe outer caves were scenery. Making them playable needed combat that the browser cannot fake and a run state that belongs to one visitor.\n\n## Backend\n`CaveService` owns a per-visitor, per-run state: monsters, health, positions, kills and chests. The browser sends intents for movement, attacks, descents and exits; the server resolves range, damage, deaths and floor changes.\n\n## Frontend\nDarkness and torches give the cave its own atmosphere. A cave header, overlay and in-cave interaction keep the exit and descent paths explicit.\n\n## Tests\nHTTP authority tests, credit-ledger idempotency tests and browser playtests cover entering, fighting, descending and leaving.",
+      "source": "2026-11-19-enterable-caves.md"
+    },
+    {
+      "date": "2026-11-19",
+      "title": "Add remote wilderness districts",
+      "summary": "Five new outer districts give exploration a reason to continue past the plaza, and farm guidance now stops at a believable 20 metres.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/b74e6cca1b6937687711c3860e30750818537f66",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/93",
+      "detail": "## Why\nThe old edge of the map read as the end of the world. New districts extend the ordinary wilderness with their own landmarks, paths and harvesting nodes.\n\n## World\nFive remote districts were added with distinct shapes and vegetation. A shared scale module now defines 16 world units per in-world metre, and farm guidance uses a 20-metre radius instead of an arbitrary pixel distance.\n\n## Tests\nMap tests cover district placement, reachability, collision-free resource nodes and the shared distance scale.",
+      "source": "2026-11-19-new-wilderness-regions.md"
+    },
+    {
+      "date": "2026-11-21",
+      "title": "End the cave run when leaving by the header",
+      "summary": "Leaving a cave through the header now ends the run instead of stranding an orphaned session, and the redundant in-cave exit link is gone.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/055d57ee649b24590e54586a4e5785787021cc6b",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/96",
+      "detail": "## Why\nA run is server-owned. Walking out through a navigation link skipped the exit intent, so the session kept running while the visitor was already back in the world.\n\n## Fix\nHeader navigation and defeat both settle the run before leaving. The in-cave \"Exit to World\" link was removed at the same time, because the E interaction, the brand link and the overlay return already cover every exit path.\n\n## Tests\nBrowser smoke checks that a cave exit ends the run and that no stale session is left behind.",
+      "source": "2026-11-21-cave-exit-ends-run.md"
+    },
+    {
+      "date": "2026-11-21",
+      "title": "Fix cave spawns, balance and pixel-art floors",
+      "summary": "Disconnected monsters no longer spawn out of reach, the roster was rebalanced around the starter blade, and cave floors are cached pixel art with hit feedback.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/6fceb6908163c726bc4c27dde0a35cd3a1157e21",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/98",
+      "detail": "## Why\nSome chambers spawned monsters in disconnected geometry, so a floor could never be cleared. Balance also drifted once the deeper floors were added.\n\n## Combat\nMonsters are placed only on reachable tiles, and tests assert reachability per floor. Normal enemies now take three or four starter hits, while deeper floors raise health and damage without making the first floor punishing.\n\n## Frontend\nCave floors are painted once into cached pixel-art canvases instead of being redrawn every frame. Hit flashes and a small damage cue make contact readable.\n\n## Tests\nSpawn reachability, starter-hit balance and the cave art palette are covered by unit and browser tests.",
+      "source": "2026-11-21-cave-monsters-and-pixel-art.md"
+    },
+    {
+      "date": "2026-11-21",
+      "title": "Make cleared cave floors descend reliably",
+      "summary": "A cleared floor now shows its passage, points toward it, and uses the shared 96-unit reach, while deeper floors gained more rooms and enemies.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/9989ec4acda7fa76c8fba0f37dd8f1c0577bb1e3",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/99",
+      "detail": "## Why\nDescending required standing almost exactly on a passage that was hard to see, so a cleared floor could feel stuck.\n\n## Fix\nDescent uses the same 96-unit interaction reach as exits and chests, a marker appears once the floor is cleared, and a direction hint points the way. Floors were deepened to 5, 6 and 7 rooms with 4, 6 and 6 enemies.\n\n## Tests\nProgression tests walk each floor to its passage, and browser smoke covers the cleared-floor marker and descent.",
+      "source": "2026-11-21-deeper-cave-floors.md"
+    },
+    {
+      "date": "2026-11-22",
+      "title": "Bring the overworld grass back to one palette",
+      "summary": "Every normal terrain band now shares close green shades and clustered world-space variation, so the outer wilderness stops reading as generated colour blocks.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/1befaf2c851b930311c9a96579af6d767621077a",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/100",
+      "detail": "## Why\nTerrain patches used high-contrast biome colours and an alternating per-tile palette. From normal camera distance that produced large checkerboard regions instead of one continuous field.\n\n## Terrain\nAll normal overworld patch colours were pulled onto the plaza's green band, keeping several subtle regional variants. Tone selection now comes from deterministic smooth noise at two scales rather than a modulo pattern, so neighbouring tiles share close tints and patches grow organically.\n\n## Boundaries\nSnow, roads, buildings, resources, discoveries, minimap and world size were left untouched. Painting stays in world coordinates, so chunk boundaries cannot show.\n\n## Tests\nA palette test asserts every normal terrain colour stays within a subtle green band of the plaza grass, and browser smoke covers the plaza, outer loop and mobile sizes.",
+      "source": "2026-11-22-cohesive-overworld-grass.md"
+    },
+    {
+      "date": "2026-11-22",
+      "title": "Resume the world without the character creator",
+      "summary": "Returning from a cave no longer opens the creator modal, so a visitor who is already playing lands straight back in the world.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/f74b477d2191f289fbeef0870c6e601c781be552",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/100",
+      "detail": "## Why\nLeaving a cave with E dropped the visitor back into the character creator even though they had already been moving through the world. That modal interrupted normal play.\n\n## Fix\nCave exits set a one-shot session flag. The world consumes it once, skips the intro modal and focuses the canvas. The Character/Profile button still opens customization whenever a visitor wants it.\n\n## Tests\nBrowser smoke asserts that a normal cave exit returns to play with no modal and the canvas focused.",
+      "source": "2026-11-22-resume-world-without-creator.md"
+    },
+    {
+      "date": "2026-11-23",
+      "title": "Keep Clerk sign-in above world dialogs",
+      "summary": "The sign-in surface now stacks above the world's own dialogs, so a visitor is never asked to log in behind an overlay they cannot dismiss.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/a0186a78bd3d56f77efbccc597764a9e9a442218",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/103",
+      "detail": "## Why\nWorld dialogs and the Clerk modal both use high stacking contexts. Depending on the entry path, the account prompt could render underneath a world overlay.\n\n## Fix\nClerk's container is raised above world dialogs and the farm and world surfaces account for the active auth layer. Sign-in and the guest path both stay usable from inside the world.\n\n## Tests\nThe Clerk browser smoke covers the sign-in handoff from a world dialog.",
+      "source": "2026-11-23-clerk-above-world-dialogs.md"
+    },
+    {
+      "date": "2026-11-23",
+      "title": "Continue the cave past floor three",
+      "summary": "A cleared third floor now opens into procedurally extended depths, with a scaling curve that flattens instead of exploding.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/223478cf228ea2c5866822f82ad6334f30c761cb",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/100",
+      "detail": "## Why\nThe authored three floors ended the run with no passage, which made a long cave feel finite for no gameplay reason.\n\n## Scaling\nDepth scaling steps by 0.10 through floor three, 0.05 through floor five, and 0.03 from floor six onward. Health, damage, speed and rewards scale together, with rewards capped at the existing ledger limit.\n\n## Implementation\nGenerated floors reuse the deepest authored geometry with unique monster IDs and keep the deep palette. The server publishes each floor's layout in the snapshot, so the client does not duplicate the scaling rules.\n\n## Tests\nUnit tests cover the scaling curve, endless descent, unique spawns, published layouts and reset behaviour.",
+      "source": "2026-11-23-endless-cave-depths.md"
+    },
+    {
+      "date": "2026-11-23",
+      "title": "Remove the last grass tint cutoffs",
+      "summary": "Terrain patches now feather with a noise-warped edge and grass tones dither between neighbours, so the plaza, roads and market stop showing hard rectangular bands.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/5dac2d868698ffbc8c1d1a427cc60cac8171f8d0",
+      "pr": "https://github.com/lewodro/autonomous-agent-economy/pull/105",
+      "detail": "## Why\nTwo rules still produced visible cutoffs: authored terrain patches were painted at full opacity with a straight edge, and each 32px tile snapped to a single tone, turning smooth noise contours into blocky bands. A distance gate kept the old five-tone grain alive near the plaza, which is why the band north of the Agent House still looked like a checkerboard.\n\n## Fix\nEvery patch feathers with a wide, world-space noise-warped falloff. Grass tone stays continuous and each tile dithers between its two neighbouring tones across pixel quadrants. The authored grain became a low-amplitude jitter, and the smooth field breathes with the envelope instead of switching off near the plaza.\n\n## Boundaries\nPalette, contrast, grass detail, roads, buildings, resources, discoveries, minimap, snow and world bounds are unchanged. Painting is world-space, so chunk seams cannot appear.\n\n## Tests\nUnit tests bound tile-to-tile tone steps in the outskirts and in the Agent House band. TypeScript, check, the full Node suite and world browser smoke all pass.",
+      "source": "2026-11-23-remove-grass-tint-cutoffs.md"
+    },
+    {
+      "date": "2026-11-24",
+      "title": "Enter the v1.0.2-beta release",
+      "summary": "The hosted world moved to a production beta tag with Google sign-in, durable ledgers and the full world, Arena and Compound loops playable at lastseat.ing.",
+      "commit": "https://github.com/lewodro/autonomous-agent-economy/commit/d6adf43af83013997bade25cb6112d96528741fa",
+      "pr": null,
+      "detail": "## Release\nThe `beta` tag is a new release line, separate from the earlier `alpha` and `pre-release` tags. Last Seat is now on v1.0.2-beta.\n\n## Deployment\nThe canonical origin is lastseat.ing, served from the committed deployment configuration with Cloudflare DNS. Google sign-in runs through Clerk against the production Google Cloud OAuth client, and guest play remains available.\n\n## What is playable\nThe shared world, Arena Survival, RPS, Tic-Tac-Toe, Compound, farming, mining, market selling and the discovery journal are all live. Internal credits stay inside policy-controlled budgets; payouts and mainnet funding remain disabled.\n\n## Verification\nNode and Rust tests, browser journeys, TypeScript, check, CodeQL and the Node 22 / 24 / 26 builds run on main. Current main reports 418 passing tests and 4 skipped.",
+      "source": "2026-11-24-production-beta-release.md"
     }
   ]
 }
