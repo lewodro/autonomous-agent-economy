@@ -25,6 +25,7 @@ import { TableSession, visitorIdentity } from './service/world-table.js';
 import { publicRequestError } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { WorldChallengeService } from './service/world-challenges.js';
+import { colosseumReady } from './src/colosseum.js';
 import { WorldAgentPresenceService } from './service/world-agent-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
@@ -208,6 +209,13 @@ const server = http.createServer(async (req, res) => {
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const data=await body(req,4096);
       if(action==='quick-chat'){
+        // A Sword Duel invite is only meaningful inside the Colosseum. Check
+        // before relaying the bubble so a rejected challenge cannot spam chat.
+        if(data.phrase_id==='sword'){
+          const player=worldPresence.player(worldId,visitor.id);
+          const target=data.target_player_id?worldPresence.player(worldId,data.target_player_id):worldPresence.nearestHuman(worldId,visitor.id)?.player;
+          if(!player||!target||!colosseumReady(player.position,target.position))return json(res,409,{error:'Both fighters must stand inside the Colosseum',code:'NOT_AT_COLOSSEUM'},cookie);
+        }
         const {target_player_id,...chat}=worldPresence.quickChat(worldId,visitor.id,data);
         const challenge=worldChallenges.create(worldId,visitor.id,data.phrase_id,target_player_id);
         return json(res,200,{...chat,...(challenge?{challenge}:{})},cookie);
@@ -339,10 +347,11 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST')return json(res,405,{error:'Farm command requires POST'},cookie);
       if(!farmCommands.allow())return json(res,429,{error:'Farm actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/farm/'.length);
-      if(!['plant','harvest','sell','heartbeat','wallet','wallet-challenge','wallet-verify','payout','profile','discovery','equipment'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
+      if(!['plant','harvest','sell','heartbeat','wallet','wallet-challenge','wallet-verify','payout','profile','discovery','equipment','hotbar'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
       const data=await body(req,4096);
       if(action==='discovery')return json(res,200,{...await worldFarm.reportDiscoveries(identity,data),auth},cookie);
       if(action==='equipment')return json(res,200,{...await worldFarm.equipmentCommand(identity,data),auth},cookie);
+      if(action==='hotbar')return json(res,200,{...await worldFarm.hotbarCommand(identity,data),auth},cookie);
       if(action==='heartbeat')return json(res,200,{...await worldFarm.heartbeat(identity,data),auth},cookie);
       if(action==='profile')return json(res,200,{...await worldFarm.saveProfile(identity,data),auth},cookie);
       if(action==='wallet')return json(res,200,{...await worldFarm.linkWallet(identity,data),auth},cookie);

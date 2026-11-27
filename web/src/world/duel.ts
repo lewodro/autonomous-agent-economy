@@ -43,6 +43,7 @@ const hint = $<HTMLElement>('duel-hint'), result = $<HTMLElement>('duel-result')
 const gameLabel = $<HTMLElement>('duel-game'), scope = $<HTMLElement>('duel-scope'), modeLabel = $<HTMLElement>('duel-mode');
 const arenaWrap = $<HTMLDivElement>('duel-arena-wrap'), arenaCanvas = $<HTMLCanvasElement>('duel-arena'), arenaControls = $<HTMLDivElement>('duel-arena-controls');
 const strikeButton = $<HTMLButtonElement>('duel-strike'), dodgeButton = $<HTMLButtonElement>('duel-dodge');
+const shieldButton = $<HTMLButtonElement>('duel-shield'), shieldHud = $<HTMLElement>('duel-shield-hud');
 const returnLink = $<HTMLAnchorElement>('duel-return'), exitLink = document.querySelector<HTMLAnchorElement>('.duel-exit');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const POLL_MS = 800;
@@ -240,15 +241,20 @@ function renderResult(): void {
   }
   if (current.game === 'swordduel') {
     const finished = current.status === 'finished';
+    const countdown = current.sword?.countdown_ms ?? current.sword?.combat.countdown_ms ?? 0;
     const winner = current.seats.find(seat => seat.id === current.winnerId) ?? null;
     const youWon = !current.spectating && winner?.id === current.youId;
-    setStatus(finished ? youWon ? 'VICTORY' : current.spectating ? `${winner?.name.toUpperCase() || 'A PLAYER'} WINS` : 'DEFEAT' : current.spectating ? 'SPECTATING · READ ONLY' : 'FIGHT!',
+    setStatus(finished ? youWon ? 'VICTORY' : current.spectating ? `${winner?.name.toUpperCase() || 'A PLAYER'} WINS` : 'DEFEAT'
+      : countdown > 0 ? `GUARD UP · ${Math.ceil(countdown / 1000)}`
+        : current.spectating ? 'SPECTATING · READ ONLY' : 'FIGHT!',
       finished ? youWon ? 'good' : 'bad' : 'info');
     hint.textContent = finished
       ? 'Match settled by the server. Both fighters return to their saved world position.'
       : current.spectating
         ? 'Read-only view. Movement, damage and the winner are decided on the server.'
-        : 'WASD / arrows move · SPACE or J strike · SHIFT or K dodge. Equipment stats are standardised here.';
+        : countdown > 0
+          ? 'Both fighters enter the ring. The server starts the duel after a short countdown; equipment stats are standardised here.'
+          : 'WASD / arrows move · SPACE or J strike · right-click or F shields · SHIFT or K dodge. Equipment stats are standardised here.';
     result.hidden = !finished;
     if (finished) {
       result.textContent = youWon ? 'VICTORY' : winner ? 'DEFEAT' : 'MATCH COMPLETE';
@@ -306,7 +312,20 @@ function render(): void {
   const isSword = state.game === 'swordduel';
   arenaWrap.hidden = !isSword;
   arenaControls.hidden = !isSword || state.spectating || state.status !== 'playing';
-  if (isSword && state.sword) arena?.update(state.sword, state.youId, state.spectating);
+  if (isSword && state.sword) {
+    arena?.update(state.sword, state.youId, state.spectating);
+    const countdown = state.sword.countdown_ms ?? state.sword.combat.countdown_ms ?? 0;
+    const mine = state.sword.fighters[state.seats[0].id === state.youId ? 0 : 1];
+    const charges = mine?.block_charges ?? state.sword.combat.block_charges;
+    const total = state.sword.combat.block_charges;
+    shieldHud.textContent = `SHIELD ${Array.from({ length: total }, (_, index) => index < charges ? '●' : '○').join(' ')}`
+      + (mine && mine.block_recharge_ms > 0 ? ` · ${Math.ceil(mine.block_recharge_ms / 1000)}s` : '');
+    shieldHud.hidden = !isSword;
+    const active = state.status === 'playing' && countdown <= 0;
+    strikeButton.disabled = busy || !active || !mine?.can_attack;
+    shieldButton.disabled = busy || !active || charges <= 0;
+    dodgeButton.disabled = busy || !active;
+  } else shieldHud.hidden = true;
   if (state.spectating) setStatus('SPECTATING · READ ONLY', 'info'), status.dataset.spectating = 'true';
   renderPlayers(); renderBoard(); renderActions(); renderResult();
   if (errorText) { setStatus(errorText, 'bad'); errorText = ''; }
@@ -366,7 +385,7 @@ async function submit(action: 'move' | 'pick', body: Record<string, unknown>): P
 }
 
 /** Movement is fire-and-forget; attacks carry a request ID so retries cannot double-hit. */
-async function sendSword(action: 'move' | 'attack' | 'dodge', body: Record<string, unknown>): Promise<void> {
+async function sendSword(action: 'move' | 'attack' | 'block' | 'dodge', body: Record<string, unknown>): Promise<void> {
   if (spectating || !state || state.status !== 'playing' || !state.sword) return;
   const payload = action === 'move' ? body : { ...body, request_id: crypto.randomUUID() };
   try {
@@ -382,9 +401,11 @@ async function sendSword(action: 'move' | 'attack' | 'dodge', body: Record<strin
 arena = new SwordArena(arenaCanvas, {
   onMove: (x, y, facing) => { void sendSword('move', { x, y, facing }); },
   onAttack: () => { void sendSword('attack', {}); },
+  onBlock: () => { void sendSword('block', {}); },
   onDodge: () => { void sendSword('dodge', {}); },
 });
 strikeButton.addEventListener('click', () => { void sendSword('attack', {}); });
+shieldButton.addEventListener('click', () => { void sendSword('block', {}); });
 dodgeButton.addEventListener('click', () => { void sendSword('dodge', {}); });
 for (const button of document.querySelectorAll<HTMLButtonElement>('#duel-arena-pad button')) {
   const vector: Record<string, { x: number; y: number }> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };

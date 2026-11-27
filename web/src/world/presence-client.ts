@@ -140,9 +140,10 @@ export class WorldPresenceClient {
   async resync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{return this.sync(position,direction,animation_state);}
   async heartbeat(activity?:string):Promise<boolean>{if(this.closed||!this.playerId||this.heartbeatInFlight||this.now()-this.lastHeartbeatAt<this.heartbeatIntervalMs)return false;this.heartbeatInFlight=true;this.lastHeartbeatAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/heartbeat`,activity===undefined?{}:{activity});return true;}finally{this.heartbeatInFlight=false;}}
   /** Sends a phrase ID only; the server resolves, validates and relays the text. */
-  async sendQuickChat(phraseId:string):Promise<{chat:PresenceQuickChat;challenge:PresenceChallenge|null}>{
+  async sendQuickChat(phraseId:string,targetPlayerId?:string):Promise<{chat:PresenceQuickChat;challenge:PresenceChallenge|null}>{
     if(this.closed||!this.playerId)throw new Error('World presence is not connected');
-    const result=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/quick-chat`,{phrase_id:phraseId}) as {quick_chat?:PresenceQuickChat;challenge?:unknown};
+    const body={phrase_id:phraseId,...(targetPlayerId?{target_player_id:targetPlayerId}:{})};
+    const result=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/quick-chat`,body) as {quick_chat?:PresenceQuickChat;challenge?:unknown};
     const chat=result?.quick_chat;
     if(!chat||chat.phrase_id!==phraseId||typeof chat.text!=='string'||!chat.text)throw new Error('World presence returned an invalid quick chat response');
     let challenge:PresenceChallenge|null=null;

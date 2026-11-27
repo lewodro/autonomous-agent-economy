@@ -3,6 +3,7 @@ import {playCell} from '../src/tictactoe.js';
 import {MOVES,resolve} from '../src/rps.js';
 import {CHALLENGE_COOLDOWN_MS,CHALLENGE_TTL_MS,QUICK_CHAT_PHRASES} from './quick-chat.js';
 import {publicSwordDuelConfig,SWORD_ATTACK_MS,SWORD_DUEL,SWORD_DUEL_ARENA} from '../src/sword-duel.js';
+import {colosseumReady,insideColosseum} from '../src/colosseum.js';
 
 const CHALLENGE_ID=/^chal-[a-f0-9-]{36}$/;
 const DUEL_ID=/^duel-[a-f0-9-]{36}$/;
@@ -57,6 +58,9 @@ export class WorldChallengeService {
     if(!target||target.player_id===player.player_id||Math.hypot(target.position.x-player.position.x,target.position.y-player.position.y)>this.presence.quickChatRadius){
       throw fail('NO_NEARBY_HUMAN','Move closer to another visitor to start a challenge',409);
     }
+    if(phrase.challenge==='swordduel'&&!colosseumReady(player.position,target.position)){
+      throw fail('NOT_AT_COLOSSEUM','Both fighters must stand inside the Colosseum',409);
+    }
     const now=this.now(),last=this.lastChallengeAt.get(player.player_id);
     if(last!==undefined&&now-last<this.challengeCooldownMs)throw fail('CHALLENGE_RATE_LIMITED','Challenge invites are limited',429);
     for(const participant of [player,target]){
@@ -101,6 +105,7 @@ export class WorldChallengeService {
     try{to=this.presence.requireVisitor(worldId,challenge.to.visitorId);}catch{this.removeChallenge(challenge);throw fail('TARGET_UNAVAILABLE','The challenged visitor left the world',409);}
     if(from.player_id!==challenge.from.playerId||to.player_id!==challenge.to.playerId){this.removeChallenge(challenge);throw fail('CHALLENGE_EXPIRED','That challenge is no longer available',410);}
     if(Math.hypot(from.position.x-to.position.x,from.position.y-to.position.y)>this.presence.quickChatRadius){this.removeChallenge(challenge);throw fail('NOT_NEARBY','Move closer together to start the match',409);}
+    if(challenge.game==='swordduel'&&!colosseumReady(from.position,to.position))throw fail('NOT_AT_COLOSSEUM','Both fighters must step inside the Colosseum',409);
     for(const participant of [from,to]){
       if(this.duelByPlayer.has(participant.player_id)){this.removeChallenge(challenge);throw fail('CHALLENGE_BUSY','One of you is already in a match',409);}
     }

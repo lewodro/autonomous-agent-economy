@@ -2,6 +2,7 @@ import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, moveToward, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition, CAMP_SITES } from './map.js';
+import { COLOSSEUM, insideColosseum } from './colosseum.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { DISCOVERY_SITES, REGIONS, discoveryGroups, loadDiscoveries, minimapMarkers, nearbyHumans, regionAt, saveDiscoveries } from './explore.js';
 import { WorldMinimap } from './minimap.js';
@@ -68,6 +69,8 @@ let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
 let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
 let moveTarget:{x:number;y:number}|null=null,lastFootstepAt=0,targetStuckMs=0,targetLastPosition={x:0,y:0};
 const farmClient=new FarmClient(),farmHud=new FarmHud();
+const hotbarRoot=$<HTMLDivElement>('hotbar');
+let hotbarSelection=0;
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
 let discoveryReportTimer=0,discoveryReporting=false,discoveryRewardSeen=new Set<string>();
 let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
@@ -363,6 +366,8 @@ const DIRECTION_GLYPH:Record<QuickChatDirection,string>={up:'↑',right:'→',do
 function renderQuickChatOptions():void {
   quickChatOptions.replaceChildren();
   for(const phrase of quickChatPhrases(quickChatPage)){
+    // Sword Duel is issued at the Colosseum interaction, never from the wheel.
+    if(phrase.id==='sword')continue;
     const button=document.createElement('button');button.type='button';button.className='quick-chat__option';
     button.dataset.phrase=phrase.id;button.dataset.direction=phrase.direction;button.dataset.page=phrase.page;
     button.setAttribute('aria-keyshortcuts',`Arrow${phrase.direction.charAt(0).toUpperCase()}${phrase.direction.slice(1)}`);
@@ -545,9 +550,13 @@ function receiveChallengeUpdate(update:PresenceChallengeUpdate):void {
     if(incomingChallenge?.challenge_id===update.challenge_id){clearIncomingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');}
   }
 }
-async function sendQuickChatPhrase(phraseId:string):Promise<void> {
+async function sendQuickChatPhrase(phraseId:string,targetPlayerId?:string):Promise<void> {
   const client=presenceClient,phrase=quickChatPhrase(phraseId);
   if(!client||!phrase||quickChatSending)return;
+  if(phraseId==='sword'&&!insideColosseum(player.position)){
+    flashChallengeNotice('GO TO THE COLOSSEUM');
+    return;
+  }
   quickChatSending=true;
   const option=quickChatWheel.querySelector<HTMLButtonElement>(`.quick-chat__option[data-phrase="${phraseId}"]`);
   option?.classList.add('is-selected');
@@ -555,7 +564,7 @@ async function sendQuickChatPhrase(phraseId:string):Promise<void> {
   // Let the chosen direction flash once, then get out of the way.
   if(reducedMotion)closeQuickChat();else window.setTimeout(()=>closeQuickChat(),120);
   try{
-    const result=await client.sendQuickChat(phraseId);
+    const result=await client.sendQuickChat(phraseId,targetPlayerId);
     showQuickChatBubble(result.chat,player.position,true);
     if(result.challenge)showOutgoingChallenge(result.challenge);
   }
@@ -608,9 +617,19 @@ window.addEventListener('keydown',event=>{
   if(!direction)return;
   event.preventDefault();
   const phrase=quickChatForDirection(direction,quickChatPage);
-  if(phrase)void sendQuickChatPhrase(phrase.id);
+  if(phrase&&phrase.id!=='sword')void sendQuickChatPhrase(phrase.id);
+  else if(phrase)flashChallengeNotice('CHALLENGE AT THE COLOSSEUM');
 });
 quickChatPageButton.addEventListener('click',()=>{if(quickChatOpen)switchQuickChatPage();});
+// Hotbar keys never steal input from typing, dialogs or the chat selector.
+window.addEventListener('keydown',event=>{
+  if(!entered||dialog.open||character.open||quickChatOpen||stopped)return;
+  const target=event.target;
+  if(target instanceof HTMLElement&&(target.matches('input,select,textarea')||target.isContentEditable))return;
+  if(event.altKey||event.ctrlKey||event.metaKey)return;
+  if(['1','2','3'].includes(event.key)){event.preventDefault();hotbarSelection=Number(event.key)-1;renderHotbar();return;}
+  if(event.key.toLowerCase()==='u'){event.preventDefault();void useHotbarSlot(hotbarSelection);}
+});
 renderQuickChatOptions();
 function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
 dialog.addEventListener('close',stopResearchLive);
@@ -647,7 +666,61 @@ function footstepPuff(position:{x:number;y:number},time:number):void{
 function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
   return {x:Math.max(WORLD_BOUNDS.minX,Math.min(WORLD_BOUNDS.maxX,position.x)),y:Math.max(WORLD_BOUNDS.minY,Math.min(WORLD_BOUNDS.maxY,position.y))};
 }
-function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
+function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);renderHotbar();}
+
+/* -------------------------------------------------------------- hotbar */
+function equipmentCatalog():EquipmentItem[] {return (farmSnapshot?.equipment?.catalog||[]) as EquipmentItem[];}
+/** Three tiny pixel slots owned by the account; selection stays in this browser. */
+function renderHotbar():void {
+  const account=farmSnapshot?.account;
+  if(!entered||!account){hotbarRoot.hidden=true;return;}
+  hotbarRoot.hidden=false;
+  hotbarSelection=Math.max(0,Math.min(2,hotbarSelection));
+  hotbarRoot.replaceChildren();
+  const catalog=equipmentCatalog();
+  (account.hotbar||[null,null,null]).slice(0,3).forEach((id,index)=>{
+    const button=document.createElement('button');button.type='button';button.className='hotbar__slot';button.dataset.slot=String(index);
+    button.setAttribute('aria-pressed',String(index===hotbarSelection));
+    if(index===hotbarSelection)button.classList.add('is-selected');
+    const key=document.createElement('span');key.className='hotbar__key';key.textContent=String(index+1);button.append(key);
+    const item=id?catalog.find(value=>value.id===id):undefined;
+    if(id){
+      button.classList.add('is-filled');
+      if(item?.slot==='consumable')button.classList.add('is-consumable');
+      button.append(equipmentIconCanvas(id,2));
+      const quantity=document.createElement('span');quantity.className='hotbar__qty';quantity.textContent=String(account.inventory[id]||0);button.append(quantity);
+      button.title=`${item?.name||id}${item?.slot==='consumable'?' · usable in caves':''} · click again to use`;
+      button.setAttribute('aria-label',`Slot ${index+1}: ${item?.name||id}, ${account.inventory[id]||0} owned`);
+    }else{
+      const empty=document.createElement('span');empty.className='hotbar__empty';empty.textContent='·';button.append(empty);
+      button.title=`Slot ${index+1} empty · assign an owned item at the Bazaar`;
+      button.setAttribute('aria-label',`Slot ${index+1}: empty`);
+    }
+    button.onclick=()=>{
+      if(index===hotbarSelection){if(id)void useHotbarSlot(index);}
+      else{hotbarSelection=index;renderHotbar();}
+    };
+    hotbarRoot.append(button);
+  });
+}
+async function hotbarCommand(action:'assign'|'clear'|'use',slot:number,itemId?:string):Promise<void> {
+  try{
+    const result=await farmClient.hotbar(action,{slot,...(itemId?{item_id:itemId}:{})});
+    mergeFarmAccount(result.account as FarmAccount|undefined);renderHotbar();
+    if(action==='use'){
+      const heal=Number(result.heal)||0;
+      farmHud.notice(heal?`Hotbar consumable used · +${heal} HP`:'Hotbar item used','good');
+      sparkle(player.position,['#f7d979','#d8fbff'],8);
+    }else if(action==='clear')farmHud.notice(`Hotbar slot ${slot+1} cleared`,'info');
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Hotbar action failed','warn');}
+}
+async function useHotbarSlot(slot:number):Promise<void> {
+  const id=farmSnapshot?.account?.hotbar?.[slot];
+  if(!id){farmHud.notice(`Slot ${slot+1} is empty`,'info');return;}
+  const item=equipmentCatalog().find(value=>value.id===id);
+  if(item?.slot!=='consumable'){farmHud.notice(`${item?.name||'That item'} cannot be used here`,'info');return;}
+  await hotbarCommand('use',slot);
+}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
 /** Confirms the authoritative presence position before retrying a range-checked farm action. */
 async function resyncPresence():Promise<boolean>{
@@ -702,7 +775,7 @@ function applySavedProfile(snapshot:FarmSnapshot):void{
 async function loadFarm():Promise<void>{
   try{
     const snapshot=await farmClient.load(),previous=farmSnapshot;
-    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);updateIntroAccount(snapshot);
+    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);renderHotbar();updateIntroAccount(snapshot);
     const known=snapshot.account?.discovery?.rewarded_groups||[];
     for(const id of known)discoveryRewardSeen.add(id);
     let synced=false;
@@ -832,6 +905,20 @@ function equipmentSection():void {
       toggle.textContent=isEquipped?'Unequip':'Equip';toggle.disabled=!owned&&!isEquipped;
       toggle.onclick=()=>void toggleEquipment(item,isEquipped);
       card.append(toggle);
+    }
+    if(owned>0){
+      // Hotbar slots hold owned items only; the server re-checks ownership.
+      const assign=document.createElement('div');assign.className='hotbar-assign';
+      const label=document.createElement('span');label.textContent='HOTBAR';assign.append(label);
+      for(let slot=0;slot<3;slot++){
+        const button=document.createElement('button');button.type='button';button.textContent=String(slot+1);
+        button.dataset.hotbarSlot=String(slot);button.dataset.item=item.id;
+        button.setAttribute('aria-label',`Assign ${item.name} to hotbar slot ${slot+1}`);
+        button.disabled=account.hotbar[slot]===item.id;
+        button.onclick=()=>void hotbarCommand('assign',slot,item.id);
+        assign.append(button);
+      }
+      card.append(assign);
     }
     grid.append(card);
   }
@@ -1021,6 +1108,38 @@ async function enterCave(siteId:string):Promise<void>{
     setTimeout(()=>location.assign(`/cave?site=${encodeURIComponent(siteId)}`),reducedMotion?0:220);
   }catch(error){farmHud.notice(error instanceof Error?error.message.toUpperCase():'CAVE UNAVAILABLE','warn');}
 }
+/** Opponents who are both inside the ring and close enough for the server invite. */
+function colosseumCandidates():WorldActor[] {
+  return [...remotePlayers.values()].map(remote=>remote.actor)
+    .filter(actor=>insideColosseum(actor.position)
+      && Math.hypot(actor.position.x-player.position.x,actor.position.y-player.position.y)<=QUICK_CHAT_RADIUS)
+    .sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)
+      -Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y));
+}
+function showColosseum():void {
+  const version=show('COLOSSEUM');
+  text('p','A sand ring inside weathered stone walls. Sword Duels start here: both fighters must be inside the challenge area.');
+  text('p','Equipment and consumables are standardised for the duel. Adventuring gear cannot buy a win.');
+  const candidates=colosseumCandidates();
+  if(!candidates.length){
+    text('p','No other visitor is inside the ring. Invite someone through the west arch, then open this prompt again.');
+    return;
+  }
+  text('p','Choose an opponent to send a Sword Duel challenge.');
+  const list=document.createElement('div');list.className='colosseum-list';content.append(list);
+  for(const actor of candidates){
+    const row=document.createElement('div');row.className='colosseum-row';
+    const name=document.createElement('strong');name.textContent=actor.name.toUpperCase();
+    const button=document.createElement('button');button.type='button';button.textContent='CHALLENGE';
+    button.disabled=challengeBusy||duelNavigating||Boolean(outgoingChallenge);
+    button.onclick=()=>{
+      if(!dialog.open||version!==interactionVersion)return;
+      dialog.close();
+      void sendQuickChatPhrase('sword',actor.id.slice('presence:'.length));
+    };
+    row.append(name,button);list.append(row);
+  }
+}
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open||quickChatOpen)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
@@ -1035,6 +1154,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     if(target.id==='treasury-house'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/treasury'),220);return;}
     if(target.id==='south-market'){await showBazaar();return;}
+    if(target.id==='colosseum'){showColosseum();return;}
     if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
     if(target.id.startsWith('plot:')){
       const tile=farmSnapshot?.tiles.find(value=>value.id===target.id.slice('plot:'.length));

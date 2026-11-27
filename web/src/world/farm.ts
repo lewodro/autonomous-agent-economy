@@ -24,6 +24,7 @@ export interface FarmAccount {
   stats: { planted: number; harvested: number; sold: number; credits_from_sales: number };
   discovery: { sites: string[]; rewarded_groups: string[] };
   equipment: { owned: Record<string, number>; equipped: { weapon: string | null; armor: string | null } };
+  hotbar: Array<string | null>;
   plots_used: number; plots_limit: number;
   profile: FarmProfile;
   ledger: Array<{ id: string; type: string; timestamp: string; details: Record<string, unknown> }>;
@@ -117,7 +118,7 @@ export class FarmClient {
   }
 
   async post(action: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    const idempotent = ['plant', 'harvest', 'sell', 'discovery', 'equipment'].includes(action);
+    const idempotent = ['plant', 'harvest', 'sell', 'discovery', 'equipment', 'hotbar'].includes(action);
     const payload = idempotent && body.request_id === undefined ? { ...body, request_id: crypto.randomUUID() } : body;
     let failure: unknown;
     for (let attempt = 0; attempt < (idempotent ? 2 : 1); attempt += 1) {
@@ -147,6 +148,11 @@ export class FarmClient {
   /** All equipment commands are idempotent and server-owned, like produce sales. */
   async equipment(action: 'buy' | 'equip' | 'unequip' | 'use_potion', body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     return this.post('equipment', { ...body, action, request_id: crypto.randomUUID() });
+  }
+
+  /** Hotbar assignments and consumable uses are idempotent like equipment commands. */
+  async hotbar(action: 'assign' | 'clear' | 'use', body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return this.post('hotbar', { ...body, action, request_id: crypto.randomUUID() });
   }
 }
 

@@ -1,4 +1,5 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, COLOSSEUM_WALLS, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { COLOSSEUM } from './colosseum.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -220,6 +221,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     ground(1088,128,360,780,'#294b3a',320);ground(1160,220,350,780,'#294b3a',320);ground(1260,340,290,620,'#294b3a',320);
     for(const path of PATHS)rect(path.x,path.y,path.width,path.height,path.color||'#6b6150');
+    this.paintColosseum(c);
     // Widen the four city-to-loop junctions with a lighter gravel cap so the
     // connection reads as an intentional crossing rather than two path seams.
     for(const junction of [{x:576,y:OUTER_LOOP.top},{x:OUTER_LOOP.left,y:460},{x:1250,y:OUTER_LOOP.bottom},{x:OUTER_LOOP.right,y:900}]){
@@ -402,6 +404,62 @@ export class CanvasWorldRenderer implements WorldRenderer {
     rect(-31,18,7,4,'#706f5d');rect(26,20,6,3,'#706f5d');
     rect(-33,-20,3,5,'#4c6548');rect(28,-18,3,4,'#4c6548');
   }
+  /** Original top-down pixel-art Colosseum: sand ring, weathered shell, columns and a single arched gate. */
+  private paintColosseum(c:CanvasRenderingContext2D):void {
+    const rect=(x:number,y:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
+    const {outer:o,inner:i,entrance:e,center}=COLOSSEUM;
+    // Cast plinth and a compacted gravel apron outside the west arch.
+    rect(o.x-8,o.y+10,o.width+16,o.height+6,'#16241f');
+    rect(e.x-48,e.y-18,64,e.height+36,'#756a56');
+    // Sand floor with deterministic dither, never a flat vector fill.
+    rect(i.x,i.y,i.width,i.height,'#9b825c');
+    const sand=['#a88e64','#a98f66','#a2875d','#b1976c','#9d835c'];
+    for(let y=i.y;y<i.y+i.height;y+=16)for(let x=i.x;x<i.x+i.width;x+=16){
+      const shade=((x/16)*7+(y/16)*11)%5;
+      rect(x+1,y+1,14,14,sand[shade]!);
+      if(shade===2){rect(x+4,y+9,3,2,'#8b7452');rect(x+10,y+4,2,2,'#c2a876');}
+    }
+    // Worn duelling ring and crossed-sword sigil, painted under the fighters.
+    c.strokeStyle='#715c3e';c.lineWidth=4;c.beginPath();c.arc(center.x,center.y,96,0,Math.PI*2);c.stroke();
+    c.strokeStyle='#c7ad7a';c.lineWidth=2;c.beginPath();c.arc(center.x,center.y,88,0,Math.PI*2);c.stroke();
+    c.strokeStyle='#8b7350';c.lineWidth=6;
+    c.beginPath();c.moveTo(center.x-40,center.y-40);c.lineTo(center.x+40,center.y+40);
+    c.moveTo(center.x+40,center.y-40);c.lineTo(center.x-40,center.y+40);c.stroke();
+    // Offset brick seams read as hand-laid stone rather than a solid border.
+    for(const wall of COLOSSEUM_WALLS){
+      rect(wall.x,wall.y,wall.width,wall.height,'#6d6a5c');
+      rect(wall.x,wall.y,wall.width,4,'#9a927d');
+      rect(wall.x,wall.y+wall.height-4,wall.width,4,'#4a483f');
+      const horizontal=wall.width>wall.height;
+      for(let step=0;step<(horizontal?wall.width:wall.height);step+=28){
+        if(horizontal){rect(wall.x+step+2,wall.y+5,24,wall.height-10,step%56===0?'#807a6a':'#75705f');rect(wall.x+step+2,wall.y+5,24,2,'#a49c85');}
+        else{rect(wall.x+5,wall.y+step+2,wall.width-10,24,step%56===0?'#807a6a':'#75705f');rect(wall.x+5,wall.y+step+2,2,24,'#a49c85');}
+      }
+    }
+    // Columns imply tiered stands without blocking the readable fighting space.
+    for(const x of [i.x+22,i.x+i.width-38])for(const y of [i.y+44,i.y+120,i.y+196]){
+      rect(x-8,y+18,22,6,'#4d493f');rect(x-5,y,16,20,'#b3a98e');
+      rect(x-3,y+2,4,16,'#d3c7a6');rect(x+5,y+2,3,16,'#8d846f');
+      rect(x-8,y-4,22,6,'#cdbf9c');rect(x-6,y+20,18,3,'#6f6857');
+    }
+    // One arched west entrance frames the approach and the challenge prompt.
+    rect(e.x-10,e.y-10,e.width+20,12,'#8c8574');
+    rect(e.x,e.y,e.width,e.height,'#333229');
+    for(let y=e.y;y<e.y+e.height;y+=10)rect(e.x+2,y,e.width-4,2,'#47433a');
+    c.fillStyle='#c9b68c';c.font='bold 8px monospace';c.textAlign='center';
+    c.fillText('COLOSSEUM',e.x+e.width/2,e.y-3);
+    // Banners and torches on the inner shell.
+    for(const [x,color] of [[o.x+54,'#7d3d3d'],[o.x+o.width-54,'#2f6070']] as Array<[number,string]>){
+      rect(x-12,o.y+12,24,44,color);rect(x-14,o.y+10,28,5,'#d8bd73');
+      c.fillStyle='#e8d8a6';c.beginPath();c.moveTo(x,o.y+22);c.lineTo(x+8,o.y+34);c.lineTo(x,o.y+46);c.lineTo(x-8,o.y+34);c.closePath();c.fill();
+    }
+    for(const [x,y] of [[o.x+26,o.y+72],[o.x+o.width-38,o.y+72]] as Array<[number,number]>){
+      rect(x-3,y,6,16,'#4b3b2c');rect(x-5,y-8,10,10,'#f0a253');rect(x-2,y-11,4,7,'#ffe0a0');
+    }
+    c.fillStyle='#f4dfaf';c.font='bold 12px monospace';c.textAlign='center';
+    c.fillText('COLOSSEUM',center.x,o.y-12);
+  }
+
   private paintSignpost(c:CanvasRenderingContext2D,x:number,y:number,direction:'left'|'right'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
     c.fillStyle='#172b2855';c.beginPath();c.ellipse(x,y+30,17,6,0,0,Math.PI*2);c.fill();

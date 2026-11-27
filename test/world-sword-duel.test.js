@@ -12,8 +12,9 @@ function build() {
   let now = 100_000;
   const presence = new WorldPresenceService({ identitySecret: 'test-world-presence-secret-value-32', now: () => now });
   const challenges = new WorldChallengeService({ presence, now: () => now, challengeTtlMs: 15_000, challengeCooldownMs: 4_000, duelTtlMs: 60_000, finishedTtlMs: 30_000, acceptedTtlMs: 10_000 });
-  presence.join('main', alice, { position: { x: 100, y: 100 } });
-  presence.join('main', bob, { position: { x: 150, y: 100 } });
+  // Both fighters must already be inside the overworld Colosseum.
+  presence.join('main', alice, { position: { x: 1680, y: 1120 } });
+  presence.join('main', bob, { position: { x: 1720, y: 1120 } });
   return { presence, challenges, clock: () => now, advance: ms => { now += ms; } };
 }
 function startDuel() {
@@ -48,8 +49,8 @@ test('a proximity Sword Duel gives both players identical standardised combat st
   assert.equal(view.combat.windup_ms, SWORD_DUEL.windupMs);
   assert.equal(view.combat.block_charges, SWORD_DUEL.blockCharges);
   assert.deepEqual(view.fighters.map(fighter => fighter.hp), [100, 100]);
-  assert.equal(view.fighters[0].exterior.x, 100, 'each fighter carries its own pre-duel world position');
-  assert.equal(view.fighters[1].exterior.x, 150);
+  assert.equal(view.fighters[0].exterior.x, 1680, 'each fighter carries its own pre-duel world position');
+  assert.equal(view.fighters[1].exterior.x, 1720);
   assert.equal('inventory' in view, false);
   assert.equal('credits' in view, false);
   const opponentView = ctx.challenges.view('main', bob, ctx.duelId);
@@ -202,6 +203,21 @@ test('a dodge still avoids a hit when timed before the active strike', () => {
   const hit = resolveSwing(ctx, alice, 'swing-dodged-0001');
   assert.equal(hit.fighters[1].hp, 100);
   assert.equal(hit.events.at(-1).type, 'dodge');
+});
+
+test('a Sword Duel can only be issued and accepted inside the Colosseum', () => {
+  const outside = build();
+  outside.presence.player('main', outside.presence.presenceId('main', alice)).position = { x: 600, y: 300 };
+  outside.presence.player('main', outside.presence.presenceId('main', bob)).position = { x: 640, y: 300 };
+  assert.throws(() => outside.challenges.create('main', alice, 'sword'), { code: 'NOT_AT_COLOSSEUM' });
+
+  const ctx = build();
+  const challenge = ctx.challenges.create('main', alice, 'sword');
+  const bobPlayer = ctx.presence.player('main', ctx.presence.presenceId('main', bob));
+  bobPlayer.position = { x: 1500, y: 1120 };
+  assert.throws(() => ctx.challenges.accept('main', bob, challenge.challenge_id), { code: 'NOT_AT_COLOSSEUM' });
+  bobPlayer.position = { x: 1720, y: 1120 };
+  assert.equal(ctx.challenges.accept('main', bob, challenge.challenge_id).game, 'swordduel');
 });
 
 test('spectators read the same arena and never hold a command seat', () => {

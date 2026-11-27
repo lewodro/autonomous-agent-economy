@@ -1,5 +1,6 @@
 import { CAMP_SITES, CORE_BOUNDS, EXPLORATION_SITES, MAP, OUTER_LOOP } from './map.js';
 import { FROSTGATE_LANDMARKS } from './frostgate.js';
+import { COLOSSEUM } from './colosseum.js';
 import type { Position } from './model.js';
 
 /** The journal and minimap share one discovery taxonomy. */
@@ -138,6 +139,7 @@ export const CITY_MAP_MARKERS: ReadonlyArray<MapMarker> = [
   { id: 'archive', label: 'LAB', kind: 'city', position: { x: 560, y: 790 }, labelOffset: [-8, -1] },
   { id: 'agent-agency', label: 'AGY', kind: 'city', position: { x: 1568, y: 318 }, labelOffset: [1, -5] },
   { id: 'treasury-house', label: 'VLT', kind: 'city', position: { x: 1105, y: 1292 }, labelOffset: [8, 3] },
+  { id: 'colosseum', label: 'COL', kind: 'city', position: { ...COLOSSEUM.center }, labelOffset: [9, 2] },
 ];
 /** Outer landmarks appear only after the visitor has interacted with them. */
 export function minimapMarkers(discovered: ReadonlySet<string>): MapMarker[] {

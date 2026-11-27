@@ -5,6 +5,7 @@ import { completedDiscoveryGroups, DISCOVERY_SITE_IDS, publicDiscoveryGroups } f
 import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS, equipmentLoadout, publicEquipmentCatalog, STARTER_EQUIPMENT } from '../src/world-equipment.js';
 
 const VERSION = 3;
+const HOTBAR_SLOTS = 3;
 const NICKNAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{7,95}$/;
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -103,6 +104,7 @@ function defaultAccount(identity, now) {
     time_credits: 0,
     inventory: { wheat: 0, carrot: 0, pumpkin: 0, ...Object.fromEntries(EQUIPMENT_IDS.map(id => [id, id === STARTER_EQUIPMENT.weapon ? 1 : 0])) },
     equipped: { ...STARTER_EQUIPMENT },
+    hotbar: [null, null, null],
     stats: { planted: 0, harvested: 0, sold: 0, credits_from_sales: 0 },
     discovery: { sites: [], rewarded_groups: [] },
     profile: { avatar: null, appearance: null, position: null, saved_at: null },
@@ -110,6 +112,15 @@ function defaultAccount(identity, now) {
     updated_at: new Date(now).toISOString(),
     last_seen: new Date(now).toISOString(),
   };
+}
+
+/** Exactly three slots; only currently owned catalogue items may occupy one. */
+function cleanHotbar(account) {
+  const slots = Array.isArray(account.hotbar) ? account.hotbar : [];
+  account.hotbar = Array.from({ length: HOTBAR_SLOTS }, (_, index) => {
+    const id = slots[index];
+    return typeof id === 'string' && EQUIPMENT[id] && (account.inventory[id] || 0) > 0 ? id : null;
+  });
 }
 
 /**
@@ -181,6 +192,7 @@ export class WorldFarm {
         if (id === STARTER_EQUIPMENT.weapon && account.inventory[id] === 0) account.inventory[id] = 1;
       }
       account.equipped ||= { ...STARTER_EQUIPMENT };
+      cleanHotbar(account);
       const savedWeapon = EQUIPMENT[account.equipped.weapon];
       if (!savedWeapon || savedWeapon.slot !== 'weapon' || (account.inventory[account.equipped.weapon] || 0) < 1) account.equipped.weapon = STARTER_EQUIPMENT.weapon;
       const savedArmor = EQUIPMENT[account.equipped.armor];
@@ -329,6 +341,7 @@ export class WorldFarm {
         owned: Object.fromEntries(EQUIPMENT_IDS.map(id => [id, account.inventory[id] || 0])),
         equipped: { ...account.equipped },
       },
+      hotbar: [...account.hotbar],
       plots_used: active,
       plots_limit: this.maxPlotsPerPlayer,
       profile: account.profile ? {
@@ -618,9 +631,63 @@ export class WorldFarm {
       const held = account.inventory.health_potion || 0;
       if (held < 1) throw fail('POTION_NOT_OWNED', 'You have no health potions', 409);
       account.inventory.health_potion = held - 1;
+      cleanHotbar(account);
       account.updated_at = new Date(this.now()).toISOString();
       this.event(account, 'potion_used', { heal: EQUIPMENT.health_potion.heal, run_id: input.run_id || null });
       return { account: this.view(identity), heal: EQUIPMENT.health_potion.heal, remaining: account.inventory.health_potion };
+    });
+  }
+
+  /**
+   * Three persistent hotbar slots. Only owned catalogue items can be assigned,
+   * only consumables can be used, and every settlement is idempotent. The
+   * selected slot is presentation state and stays in the browser.
+   */
+  async hotbarCommand(identity, input = {}) {
+    this.requireEquipmentRequest(input);
+    const action = input.action;
+    const slot = Number(input.slot);
+    if (!['assign', 'clear', 'use'].includes(action)) throw fail('INVALID_HOTBAR_ACTION', 'Unknown hotbar action');
+    if (!Number.isInteger(slot) || slot < 0 || slot >= HOTBAR_SLOTS) throw fail('INVALID_HOTBAR_SLOT', 'Choose one of the three hotbar slots');
+    if (action === 'assign') {
+      const item = EQUIPMENT[input.item_id];
+      if (!item) throw fail('INVALID_EQUIPMENT', 'Choose a known item');
+      return this.command(identity, 'hotbar_assign', input, () => {
+        const account = this.account(identity);
+        if ((account.inventory[item.id] || 0) < 1) throw fail('NOT_OWNED', `You do not own ${item.name}`, 403);
+        account.hotbar[slot] = item.id;
+        account.updated_at = new Date(this.now()).toISOString();
+        this.event(account, 'hotbar_assigned', { slot, item_id: item.id });
+        return { account: this.view(identity), slot, item: { ...item }, hotbar: [...account.hotbar] };
+      });
+    }
+    if (action === 'clear') {
+      return this.command(identity, 'hotbar_clear', input, () => {
+        const account = this.account(identity);
+        const previous = account.hotbar[slot];
+        if (!previous) return { account: this.view(identity), slot, item_id: null, hotbar: [...account.hotbar] };
+        account.hotbar[slot] = null;
+        account.updated_at = new Date(this.now()).toISOString();
+        this.event(account, 'hotbar_cleared', { slot, item_id: previous });
+        return { account: this.view(identity), slot, item_id: previous, hotbar: [...account.hotbar] };
+      });
+    }
+    return this.command(identity, 'hotbar_use', input, () => {
+      const account = this.account(identity);
+      const itemId = account.hotbar[slot];
+      if (!itemId) throw fail('HOTBAR_EMPTY', 'That hotbar slot is empty', 409);
+      const item = EQUIPMENT[itemId];
+      if (!item || item.slot !== 'consumable') throw fail('HOTBAR_NOT_CONSUMABLE', 'Only consumables can be used from the hotbar', 409);
+      if ((account.inventory[itemId] || 0) < 1) {
+        account.hotbar[slot] = null;
+        throw fail('NOT_OWNED', `You have no ${item.name} left`, 409);
+      }
+      account.inventory[itemId] -= 1;
+      account.updated_at = new Date(this.now()).toISOString();
+      cleanHotbar(account);
+      this.event(account, 'hotbar_used', { slot, item_id: itemId, heal: item.heal || 0, context: input.context || 'world' });
+      return { account: this.view(identity), slot, item: { ...item }, heal: item.heal || 0,
+        remaining: account.inventory[itemId], hotbar: [...account.hotbar] };
     });
   }
 
@@ -800,6 +867,11 @@ export class WorldFarm {
     for (const slot of EQUIPMENT_SLOTS) {
       const carried = guest.equipped?.[slot];
       if (carried && EQUIPMENT[carried]?.slot === slot && (target.inventory[carried] || 0) > 0) target.equipped[slot] = carried;
+    }
+    cleanHotbar(target);
+    for (const [index, id] of (guest.hotbar || []).entries()) {
+      if (index >= HOTBAR_SLOTS || target.hotbar[index] || !id || !EQUIPMENT[id] || (target.inventory[id] || 0) < 1) continue;
+      target.hotbar[index] = id;
     }
     for (const stat of Object.keys(target.stats)) target.stats[stat] += guest.stats[stat] || 0;
     // The guest's rewarded groups travel with its credits, so signing in can

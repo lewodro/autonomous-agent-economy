@@ -184,3 +184,54 @@ test('loadout from the account changes cave damage, mitigation and potion healin
     assert.ok(EQUIPMENT_IDS.every(id => id in ctx.farm.view(guest).equipment.owned));
   } finally { await ctx.close(); }
 });
+
+test('the persistent three-slot hotbar only holds owned items and settles uses once', async () => {
+  const ctx = await setup();
+  try {
+    await fund(ctx.farm, 200);
+    const empty = ctx.farm.view(guest);
+    assert.deepEqual(empty.hotbar, [null, null, null]);
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 0, item_id: 'iron_sword', request_id: 'slot-steal-0001' }), { code: 'NOT_OWNED' });
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 3, item_id: 'wooden_sword', request_id: 'slot-oob-00001' }), { code: 'INVALID_HOTBAR_SLOT' });
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'nope', slot: 0, request_id: 'slot-nope-00001' }), { code: 'INVALID_HOTBAR_ACTION' });
+
+    await ctx.farm.equipmentCommand(guest, { action: 'buy', item_id: 'health_potion', request_id: 'slot-buy-potion-01' });
+    await ctx.farm.equipmentCommand(guest, { action: 'buy', item_id: 'health_potion', request_id: 'slot-buy-potion-02' });
+    const assigned = await ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 0, item_id: 'health_potion', request_id: 'slot-assign-p-01' });
+    assert.deepEqual(assigned.hotbar, ['health_potion', null, null]);
+    const replaced = await ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 0, item_id: 'wooden_sword', request_id: 'slot-replace-p01' });
+    assert.deepEqual(replaced.hotbar, ['wooden_sword', null, null], 'assigning replaces a slot');
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'use', slot: 0, request_id: 'slot-not-consum-1' }), { code: 'HOTBAR_NOT_CONSUMABLE' });
+    await ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 0, item_id: 'health_potion', request_id: 'slot-assign-p-02' });
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 1, item_id: 'iron_sword', request_id: 'slot-assign-i-01' }), { code: 'NOT_OWNED' });
+    assert.deepEqual(ctx.farm.view(guest).hotbar, ['health_potion', null, null], 'the unowned sword never persists');
+    await ctx.farm.equipmentCommand(guest, { action: 'buy', item_id: 'iron_sword', request_id: 'slot-buy-iron-0001' });
+    await ctx.farm.hotbarCommand(guest, { action: 'assign', slot: 1, item_id: 'iron_sword', request_id: 'slot-assign-i-02' });
+
+    const used = await ctx.farm.hotbarCommand(guest, { action: 'use', slot: 0, request_id: 'slot-use-potion-01' });
+    assert.equal(used.remaining, 1);
+    assert.equal(used.account.inventory.health_potion, 1);
+    const replay = await ctx.farm.hotbarCommand(guest, { action: 'use', slot: 0, request_id: 'slot-use-potion-01' });
+    assert.equal(replay.remaining, 1, 'the same request id cannot consume twice');
+    const second = await ctx.farm.hotbarCommand(guest, { action: 'use', slot: 0, request_id: 'slot-use-potion-02' });
+    assert.equal(second.remaining, 0);
+    assert.deepEqual(second.hotbar, [null, 'iron_sword', null], 'an empty stack clears its slot');
+    await assert.rejects(() => ctx.farm.hotbarCommand(guest, { action: 'use', slot: 0, request_id: 'slot-empty-00001' }), { code: 'HOTBAR_EMPTY' });
+
+    const cleared = await ctx.farm.hotbarCommand(guest, { action: 'clear', slot: 1, request_id: 'slot-clear-000001' });
+    assert.deepEqual(cleared.hotbar, [null, null, null]);
+    assert.equal(cleared.account.inventory.iron_sword, 1, 'clearing a slot never deletes the item');
+
+    // Refresh restores assignments from the authoritative ledger.
+    await ctx.farm.close();
+    const restored = new WorldFarm(new WorldStore({ directory: ctx.directory }), { now: ctx.now });
+    await restored.restore();
+    assert.deepEqual(restored.view(guest).hotbar, [null, null, null]);
+    await restored.hotbarCommand(guest, { action: 'assign', slot: 2, item_id: 'iron_sword', request_id: 'slot-assign-i-03' });
+    await restored.close();
+    const again = new WorldFarm(new WorldStore({ directory: ctx.directory }), { now: ctx.now });
+    await again.restore();
+    assert.deepEqual(again.view(guest).hotbar, [null, null, 'iron_sword']);
+    await again.close();
+  } finally { await ctx.close().catch(() => {}); }
+});
