@@ -2,6 +2,7 @@ import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, moveToward, followCamera } from './movement.js';
 import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition, CAMP_SITES } from './map.js';
+import { COLOSSEUM, insideColosseum } from './colosseum.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { DISCOVERY_SITES, REGIONS, discoveryGroups, loadDiscoveries, minimapMarkers, nearbyHumans, regionAt, saveDiscoveries } from './explore.js';
 import { WorldMinimap } from './minimap.js';
@@ -15,7 +16,8 @@ import { mountTable } from './table.js';
 import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type PresenceChallengeAccepted, type PresenceChallengeUpdate, type PresencePlayer, type PresenceQuickChat, type PresenceSnapshot } from './presence-client.js';
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { withinFarmGuidance } from './scale.js';
-import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
+import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind, type DiscoveryGroupView, type EquipmentItem } from './farm.js';
+import { equipmentIconCanvas, itemIconCanvas, ITEM_ICON_IDS } from './equipment-art.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -64,10 +66,14 @@ let restoreWorldFocus=false;
 const events:WorldEvent[]=[];
 let interactionVersion=0;
 let researchLiveTimer=0,worldLiveTimer=0,worldLiveIndex=0;
-let worldResources:WorldResource[]=[],resourceRefresh=0;const particles:WorldParticle[]=[];
+let worldResources:WorldResource[]=[],resourceRefresh=0,economyReceipts:Array<{node_id?:string;source_action:string}>=[];const particles:WorldParticle[]=[];
 let moveTarget:{x:number;y:number}|null=null,lastFootstepAt=0,targetStuckMs=0,targetLastPosition={x:0,y:0};
 const farmClient=new FarmClient(),farmHud=new FarmHud();
+const itemHudRoot=$<HTMLDivElement>('item-hud'),hotbarRoot=$<HTMLDivElement>('hotbar');
+const resourceRoot=$<HTMLDivElement>('item-hud-resources'),hotbarPicker=$<HTMLDivElement>('hotbar-picker'),itemTooltip=$<HTMLDivElement>('item-tooltip');
+let hotbarSelection=0,pickerSlot:number|null=null;
 let farmSnapshot:FarmSnapshot|null=null,lastPlayTick=0;
+let discoveryReportTimer=0,discoveryReporting=false,discoveryRewardSeen=new Set<string>();
 let savedProfileApplied=false,savedProfileDirty=false,savedProfileTimer=0,authConfigured=false;
 const knownTiles=new Map<string,string>();
 const auth=createAuth(async()=>{
@@ -88,6 +94,9 @@ function updateDiscoverySummary():void {minimap.setSummary(`DISCOVERIES ${discov
 function showDiscoveryToast(label:string):void {
   const title=discoveryToast.querySelector('strong');
   if(title)title.textContent=label.toUpperCase();
+  const tag=discoveryToast.querySelector('span');
+  if(tag)tag.textContent='DISCOVERED';
+  discoveryToast.dataset.reward='';
   if(discoveryToastTimer)window.clearTimeout(discoveryToastTimer);
   discoveryToast.hidden=false;
   discoveryToast.classList.remove('is-visible');
@@ -96,6 +105,21 @@ function showDiscoveryToast(label:string):void {
     discoveryToast.classList.remove('is-visible');
     discoveryToastTimer=window.setTimeout(()=>{discoveryToast.hidden=true;discoveryToastTimer=0;},220);
   },1_350);
+}
+function showRewardToast(label:string,credits:number):void {
+  const tag=discoveryToast.querySelector('span'),title=discoveryToast.querySelector('strong');
+  if(tag)tag.textContent=`${label} COMPLETE`;
+  if(title)title.textContent=`+${credits} CREDITS`;
+  discoveryToast.dataset.reward='1';
+  if(discoveryToastTimer)window.clearTimeout(discoveryToastTimer);
+  discoveryToast.hidden=false;
+  discoveryToast.classList.remove('is-visible');
+  requestAnimationFrame(()=>discoveryToast.classList.add('is-visible'));
+  sparkle(player.position,['#f7d979','#fff3cf','#d8b35c'],16);
+  discoveryToastTimer=window.setTimeout(()=>{
+    discoveryToast.classList.remove('is-visible');
+    discoveryToastTimer=window.setTimeout(()=>{discoveryToast.hidden=true;discoveryToast.dataset.reward='';discoveryToastTimer=0;},220);
+  },2_000);
 }
 function showRegionBadge(id:keyof typeof REGIONS):void {
   if(regionLabelTimer)window.clearTimeout(regionLabelTimer);
@@ -120,10 +144,62 @@ function recordDiscovery(id:string):void {
   discoveryMarkers=minimapMarkers(discoveries);
   updateDiscoverySummary();
   showDiscoveryToast(site.label);
+  scheduleDiscoveryReport();
+}
+/** The server owns rewards; a debounced report batches several quick finds. */
+function scheduleDiscoveryReport():void {
+  if(discoveryReportTimer)window.clearTimeout(discoveryReportTimer);
+  discoveryReportTimer=window.setTimeout(()=>{discoveryReportTimer=0;void reportDiscoveries();},240);
+}
+async function reportDiscoveries():Promise<void> {
+  if(discoveryReporting)return;
+  discoveryReporting=true;
+  try{
+    const result=await farmClient.reportDiscoveries([...discoveries]);
+    const account=result.account as FarmAccount|undefined;
+    const serverSites=account?.discovery?.sites||[];
+    let changed=false;
+    for(const id of serverSites)if(!discoveries.has(id)){discoveries.add(id);changed=true;}
+    if(changed){saveDiscoveries(discoveries);discoveryMarkers=minimapMarkers(discoveries);updateDiscoverySummary();}
+    mergeFarmAccount(account);
+    const rewards=(result.rewards||[]) as Array<{group_id:string;label:string;credits:number}>;
+    for(const reward of rewards){
+      if(discoveryRewardSeen.has(reward.group_id))continue;
+      discoveryRewardSeen.add(reward.group_id);
+      showRewardToast(reward.label,reward.credits);
+      farmHud.notice(`${reward.label} complete · +${reward.credits} credits`,'good');
+      if(dialog.open&&$('interaction-title').textContent==='DISCOVERIES')showDiscoveries();
+    }
+  }catch{/* the local journal still works; the next interaction retries */}
+  finally{discoveryReporting=false;}
 }
 function showDiscoveries():void {
   show('DISCOVERIES');
   text('p',`${discoveries.size} of ${DISCOVERY_SITES.length} landmarks recorded. Interact with caves, ruins, shrines, passes and camps to add them to this journal and the minimap.`);
+  const serverSites=farmSnapshot?.account?.discovery?.sites||[];
+  const recorded=new Set([...discoveries,...serverSites]);
+  const rewarded=new Set(farmSnapshot?.account?.discovery?.rewarded_groups||[]);
+  const groups=(farmSnapshot?.discovery?.groups||[]) as DiscoveryGroupView[];
+  if(groups.length){
+    const rewards=document.createElement('div');rewards.className='discovery-reward-groups';content.append(rewards);
+    text('h3','COMPLETION REWARDS',rewards);
+    for(const group of groups){
+      const found=group.sites.filter(id=>recorded.has(id)).length,complete=found===group.sites.length;
+      const section=document.createElement('section');section.className=`discovery-reward${rewarded.has(group.id)?' is-rewarded':''}`;
+      section.dataset.group=group.id;section.dataset.count=`${found}/${group.sites.length}`;
+      text('h3',`${group.label} · ${found} / ${group.sites.length}`,section);
+      text('p',rewarded.has(group.id)
+        ? `COMPLETE · ${group.reward} CREDITS CLAIMED`
+        : `${found}/${group.sites.length} DISCOVERED · REWARD: ${group.reward} CREDITS`,section).className='discovery-reward__progress';
+      const list=document.createElement('div');list.className='discovery-reward__sites';section.append(list);
+      for(const id of group.sites){
+        const label=DISCOVERY_SITES.find(site=>site.id===id)?.label||id.toUpperCase();
+        const row=text('span',recorded.has(id)?`✓ ${label}`:'???',list);
+        row.className=recorded.has(id)?'is-found':'is-unknown';
+      }
+      rewards.append(section);
+    }
+  }
   const grid=document.createElement('div');grid.className='discovery-groups';content.append(grid);
   for(const group of discoveryGroups(discoveries)){
     const section=document.createElement('section');section.className='discovery-group';
@@ -135,7 +211,7 @@ function showDiscoveries():void {
     }
     grid.append(section);
   }
-  text('p','Discoveries are saved in this browser only. They are not yet linked to a signed-in world account.',content).className='world-discovery-note';
+  text('p','Browser journal history stays in this browser; reward progress and claimed credits are saved on your world account.',content).className='world-discovery-note';
 }
 async function flushSavedProfile():Promise<void>{
   if(!savedProfileDirty||!farmSnapshot?.account?.signed_in)return;
@@ -291,6 +367,8 @@ const DIRECTION_GLYPH:Record<QuickChatDirection,string>={up:'↑',right:'→',do
 function renderQuickChatOptions():void {
   quickChatOptions.replaceChildren();
   for(const phrase of quickChatPhrases(quickChatPage)){
+    // Sword Duel is issued at the Colosseum interaction, never from the wheel.
+    if(phrase.id==='sword')continue;
     const button=document.createElement('button');button.type='button';button.className='quick-chat__option';
     button.dataset.phrase=phrase.id;button.dataset.direction=phrase.direction;button.dataset.page=phrase.page;
     button.setAttribute('aria-keyshortcuts',`Arrow${phrase.direction.charAt(0).toUpperCase()}${phrase.direction.slice(1)}`);
@@ -362,7 +440,7 @@ function receiveQuickChat(chat:PresenceQuickChat):void {
   if(!own&&Math.hypot(position.x-player.position.x,position.y-player.position.y)>QUICK_CHAT_VISIBLE_RADIUS)return;
   showQuickChatBubble(chat,position,own);
 }
-const CHALLENGE_GAME_LABELS:Record<PresenceChallenge['game'],string>={tictactoe:'TIC-TAC-TOE',rps:'ROCK PAPER SCISSORS'};
+const CHALLENGE_GAME_LABELS:Record<PresenceChallenge['game'],string>={tictactoe:'TIC-TAC-TOE',rps:'ROCK PAPER SCISSORS',swordduel:'SWORD DUEL'};
 function challengeRemainingMs(challenge:PresenceChallenge):number {
   const until=Date.parse(challenge.expires_at);
   return Number.isFinite(until)?Math.max(0,until-Date.now()):0;
@@ -473,9 +551,13 @@ function receiveChallengeUpdate(update:PresenceChallengeUpdate):void {
     if(incomingChallenge?.challenge_id===update.challenge_id){clearIncomingChallenge();flashChallengeNotice('CHALLENGE EXPIRED');}
   }
 }
-async function sendQuickChatPhrase(phraseId:string):Promise<void> {
+async function sendQuickChatPhrase(phraseId:string,targetPlayerId?:string):Promise<void> {
   const client=presenceClient,phrase=quickChatPhrase(phraseId);
   if(!client||!phrase||quickChatSending)return;
+  if(phraseId==='sword'&&!insideColosseum(player.position)){
+    flashChallengeNotice('GO TO THE COLOSSEUM');
+    return;
+  }
   quickChatSending=true;
   const option=quickChatWheel.querySelector<HTMLButtonElement>(`.quick-chat__option[data-phrase="${phraseId}"]`);
   option?.classList.add('is-selected');
@@ -483,13 +565,13 @@ async function sendQuickChatPhrase(phraseId:string):Promise<void> {
   // Let the chosen direction flash once, then get out of the way.
   if(reducedMotion)closeQuickChat();else window.setTimeout(()=>closeQuickChat(),120);
   try{
-    const result=await client.sendQuickChat(phraseId);
+    const result=await client.sendQuickChat(phraseId,targetPlayerId);
     showQuickChatBubble(result.chat,player.position,true);
     if(result.challenge)showOutgoingChallenge(result.challenge);
   }
   catch(error){
     const code=typeof error==='object'&&error&&'code'in error?String((error as{code:unknown}).code):'';
-    const message=code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':code==='CHALLENGE_RATE_LIMITED'?'CHALLENGE COOLDOWN':code==='CHALLENGE_BUSY'?'ALREADY CHALLENGED':'QUICK CHAT UNAVAILABLE';
+    const message=code==='QUICK_CHAT_RATE_LIMITED'?'WAIT A MOMENT':code==='NO_NEARBY_HUMAN'?'NO ONE NEARBY':code==='CHALLENGE_RATE_LIMITED'?'CHALLENGE COOLDOWN':code==='CHALLENGE_BUSY'?'ALREADY CHALLENGED':code==='NOT_AT_COLOSSEUM'?'GO TO THE COLOSSEUM':'QUICK CHAT UNAVAILABLE';
     if(phrase.challenge)flashChallengeNotice(message);else flashQuickChatNotice(message);
   }finally{quickChatSending=false;}
 }
@@ -527,6 +609,10 @@ $('quick-chat-cancel').addEventListener('click',()=>closeQuickChat());
 challengeAccept.addEventListener('click',()=>{void acceptIncomingChallenge();});
 challengeDecline.addEventListener('click',()=>{void declineIncomingChallenge();});
 quickChatRoot.addEventListener('pointerdown',event=>{if(event.target===quickChatRoot)closeQuickChat();});
+document.addEventListener('pointerdown',event=>{
+  if(pickerSlot!==null&&!itemHudRoot.contains(event.target as Node)){pickerSlot=null;renderHotbarPicker();}
+  if(!itemTooltip.hidden&&!itemTooltip.contains(event.target as Node)&&!(event.target as Element)?.closest?.('[data-item-id]'))itemTooltip.hidden=true;
+});
 quickChatOpenButton.addEventListener('click',()=>{openQuickChat();});
 window.addEventListener('keydown',event=>{
   if(!quickChatOpen)return;
@@ -536,9 +622,20 @@ window.addEventListener('keydown',event=>{
   if(!direction)return;
   event.preventDefault();
   const phrase=quickChatForDirection(direction,quickChatPage);
-  if(phrase)void sendQuickChatPhrase(phrase.id);
+  if(phrase&&phrase.id!=='sword')void sendQuickChatPhrase(phrase.id);
+  else if(phrase)flashChallengeNotice('CHALLENGE AT THE COLOSSEUM');
 });
 quickChatPageButton.addEventListener('click',()=>{if(quickChatOpen)switchQuickChatPage();});
+// Hotbar keys never steal input from typing, dialogs or the chat selector.
+window.addEventListener('keydown',event=>{
+  if(!entered||dialog.open||character.open||quickChatOpen||stopped)return;
+  const target=event.target;
+  if(target instanceof HTMLElement&&(target.matches('input,select,textarea')||target.isContentEditable))return;
+  if(event.altKey||event.ctrlKey||event.metaKey)return;
+  if(event.key==='Escape'&&pickerSlot!==null){pickerSlot=null;renderHotbarPicker();return;}
+  if(['1','2','3'].includes(event.key)){event.preventDefault();hotbarSelection=Number(event.key)-1;pickerSlot=null;renderHotbar();renderHotbarPicker();return;}
+  if(event.key.toLowerCase()==='u'){event.preventDefault();void useHotbarSlot(hotbarSelection);}
+});
 renderQuickChatOptions();
 function stopResearchLive():void {if(researchLiveTimer)window.clearInterval(researchLiveTimer);researchLiveTimer=0;}
 dialog.addEventListener('close',stopResearchLive);
@@ -546,7 +643,7 @@ function show(title:string):number {stopResearchLive();resetInput();$('interacti
 function text(tag:string,value:string,parent:HTMLElement=content):HTMLElement {const node=document.createElement(tag);node.textContent=value;parent.append(node);return node;}
 function link(label:string,url:string,parent:HTMLElement=content):void {const a=document.createElement('a');a.textContent=label;a.href=url;a.className='button';parent.append(a);}
 interface WorldEconomySnapshot {mode:'test_credits';nodes:WorldResource[];profile:{nickname:string;credits:number};treasury:{public_address:string|null;payouts_enabled:boolean;signing:string};receipts:Array<{reward_id:string;source_action:string;amount_credits:number;status:string;timestamp:string}>}
-async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;return result;}
+async function loadWorldEconomy():Promise<WorldEconomySnapshot>{const response=await fetch('/api/world/economy',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('World economy unavailable');const result=await response.json() as WorldEconomySnapshot;worldResources=result.nodes;economyReceipts=result.receipts||[];renderResourceBar();return result;}
 const ANCHORS:Record<string,string>={
   'garden-north':'the botanical garden','garden-east':'the garden east beds','garden-south':'the garden south beds',
   'garden-west':'the garden west beds','garden-path':'the garden path','market-north':'the north market','market-east':'the east market',
@@ -575,7 +672,152 @@ function footstepPuff(position:{x:number;y:number},time:number):void{
 function clampToWorld(position:{x:number;y:number}):{x:number;y:number}{
   return {x:Math.max(WORLD_BOUNDS.minX,Math.min(WORLD_BOUNDS.maxX,position.x)),y:Math.max(WORLD_BOUNDS.minY,Math.min(WORLD_BOUNDS.maxY,position.y))};
 }
-function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);}
+function mergeFarmAccount(account?:FarmAccount|null):void{if(!account||!farmSnapshot)return;farmSnapshot.account=account;farmHud.show(farmSnapshot);renderItemHud();}
+
+/* ------------------------------------------------ inventory / equipment HUD */
+function equipmentCatalog():EquipmentItem[] {return (farmSnapshot?.equipment?.catalog||[]) as EquipmentItem[];}
+const RESOURCE_ITEMS: ReadonlyArray<{id:string;name:string;detail:string}> = [
+  {id:'wheat',name:'Wheat',detail:'A staple crop. Sell it at the bazaar for credits.'},
+  {id:'carrot',name:'Carrot',detail:'A hardy crop. Carried produce sells at the bazaar.'},
+  {id:'pumpkin',name:'Pumpkin',detail:'A heavy crop. Sell it with the rest of your harvest.'},
+  {id:'herb',name:'Herbs',detail:'Field herb gathered on the outer trails. Credited on collection; not equippable.'},
+  {id:'iron_ore',name:'Iron ore',detail:'Field ore from the mining nodes. Credited on collection; not equippable.'},
+  {id:'crystal',name:'Crystal',detail:'Rare field crystal. Credited on collection; not equippable.'},
+];
+function resourceQuantities():Record<string,number> {
+  const counts:Record<string,number>={wheat:0,carrot:0,pumpkin:0,herb:0,iron_ore:0,crystal:0};
+  const account=farmSnapshot?.account;
+  for(const kind of CROPS)counts[kind]=account?.inventory[kind]||0;
+  for(const receipt of economyReceipts){
+    const node=receipt.node_id?worldResources.find(value=>value.id===receipt.node_id):undefined;
+    if(!node)continue;
+    if(node.kind==='herb')counts.herb=(counts.herb||0)+1;
+    else if(node.variant==='crystal')counts.crystal=(counts.crystal||0)+1;
+    else counts.iron_ore=(counts.iron_ore||0)+1;
+  }
+  return counts;
+}
+function bindItemTooltip(node:HTMLElement,id:string,name:string,detail:string):void {
+  node.dataset.itemId=id;
+  const hide=()=>{if(itemTooltip.dataset.for===id){itemTooltip.hidden=true;delete itemTooltip.dataset.for;}};
+  const show=()=>{
+    const rootRect=itemHudRoot.getBoundingClientRect(),nodeRect=node.getBoundingClientRect();
+    itemTooltip.replaceChildren();
+    const strong=document.createElement('strong');strong.textContent=name;
+    const small=document.createElement('span');small.textContent=detail;
+    itemTooltip.append(strong,small);
+    itemTooltip.dataset.for=id;itemTooltip.hidden=false;
+    itemTooltip.style.left=`${Math.min(Math.max(nodeRect.left-rootRect.left-12,0),Math.max(0,rootRect.width-188))}px`;
+    itemTooltip.style.bottom=`${Math.max(0,rootRect.bottom-nodeRect.top+6)}px`;
+  };
+  node.addEventListener('pointerenter',show);node.addEventListener('pointerleave',hide);
+  node.addEventListener('focus',show);node.addEventListener('blur',hide);
+  node.addEventListener('click',event=>{
+    if(!touchFirst)return;
+    event.stopPropagation();
+    if(!itemTooltip.hidden&&itemTooltip.dataset.for===id)hide();else show();
+  });
+}
+function renderResourceBar():void {
+  if(!entered||!farmSnapshot?.account)return;
+  const counts=resourceQuantities();resourceRoot.replaceChildren();
+  for(const resource of RESOURCE_ITEMS){
+    if(!ITEM_ICON_IDS.includes(resource.id))continue;
+    const slot=document.createElement('div');slot.className='item-slot item-slot--resource';
+    slot.append(itemIconCanvas(resource.id,2));
+    const quantity=document.createElement('span');quantity.className='item-slot__qty';quantity.textContent=String(counts[resource.id]||0);slot.append(quantity);
+    slot.setAttribute('role','img');slot.setAttribute('aria-label',`${resource.name}: ${counts[resource.id]||0}`);
+    bindItemTooltip(slot,resource.id,resource.name,resource.detail);
+    resourceRoot.append(slot);
+  }
+}
+/** Three tiny pixel slots owned by the account; selection stays in this browser. */
+function renderHotbar():void {
+  const account=farmSnapshot?.account;
+  hotbarSelection=Math.max(0,Math.min(2,hotbarSelection));
+  hotbarRoot.replaceChildren();
+  const catalog=equipmentCatalog();
+  (account?.hotbar||[null,null,null]).slice(0,3).forEach((id,index)=>{
+    const button=document.createElement('button');button.type='button';button.className='item-slot hotbar__slot';button.dataset.slot=String(index);
+    button.setAttribute('aria-pressed',String(index===hotbarSelection));
+    if(index===hotbarSelection)button.classList.add('is-selected');
+    const key=document.createElement('span');key.className='item-slot__key';key.textContent=String(index+1);button.append(key);
+    const item=id?catalog.find(value=>value.id===id):undefined;
+    if(id){
+      button.classList.add('is-filled');
+      if(item?.slot==='consumable')button.classList.add('is-consumable');
+      button.append(equipmentIconCanvas(id,2));
+      const quantity=document.createElement('span');quantity.className='item-slot__qty';quantity.textContent=String(account?.inventory[id]||0);button.append(quantity);
+      button.setAttribute('aria-label',`Slot ${index+1}: ${item?.name||id}, ${account?.inventory[id]||0} owned`);
+      bindItemTooltip(button,`hotbar-${index}`,item?.name||id,`${item?equipmentStats(item):'An owned item'} · press ${index+1} to select`);
+    }else{
+      const empty=document.createElement('span');empty.className='item-slot__empty';empty.textContent='·';button.append(empty);
+      button.setAttribute('aria-label',`Slot ${index+1}: empty`);
+      bindItemTooltip(button,`hotbar-${index}`,`Slot ${index+1}`,'Empty · click to assign one of your owned items');
+    }
+    button.onclick=()=>{
+      if(index===hotbarSelection){
+        if(id)void useHotbarSlot(index);
+        else{hotbarSelection=index;pickerSlot=index;renderHotbar();renderHotbarPicker();}
+      }else{hotbarSelection=index;pickerSlot=index;renderHotbar();renderHotbarPicker();}
+    };
+    hotbarRoot.append(button);
+  });
+}
+/** A compact inventory picker opened by clicking a hotbar slot. */
+function renderHotbarPicker():void {
+  if(pickerSlot===null){hotbarPicker.hidden=true;return;}
+  const account=farmSnapshot?.account;
+  const owned=Object.entries(account?.equipment?.owned||{}).filter(([,quantity])=>quantity>0);
+  hotbarPicker.replaceChildren();
+  if(!owned.length){hotbarPicker.hidden=true;return;}
+  const heading=document.createElement('p');heading.textContent=`SLOT ${pickerSlot+1} · ASSIGN`;hotbarPicker.append(heading);
+  for(const [id,quantity] of owned){
+    const item=equipmentCatalog().find(value=>value.id===id);if(!item)continue;
+    const row=document.createElement('div');row.className='hotbar-picker__row';
+    const pick=document.createElement('button');pick.type='button';pick.className='hotbar-picker__pick';pick.dataset.item=id;
+    pick.append(itemIconCanvas(id,2));
+    const name=document.createElement('span');name.textContent=item.name.toUpperCase();pick.append(name);
+    const count=document.createElement('small');count.textContent=`×${quantity}`;pick.append(count);
+    pick.title=item.description;
+    const slot=pickerSlot;
+    pick.onclick=()=>{pickerSlot=null;renderHotbarPicker();void hotbarCommand('assign',slot,id);};
+    row.append(pick);
+    const action=document.createElement('button');action.type='button';action.className='hotbar-picker__action';
+    action.textContent=item.slot==='consumable'?'USE':'EQUIP';action.dataset.actionItem=id;
+    action.onclick=()=>{
+      if(item.slot==='consumable')void hotbarCommand('use',slot);
+      else void farmClient.equipment('equip',{item_id:id}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice(`${item.name} equipped`,'good');}).catch(error=>farmHud.notice(error instanceof Error?error.message:'Equip failed','warn'));
+    };
+    row.append(action);hotbarPicker.append(row);
+  }
+  hotbarPicker.hidden=false;
+}
+function renderItemHud():void {
+  const account=farmSnapshot?.account;
+  if(!entered||!account){itemHudRoot.hidden=true;return;}
+  itemHudRoot.hidden=false;
+  renderResourceBar();renderHotbar();renderHotbarPicker();
+}
+async function hotbarCommand(action:'assign'|'clear'|'use',slot:number,itemId?:string):Promise<void> {
+  try{
+    const result=await farmClient.hotbar(action,{slot,...(itemId?{item_id:itemId}:{})});
+    mergeFarmAccount(result.account as FarmAccount|undefined);renderItemHud();
+    if(action==='use'){
+      const heal=Number(result.heal)||0;
+      farmHud.notice(heal?`Hotbar consumable used · +${heal} HP`:'Hotbar item used','good');
+      sparkle(player.position,['#f7d979','#d8fbff'],8);
+    }else if(action==='assign')farmHud.notice(`Hotbar slot ${slot+1} assigned`,'good');
+    else if(action==='clear')farmHud.notice(`Hotbar slot ${slot+1} cleared`,'info');
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Hotbar action failed','warn');}
+}
+async function useHotbarSlot(slot:number):Promise<void> {
+  const id=farmSnapshot?.account?.hotbar?.[slot];
+  if(!id){farmHud.notice(`Slot ${slot+1} is empty`,'info');return;}
+  const item=equipmentCatalog().find(value=>value.id===id);
+  if(item?.slot!=='consumable'){farmHud.notice(`${item?.name||'That item'} cannot be used here`,'info');return;}
+  await hotbarCommand('use',slot);
+}
 function mergeFarmTile(tile?:FarmTile|null):void{if(!tile||!farmSnapshot)return;farmSnapshot.tiles=farmSnapshot.tiles.map(value=>value.id===tile.id?tile:value);}
 /** Confirms the authoritative presence position before retrying a range-checked farm action. */
 async function resyncPresence():Promise<boolean>{
@@ -630,7 +872,12 @@ function applySavedProfile(snapshot:FarmSnapshot):void{
 async function loadFarm():Promise<void>{
   try{
     const snapshot=await farmClient.load(),previous=farmSnapshot;
-    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);updateIntroAccount(snapshot);
+    farmSnapshot=snapshot;applySavedProfile(snapshot);farmHud.show(snapshot);renderItemHud();updateIntroAccount(snapshot);
+    const known=snapshot.account?.discovery?.rewarded_groups||[];
+    for(const id of known)discoveryRewardSeen.add(id);
+    let synced=false;
+    for(const id of snapshot.account?.discovery?.sites||[])if(!discoveries.has(id)){discoveries.add(id);synced=true;}
+    if(synced){saveDiscoveries(discoveries);discoveryMarkers=minimapMarkers(discoveries);updateDiscoverySummary();}
     if(snapshot.account?.signed_in&&savedProfileDirty)scheduleSavedProfile();
     for(const tile of snapshot.tiles){
       const before=knownTiles.get(tile.id);
@@ -721,6 +968,75 @@ function farmSection():void{
     row.append(one,all);content.append(row);
   }
 }
+function equipmentStats(item:EquipmentItem):string {
+  if(item.slot==='weapon')return `${item.damage??0} DMG · ${item.range??0} REACH`;
+  if(item.slot==='armor')return `${Math.round((item.mitigation??0)*100)}% LESS DAMAGE · +${item.bonus_hp??0} HP`;
+  return `RESTORE ${item.heal??0} HP IN CAVES`;
+}
+function equipmentSection():void {
+  const account=farmSnapshot?.account;
+  if(!account){text('p','The equipment ledger is still loading.');return;}
+  const catalog=(farmSnapshot?.equipment?.catalog||[]) as EquipmentItem[];
+  text('h3','ADVENTURING EQUIPMENT');
+  text('p','Gear lives in the same inventory as your produce. Swords and armor change cave combat; Arena duels use standardised stats so purchases cannot buy a win.');
+  const equipped=account.equipment.equipped;
+  text('p',`Equipped · ${equipped.weapon||'none'} · ${equipped.armor||'no armor'} · ${account.equipment.owned.health_potion||0} potions in bag.`);
+  const grid=document.createElement('div');grid.className='equipment-grid';content.append(grid);
+  for(const item of catalog){
+    const card=document.createElement('article');card.className='equipment-card';card.dataset.item=item.id;
+    card.append(equipmentIconCanvas(item.id,3));
+    text('strong',item.name.toUpperCase(),card);
+    text('p',item.description,card);
+    text('p',equipmentStats(item),card).className='equipment-stats';
+    const owned=account.equipment.owned[item.id]||0;
+    const isEquipped=equipped.weapon===item.id||equipped.armor===item.id;
+    text('p',item.starter?'STARTER · ALWAYS YOURS':isEquipped?'EQUIPPED':owned?`OWNED × ${owned}`:`${item.price} CREDITS`,card).className='equipment-status';
+    if(!item.starter){
+      const buy=document.createElement('button');buy.type='button';buy.textContent=`Buy · ${item.price} CR`;
+      buy.disabled=account.credits<item.price;
+      buy.onclick=()=>void buyEquipment(item);
+      card.append(buy);
+    }
+    if(item.slot==='weapon'||item.slot==='armor'){
+      const toggle=document.createElement('button');toggle.type='button';
+      toggle.textContent=isEquipped?'Unequip':'Equip';toggle.disabled=!owned&&!isEquipped;
+      toggle.onclick=()=>void toggleEquipment(item,isEquipped);
+      card.append(toggle);
+    }
+    if(owned>0){
+      // Hotbar slots hold owned items only; the server re-checks ownership.
+      const assign=document.createElement('div');assign.className='hotbar-assign';
+      const label=document.createElement('span');label.textContent='HOTBAR';assign.append(label);
+      for(let slot=0;slot<3;slot++){
+        const button=document.createElement('button');button.type='button';button.textContent=String(slot+1);
+        button.dataset.hotbarSlot=String(slot);button.dataset.item=item.id;
+        button.setAttribute('aria-label',`Assign ${item.name} to hotbar slot ${slot+1}`);
+        button.disabled=account.hotbar[slot]===item.id;
+        button.onclick=()=>void hotbarCommand('assign',slot,item.id);
+        assign.append(button);
+      }
+      card.append(assign);
+    }
+    grid.append(card);
+  }
+}
+async function buyEquipment(item:EquipmentItem):Promise<void> {
+  try{
+    const result=await farmClient.equipment('buy',{item_id:item.id});
+    mergeFarmAccount(result.account as FarmAccount|undefined);
+    farmHud.notice(`${item.name} purchased · −${item.price} credits`,'good');
+    sparkle(player.position,['#f7d979','#d8fbff'],12);
+    await showBazaar();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Purchase failed','warn');}
+}
+async function toggleEquipment(item:EquipmentItem,currentlyEquipped:boolean):Promise<void> {
+  try{
+    const result=await farmClient.equipment(currentlyEquipped?'unequip':'equip',currentlyEquipped?{slot:item.slot}:{item_id:item.id});
+    mergeFarmAccount(result.account as FarmAccount|undefined);
+    farmHud.notice(currentlyEquipped?`${item.name} unequipped`:`${item.name} equipped`,'good');
+    await showBazaar();
+  }catch(error){farmHud.notice(error instanceof Error?error.message:'Equipment change failed','warn');}
+}
 async function sellProduce(crop:CropKind,quantity:number):Promise<void>{
   try{
     const result=await farmPost('sell',{crop,quantity});
@@ -798,7 +1114,7 @@ async function showBazaar():Promise<void>{
     if(!dialog.open||version!==interactionVersion)return;
     content.replaceChildren();
     text('p','Bring produce here from the farm plots. Produce sells for internal world credits; credits are not SOL or wallet funds.');
-    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
+    farmSection();equipmentSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
     if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY CONFIGURATION');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'A separately configured real-payout program is enabled.':'Real payouts are disabled; internal credits remain in-game only.');}
     text('h3','GATHERING RECEIPTS');
     if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');
@@ -889,6 +1205,39 @@ async function enterCave(siteId:string):Promise<void>{
     setTimeout(()=>location.assign(`/cave?site=${encodeURIComponent(siteId)}`),reducedMotion?0:220);
   }catch(error){farmHud.notice(error instanceof Error?error.message.toUpperCase():'CAVE UNAVAILABLE','warn');}
 }
+/** Opponents who are both inside the ring and close enough for the server invite. */
+function colosseumCandidates():WorldActor[] {
+  return [...remotePlayers.values()].map(remote=>remote.actor)
+    .filter(actor=>insideColosseum(actor.position)
+      && Math.hypot(actor.position.x-player.position.x,actor.position.y-player.position.y)<=QUICK_CHAT_RADIUS)
+    .sort((a,b)=>Math.hypot(a.position.x-player.position.x,a.position.y-player.position.y)
+      -Math.hypot(b.position.x-player.position.x,b.position.y-player.position.y));
+}
+function showColosseum():void {
+  const version=show('COLOSSEUM');
+  text('p','A sand ring inside weathered stone walls. Sword Duels start here: both fighters must be inside the challenge area.');
+  text('p','Equipment and consumables are standardised for the duel. Adventuring gear cannot buy a win.');
+  const candidates=colosseumCandidates();
+  if(!candidates.length){
+    text('p','No other visitor is inside the ring. Invite someone through the west arch, then open this prompt again.');
+    return;
+  }
+  text('p','Choose an opponent to send a Sword Duel challenge.');
+  const list=document.createElement('div');list.className='colosseum-list';content.append(list);
+  for(const actor of candidates){
+    const row=document.createElement('div');row.className='colosseum-row';
+    const name=document.createElement('strong');name.textContent=actor.name.toUpperCase();
+    const button=document.createElement('button');button.type='button';button.textContent='CHALLENGE';
+    button.dataset.targetPlayerId=actor.id.slice('presence:'.length);
+    button.disabled=challengeBusy||duelNavigating||Boolean(outgoingChallenge);
+    button.onclick=()=>{
+      if(!dialog.open||version!==interactionVersion)return;
+      dialog.close();
+      void sendQuickChatPhrase('sword',actor.id.slice('presence:'.length));
+    };
+    row.append(name,button);list.append(row);
+  }
+}
 async function interact(target:Interactable|undefined=nearby):Promise<void> {
   if(!target||dialog.open||character.open||quickChatOpen)return;
   emit({type:'world:actor-interacted',actorId:player.id,targetId:target.id});
@@ -903,6 +1252,7 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     if(target.id==='treasury-house'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/treasury'),220);return;}
     if(target.id==='south-market'){await showBazaar();return;}
+    if(target.id==='colosseum'){showColosseum();return;}
     if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
     if(target.id.startsWith('plot:')){
       const tile=farmSnapshot?.tiles.find(value=>value.id===target.id.slice('plot:'.length));

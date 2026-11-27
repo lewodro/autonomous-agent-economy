@@ -102,7 +102,7 @@ test('minimap projection covers the world and hides undiscovered landmarks', () 
 
 test('compact minimap keeps public location names visible', () => {
   const markers = minimapMarkers(new Set());
-  assert.deepEqual(visibleMinimapLocationLabels(markers).map(marker => marker.label), ['ARENA', 'CMPD', 'MKT', 'LAB', 'AGY', 'VLT']);
+  assert.deepEqual(visibleMinimapLocationLabels(markers).map(marker => marker.label), ['ARENA', 'CMPD', 'MKT', 'LAB', 'AGY', 'VLT', 'COL']);
 });
 
 test('minimap keeps the expanded loop and its remote trails in projection', () => {

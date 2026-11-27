@@ -1,4 +1,5 @@
 import type { Interactable, Position, Rect } from './model.js';
+import { COLOSSEUM } from './colosseum.js';
 // World coordinates retain the original plaza coordinates. The map extends
 // around them, so saved positions and every existing entrance remain valid.
 // The world is now roughly twice the old area. It is painted into four
@@ -132,6 +133,22 @@ export const BUILDINGS: Building[] = [
   {x:1210,y:1308,width:142,height:90,name:'TOOLS',color:'#6f6659',roof:'#4e5352',accent:'#c7a86f',kind:'stall'},
   {x:470,y:1490,width:150,height:90,name:'GOODS',color:'#77634f',roof:'#59624b',accent:'#d7c38b',kind:'stall'},
 ];
+/** The Colosseum is a real walled structure, not just a painted landmark. */
+export const COLOSSEUM_FOOTPRINT: Rect = { ...COLOSSEUM.outer };
+const { outer: co, inner: ci, entrance: ce } = COLOSSEUM;
+export const COLOSSEUM_WALLS: Rect[] = [
+  { x: co.x, y: co.y, width: co.width, height: ci.y - co.y },
+  { x: co.x, y: ci.y + ci.height, width: co.width, height: co.y + co.height - (ci.y + ci.height) },
+  { x: ci.x + ci.width, y: ci.y, width: co.x + co.width - (ci.x + ci.width), height: ci.height },
+  { x: co.x, y: ci.y, width: ci.x - co.x, height: ce.y - ci.y },
+  { x: co.x, y: ce.y + ce.height, width: ci.x - co.x, height: ci.y + ci.height - (ce.y + ce.height) },
+];
+export function insideColosseumFootprint(point: Position, radius = 0): boolean {
+  return point.x + radius > COLOSSEUM_FOOTPRINT.x
+    && point.x - radius < COLOSSEUM_FOOTPRINT.x + COLOSSEUM_FOOTPRINT.width
+    && point.y + radius > COLOSSEUM_FOOTPRINT.y
+    && point.y - radius < COLOSSEUM_FOOTPRINT.y + COLOSSEUM_FOOTPRINT.height;
+}
 export interface GroundArea extends Rect {color:string}
 // Blocky overlapping terrain areas replace the old long polygon diagonals.
 // The hand-authored central palette is restored exactly: this is the plaza
@@ -251,6 +268,8 @@ export const PATHS: WorldPath[] = [
   {x:300,y:1490,width:1150,height:72},{x:1378,y:1100,width:72,height:462},{x:760,y:1172,width:92,height:318},
   {x:372,y:1360,width:1006,height:72},{x:980,y:1172,width:68,height:188},
   {x:836,y:1490,width:96,height:128},
+  // A short paved spur leaves the market road for the Colosseum's west arch.
+  { ...COLOSSEUM.approach, color: '#6f6657' },
   // The narrower garden trail branches from that junction and steps east.
   {x:1744,y:636,width:152,height:64,color:'#786b55'},{x:1832,y:636,width:64,height:230,color:'#786b55'},
   {x:1832,y:802,width:210,height:64,color:'#786b55'},{x:1978,y:802,width:64,height:178,color:'#786b55'},
@@ -373,22 +392,22 @@ function clearsExploration(point:Position,extra=0):boolean {
 }
 /** Natural-ground placement rules keep decoration off roads, plazas, sites and camps. */
 export function canPlaceTree(point:Position):boolean {
-  return isNaturalGround(point,28)
+  return !insideColosseumFootprint(point,36)&&isNaturalGround(point,28)
     && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE)
     && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>72)
     && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>40)
     && clearsExploration(point,40);
 }
-export function canPlaceBush(point:Position):boolean { return isNaturalGround(point,12)&&clearsExploration(point,24); }
+export function canPlaceBush(point:Position):boolean { return !insideColosseumFootprint(point,16)&&isNaturalGround(point,12)&&clearsExploration(point,24); }
 export function canPlaceFlower(point:Position):boolean {
-  return isNaturalGround(point,6)
+  return !insideColosseumFootprint(point,8)&&isNaturalGround(point,6)
     && TREES.every(tree=>{const scale=tree.scale||1;return Math.hypot(tree.x+6*scale-point.x,tree.y+38*scale-point.y)>46;})
     && ROCKS.every(rock=>Math.hypot(rock.x-point.x,rock.y-point.y)>44)
     && BUSHES.every(bush=>!bush.solid||Math.hypot(bush.x-point.x,bush.y-point.y)>bush.size/2+16)
     && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>34)
     && clearsExploration(point,20);
 }
-export function canPlaceRock(point:Position):boolean { return isNaturalGround(point,10)&&clearsExploration(point,24); }
+export function canPlaceRock(point:Position):boolean { return !insideColosseumFootprint(point,14)&&isNaturalGround(point,10)&&clearsExploration(point,24); }
 
 export interface WorldTree extends Position { scale?: number; tint?: 0|1|2 }
 export interface WorldBush extends Position { size: number; solid?: boolean; tint?: 0|1|2 }
@@ -426,8 +445,9 @@ export const NPC_WAYPOINTS: Position[] = [
   {x:430,y:310},{x:640,y:320},{x:740,y:350},{x:660,y:430},{x:430,y:510},
   {x:340,y:430},{x:0,y:430},{x:-300,y:430},{x:-650,y:430},{x:-650,y:760},
   {x:-400,y:900},{x:-352,y:1184},{x:-200,y:1300},{x:176,y:1360},{x:200,y:1370},
-  {x:700,y:1450},{x:700,y:1320},{x:1000,y:1320},{x:1000,y:1100},{x:1660,y:1100},
-  {x:1660,y:1052},{x:1780,y:1052},{x:1780,y:820},{x:2050,y:820},{x:2300,y:820},
+  {x:700,y:1450},{x:700,y:1320},{x:1000,y:1320},{x:1000,y:1100},{x:1500,y:1100},
+  // The Colosseum is walled: NPC patrols skirt its north and east walls.
+  {x:1500,y:860},{x:1880,y:860},{x:1880,y:820},{x:2050,y:820},{x:2300,y:820},
   {x:2448,y:820},{x:2448,y:608},{x:2450,y:600},{x:2420,y:100},{x:2096,y:96},
   {x:2100,y:100},{x:1900,y:200},{x:1888,y:304},{x:1888,y:368},{x:1900,y:400},
   {x:1702,y:460},{x:1568,y:365},{x:1568,y:320},{x:1568,y:365},{x:1702,y:460},
@@ -439,7 +459,7 @@ export const NPC_WAYPOINTS: Position[] = [
   {x:-528,y:240},{x:-528,y:304},{x:-580,y:350},{x:-350,y:350},{x:-208,y:640},
   {x:-210,y:780},{x:-100,y:680},{x:224,y:752},{x:220,y:1120},{x:368,y:1280},
   {x:384,y:1312},{x:420,y:1390},{x:700,y:1390},{x:820,y:1280},{x:980,y:1390},
-  {x:1160,y:1410},{x:1184,y:1296},{x:1500,y:1230},{x:1552,y:1008},{x:1552,y:864},
+  {x:1160,y:1410},{x:1184,y:1296},{x:1500,y:1230},{x:1500,y:1100},{x:1500,y:900},{x:1500,y:864},
   {x:1568,y:340},{x:1702,y:460},{x:1872,y:496},{x:1870,y:668},{x:1344,y:624},
   {x:1072,y:432},{x:432,y:416}
 ];
@@ -462,7 +482,7 @@ function generateOuterVegetation():OuterVegetation {
   ];
   const clusters:Position[]=[];
   const acceptable=(point:Position,clearance:number):boolean=>
-    isNaturalGround(point,clearance)
+    !insideColosseumFootprint(point,clearance)&&isNaturalGround(point,clearance)
     && WORLD_SITES.every(site=>Math.hypot(site.x-point.x,site.y-point.y)>WORLD_SITE_CLEARANCE+18)
     && CAMPFIRES.every(fire=>Math.hypot(fire.x-point.x,fire.y-point.y)>110)
     && NPC_WAYPOINTS.every(waypoint=>Math.hypot(waypoint.x-point.x,waypoint.y-point.y)>80)
@@ -507,7 +527,7 @@ function generateOuterVegetation():OuterVegetation {
       ?{x0:MAP.minX+120,x1:CORE_BOUNDS.minX-40,y0:MAP.minY+120,y1:MAP.maxY-120,count:1}
       :{x0:CORE_BOUNDS.maxX+40,x1:MAP.maxX-120,y0:MAP.minY+120,y1:MAP.maxY-120,count:1};
     const sample={x:Math.round(point.x0+rand()*(point.x1-point.x0)),y:Math.round(point.y0+rand()*(point.y1-point.y0))};
-    if(!isNaturalGround(sample,18)||!clearsExploration(sample,55))continue;
+    if(insideColosseumFootprint(sample,20)||!isNaturalGround(sample,18)||!clearsExploration(sample,55))continue;
     if(CAMPFIRES.some(fire=>Math.hypot(fire.x-sample.x,fire.y-sample.y)<90))continue;
     if(WORLD_SITES.some(site=>Math.hypot(site.x-sample.x,site.y-sample.y)<80))continue;
     if(clusters.some(cluster=>Math.hypot(cluster.x-sample.x,cluster.y-sample.y)<20))continue;
@@ -633,6 +653,7 @@ export const ARENA_LOUNGE_WAYPOINT = NPC_WAYPOINTS.findIndex(point=>point.x===90
 export const EXPLORATION_PROBES = {
   west:{x:90,y:430},east:{x:1702,y:460},north:{x:576,y:-250},south:{x:700,y:1060},
   garden:{x:1870,y:668},campfire:{x:1702,y:740},market:{x:820,y:1320},agency:{x:1568,y:340},eastRoad:{x:1300,y:460},
+  colosseum:{x:COLOSSEUM.center.x,y:COLOSSEUM.center.y},
   caveNorth:{x:-700,y:OUTER_LOOP.top},caveEast:{x:OUTER_LOOP.right,y:300},
   caveSouth:{x:1250,y:OUTER_LOOP.bottom},caveWest:{x:OUTER_LOOP.left,y:900},
   outerNorth:{x:-300,y:OUTER_LOOP.top},outerSouth:{x:1850,y:OUTER_LOOP.bottom},
@@ -643,6 +664,7 @@ export const EXPLORATION_PROBES = {
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
+  ...COLOSSEUM_WALLS, // solid stone shell with a single west entrance gap
   { x: 500, y: 340, width: 112, height: 64 }, // plaza fountain
   { x: 184, y: 530, width: 80, height: 48 }, // free table
   { x: 480, y: 720, width: 160, height: 32 }, // archive terminal
@@ -660,6 +682,8 @@ export const LANDMARKS: Interactable[] = [
   { id: 'botanical-garden', type: 'zone', position: { x: 1702, y:620 }, radius: 86, label: 'Explore botanical garden' },
   { id: 'agent-agency', type: 'zone', position: { x: 1568, y: 318 }, radius: 76, label: 'Visit agent agency' },
   { id: 'south-market', type: 'zone', position: { x: 681, y: 1292 }, radius: 76, label: 'Open Bazaar profile terminal' },
+  { id: 'colosseum', type: 'zone', position: { ...COLOSSEUM.center }, radius: COLOSSEUM.interaction_radius,
+    label: COLOSSEUM.label, prompt: COLOSSEUM.prompt },
   { id: 'treasury-house', type: 'zone', position: { x: 1105, y: 1292 }, radius: 72, label: 'Enter Treasury House' },
   { id: 'compound-entrance', type: 'zone', position: { x: -220, y: 994 }, radius: 76, label: 'Enter detention compound' },
   ...EXPLORATION_SITES.map(site=>({ id:site.id, type:'zone' as const, position:{...site.position},

@@ -17,9 +17,9 @@ const point = value => value && typeof value === 'object' && Number.isFinite(val
  * renders the returned view, so it cannot forge health or reward a dead mob.
  */
 export class CaveService {
-  constructor({ now = () => Date.now(), resetMs = CAVE_RESET_MS, onDefeat = null, onReward = null } = {}) {
+  constructor({ now = () => Date.now(), resetMs = CAVE_RESET_MS, onDefeat = null, onReward = null, onPotion = null } = {}) {
     if (!Number.isInteger(resetMs) || resetMs < 60_000) throw new Error('Invalid cave reset interval');
-    this.now = now; this.resetMs = resetMs; this.onDefeat = onDefeat; this.onReward = onReward;
+    this.now = now; this.resetMs = resetMs; this.onDefeat = onDefeat; this.onReward = onReward; this.onPotion = onPotion;
     this.runs = new Map();
   }
 
@@ -54,6 +54,7 @@ export class CaveService {
   }
 
   weapon(run) {
+    if (run.equippedWeapon) return { ...run.equippedWeapon };
     return CAVE_WEAPONS[run.weaponId] ?? CAVE_WEAPONS[CAVE_START_WEAPON];
   }
 
@@ -69,7 +70,7 @@ export class CaveService {
         bounds: config.bounds, entry: config.entry, exit: config.exit, descent: config.descent,
         rooms: config.rooms, torches: config.torches, props: config.props,
       },
-      status: run.status, player: { ...run.player },
+      status: run.status, player: { ...run.player, hit: Boolean(run.lastHitAt && now - run.lastHitAt < 220) },
       monsters: run.monsters.map(monster => ({
         id: monster.id, kind: monster.kind, boss: Boolean(monster.boss),
         x: Math.round(monster.x), y: Math.round(monster.y), hp: monster.hp,
@@ -80,6 +81,8 @@ export class CaveService {
       kills: run.kills, required: config.required, cleared,
       can_descend: cleared && Boolean(config.descent),
       weapon: { id: weapon.id, name: weapon.name, damage: weapon.damage, range: weapon.range },
+      armor: run.loadout?.armor ? { id: run.loadout.armor.id, name: run.loadout.armor.name, mitigation: run.loadout.armor.mitigation } : null,
+      potion: { available: run.loadout?.potion?.available || 0, heal: run.loadout?.potion?.heal || 0 },
       reset_at: new Date(run.lastActiveAt + this.resetMs).toISOString(),
     };
   }
@@ -114,7 +117,11 @@ export class CaveService {
       if (distance <= monster.range) {
         if (now - monster.lastAttack >= monster.cooldownMs) {
           monster.lastAttack = now;
-          run.player.hp = Math.max(0, run.player.hp - monster.damage);
+          const mitigation = Math.min(0.6, Math.max(0, run.loadout?.armor?.mitigation || 0));
+          const damage = Math.max(1, Math.round(monster.damage * (1 - mitigation)));
+          run.player.hp = Math.max(0, run.player.hp - damage);
+          run.lastHitAt = now;
+          run.lastHitBy = monster.id;
         }
         continue;
       }
@@ -126,6 +133,29 @@ export class CaveService {
     if (run.player.hp <= 0) await this.settleDeath(run);
   }
 
+  /** Only bounded, known numbers from a server-issued loadout are accepted. */
+  sanitizeLoadout(value) {
+    if (!value || typeof value !== 'object') return null;
+    const limit = (number, min, max) => Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : min;
+    const weapon = value.weapon && typeof value.weapon === 'object' ? {
+      id: String(value.weapon.id || 'rusted').slice(0, 48),
+      name: String(value.weapon.name || 'Blade').slice(0, 48),
+      damage: Math.round(limit(Number(value.weapon.damage), 1, 40)),
+      range: Math.round(limit(Number(value.weapon.range), 40, 110)),
+    } : null;
+    const armor = value.armor && typeof value.armor === 'object' ? {
+      id: String(value.armor.id || 'armor').slice(0, 48),
+      name: String(value.armor.name || 'Armor').slice(0, 48),
+      mitigation: limit(Number(value.armor.mitigation), 0, 0.6),
+      bonus_hp: Math.round(limit(Number(value.armor.bonus_hp), 0, 20)),
+    } : null;
+    const potion = {
+      available: Math.round(limit(Number(value.potion?.available), 0, 9)),
+      heal: Math.round(limit(Number(value.potion?.heal), 0, 80)),
+    };
+    return { weapon, armor, potion };
+  }
+
   async start(visitorId, input = {}) {
     this.prune(); this.checkVisitor(visitorId);
     if (!point(input.exterior)) throw fail('INVALID_EXTERIOR', 'A saved exterior position is required', 400);
@@ -133,11 +163,18 @@ export class CaveService {
       || !input.credential.farmIdentity || typeof input.credential.farmIdentity.key !== 'string') {
       throw fail('INVALID_CREDENTIAL', 'Cave runs require a server-issued credit identity', 400);
     }
+    const loadout = this.sanitizeLoadout(input.loadout);
+    const bonusHp = Math.round(loadout?.armor?.bonus_hp || 0);
+    const maxHp = CAVE_MAX_HP + bonusHp;
     const existing = this.runs.get(visitorId);
     if (existing && existing.status === 'exited' && this.now() - existing.lastActiveAt <= this.resetMs) {
       existing.status = 'playing'; existing.exterior = { x: input.exterior.x, y: input.exterior.y };
       existing.lastActiveAt = existing.lastTick = this.now();
-      if (existing.player.hp <= 0) existing.player.hp = CAVE_MAX_HP;
+      if (loadout) {
+        existing.loadout = loadout;
+        existing.equippedWeapon = loadout.weapon ? { ...loadout.weapon } : null;
+      }
+      if (existing.player.hp <= 0) existing.player.hp = maxHp;
       await this.advance(existing);
       return { run: this.view(existing), resumed: true };
     }
@@ -150,11 +187,12 @@ export class CaveService {
         farmIdentity: { ...input.credential.farmIdentity },
         economyOwner: input.credential.economyOwner,
       },
-      player: { x: level.entry.x, y: level.entry.y, facing: 'down', hp: CAVE_MAX_HP, max_hp: CAVE_MAX_HP },
+      player: { x: level.entry.x, y: level.entry.y, facing: 'down', hp: maxHp, max_hp: maxHp },
       monsters: this.spawn(1), chests: this.spawnChests(1), weaponId: CAVE_START_WEAPON,
+      loadout, equippedWeapon: loadout?.weapon ? { ...loadout.weapon } : null,
       kills: 0, killed: new Set(),
-      startedAt: now, lastActiveAt: now, lastTick: now,
-      defeatSettled: false, rewarded: new Set(), attacks: new Map(),
+      startedAt: now, lastActiveAt: now, lastTick: now, lastHitAt: 0, lastHitBy: null,
+      defeatSettled: false, rewarded: new Set(), attacks: new Map(), potions: new Map(),
     };
     this.runs.set(visitorId, run);
     return { run: this.view(run), resumed: false };
@@ -247,8 +285,34 @@ export class CaveService {
     const found = CAVE_WEAPONS[chest.weapon];
     const current = this.weapon(run);
     let foundWeapon = null;
-    if (found && found.damage > current.damage) { run.weaponId = found.id; foundWeapon = { ...found }; }
+    if (found && found.damage > current.damage) {
+      if (run.equippedWeapon) run.equippedWeapon = { id: found.id, name: found.name, damage: found.damage, range: found.range };
+      else run.weaponId = found.id;
+      foundWeapon = { ...found };
+    }
     return { ...this.view(run), opened: true, chest_id: chest.id, found_weapon: foundWeapon };
+  }
+
+  /** Consumables settle through the farm ledger before the cave heals the player. */
+  async potion(visitorId, input = {}) {
+    this.prune();
+    const run = this.require(visitorId, input.run_id);
+    if (typeof input.request_id !== 'string' || !REQUEST_ID.test(input.request_id)) throw fail('INVALID_REQUEST_ID', 'Potion request ID must be 8-96 safe characters', 400);
+    const cached = run.potions.get(input.request_id);
+    if (cached) return { ...cached, duplicate: true };
+    await this.advance(run);
+    if (run.status !== 'playing') return { ...this.view(run), healed: 0, player_defeated: true };
+    if (!run.loadout?.potion?.available) throw fail('CAVE_NO_POTION', 'You have no health potions', 409);
+    if (!this.onPotion) throw fail('CAVE_NO_POTION', 'Potions are unavailable on this server', 503);
+    const settled = await this.onPotion({ visitorId, runId: run.id, credential: run.credential, requestId: input.request_id });
+    const heal = Math.max(0, Math.round(settled?.heal || run.loadout.potion.heal));
+    run.loadout.potion.available -= 1;
+    const before = run.player.hp;
+    run.player.hp = Math.min(run.player.max_hp || CAVE_MAX_HP, before + heal);
+    const result = { ...this.view(run), healed: run.player.hp - before, potion_heal: heal };
+    run.potions.set(input.request_id, result);
+    if (run.potions.size > 32) run.potions.delete(run.potions.keys().next().value);
+    return result;
   }
 
   async exit(visitorId, input = {}) {

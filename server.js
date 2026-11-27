@@ -25,6 +25,7 @@ import { TableSession, visitorIdentity } from './service/world-table.js';
 import { publicRequestError } from './service/http-error.js';
 import { WorldPresenceService } from './service/world-presence.js';
 import { WorldChallengeService } from './service/world-challenges.js';
+import { colosseumReady } from './src/colosseum.js';
 import { WorldAgentPresenceService } from './service/world-agent-presence.js';
 import { RoomSpectators } from './service/room-spectators.js';
 import { ArenaSurvivalService } from './service/arena-survival.js';
@@ -110,6 +111,7 @@ const caveService=new CaveService({
     return {farm,economy};
   },
   onReward: async({runId,monsterId,amount,credential})=>worldEconomy.awardCave(credential.economyOwner,{run_id:runId,monster_id:monsterId,amount}),
+  onPotion: async({runId,credential,requestId})=>worldFarm.usePotion(credential.farmIdentity,{action:'use_potion',request_id:requestId,run_id:runId}),
 });
 const farmCommands=new SlidingWindowLimiter({limit:240,windowMs:60_000});
 const tableActions=new SlidingWindowLimiter({limit:120,windowMs:60_000});
@@ -207,7 +209,15 @@ const server = http.createServer(async (req, res) => {
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const data=await body(req,4096);
       if(action==='quick-chat'){
-        const {target_player_id,...chat}=worldPresence.quickChat(worldId,visitor.id,data);
+        // A Sword Duel invite is only meaningful inside the Colosseum. Check
+        // before relaying the bubble so a rejected challenge cannot spam chat.
+        if(data.phrase_id==='sword'){
+          const player=worldPresence.requireVisitor(worldId,visitor.id);
+          const target=data.target_player_id?worldPresence.player(worldId,data.target_player_id):worldPresence.nearestHuman(worldId,player.player_id)?.player;
+          if(!player||!target||!colosseumReady(player.position,target.position))return json(res,409,{error:'Both fighters must stand inside the Colosseum',code:'NOT_AT_COLOSSEUM'},cookie);
+        }
+        const {target_player_id,...chatData}=data;
+        const chat=worldPresence.quickChat(worldId,visitor.id,chatData);
         const challenge=worldChallenges.create(worldId,visitor.id,data.phrase_id,target_player_id);
         return json(res,200,{...chat,...(challenge?{challenge}:{})},cookie);
       }
@@ -236,25 +246,24 @@ const server = http.createServer(async (req, res) => {
     if(route==='/api/world/cave'||route.startsWith('/api/world/cave/')){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       const accountKey=accountSession(req);
-      const credential={
-        farmIdentity:accountKey?{key:accountKey,provider:'clerk'}:{key:`guest:${visitor.id}`,provider:'guest'},
-        economyOwner:accountKey||visitor.id,
-      };
+      const identity=accountKey?{key:accountKey,provider:'clerk'}:{key:`guest:${visitor.id}`,provider:'guest'};
+      const credential={farmIdentity:identity,economyOwner:accountKey||visitor.id};
       if(req.method==='GET'&&route==='/api/world/cave')return json(res,200,await caveService.snapshot(visitor.id),cookie);
       if(req.method!=='POST')return json(res,405,{error:'Cave command requires POST'},cookie);
       if(!caveCommands.allow())return json(res,429,{error:'Cave actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/cave/'.length);
-      if(!['start','move','attack','descend','chest','exit'].includes(action))return json(res,404,{error:'Unknown cave command'},cookie);
+      if(!['start','move','attack','descend','chest','potion','exit'].includes(action))return json(res,404,{error:'Unknown cave command'},cookie);
       const data=await body(req,2048);
       try{
-        if(action==='start')return json(res,200,await caveService.start(visitor.id,{...data,credential}),cookie);
+        if(action==='start')return json(res,200,await caveService.start(visitor.id,{...data,credential,loadout:worldFarm.loadout(identity)}),cookie);
         if(action==='move')return json(res,200,await caveService.move(visitor.id,data),cookie);
         if(action==='attack')return json(res,200,await caveService.attack(visitor.id,data),cookie);
         if(action==='descend')return json(res,200,await caveService.descend(visitor.id,data),cookie);
         if(action==='chest')return json(res,200,await caveService.chest(visitor.id,data),cookie);
+        if(action==='potion')return json(res,200,await caveService.potion(visitor.id,data),cookie);
         return json(res,200,await caveService.exit(visitor.id,data),cookie);
       }catch(error){
-        if(error?.code?.startsWith('CAVE_')||error?.code==='INVALID_REQUEST_ID'||error?.code==='INVALID_EXTERIOR'||error?.code==='INVALID_CREDENTIAL'||error?.code==='INVALID_MOVE'||error?.code==='INVALID_VISITOR'){
+        if(error?.code?.startsWith('CAVE_')||error?.code==='INVALID_REQUEST_ID'||error?.code==='INVALID_EXTERIOR'||error?.code==='INVALID_CREDENTIAL'||error?.code==='INVALID_MOVE'||error?.code==='INVALID_VISITOR'||error?.code==='POTION_NOT_OWNED'){
           return json(res,error.status||400,{error:error.message,code:error.code},cookie);
         }
         throw error;
@@ -269,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='GET')return json(res,405,{error:'Spectating is read-only'});
       return json(res,200,worldChallenges.spectate('main',duelSpectateRoute[1]));
     }
-    const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick))?$/);
+    const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick|attack|block|dodge))?$/);
     if(duelRoute){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(!duelRoute[2]){
@@ -339,8 +348,11 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='POST')return json(res,405,{error:'Farm command requires POST'},cookie);
       if(!farmCommands.allow())return json(res,429,{error:'Farm actions are temporarily limited'},cookie);
       const action=route.slice('/api/world/farm/'.length);
-      if(!['plant','harvest','sell','heartbeat','wallet','wallet-challenge','wallet-verify','payout','profile'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
+      if(!['plant','harvest','sell','heartbeat','wallet','wallet-challenge','wallet-verify','payout','profile','discovery','equipment','hotbar'].includes(action))return json(res,404,{error:'Unknown farm command'},cookie);
       const data=await body(req,4096);
+      if(action==='discovery')return json(res,200,{...await worldFarm.reportDiscoveries(identity,data),auth},cookie);
+      if(action==='equipment')return json(res,200,{...await worldFarm.equipmentCommand(identity,data),auth},cookie);
+      if(action==='hotbar')return json(res,200,{...await worldFarm.hotbarCommand(identity,data),auth},cookie);
       if(action==='heartbeat')return json(res,200,{...await worldFarm.heartbeat(identity,data),auth},cookie);
       if(action==='profile')return json(res,200,{...await worldFarm.saveProfile(identity,data),auth},cookie);
       if(action==='wallet')return json(res,200,{...await worldFarm.linkWallet(identity,data),auth},cookie);

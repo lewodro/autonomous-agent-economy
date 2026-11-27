@@ -4,6 +4,11 @@ export interface FarmTile {
   id: string; position: FarmPosition; stage: 'wild' | 'growing' | 'ready'; anchor: string;
   crop: CropKind | null; ready_at: string | null; ready_in_ms: number; mine: boolean; growth: number;
 }
+export interface DiscoveryGroupView { id: string; label: string; reward: number; sites: string[] }
+export interface EquipmentItem {
+  id: string; name: string; slot: 'weapon' | 'armor' | 'consumable'; price: number; starter?: boolean;
+  description: string; damage?: number; range?: number; mitigation?: number; bonus_hp?: number; heal?: number;
+}
 export interface FarmPayout {
   id: string; amount_credits: number; amount_lamports: number; status: string;
   requested_at: string; wallet_address: string; note: string;
@@ -15,8 +20,11 @@ export interface FarmAccount {
   id: string; user_id: string; temporary: boolean; signed_in: boolean; provider: string; display_name: string;
   credits: number; xp: number; level: number; level_progress: number; xp_next: number;
   seconds_played: number; time_credits: number;
-  inventory: Record<CropKind, number>;
+  inventory: Record<CropKind, number> & Record<string, number>;
   stats: { planted: number; harvested: number; sold: number; credits_from_sales: number };
+  discovery: { sites: string[]; rewarded_groups: string[] };
+  equipment: { owned: Record<string, number>; equipped: { weapon: string | null; armor: string | null } };
+  hotbar: Array<string | null>;
   plots_used: number; plots_limit: number;
   profile: FarmProfile;
   ledger: Array<{ id: string; type: string; timestamp: string; details: Record<string, unknown> }>;
@@ -65,6 +73,8 @@ export interface FarmSnapshot {
   mode: 'farm_v1';
   account: FarmAccount | null;
   tiles: FarmTile[];
+  discovery: { groups: DiscoveryGroupView[] };
+  equipment: { catalog: EquipmentItem[]; slots: string[] };
   bazaar: { position: FarmPosition; radius: number; prices: Record<CropKind, number> };
   crops: Record<CropKind, { label: string; sell: number; seed_cost: number; xp: number; unlock_level: number; grow_ms: [number, number]; production_grow_ms: number }>;
   rates: { credits_per_minute: number; lamports_per_credit: number; min_withdrawal_credits: number };
@@ -87,6 +97,10 @@ async function read(response: Response): Promise<Record<string, unknown>> {
     INVENTORY_TOO_LOW: 'You do not carry enough of that resource.',
     MARKET_REQUIRED: 'Carry your produce to the Market before selling.',
     LEVEL_REQUIRED: 'Raise your farming level to unlock this crop.',
+    NOT_OWNED: 'You do not own that equipment yet.',
+    ITEM_NOT_FOR_SALE: 'That starter item is already yours.',
+    INSUFFICIENT_CREDITS: 'You need more credits for that equipment.',
+    INVALID_DISCOVERIES: 'Discovery progress could not be read.',
     PLAYER_NOT_FOUND: 'Reconnect to the shared world and try again.',
   };
   if (!response.ok) throw Object.assign(new Error(friendly[code] || String(body.error || 'The farm did not respond')), { status: response.status, code });
@@ -104,7 +118,7 @@ export class FarmClient {
   }
 
   async post(action: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    const idempotent = ['plant', 'harvest', 'sell'].includes(action);
+    const idempotent = ['plant', 'harvest', 'sell', 'discovery', 'equipment', 'hotbar'].includes(action);
     const payload = idempotent && body.request_id === undefined ? { ...body, request_id: crypto.randomUUID() } : body;
     let failure: unknown;
     for (let attempt = 0; attempt < (idempotent ? 2 : 1); attempt += 1) {
@@ -124,6 +138,21 @@ export class FarmClient {
 
   async saveProfile(avatar: string, position: FarmPosition, appearance: unknown = undefined): Promise<Record<string, unknown>> {
     return this.post('profile', { avatar, position, ...(appearance === undefined ? {} : { appearance }) });
+  }
+
+  /** Discovery reports always carry a fresh request ID so retries replay the same settlement. */
+  async reportDiscoveries(found: string[]): Promise<Record<string, unknown>> {
+    return this.post('discovery', { found, request_id: crypto.randomUUID() });
+  }
+
+  /** All equipment commands are idempotent and server-owned, like produce sales. */
+  async equipment(action: 'buy' | 'equip' | 'unequip' | 'use_potion', body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return this.post('equipment', { ...body, action, request_id: crypto.randomUUID() });
+  }
+
+  /** Hotbar assignments and consumable uses are idempotent like equipment commands. */
+  async hotbar(action: 'assign' | 'clear' | 'use', body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return this.post('hotbar', { ...body, action, request_id: crypto.randomUUID() });
   }
 }
 
@@ -276,17 +305,8 @@ export class FarmHud {
     const bar = this.$('hud-xp-bar'); if (bar) bar.style.width = `${Math.round(account.level_progress * 100)}%`;
     this.text('hud-credits', `${account.credits} CR`);
     this.text('hud-plots', `PLOTS ${account.plots_used}/${account.plots_limit}`);
-    const bag = this.$('hud-bag');
-    if (bag) {
-      bag.replaceChildren();
-      for (const kind of CROPS) {
-        const amount = account.inventory[kind] || 0;
-        const chip = document.createElement('span');
-        chip.className = `hud-crop hud-crop--${kind}${amount ? '' : ' empty'}`;
-        chip.textContent = `${kind.slice(0, 2).toUpperCase()} ${amount}`;
-        bag.append(chip);
-      }
-    }
+    // Resource quantities are shown as pixel-art items in the bottom-right
+    // item HUD; the account strip deliberately stays free of counters.
     const carrying = CROPS.reduce((sum, kind) => sum + (account.inventory[kind] || 0), 0);
     this.text('hud-hint', carrying ? 'Carry produce to the bazaar in the lower market' : 'Explore beyond the plaza for soil and resources');
   }

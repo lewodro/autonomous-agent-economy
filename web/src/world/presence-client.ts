@@ -7,7 +7,7 @@ export interface PresencePlayer {
 }
 export interface PresenceAgent extends PresencePlayer {agent_id:string;strategy:string;sprite:string;recent_winner:boolean;kind:'canonical_agent'}
 export interface PresenceQuickChat {player_id:string;phrase_id:string;text:string;direction:'up'|'down'|'left'|'right';sent_at:string}
-export type PresenceChallengeGame='tictactoe'|'rps';
+export type PresenceChallengeGame='tictactoe'|'rps'|'swordduel';
 export interface PresenceChallenge {challenge_id:string;game:PresenceChallengeGame;from_player_id:string;from_name:string;to_player_id:string;expires_at:string}
 export interface PresenceChallengeAccepted {challenge_id:string;duel_id:string;game:PresenceChallengeGame;from_player_id:string;to_player_id:string}
 export interface PresenceChallengeClosed {challenge_id:string;by_player_id:string}
@@ -39,7 +39,7 @@ interface PresenceOptions {
   now?:()=>number;moveIntervalMs?:number;heartbeatIntervalMs?:number;sleep?:(ms:number)=>Promise<void>;
 }
 const eventNames=['WorldJoined','PlayerJoined','PlayerMoved','PlayerUpdated','PlayerLeft','PlayerQuickChat','PlayerChallenged','ChallengeAccepted','ChallengeDeclined','ChallengeCancelled','ChallengeExpired','AgentJoined','AgentMoved','AgentUpdated','AgentLeft'] as const;
-const challengeGames:ReadonlyArray<PresenceChallengeGame>=['tictactoe','rps'];
+const challengeGames:ReadonlyArray<PresenceChallengeGame>=['tictactoe','rps','swordduel'];
 const identifier=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=80;
 function parseChallenge(value:unknown):PresenceChallenge|null{
   if(!value||typeof value!=='object')return null;
@@ -140,9 +140,10 @@ export class WorldPresenceClient {
   async resync(position:PresencePosition,direction:PresencePlayer['direction'],animation_state:PresencePlayer['animation_state']):Promise<boolean>{return this.sync(position,direction,animation_state);}
   async heartbeat(activity?:string):Promise<boolean>{if(this.closed||!this.playerId||this.heartbeatInFlight||this.now()-this.lastHeartbeatAt<this.heartbeatIntervalMs)return false;this.heartbeatInFlight=true;this.lastHeartbeatAt=this.now();try{await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/heartbeat`,activity===undefined?{}:{activity});return true;}finally{this.heartbeatInFlight=false;}}
   /** Sends a phrase ID only; the server resolves, validates and relays the text. */
-  async sendQuickChat(phraseId:string):Promise<{chat:PresenceQuickChat;challenge:PresenceChallenge|null}>{
+  async sendQuickChat(phraseId:string,targetPlayerId?:string):Promise<{chat:PresenceQuickChat;challenge:PresenceChallenge|null}>{
     if(this.closed||!this.playerId)throw new Error('World presence is not connected');
-    const result=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/quick-chat`,{phrase_id:phraseId}) as {quick_chat?:PresenceQuickChat;challenge?:unknown};
+    const body={phrase_id:phraseId,...(targetPlayerId?{target_player_id:targetPlayerId}:{})};
+    const result=await this.request(`/api/worlds/${encodeURIComponent(this.worldId)}/presence/quick-chat`,body) as {quick_chat?:PresenceQuickChat;challenge?:unknown};
     const chat=result?.quick_chat;
     if(!chat||chat.phrase_id!==phraseId||typeof chat.text!=='string'||!chat.text)throw new Error('World presence returned an invalid quick chat response');
     let challenge:PresenceChallenge|null=null;

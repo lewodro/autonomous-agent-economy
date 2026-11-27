@@ -2,10 +2,12 @@ import {randomUUID} from 'node:crypto';
 import {playCell} from '../src/tictactoe.js';
 import {MOVES,resolve} from '../src/rps.js';
 import {CHALLENGE_COOLDOWN_MS,CHALLENGE_TTL_MS,QUICK_CHAT_PHRASES} from './quick-chat.js';
+import {publicSwordDuelConfig,SWORD_ATTACK_MS,SWORD_DUEL,SWORD_DUEL_ARENA} from '../src/sword-duel.js';
+import {colosseumReady,insideColosseum} from '../src/colosseum.js';
 
 const CHALLENGE_ID=/^chal-[a-f0-9-]{36}$/;
 const DUEL_ID=/^duel-[a-f0-9-]{36}$/;
-const GAMES=new Set(['tictactoe','rps']);
+const GAMES=new Set(['tictactoe','rps','swordduel']);
 function fail(code,message,status=400){return Object.assign(new Error(message),{code,status});}
 
 /**
@@ -32,8 +34,13 @@ export class WorldChallengeService {
     const now=this.now();
     for(const challenge of [...this.challenges.values()])if(now>=challenge.expiresAt)this.expireChallenge(challenge);
     for(const [id,duel] of [...this.duels.entries()]){
-      if(duel.status==='playing'&&now>=duel.expiresAt){duel.status='expired';duel.finishedAt=now;this.freeDuel(duel);}
-      else if(duel.status!=='playing'&&duel.finishedAt&&now-duel.finishedAt>=this.finishedTtlMs)this.duels.delete(id);
+      if(duel.status==='playing'){
+        // A pending strike settles on the server clock even while both browsers
+        // are idle, so blocking and punishment windows stay meaningful.
+        this.swordTick(duel,now);
+        if(now>=duel.expiresAt){duel.status='expired';duel.finishedAt=now;this.freeDuel(duel);}
+      }
+      else if(duel.finishedAt&&now-duel.finishedAt>=this.finishedTtlMs)this.duels.delete(id);
     }
     for(const [id,entry] of [...this.accepted.entries()])if(now-entry.at>=this.acceptedTtlMs)this.accepted.delete(id);
   }
@@ -50,6 +57,9 @@ export class WorldChallengeService {
     const target=targetPlayerId?this.presence.player(worldId,targetPlayerId):this.presence.nearestHuman(worldId,player.player_id)?.player;
     if(!target||target.player_id===player.player_id||Math.hypot(target.position.x-player.position.x,target.position.y-player.position.y)>this.presence.quickChatRadius){
       throw fail('NO_NEARBY_HUMAN','Move closer to another visitor to start a challenge',409);
+    }
+    if(phrase.challenge==='swordduel'&&!colosseumReady(player.position,target.position)){
+      throw fail('NOT_AT_COLOSSEUM','Both fighters must stand inside the Colosseum',409);
     }
     const now=this.now(),last=this.lastChallengeAt.get(player.player_id);
     if(last!==undefined&&now-last<this.challengeCooldownMs)throw fail('CHALLENGE_RATE_LIMITED','Challenge invites are limited',429);
@@ -95,6 +105,7 @@ export class WorldChallengeService {
     try{to=this.presence.requireVisitor(worldId,challenge.to.visitorId);}catch{this.removeChallenge(challenge);throw fail('TARGET_UNAVAILABLE','The challenged visitor left the world',409);}
     if(from.player_id!==challenge.from.playerId||to.player_id!==challenge.to.playerId){this.removeChallenge(challenge);throw fail('CHALLENGE_EXPIRED','That challenge is no longer available',410);}
     if(Math.hypot(from.position.x-to.position.x,from.position.y-to.position.y)>this.presence.quickChatRadius){this.removeChallenge(challenge);throw fail('NOT_NEARBY','Move closer together to start the match',409);}
+    if(challenge.game==='swordduel'&&!colosseumReady(from.position,to.position))throw fail('NOT_AT_COLOSSEUM','Both fighters must step inside the Colosseum',409);
     for(const participant of [from,to]){
       if(this.duelByPlayer.has(participant.player_id)){this.removeChallenge(challenge);throw fail('CHALLENGE_BUSY','One of you is already in a match',409);}
     }
@@ -137,9 +148,19 @@ export class WorldChallengeService {
   }
   createDuel(challenge,from,to){
     const now=this.now();
-    const duel={id:`duel-${randomUUID()}`,worldId:challenge.worldId,game:challenge.game,status:'playing',revision:0,createdAt:now,expiresAt:now+this.duelTtlMs,finishedAt:null,result:null,winner:null,
+    const fighter=(presence,x,facing)=>({x,y:SWORD_DUEL_ARENA.height/2,facing,hp:SWORD_DUEL.maxHp,maxHp:SWORD_DUEL.maxHp,
+      lastAttack:0,lastDodge:0,dodgeUntil:0,stunUntil:0,hitUntil:0,attackAt:0,pendingAttack:null,
+      blockUntil:0,blockUses:[],exterior:{...presence.position}});
+    const arena=challenge.game==='swordduel'?{
+      fighters:{[from.player_id]:fighter(from,220,'right'),[to.player_id]:fighter(to,740,'left')},
+      events:[],attacks:new Map(),dodges:new Map(),blocks:new Map(),lastTick:now,
+      countdownUntil:now+SWORD_DUEL.countdownMs,
+    }:null;
+    const duel={id:`duel-${randomUUID()}`,worldId:challenge.worldId,game:challenge.game,status:'playing',revision:0,
+      createdAt:now,expiresAt:now+(arena?Math.min(this.duelTtlMs,SWORD_DUEL.matchTtlMs):this.duelTtlMs),
+      finishedAt:null,result:null,winner:null,arena,
       players:[{visitorId:from.visitorId,playerId:from.player_id,name:from.display_name,avatar:from.avatar||'visitor_starter'},{visitorId:to.visitorId,playerId:to.player_id,name:to.display_name,avatar:to.avatar||'visitor_starter'}],
-      ...(challenge.game==='tictactoe'?{board:Array(9).fill(null),moves:[]}:{picks:{}})};
+      ...(challenge.game==='tictactoe'?{board:Array(9).fill(null),moves:[]}:challenge.game==='rps'?{picks:{}}:{})};
     this.duels.set(duel.id,duel);
     for(const player of duel.players)this.duelByPlayer.set(player.playerId,duel.id);
     return duel;
@@ -173,6 +194,9 @@ export class WorldChallengeService {
       if(duel.game==='tictactoe'){
         view.board=duel.board;
         view.turn_player_id=duel.status==='playing'?duel.players[duel.moves.length%2].playerId:null;
+      }else if(duel.game==='swordduel'){
+        view.health=duel.players.map(player=>duel.arena.fighters[player.playerId].hp);
+        view.standardized=true;
       }else{
         view.locked=duel.players.map(player=>Boolean(duel.picks[player.visitorId]));
       }
@@ -202,6 +226,8 @@ export class WorldChallengeService {
       view.board=duel.board;
       view.moves=duel.moves.map(move=>({player_id:move.playerId,cell:move.cell}));
       view.turn_player_id=duel.status==='playing'?duel.players[duel.moves.length%2].playerId:null;
+    }else if(duel.game==='swordduel'){
+      Object.assign(view,this.swordDuelView(duel));
     }else{
       view.locked=duel.players.map(player=>Boolean(duel.picks[player.visitorId]));
       // The reveal is part of the settled public record, never the live one.
@@ -217,10 +243,160 @@ export class WorldChallengeService {
     const player=duel.players.find(value=>value.visitorId===visitorId);
     if(!player)throw fail('DUEL_NOT_YOURS','This match belongs to another pair',403);
     if(duel.status!=='playing')throw fail('DUEL_FINISHED','This match has already finished',409);
-    if(action==='move')this.move(duel,player,data);
+    if(duel.game==='swordduel'){
+      if(action==='move')this.swordMove(duel,player,data);
+      else if(action==='attack')this.swordAttack(duel,player,data);
+      else if(action==='block')this.swordBlock(duel,player,data);
+      else if(action==='dodge')this.swordDodge(duel,player,data);
+      else throw fail('DUEL_ACTION_INVALID','Unsupported sword duel action',404);
+    }else if(action==='move')this.move(duel,player,data);
     else if(action==='pick')this.pick(duel,player,data);
     else throw fail('DUEL_ACTION_INVALID','Unsupported match action',404);
     return this.publicDuel(duel,visitorId);
+  }
+  /** Timers advance from the server clock, never from a client frame count. */
+  swordAdvance(duel){
+    const now=this.now(),dt=Math.min(0.5,Math.max(0,(now-duel.arena.lastTick)/1000));
+    duel.arena.lastTick=now;
+    return {now,dt};
+  }
+  swordEvent(duel,event){
+    duel.arena.events.push({...event,id:`hit_${duel.arena.events.length}_${event.at}`});
+    if(duel.arena.events.length>16)duel.arena.events.shift();
+  }
+  /** The active strike resolves after the windup, even with no client input. */
+  swordTick(duel,now=this.now()){
+    if(duel.game!=='swordduel'||duel.status!=='playing')return;
+    const pending=duel.players.map(player=>({player,fighter:duel.arena.fighters[player.playerId]}))
+      .filter(entry=>entry.fighter.pendingAttack&&entry.fighter.pendingAttack.resolveAt<=now)
+      .sort((a,b)=>a.fighter.pendingAttack.resolveAt-b.fighter.pendingAttack.resolveAt
+        ||duel.players.indexOf(a.player)-duel.players.indexOf(b.player));
+    for(const {player,fighter} of pending){
+      const attack=fighter.pendingAttack;fighter.pendingAttack=null;
+      const other=duel.players.find(value=>value.playerId!==player.playerId),target=duel.arena.fighters[other.playerId];
+      const dx=target.x-attack.x,dy=target.y-attack.y,distance=Math.hypot(dx,dy)||1;
+      const facing={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]}[attack.facing]||[0,1];
+      const dot=(dx*facing[0]+dy*facing[1])/distance;
+      let event;
+      if(target.blockUntil>now){
+        event={type:'block',by:player.playerId,target:other.playerId,reason:'shield',at:now};
+        target.x=Math.min(SWORD_DUEL_ARENA.maxX,Math.max(SWORD_DUEL_ARENA.minX,target.x+(dx/distance)*8));
+        target.y=Math.min(SWORD_DUEL_ARENA.maxY,Math.max(SWORD_DUEL_ARENA.minY,target.y+(dy/distance)*8));
+      }
+      else if(target.dodgeUntil>now)event={type:'dodge',by:player.playerId,target:other.playerId,at:now};
+      else if(distance>SWORD_DUEL.range)event={type:'miss',by:player.playerId,target:other.playerId,reason:'range',at:now};
+      else if(dot<0.15)event={type:'miss',by:player.playerId,target:other.playerId,reason:'facing',at:now};
+      else{
+        target.hp=Math.max(0,target.hp-SWORD_DUEL.damage);
+        target.hitUntil=now+SWORD_DUEL.hitFeedbackMs;
+        target.stunUntil=now+SWORD_DUEL.stunMs;
+        target.x=Math.min(SWORD_DUEL_ARENA.maxX,Math.max(SWORD_DUEL_ARENA.minX,target.x+(dx/distance)*SWORD_DUEL.knockback));
+        target.y=Math.min(SWORD_DUEL_ARENA.maxY,Math.max(SWORD_DUEL_ARENA.minY,target.y+(dy/distance)*SWORD_DUEL.knockback));
+        event={type:'hit',by:player.playerId,target:other.playerId,damage:SWORD_DUEL.damage,hp:target.hp,at:now};
+        if(target.hp===0){this.swordEvent(duel,event);this.finishDuel(duel,duel.players[0].playerId===player.playerId?'a':'b');return;}
+      }
+      this.swordEvent(duel,event);
+      duel.revision+=1;
+    }
+  }
+  swordCountdown(duel,now){if(now<duel.arena.countdownUntil)throw fail('DUEL_COUNTDOWN','The duel has not started yet',409);}
+  /** Recovery and the shield stance both restrict, but never freeze, movement. */
+  swordRestricted(fighter,now){return Boolean(fighter.pendingAttack)||fighter.blockUntil>now||now<fighter.attackAt+SWORD_ATTACK_MS;}
+  swordMove(duel,player,data){
+    if(duel.game!=='swordduel')throw fail('WRONG_GAME','This match is not a Sword Duel',409);
+    const {now,dt}=this.swordAdvance(duel),fighter=duel.arena.fighters[player.playerId];
+    const x=Number(data?.x),y=Number(data?.y);
+    if(!Number.isFinite(x)||!Number.isFinite(y))throw fail('INVALID_MOVE','A duel move needs finite coordinates',400);
+    const step=Math.hypot(x-fighter.x,y-fighter.y);
+    const restricted=this.swordRestricted(fighter,now)?0.35:1;
+    const allowed=SWORD_DUEL.speed*dt*(fighter.stunUntil>now?0.35:1)*restricted+26;
+    if(step>allowed)throw fail('DUEL_MOVE_TOO_FAR','That movement is not possible',409);
+    fighter.x=Math.min(SWORD_DUEL_ARENA.maxX,Math.max(SWORD_DUEL_ARENA.minX,x));
+    fighter.y=Math.min(SWORD_DUEL_ARENA.maxY,Math.max(SWORD_DUEL_ARENA.minY,y));
+    if(['up','down','left','right'].includes(data?.facing))fighter.facing=data.facing;
+    duel.revision+=1;
+  }
+  swordAttack(duel,player,data){
+    if(duel.game!=='swordduel')throw fail('WRONG_GAME','This match is not a Sword Duel',409);
+    if(typeof data?.request_id!=='string'||!/^[A-Za-z0-9_-]{8,96}$/.test(data.request_id))throw fail('INVALID_REQUEST_ID','Sword attacks need a valid request ID',400);
+    const key=`${player.playerId}:${data.request_id}`;
+    if(duel.arena.attacks.has(key))return;
+    const {now}=this.swordAdvance(duel),fighter=duel.arena.fighters[player.playerId];
+    this.swordCountdown(duel,now);
+    if(fighter.stunUntil>now)return;
+    if(fighter.blockUntil>now)throw fail('DUEL_BLOCKING','Lower your shield before attacking',409);
+    if(this.swordRestricted(fighter,now))throw fail('DUEL_RECOVERY','Your sword is still recovering',409);
+    if(now-fighter.lastAttack<SWORD_DUEL.attackCooldownMs)throw fail('DUEL_COOLDOWN','Your sword is still recovering',409);
+    duel.arena.attacks.set(key,now);
+    if(duel.arena.attacks.size>64)duel.arena.attacks.delete(duel.arena.attacks.keys().next().value);
+    fighter.lastAttack=now;fighter.attackAt=now;
+    fighter.pendingAttack={requestId:data.request_id,x:fighter.x,y:fighter.y,facing:fighter.facing,
+      resolveAt:now+SWORD_DUEL.windupMs};
+    this.swordEvent(duel,{type:'windup',by:player.playerId,at:now});
+    duel.revision+=1;
+  }
+  /** Two charges per rolling window; holding the button cannot refill them. */
+  swordBlock(duel,player,data){
+    if(duel.game!=='swordduel')throw fail('WRONG_GAME','This match is not a Sword Duel',409);
+    if(typeof data?.request_id!=='string'||!/^[A-Za-z0-9_-]{8,96}$/.test(data.request_id))throw fail('INVALID_REQUEST_ID','Blocks need a valid request ID',400);
+    const key=`${player.playerId}:${data.request_id}`;
+    if(duel.arena.blocks.has(key))return;
+    const {now}=this.swordAdvance(duel),fighter=duel.arena.fighters[player.playerId];
+    this.swordCountdown(duel,now);
+    fighter.blockUses=fighter.blockUses.filter(at=>now-at<SWORD_DUEL.blockWindowMs);
+    if(fighter.blockUntil>now)throw fail('DUEL_BLOCKING','Your shield is already raised',409);
+    if(fighter.stunUntil>now)return;
+    if(this.swordRestricted(fighter,now))throw fail('DUEL_RECOVERY','You cannot shield during recovery',409);
+    if(fighter.blockUses.length>=SWORD_DUEL.blockCharges)throw fail('DUEL_NO_CHARGE','No shield charges left',409);
+    duel.arena.blocks.set(key,now);
+    if(duel.arena.blocks.size>64)duel.arena.blocks.delete(duel.arena.blocks.keys().next().value);
+    fighter.blockUses.push(now);
+    fighter.blockUntil=now+SWORD_DUEL.blockDurationMs;
+    this.swordEvent(duel,{type:'block',by:player.playerId,at:now});
+    duel.revision+=1;
+  }
+  swordDodge(duel,player,data){
+    if(duel.game!=='swordduel')throw fail('WRONG_GAME','This match is not a Sword Duel',409);
+    if(typeof data?.request_id!=='string'||!/^[A-Za-z0-9_-]{8,96}$/.test(data.request_id))throw fail('INVALID_REQUEST_ID','Dodges need a valid request ID',400);
+    const key=`${player.playerId}:${data.request_id}`;
+    if(duel.arena.dodges.has(key))return;
+    const {now}=this.swordAdvance(duel),fighter=duel.arena.fighters[player.playerId];
+    this.swordCountdown(duel,now);
+    if(now-fighter.lastDodge<SWORD_DUEL.dodgeCooldownMs)throw fail('DUEL_DODGE_COOLDOWN','Dodge is still recovering',409);
+    if(fighter.stunUntil>now)return;
+    // Recovery timers are never cleared: a dodge cannot cancel a committed swing.
+    if(this.swordRestricted(fighter,now))throw fail('DUEL_RECOVERY','You cannot dodge out of a committed attack',409);
+    duel.arena.dodges.set(key,now);
+    if(duel.arena.dodges.size>64)duel.arena.dodges.delete(duel.arena.dodges.keys().next().value);
+    fighter.lastDodge=now;fighter.dodgeUntil=now+SWORD_DUEL.dodgeDurationMs;
+    this.swordEvent(duel,{type:'dodge_start',by:player.playerId,at:now});
+    duel.revision+=1;
+  }
+  swordPhase(fighter,now){
+    if(fighter.blockUntil>now)return 'blocking';
+    if(fighter.pendingAttack||now<fighter.attackAt+SWORD_DUEL.windupMs)return 'windup';
+    if(now<fighter.attackAt+SWORD_DUEL.windupMs+SWORD_DUEL.activeMs)return 'active';
+    if(now<fighter.attackAt+SWORD_ATTACK_MS)return 'recovery';
+    return 'idle';
+  }
+  swordDuelView(duel){
+    const now=this.now();
+    const fighterView=player=>{
+      const fighter=duel.arena.fighters[player.playerId];
+      const phase=this.swordPhase(fighter,now);
+      const uses=fighter.blockUses.filter(at=>now-at<SWORD_DUEL.blockWindowMs).sort((a,b)=>a-b);
+      return {player_id:player.playerId,x:Math.round(fighter.x),y:Math.round(fighter.y),facing:fighter.facing,
+        hp:fighter.hp,max_hp:fighter.maxHp,dodging:fighter.dodgeUntil>now,stunned:fighter.stunUntil>now,hit:fighter.hitUntil>now,
+        phase,block_charges:SWORD_DUEL.blockCharges-uses.length,
+        block_recharge_ms:uses.length>=SWORD_DUEL.blockCharges?Math.max(0,uses[0]+SWORD_DUEL.blockWindowMs-now):0,
+        can_attack:now>=duel.arena.countdownUntil&&phase==='idle'&&fighter.stunUntil<=now&&now-fighter.lastAttack>=SWORD_DUEL.attackCooldownMs,
+        cooldown_ms:Math.max(0,fighter.lastAttack+SWORD_DUEL.attackCooldownMs-now),
+        dodge_cooldown_ms:Math.max(0,fighter.lastDodge+SWORD_DUEL.dodgeCooldownMs-now),
+        exterior:{...fighter.exterior}};
+    };
+    return {combat:publicSwordDuelConfig(),fighters:duel.players.map(fighterView),
+      countdown_ms:Math.max(0,duel.arena.countdownUntil-now),
+      events:duel.arena.events.slice(-8).map(event=>({...event}))};
   }
   move(duel,player,data){
     if(duel.game!=='tictactoe')throw fail('WRONG_GAME','This match is not Tic-Tac-Toe',409);
@@ -255,6 +431,8 @@ export class WorldChallengeService {
       view.board=duel.board;
       view.moves=duel.moves.map(move=>({player_id:move.playerId,cell:move.cell}));
       view.turn_player_id=duel.status==='playing'?duel.players[duel.moves.length%2].playerId:null;
+    }else if(duel.game==='swordduel'){
+      Object.assign(view,this.swordDuelView(duel));
     }else{
       view.you.picked=Boolean(duel.picks[you.visitorId]);
       view.opponent.picked=Boolean(duel.picks[opponent.visitorId]);

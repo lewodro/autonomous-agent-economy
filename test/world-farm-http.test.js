@@ -28,7 +28,8 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
     });
 
     const html = await (await fetch(base + '/')).text();
-    for (const id of ['world-hud', 'hud-account', 'hud-xp-bar', 'hud-bag', 'farm-notices']) assert.match(html, new RegExp(`id="${id}"`));
+    for (const id of ['world-hud', 'hud-account', 'hud-xp-bar', 'item-hud', 'item-hud-resources', 'hotbar', 'farm-notices']) assert.match(html, new RegExp(`id="${id}"`));
+    assert.doesNotMatch(html, /id="hud-bag"/, 'abbreviated resource counters are gone from the account strip');
     assert.equal((await fetch(base + '/web/dist/world/farm.js')).status, 200);
     const auth = await (await fetch(base + '/api/world/auth')).json();
     assert.deepEqual(auth, { provider: 'clerk', configured: false, publishable_key: null });

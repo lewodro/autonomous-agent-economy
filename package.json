@@ -18,6 +18,7 @@
     "test:browser:clerk": "node scripts/clerk-browser-smoke.js",
     "test:browser:resources": "node scripts/world-resource-browser-smoke.js",
     "test:browser:world:ci": "node scripts/world-browser-ci.js",
+    "test:browser:progression": "node scripts/world-progression-browser-smoke.js",
     "dev": "node scripts/dev.js",
     "build": "cargo build --manifest-path rust/Cargo.toml --locked && tsc -p web/tsconfig.json && node scripts/build-devlog.js",
     "typecheck": "tsc -p web/tsconfig.json --noEmit",

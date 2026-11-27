@@ -68,6 +68,13 @@ try{
  assert.ok((await evaluate("document.getElementById('minimap-journal').textContent")).includes('DISCOVERIES 0/'),'fresh visitors start with an empty discovery journal count');
  assert.equal(await evaluate("document.getElementById('minimap-region').textContent"),'CITY CENTER');
  assert.ok(await evaluate("document.getElementById('minimap-canvas').dataset.player.includes(',')"),'minimap publishes the current player marker position');
+ // Visual item HUD replaces the WH/CA/PU text chips under the account strip.
+ await wait("document.getElementById('item-hud')&&!document.getElementById('item-hud').hidden&&document.querySelectorAll('#item-hud-resources .item-slot canvas').length===6");
+ assert.ok(await evaluate("!/\\b(WH|CA|PU)\\b/.test(document.getElementById('world-hud').textContent)"),'account strip no longer shows abbreviated resource counters');
+ assert.ok(await evaluate("[...document.querySelectorAll('#item-hud canvas')].every(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n>8})"),'every HUD slot draws real pixel artwork');
+ assert.equal(await evaluate("document.querySelectorAll('#hotbar .hotbar__slot').length"),3,'three equipment slots live inside the item HUD');
+ assert.ok(await evaluate("(()=>{const h=document.getElementById('world-hint').getBoundingClientRect(),i=document.getElementById('item-hud').getBoundingClientRect(),m=document.getElementById('world-minimap').getBoundingClientRect();const overlap=!(m.right<i.left||m.left>i.right||m.bottom<i.top||m.top>i.bottom);return h.bottom<=i.top+1&&i.right<=innerWidth+1&&i.bottom<=innerHeight+1&&!overlap})()"),'the item strip sits below the movement hint and clear of the minimap');
+ await screenshot('item-hud');
  await evaluate("document.getElementById('minimap-toggle').click()");
  await wait("document.getElementById('minimap-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('world-minimap').classList.contains('is-collapsed')");
  await evaluate("document.getElementById('minimap-toggle').click()");
@@ -113,7 +120,7 @@ try{
  // the challenge phrases. Switching back restores the social page.
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"ttt\\"]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['arena','down'],['explore','left']],'the game page keeps the four approved directions');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>[option.dataset.phrase,option.dataset.direction])'),[['ttt','up'],['rps','right'],['explore','left']],'Sword Duel is issued at the Colosseum, not from the quick-chat wheel');
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'q',bubbles:true}))");
  await wait('document.querySelector(".quick-chat__option[data-phrase=\\"hi\\"]")');
@@ -400,9 +407,9 @@ try{
  await wait('document.getElementById("connection").textContent.includes("WORLD ONLINE")');
  assert.ok(await evaluate('(()=>{const r=document.getElementById("world-minimap").getBoundingClientRect();return r.width>0&&r.width<=160})()'),'the desktop local map must stay compact');
  await wait("document.getElementById('minimap-canvas').dataset.locationLabels?.includes('ARENA')");
- assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map must keep its public location names');
- await wait('document.querySelectorAll(".world-minimap__label").length===6');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the compact map renders all six destination labels');
+ assert.deepEqual((await evaluate("document.getElementById('minimap-canvas').dataset.locationLabels.split(',')")),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the compact map must keep its public location names');
+ await wait('document.querySelectorAll(".world-minimap__label").length===7');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the compact map renders every public destination label');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&getComputedStyle(node).fontSize!=="0px"})})()'),'destination labels stay inside the compact map with readable text');
  assert.deepEqual(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position'),{x:928,y:674},'returning from Arena must restore the saved world position');
  await wait("fetch('/api/arena/statistics').then(r=>r.json()).then(s=>s.totals.matches>0)");
@@ -544,10 +551,10 @@ try{
  await waitCaveReady();
  await wait("document.getElementById('cave-health-text').textContent.includes('100 / 100')");
  assert.equal(await evaluate('document.getElementById("cave-canvas").width'),480,'cave keeps a bounded pixel canvas');
- assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='rusted')"),'the entrance level has its own authoritative monsters, floor target and starter weapon');
+ assert.ok(await evaluate("fetch('/api/world/cave').then(r=>r.json()).then(s=>s.run&&s.run.monsters.length===4&&s.run.required===4&&s.run.weapon.id==='wooden_sword')"),'the entrance level has its own authoritative monsters, floor target and starter equipment');
  assert.equal(await evaluate("fetch('/api/world/cave/config').then(r=>r.json()).then(c=>c.interact_radius)"),96,'the cave shares a wider interaction reach for passages and chests');
  assert.equal(await evaluate("document.getElementById('cave-monsters').textContent"),'MONSTERS 0 / 4','the cave HUD shows the floor objective');
- assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'RUSTED BLADE','the cave HUD names the cave-only weapon');
+ assert.equal(await evaluate("document.getElementById('cave-weapon').textContent"),'WOODEN SWORD','the cave HUD names the equipped starter weapon');
  assert.equal(await evaluate("getComputedStyle(document.getElementById('cave-joystick')).display"),'none','desktop hides the mobile joystick');
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.cave-buttons')).display"),'none','desktop hides the large touch buttons');
  assert.ok(await evaluate("document.getElementById('cave-hint').textContent.includes('E')&&document.getElementById('cave-hint').textContent.includes('click')"),'desktop hint teaches WASD/click/E');
@@ -617,7 +624,7 @@ try{
  await wait("document.getElementById('interaction-dialog').open&&document.getElementById('interaction-title').textContent==='DISCOVERIES'");
  const journalText=await evaluate("document.getElementById('interaction-content').textContent");
  assert.ok(journalText.includes('CAVES')&&journalText.includes('Northern cave')&&journalText.includes('???')&&journalText.includes('PASSES')&&journalText.includes('CAMPS'),'discovery journal must group found and unknown landmarks');
- assert.ok(journalText.includes('saved in this browser only'),'the visitor-local persistence limitation must be documented in the journal');
+ assert.ok(journalText.includes('Browser journal history stays in this browser'),'the journal documents browser-local history alongside account-backed rewards');
  assert.ok(await evaluate("document.querySelectorAll('.discovery-group').length===5&&document.querySelector('.discovery-group[data-kind=cave]').dataset.count==='1/5'"),'journal keeps one compact group per landmark kind');
  await screenshot('discovery-journal');
  await evaluate("document.getElementById('interaction-close').click()");
@@ -810,7 +817,8 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'));
 
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap"),r=m.getBoundingClientRect(),v=document.querySelector(".world-viewport").getBoundingClientRect(),c=document.getElementById("minimap-canvas").getBoundingClientRect(),s=getComputedStyle(m);return r.width<=112&&r.right<=390&&r.left>=0&&c.width>=90&&c.height>45&&s.left==="6px"&&s.bottom==="118px"&&r.left-v.left<=12&&v.bottom-r.bottom<=124})()'),'mobile minimap stays compact at the bottom-left of the viewport above touch controls');
- await wait('document.querySelectorAll(".world-minimap__label").length===6');
+ assert.ok(await evaluate('(()=>{const rect=id=>document.getElementById(id).getBoundingClientRect(),i=rect("item-hud"),j=rect("joystick"),b=rect("interact"),h=rect("world-hint"),m=rect("world-minimap");const hit=(a,c)=>!(a.right<c.left||a.left>c.right||a.bottom<c.top||a.top>c.bottom);return !hit(i,j)&&!hit(i,b)&&!hit(i,h)&&!hit(i,m)&&i.left>=0&&i.right<=390})()'),'touch item HUD clears the joystick, interact, hint and minimap');
+ await wait('document.querySelectorAll(".world-minimap__label").length===7');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1&&parseFloat(getComputedStyle(node).fontSize)>=5})})()'),'all six labels stay inside a 390px compact map');
  await evaluate("document.getElementById('avatar-change').click()");await wait("document.getElementById('character-dialog').open");
  assert.ok(await evaluate('(()=>{const d=document.getElementById("character-dialog");return d.scrollWidth<=d.clientWidth+1&&document.documentElement.scrollWidth<=390})()'),'the character creator must not overflow a 390px viewport');
@@ -849,7 +857,7 @@ try{
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'SOCIAL ▸');
  await evaluate('document.getElementById("quick-chat-page").click()');
  await wait('document.querySelector(".quick-chat__option[data-phrase=ttt]")');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','arena','explore']);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".quick-chat__option")].map(option=>option.dataset.phrase)'),['ttt','rps','explore']);
  assert.equal(await evaluate('document.getElementById("quick-chat-page").textContent'),'GAME ▸');
  await evaluate('document.querySelector(".quick-chat__option[data-phrase=ttt]").click()');
  await wait('!document.getElementById("challenge-outgoing").hidden',5000);
@@ -877,7 +885,7 @@ try{
  await delay(240);
  assert.ok(await evaluate('document.documentElement.scrollWidth<=430'),'the exploration UI must fit a 430px viewport');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect(),h=document.getElementById("world-hint").getBoundingClientRect();return m.right<=430&&m.left>=0&&m.bottom<=932&&h.right<=430})()'),'minimap and contextual hint stay inside a 430×932 viewport');
- assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT'],'the 430px map keeps every public destination label');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".world-minimap__label")].map(node=>node.textContent)'),['ARENA','CMPD','MKT','LAB','AGY','VLT','COL'],'the 430px map keeps every public destination label');
  assert.ok(await evaluate('(()=>{const m=document.getElementById("world-minimap").getBoundingClientRect();return [...document.querySelectorAll(".world-minimap__label")].every(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.left>=m.left-1&&r.right<=m.right+1&&r.top>=m.top-1&&r.bottom<=m.bottom+1})})()'),'no label escapes the 430px compact map');
  const position430=await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).position');
  const guest430=await secondBrowser.evaluate(`fetch('/api/worlds/main/presence/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:'visitor_ember',position:{x:${position430.x+36},y:${position430.y}},direction:'left',activity:'Exploring'})}).then(async response=>({status:response.status,...await response.json()}))`);

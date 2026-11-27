@@ -6,7 +6,9 @@
  * pick; spectators (`?spectate=1`) never hold a seat and never send a command.
  * Rules, turn order, reveal order and results stay on the server.
  */
-type Game = 'tictactoe' | 'rps';
+import { SwordArena, type SwordEvent, type SwordFighter, type SwordView } from './sword-arena.js';
+
+type Game = 'tictactoe' | 'rps' | 'swordduel';
 type Marker = 'a' | 'b';
 type RpsMove = 'rock' | 'paper' | 'scissors';
 interface DuelPlayerView { player_id: string; name: string; marker: Marker; avatar?: string; picked?: boolean; pick?: RpsMove | null }
@@ -15,6 +17,7 @@ interface DuelView {
   created_at: string; expires_at: string;
   you: DuelPlayerView; opponent: DuelPlayerView; result: Marker | 'draw' | null; winner_player_id: string | null;
   board?: Array<Marker | null>; moves?: Array<{ player_id: string; cell: number }>; turn_player_id?: string | null;
+  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[]; countdown_ms?: number;
 }
 interface SpectateView {
   duel_id: string; game: Game; status: 'playing' | 'finished' | 'expired'; revision: number; spectating: true;
@@ -23,12 +26,14 @@ interface SpectateView {
   result: Marker | 'draw' | null; winner_player_id: string | null;
   board?: Array<Marker | null>; moves?: Array<{ player_id: string; cell: number }>; turn_player_id?: string | null;
   locked?: boolean[]; picks?: Array<{ player_id: string; move: RpsMove | null }>;
+  combat?: SwordView['combat']; fighters?: SwordFighter[]; events?: SwordEvent[]; countdown_ms?: number;
 }
-interface Seat { id: string; name: string; marker: Marker; avatar: string; picked: boolean; pick: RpsMove | null }
+interface Seat { id: string; name: string; marker: Marker; avatar: string; picked: boolean; pick: RpsMove | null; hp?: number; maxHp?: number }
 interface Snapshot {
   id: string; game: Game; status: 'playing' | 'finished' | 'expired'; revision: number;
   seats: [Seat, Seat]; board: Array<Marker | null> | null; turnId: string | null;
   result: Marker | 'draw' | null; winnerId: string | null; spectating: boolean; youId: string | null;
+  sword: SwordView | null;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -36,10 +41,14 @@ const title = $<HTMLElement>('duel-title'), status = $<HTMLElement>('duel-status
 const board = $<HTMLDivElement>('duel-board'), actions = $<HTMLDivElement>('duel-actions');
 const hint = $<HTMLElement>('duel-hint'), result = $<HTMLElement>('duel-result');
 const gameLabel = $<HTMLElement>('duel-game'), scope = $<HTMLElement>('duel-scope'), modeLabel = $<HTMLElement>('duel-mode');
+const arenaWrap = $<HTMLDivElement>('duel-arena-wrap'), arenaCanvas = $<HTMLCanvasElement>('duel-arena'), arenaControls = $<HTMLDivElement>('duel-arena-controls');
+const strikeButton = $<HTMLButtonElement>('duel-strike'), dodgeButton = $<HTMLButtonElement>('duel-dodge');
+const shieldButton = $<HTMLButtonElement>('duel-shield'), shieldHud = $<HTMLElement>('duel-shield-hud');
 const returnLink = $<HTMLAnchorElement>('duel-return'), exitLink = document.querySelector<HTMLAnchorElement>('.duel-exit');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const POLL_MS = 800;
-const GAME_LABEL: Record<Game, string> = { tictactoe: 'TIC-TAC-TOE', rps: 'ROCK PAPER SCISSORS' };
+const SWORD_POLL_MS = 160;
+const GAME_LABEL: Record<Game, string> = { tictactoe: 'TIC-TAC-TOE', rps: 'ROCK PAPER SCISSORS', swordduel: 'SWORD DUEL' };
 const MOVES: RpsMove[] = ['rock', 'paper', 'scissors'];
 const AVATAR_PREVIEW: Record<string, string> = {
   visitor_starter: '/assets/avatars/clean/starter_preview.png',
@@ -60,6 +69,7 @@ let playerSignature = '', leftCard: HTMLElement | null = null, rightCard: HTMLEl
 let lastBoard: Array<Marker | null> | null = null;
 let revealPhase: 'settled' | 'locked' = 'settled', revealTimer = 0;
 const cells: HTMLButtonElement[] = [];
+let arena: SwordArena | null = null;
 
 function setStatus(message: string, tone: 'info' | 'good' | 'warn' | 'bad' = 'info'): void {
   status.textContent = message; status.dataset.tone = tone;
@@ -76,24 +86,36 @@ function codeOf(error: unknown): string {
 function seatOf(player: DuelPlayerView, picked: boolean, pick: RpsMove | null): Seat {
   return { id: player.player_id, name: player.name, marker: player.marker, avatar: player.avatar || 'visitor_starter', picked, pick };
 }
+function swordFrom(view: DuelView | SpectateView): SwordView | null {
+  if (!view.combat || !view.fighters || view.fighters.length !== 2) return null;
+  return { combat: view.combat, fighters: [view.fighters[0]!, view.fighters[1]!], events: view.events ?? [],
+    countdown_ms: view.countdown_ms ?? view.combat.countdown_ms };
+}
 function fromParticipant(view: DuelView): Snapshot {
+  const sword = swordFrom(view);
+  // A finished duel no longer sends combat state. Keep the last known arena
+  // so the final health bars and impact effects remain visible to both sides.
+  if (!sword && state?.sword && state.id === view.duel_id) view = { ...view, combat: state.sword.combat, fighters: state.sword.fighters, events: state.sword.events };
+  const seats: [Seat, Seat] = [seatOf(view.you, Boolean(view.you.picked), view.you.pick ?? null), seatOf(view.opponent, Boolean(view.opponent.picked), view.opponent.pick ?? null)];
+  if (sword) seats.forEach((seat, index) => { seat.hp = sword.fighters[index]!.hp; seat.maxHp = sword.fighters[index]!.max_hp; });
   return {
     id: view.duel_id, game: view.game, status: view.status, revision: view.revision,
-    seats: [seatOf(view.you, Boolean(view.you.picked), view.you.pick ?? null), seatOf(view.opponent, Boolean(view.opponent.picked), view.opponent.pick ?? null)],
-    board: view.board ?? null, turnId: view.turn_player_id ?? null,
-    result: view.result, winnerId: view.winner_player_id, spectating: false, youId: view.you.player_id,
+    seats, board: view.board ?? null, turnId: view.turn_player_id ?? null,
+    result: view.result, winnerId: view.winner_player_id, spectating: false, youId: view.you.player_id, sword,
   };
 }
 function fromSpectator(view: SpectateView): Snapshot {
   const picks = new Map((view.picks ?? []).map(entry => [entry.player_id, entry.move]));
+  const sword = swordFrom(view);
   const seats = view.players.slice(0, 2).map((player, index) => ({
     id: player.player_id, name: player.name, marker: player.marker, avatar: player.avatar || 'visitor_starter',
     picked: Boolean(view.locked?.[index] ?? player.picked), pick: picks.get(player.player_id) ?? null,
+    hp: sword?.fighters[index]?.hp, maxHp: sword?.fighters[index]?.max_hp,
   })) as Seat[];
   return {
     id: view.duel_id, game: view.game, status: view.status, revision: view.revision,
     seats: [seats[0]!, seats[1]!], board: view.board ?? null, turnId: view.turn_player_id ?? null,
-    result: view.result, winnerId: view.winner_player_id, spectating: true, youId: null,
+    result: view.result, winnerId: view.winner_player_id, spectating: true, youId: null, sword,
   };
 }
 function winnerLine(cellsValue: Array<Marker | null>): number[] | null {
@@ -136,6 +158,7 @@ function renderPlayers(): void {
   const [left, right] = state.seats;
   const metaFor = (seat: Seat): string => {
     if (state!.game === 'tictactoe') return seat.marker === 'a' ? 'X' : 'O';
+    if (state!.game === 'swordduel') return `${seat.hp ?? '—'} / ${seat.maxHp ?? '—'} HP`;
     return seat.picked ? 'LOCKED' : 'CHOOSING';
   };
   const update = (card: HTMLElement | null, seat: Seat): void => {
@@ -217,6 +240,29 @@ function renderResult(): void {
     result.hidden = false; result.textContent = 'MATCH EXPIRED';
     return;
   }
+  if (current.game === 'swordduel') {
+    const finished = current.status === 'finished';
+    const countdown = current.sword?.countdown_ms ?? current.sword?.combat.countdown_ms ?? 0;
+    const winner = current.seats.find(seat => seat.id === current.winnerId) ?? null;
+    const youWon = !current.spectating && winner?.id === current.youId;
+    setStatus(finished ? youWon ? 'VICTORY' : current.spectating ? `${winner?.name.toUpperCase() || 'A PLAYER'} WINS` : 'DEFEAT'
+      : countdown > 0 ? `GUARD UP · ${Math.ceil(countdown / 1000)}`
+        : current.spectating ? 'SPECTATING · READ ONLY' : 'FIGHT!',
+      finished ? youWon ? 'good' : 'bad' : 'info');
+    hint.textContent = finished
+      ? 'Match settled by the server. Both fighters return to their saved world position.'
+      : current.spectating
+        ? 'Read-only view. Movement, damage and the winner are decided on the server.'
+        : countdown > 0
+          ? 'Both fighters enter the ring. The server starts the duel after a short countdown; equipment stats are standardised here.'
+          : 'WASD / arrows move · SPACE or J strike · right-click or F shields · SHIFT or K dodge. Equipment stats are standardised here.';
+    result.hidden = !finished;
+    if (finished) {
+      result.textContent = youWon ? 'VICTORY' : winner ? 'DEFEAT' : 'MATCH COMPLETE';
+      result.dataset.outcome = youWon ? 'win' : 'complete';
+    }
+    return;
+  }
   if (current.status !== 'finished' || revealPhase === 'locked') {
     if (current.game === 'tictactoe') {
       const yourTurn = !current.spectating && current.turnId === current.youId;
@@ -264,6 +310,25 @@ function render(): void {
   gameLabel.textContent = GAME_LABEL[state.game];
   scope.textContent = state.status === 'finished' ? 'FINAL' : 'LIVE';
   modeLabel.textContent = state.spectating ? 'SPECTATING · READ ONLY' : 'SHARED MATCH';
+  const isSword = state.game === 'swordduel';
+  arenaWrap.hidden = !isSword;
+  arenaControls.hidden = !isSword || state.spectating || state.status !== 'playing';
+  if (isSword && state.sword) {
+    arena?.update(state.sword, state.youId, state.spectating);
+    const countdown = state.sword.countdown_ms ?? state.sword.combat.countdown_ms ?? 0;
+    const youId = state.youId;
+    const fighterIndex = state.sword.fighters.findIndex(fighter => fighter.player_id === youId);
+    const mine = state.sword.fighters[Math.max(0, fighterIndex)];
+    const charges = mine?.block_charges ?? state.sword.combat.block_charges;
+    const total = state.sword.combat.block_charges;
+    shieldHud.textContent = `SHIELD ${Array.from({ length: total }, (_, index) => index < charges ? '●' : '○').join(' ')}`
+      + (mine && mine.block_recharge_ms > 0 ? ` · ${Math.ceil(mine.block_recharge_ms / 1000)}s` : '');
+    shieldHud.hidden = !isSword;
+    const active = state.status === 'playing' && countdown <= 0;
+    strikeButton.disabled = busy || !active || !mine?.can_attack;
+    shieldButton.disabled = busy || !active || charges <= 0;
+    dodgeButton.disabled = busy || !active;
+  } else shieldHud.hidden = true;
   if (state.spectating) setStatus('SPECTATING · READ ONLY', 'info'), status.dataset.spectating = 'true';
   renderPlayers(); renderBoard(); renderActions(); renderResult();
   if (errorText) { setStatus(errorText, 'bad'); errorText = ''; }
@@ -271,7 +336,7 @@ function render(): void {
 function schedule(): void {
   if (timer) window.clearTimeout(timer); timer = 0;
   if (stopped || !state || state.status !== 'playing') return;
-  timer = window.setTimeout(() => { void load(); }, POLL_MS);
+  timer = window.setTimeout(() => { void load(); }, state.game === 'swordduel' ? SWORD_POLL_MS : POLL_MS);
 }
 function apply(next: Snapshot): void {
   previous = state; state = next;
@@ -322,6 +387,40 @@ async function submit(action: 'move' | 'pick', body: Record<string, unknown>): P
   } finally { busy = false; render(); schedule(); }
 }
 
+/** Movement is fire-and-forget; attacks carry a request ID so retries cannot double-hit. */
+async function sendSword(action: 'move' | 'attack' | 'block' | 'dodge', body: Record<string, unknown>): Promise<void> {
+  if (spectating || !state || state.status !== 'playing' || !state.sword) return;
+  const payload = action === 'move' ? body : { ...body, request_id: crypto.randomUUID() };
+  try {
+    const next = await duelRequest<DuelView>(`/api/world/duels/${encodeURIComponent(duelId)}/${action}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    apply(fromParticipant(next));
+  } catch (error) {
+    const code = codeOf(error);
+    if (code === 'DUEL_FINISHED' || code === 'DUEL_NOT_FOUND') return;
+    // Movement races are expected at 14 Hz; the next poll resynchronises.
+  }
+}
+arena = new SwordArena(arenaCanvas, {
+  onMove: (x, y, facing) => { void sendSword('move', { x, y, facing }); },
+  onAttack: () => { void sendSword('attack', {}); },
+  onBlock: () => { void sendSword('block', {}); },
+  onDodge: () => { void sendSword('dodge', {}); },
+});
+strikeButton.addEventListener('click', () => { void sendSword('attack', {}); });
+shieldButton.addEventListener('click', () => { void sendSword('block', {}); });
+dodgeButton.addEventListener('click', () => { void sendSword('dodge', {}); });
+for (const button of document.querySelectorAll<HTMLButtonElement>('#duel-arena-pad button')) {
+  const vector: Record<string, { x: number; y: number }> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  const direction = button.dataset.dir || 'up';
+  const release = () => arena?.setJoystick(0, 0);
+  button.addEventListener('pointerdown', event => { event.preventDefault(); arena?.setJoystick(vector[direction]!.x, vector[direction]!.y); });
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('pointerleave', release);
+}
+arena.start();
+
 if (spectating) {
   returnLink.href = '/arena';
   returnLink.textContent = 'RETURN TO ARENA';
@@ -329,7 +428,7 @@ if (spectating) {
   modeLabel.textContent = 'SPECTATING · READ ONLY';
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state?.status === 'playing') void load(); });
-window.addEventListener('pagehide', () => { stopped = true; if (timer) window.clearTimeout(timer); if (revealTimer) window.clearTimeout(revealTimer); });
+window.addEventListener('pagehide', () => { stopped = true; if (timer) window.clearTimeout(timer); if (revealTimer) window.clearTimeout(revealTimer); arena?.destroy(); });
 if (!duelId) { setStatus('THIS MATCH LINK IS INVALID', 'bad'); stopped = true; }
 else void load();
 export {};
