@@ -269,7 +269,7 @@ const server = http.createServer(async (req, res) => {
       if(req.method!=='GET')return json(res,405,{error:'Spectating is read-only'});
       return json(res,200,worldChallenges.spectate('main',duelSpectateRoute[1]));
     }
-    const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick|attack|dodge))?$/);
+    const duelRoute=route.match(/^\/api\/world\/duels\/(duel-[a-f0-9-]{36})(?:\/(move|pick|attack|block|dodge))?$/);
     if(duelRoute){
       const visitor=visitorSession(req),cookie=visitor.cookie?{'Set-Cookie':visitor.cookie}:{};
       if(!duelRoute[2]){
