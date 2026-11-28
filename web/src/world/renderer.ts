@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, FOUNTAIN, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, PLAZA_BENCHES, PLAZA_FLOOR, PLAZA_LAMPS, PLAZA_PLANTERS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -43,6 +43,25 @@ function grassNoise(x:number,y:number,scale:number,seed:number):number {
   return (a+(b-a)*sx)*(1-sy)+(c+(d-c)*sx)*sy;
 }
 function clamp01(value:number):number { return Math.max(0,Math.min(1,value)); }
+/** Crisp, pixel-stepped ellipse fill. Canvas path ellipses anti-alias; this keeps
+ * the plaza medallion and fountain water in the same hard-edged pixel language
+ * as the rest of the world. */
+function fillPixelEllipse(c:CanvasRenderingContext2D,cx:number,cy:number,rx:number,ry:number,color:string,step=2):void {
+  c.fillStyle=color;
+  for(let y=-ry;y<ry;y+=step){
+    const t=Math.max(0,1-(y/ry)*(y/ry));
+    const half=Math.round(rx*Math.sqrt(t));
+    if(half>0)c.fillRect(Math.round(cx-half),Math.round(cy+y),half*2,Math.min(step,ry-y));
+  }
+}
+/** A hard-edged diamond used for inlaid floor tiles and corner ornaments. */
+function fillDiamond(c:CanvasRenderingContext2D,cx:number,cy:number,radius:number,color:string):void {
+  c.fillStyle=color;
+  for(let y=-radius;y<=radius;y++){
+    const half=radius-Math.abs(y);
+    if(half>=0)c.fillRect(Math.round(cx-half),Math.round(cy+y),half*2+1,1);
+  }
+}
 /** Broad, softly blended tint field: a large region plus a smaller detail wave. */
 function tintField(x:number,y:number):number {
   return grassNoise(x,y,460,11)*0.62 + grassNoise(x,y,190,29)*0.38;
@@ -241,10 +260,16 @@ export class CanvasWorldRenderer implements WorldRenderer {
         if(!onPath(path.x+path.width+1,y+2))rect(path.x+path.width-4,y,4,Math.min(edgeStep,path.y+path.height-y),'#504a40');
       }
     }
+    // The plaza gets a designed stone floor after the roads so its borders,
+    // medallion and thresholds sit on top of the shared path network.
+    this.paintPlazaFloor(c);
     // Stable, visual-only texture. Coordinates are generated once from the
-    // central map data rather than changing on every frame or browser.
+    // central map data rather than changing on every frame or browser. The
+    // plaza carries its own authored wear, so random path specks skip it.
     const groundTones=['#5f574a','#807361','#91816a'];
+    const plazaRight=PLAZA_FLOOR.x+PLAZA_FLOOR.width,plazaBottom=PLAZA_FLOOR.y+PLAZA_FLOOR.height;
     for(const detail of GROUND_DETAILS){
+      if(detail.x>=PLAZA_FLOOR.x&&detail.x<plazaRight&&detail.y>=PLAZA_FLOOR.y&&detail.y<plazaBottom)continue;
       const color=groundTones[detail.tone]!;
       if(detail.kind==='stone'){rect(detail.x,detail.y,3,2,color);rect(detail.x+3,detail.y+1,2,2,'#514c42');}
       else if(detail.kind==='crack'){rect(detail.x,detail.y,5,1,color);rect(detail.x+3,detail.y+1,1,3,color);}
@@ -287,7 +312,10 @@ export class CanvasWorldRenderer implements WorldRenderer {
       }
     }
     // Fountain, table and archive use the same footprint as collision rectangles.
-    rect(500,340,112,64,'#8e8b6d');rect(508,348,96,48,'#416c6b');rect(542,330,28,44,'#aca37f');
+    this.paintFountainBase(c);
+    for(const lamp of PLAZA_LAMPS)this.paintLamp(c,lamp.x,lamp.y);
+    for(const bench of PLAZA_BENCHES)this.paintPlazaBench(c,bench.x,bench.y,bench.facing);
+    for(const planter of PLAZA_PLANTERS)this.paintPlanter(c,planter);
     rect(184,530,80,48,'#916d4e');rect(192,538,64,32,'#b29261');
     for(let n=1;n<3;n++){rect(204+n*12,542,2,24,'#493f38');rect(200,538+n*10,44,2,'#493f38');}
     rect(208,590,30,10,'#946f52');rect(208,511,30,10,'#946f52');
@@ -301,6 +329,7 @@ export class CanvasWorldRenderer implements WorldRenderer {
     }
     c.fillStyle='#e5dfab';c.font='bold 12px monospace';c.textAlign='center';c.fillText('ARENA STATISTICS',560,770);
     c.fillText('FREE TABLE',224,655);c.fillText('PLAZA',558,415);
+    c.fillStyle='#b89a5a';c.fillRect(534,419,44,2);
     // Trees share trunk collision; varied crowns keep the garden organic.
     const treePalettes=[['#496345','#56734b'],['#3e6145','#638052'],['#4d6440','#71804c']];
     for(const {x,y,scale=1,tint=0} of TREES){
@@ -377,6 +406,235 @@ export class CanvasWorldRenderer implements WorldRenderer {
     c.globalAlpha=1;
     rect(MAP.minX+32,MAP.minY+56,MAP.width-64,8,'#77705b');rect(MAP.minX+32,MAP.minY+MAP.height-40,MAP.width-64,8,'#77705b');
     rect(MAP.minX+32,MAP.minY+56,8,MAP.height-88,'#77705b');rect(MAP.minX+MAP.width-40,MAP.minY+56,8,MAP.height-88,'#77705b');
+  }
+  /**
+   * The plaza is the first constructed surface every visitor sees, so it gets
+   * authored stonework instead of one flat path fill: a running-bond flagstone
+   * field, a wide fountain medallion, a raised curb with road thresholds, and
+   * three decorative corner tiles. Everything is deterministic in world space.
+   */
+  private paintPlazaFloor(c:CanvasRenderingContext2D):void {
+    const {x,y,width,height}=PLAZA_FLOOR,right=x+width,bottom=y+height;
+    // A soft drop shadow outside the slab communicates a low raised platform.
+    c.fillStyle='#172a2544';
+    c.fillRect(x-4,y-4,width+8,4);c.fillRect(x-4,y-4,4,height+8);
+    c.fillRect(right,y-4,4,height+8);c.fillRect(x-4,bottom,width+8,4);
+    c.save();c.beginPath();c.rect(x,y,width,height);c.clip();
+    // Dark joints sit under every flagstone.
+    c.fillStyle='#4b453b';c.fillRect(x,y,width,height);
+    const tw=48,th=32,joint=2;
+    const tones=['#6b6254','#72695a','#665d50','#776d5e','#6e6556'];
+    for(let row=0;row<Math.ceil(height/th);row++){
+      const offset=(row%2)*tw/2;
+      for(let col=-1;col<Math.ceil(width/tw)+1;col++){
+        const tx=x+col*tw+offset,ty=y+row*th;
+        const left=Math.max(x,tx),top=Math.max(y,ty);
+        const edgeRight=Math.min(right,tx+tw),edgeBottom=Math.min(bottom,ty+th);
+        if(edgeRight<=left||edgeBottom<=top)continue;
+        const seed=hashUnit(col,row,101);
+        const base=tones[Math.floor(seed*tones.length)%tones.length]!;
+        c.fillStyle=base;c.fillRect(left+joint/2,top+joint/2,edgeRight-left-joint,edgeBottom-top-joint);
+        // A one-pixel bevel keeps every stone readable without adding noise.
+        c.fillStyle=shiftColor(base,12);
+        c.fillRect(left+joint/2,top+joint/2,edgeRight-left-joint,1);
+        c.fillRect(left+joint/2,top+joint/2,1,edgeBottom-top-joint);
+        c.fillStyle=shiftColor(base,-14);
+        c.fillRect(left+joint/2,edgeBottom-joint,edgeRight-left-joint,1);
+        c.fillRect(edgeRight-joint,top+joint/2,1,edgeBottom-top-joint);
+        const wear=hashUnit(col,row,131);
+        if(wear>0.9){
+          const wx=left+6+Math.floor(hashUnit(col,row,151)*Math.max(1,edgeRight-left-14));
+          const wy=top+6+Math.floor(hashUnit(col,row,167)*Math.max(1,edgeBottom-top-14));
+          c.fillStyle=shiftColor(base,8);c.fillRect(wx,wy,7,2);c.fillRect(wx+3,wy+2,5,1);
+        }else if(wear<0.06){
+          const cx2=left+8+Math.floor(hashUnit(col,row,181)*Math.max(1,edgeRight-left-18));
+          const cy2=top+7+Math.floor(hashUnit(col,row,193)*Math.max(1,edgeBottom-top-16));
+          c.fillStyle='#4a443a';c.fillRect(cx2,cy2,5,1);c.fillRect(cx2+4,cy2+1,1,3);c.fillRect(cx2+5,cy2+4,3,1);
+        }
+      }
+    }
+    // A wide architectural medallion centred on the fountain. Filled rings keep
+    // the edge hard and pixel-stepped instead of a smooth vector ellipse.
+    const mcx=FOUNTAIN.x+FOUNTAIN.width/2,mcy=FOUNTAIN.y+52;
+    for(const [rx,ry,color] of [[158,92,'#514b40'],[152,87,'#7b7160'],[146,82,'#5c5549'],
+      [132,74,'#6a6153'],[124,68,'#7b7160'],[116,62,'#61594c']] as [number,number,string][])fillPixelEllipse(c,mcx,mcy,rx,ry,color,2);
+    // Gold cardinal inlays and eight alternating diamonds mark the approaches.
+    c.fillStyle='#b89a5a';
+    for(const [dx,dy] of [[0,-84],[0,84],[-140,0],[140,0]] as [number,number][]){c.fillRect(mcx+dx-3,mcy+dy-1,6,3);c.fillRect(mcx+dx-1,mcy+dy-3,3,6);}
+    for(let i=0;i<8;i++){
+      const angle=i*Math.PI/4;
+      fillDiamond(c,Math.round(mcx+Math.cos(angle)*138),Math.round(mcy+Math.sin(angle)*84),5,i%2?'#a99d83':'#4e483d');
+      for(let r=82;r<=126;r+=11){
+        const px=Math.round(mcx+Math.cos(angle)*r),py=Math.round(mcy+Math.sin(angle)*(r*0.6));
+        c.fillStyle=i%2?'#857a66':'#6d6455';c.fillRect(px-1,py-1,3,3);
+      }
+    }
+    // Moss gathers in a few sheltered joints at the medallion edge.
+    for(const [mx,my] of [[430,340],[680,450],[470,470],[650,320]] as [number,number][]){
+      c.fillStyle='#4c6548';c.fillRect(mx,my,4,2);c.fillRect(mx+2,my-1,2,2);
+    }
+    // Raised curb. Road entries keep deliberate gaps so the plaza never reads
+    // as a sealed box: north, west, east and the wide southern market road.
+    const band=(bx:number,by:number,bw:number,bh:number)=>{
+      if(bw<=0||bh<=0)return;
+      c.fillStyle='#3f3a33';c.fillRect(bx,by,bw,bh);
+      c.fillStyle='#857a66';c.fillRect(bx+2,by+2,Math.max(0,bw-4),Math.max(0,bh-4));
+      c.fillStyle='#575044';c.fillRect(bx+4,by+4,Math.max(0,bw-8),Math.max(0,bh-8));
+      c.fillStyle='#3f3a33';
+      if(bw>=bh)for(let jx=bx+24;jx<bx+bw;jx+=24)c.fillRect(jx,by+1,1,bh-2);
+      else for(let jy=by+24;jy<by+bh;jy+=24)c.fillRect(bx+1,jy,bw-2,1);
+    };
+    const topGap=[520,632] as const,sideGap=[420,504] as const,bottomGapEnd=756;
+    band(x,y,topGap[0]-x,10);band(topGap[1],y,right-topGap[1],10);
+    band(x,y,10,sideGap[0]-y);band(x,sideGap[1],10,bottom-sideGap[1]);
+    band(right-10,y,10,sideGap[0]-y);band(right-10,sideGap[1],10,bottom-sideGap[1]);
+    band(bottomGapEnd,bottom-10,right-bottomGapEnd,10);
+    // Cobbled thresholds soften the change from dirt road to plaza stone.
+    const cobble=(bx:number,by:number,bw:number,bh:number)=>{
+      c.fillStyle='#544d42';c.fillRect(bx,by,bw,bh);
+      for(let jy=0;jy<bh;jy+=8)for(let jx=0;jx<bw;jx+=8){
+        const tone=['#6e6556','#776d5e','#655c4f'][(jx/8+jy/8)%3]!;
+        c.fillStyle=tone;c.fillRect(bx+jx+1,by+jy+1,Math.max(0,Math.min(6,bw-jx-1)),Math.max(0,Math.min(6,bh-jy-1)));
+      }
+    };
+    cobble(520,300,112,12);cobble(392,420,12,84);cobble(1140,420,12,84);cobble(392,848,364,12);
+    // Three decorated corner tiles. The south-west corner is the market road
+    // mouth, so it stays open instead of growing a decorative block.
+    for(const [cx,cy] of [[x+16,y+16],[right-16,y+16],[right-16,bottom-16]] as [number,number][]){
+      c.fillStyle='#4b453b';c.fillRect(cx-16,cy-16,32,32);
+      c.fillStyle='#7b7160';c.fillRect(cx-13,cy-13,26,26);
+      fillDiamond(c,cx,cy,9,'#a99d83');fillDiamond(c,cx,cy,4,'#5c5549');
+      c.fillStyle='#b89a5a';c.fillRect(cx-12,cy-12,2,2);c.fillRect(cx+10,cy-12,2,2);c.fillRect(cx-12,cy+10,2,2);c.fillRect(cx+10,cy+10,2,2);
+    }
+    c.restore();
+  }
+  /**
+   * A three-tier stone fountain inside the original 112x64 collision footprint.
+   * The static body is painted once; falling water, ripples and glints animate
+   * in render() only while the fountain is on screen.
+   */
+  private paintFountainBase(c:CanvasRenderingContext2D):void {
+    const {x,y,width,height}=FOUNTAIN;
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172a2555';c.beginPath();c.ellipse(x+width/2,y+height+6,66,13,0,0,Math.PI*2);c.fill();
+    // Octagonal basin: top, shoulders, sides and a shadowed bottom lip.
+    rect(8,0,96,8,'#7d7361');rect(4,4,4,4,'#746b5b');rect(104,4,4,4,'#746b5b');
+    rect(0,8,8,48,'#6f6657');rect(104,8,8,48,'#6f6657');
+    rect(4,56,4,4,'#655c4f');rect(104,56,4,4,'#655c4f');rect(8,56,96,8,'#5f574a');
+    // Rim light and underside shadow.
+    rect(8,0,96,2,'#9a907b');rect(0,8,3,48,'#8a806d');rect(105,8,3,48,'#5a5347');rect(8,59,96,3,'#4a443a');
+    // Cut stone joints around the rim.
+    for(let bx=12;bx<104;bx+=12){rect(bx,2,1,5,'#5c5549');rect(bx+1,1,10,1,'#8f8570');}
+    for(let by=12;by<56;by+=10){rect(1,by,4,1,'#5c5549');rect(107,by,4,1,'#4e483d');}
+    // Inner shadow and the basin water.
+    rect(10,10,92,44,'#4b453b');
+    rect(12,12,88,40,'#2f5557');rect(14,14,84,36,'#356164');
+    rect(16,18,80,3,'#3f7273');rect(16,30,80,2,'#3f7273');rect(16,40,80,3,'#4d8583');
+    rect(22,16,30,1,'#5d9690');rect(58,26,34,1,'#5d9690');
+    rect(52,14,8,36,'#4d8583');
+    // Moss on the sheltered north-west rim and the south-east foot.
+    rect(10,4,10,3,'#4c6548');rect(14,2,6,2,'#55704b');rect(98,50,8,3,'#4c6548');rect(6,34,2,6,'#55704b');rect(104,22,2,5,'#55704b');
+    // Middle tier: pedestal, bowl and the shadow it throws into the water.
+    rect(34,48,44,6,'#24484a');
+    rect(38,30,36,22,'#6f6657');rect(36,28,40,4,'#8a806d');rect(38,26,36,3,'#9a907b');
+    rect(40,32,32,16,'#7a7161');
+    rect(44,34,2,12,'#5a5347');rect(54,34,2,12,'#5a5347');rect(64,34,2,12,'#5a5347');
+    rect(36,20,40,8,'#7d7361');rect(38,19,36,3,'#9a907b');
+    rect(40,23,32,5,'#3f7273');rect(42,24,28,2,'#4d8583');
+    // Upper tier: narrower pedestal, bowl and carved finial.
+    rect(44,14,24,6,'#2c4c4d');
+    rect(46,12,20,12,'#7a7161');rect(44,10,24,3,'#948a75');
+    rect(50,14,2,8,'#5a5347');rect(58,14,2,8,'#5a5347');
+    rect(44,6,24,7,'#8a806d');rect(46,4,20,3,'#a99d83');
+    rect(48,7,16,4,'#3f7273');rect(50,8,12,2,'#5d9690');
+    rect(52,0,8,5,'#948a75');rect(50,-1,12,2,'#a99d83');rect(54,1,4,2,'#d8b865');
+    // Carved gold inlay and small stone studs around the base.
+    rect(30,1,6,2,'#b89a5a');rect(76,1,6,2,'#b89a5a');
+    for(const [dx,dy] of [[14,54],[26,54],[74,54],[86,54]] as [number,number][])rect(dx,dy,6,4,'#857a66');
+    // Fine weathering and cracks keep the stone from reading as a clean box.
+    rect(18,46,4,1,'#4b453b');rect(21,47,1,3,'#4b453b');rect(90,14,3,1,'#4b453b');
+  }
+  /** Animated fountain water: four falling sheets, expanding ripples, glints. */
+  private paintFountainWater(c:CanvasRenderingContext2D,time:number,reduced:boolean):void {
+    const cx=FOUNTAIN.x+FOUNTAIN.width/2,top=FOUNTAIN.y;
+    const phase=reduced?0:Math.floor(time/90)%8;
+    const streams:Array<[number,number,number,string]>=[
+      [cx-12,top+10,top+22,'#7fc0b7'],[cx+12,top+10,top+22,'#5d9690'],
+      [cx-18,top+30,top+50,'#7fc0b7'],[cx+18,top+30,top+50,'#5d9690'],
+    ];
+    for(const [sx,sy,ey,color] of streams){
+      for(let sy2=sy;sy2<ey;sy2+=4){
+        c.fillStyle=(sy2+phase*3)%8<4?color:'#3f7273';
+        c.fillRect(sx,Math.round(sy2),2,3);
+      }
+      c.fillStyle='#cfe9df';c.fillRect(sx-1,ey,4,1);
+      if(!reduced){c.fillStyle='#8fc4bb';c.fillRect(sx+(phase%3)-1,ey+1,1,1);}
+    }
+    // Slow, low-alpha ripples on the basin surface.
+    const ripples=reduced?[0.5]:[0,0.33,0.66];
+    c.strokeStyle='#9fd6cb';c.lineWidth=1;
+    for(const ripple of ripples){
+      const t=((time/2600)+ripple)%1,r=8+t*34;
+      c.globalAlpha=Math.max(0,0.28*(1-t));
+      c.beginPath();c.ellipse(cx,FOUNTAIN.y+40,r,r*0.3,0,0,Math.PI*2);c.stroke();
+    }
+    c.globalAlpha=1;
+    // Small reflections and glints that move a little more slowly than the water.
+    const glint=reduced?0:Math.floor(time/420)%3;
+    c.fillStyle='#cfe9df';c.fillRect(cx-22+glint*7,FOUNTAIN.y+38,2,1);c.fillRect(cx+12-glint*5,FOUNTAIN.y+30,3,1);
+    c.fillStyle='#8fc4bb';c.fillRect(cx-4,FOUNTAIN.y+46,2,2);
+    if(!reduced){
+      const jet=Math.floor(time/120)%4;
+      c.fillStyle='#cfe9df';c.fillRect(cx-1,top-2-jet,2,2);
+      c.fillStyle='#8fc4bb';c.fillRect(cx-3,top-4-jet,1,1);c.fillRect(cx+2,top-3-jet,1,1);
+    }
+  }
+  /** Decorative iron lamp with a warm lantern and a mossy stone foot. */
+  private paintLamp(c:CanvasRenderingContext2D,x:number,y:number):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172a2555';c.beginPath();c.ellipse(x,y+4,10,4,0,0,Math.PI*2);c.fill();
+    rect(-7,-2,14,6,'#6f6657');rect(-5,-5,10,4,'#857a66');rect(-6,-4,12,2,'#9a907b');
+    rect(-2,-34,4,30,'#3a403d');rect(-1,-34,2,30,'#59635c');rect(-4,-36,8,3,'#4a514b');
+    rect(-7,-50,14,14,'#3a403d');rect(-5,-48,10,10,'#f0c36f');rect(-4,-47,8,8,'#f6d99a');
+    rect(-6,-52,12,3,'#59635c');rect(-3,-54,6,2,'#857a66');rect(-2,-45,4,4,'#fff0b8');
+    rect(-1,-57,2,3,'#b89a5a');rect(-8,-40,2,5,'#4a514b');rect(6,-40,2,5,'#4a514b');
+    rect(-7,-1,4,2,'#4c6548');rect(4,-2,3,2,'#55704b');
+  }
+  /** Plaza bench with slatted wood, iron legs and a backrest facing the plaza. */
+  private paintPlazaBench(c:CanvasRenderingContext2D,x:number,y:number,facing:'left'|'right'|'down'):void {
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172a2555';c.beginPath();c.ellipse(x,y+6,16,5,0,0,Math.PI*2);c.fill();
+    if(facing==='down'){
+      rect(-13,-6,26,8,'#6b4f36');rect(-11,-7,22,3,'#8a6847');
+      rect(-13,2,3,5,'#3d3c30');rect(10,2,3,5,'#3d3c30');
+      rect(-13,-12,26,3,'#5a402b');rect(-11,-14,22,3,'#7d5c40');
+      rect(-9,-4,4,2,'#a17b4f');rect(0,-4,4,2,'#a17b4f');rect(8,-4,3,2,'#a17b4f');
+    }else{
+      const back=facing==='left'?1:-1;
+      rect(-14,-5,28,8,'#6b4f36');rect(-12,-6,24,3,'#8a6847');
+      rect(-14,3,3,4,'#3d3c30');rect(11,3,3,4,'#3d3c30');
+      rect(back*13,-14,3,14,'#5a402b');rect(back*13,-14,3,3,'#7d5c40');
+      rect(-12,-11,24,3,'#7d5c40');
+      rect(back*13,-2,3,4,'#3d3c30');
+      rect(-10,-4,4,2,'#a17b4f');rect(-2,-4,4,2,'#a17b4f');rect(6,-4,3,2,'#a17b4f');
+    }
+  }
+  /** Stone flower planter with a soil bed and a small, deterministic bloom. */
+  private paintPlanter(c:CanvasRenderingContext2D,planter:{x:number;y:number;width:number;height:number;tone:0|1|2}):void {
+    const {x,y,width,height,tone}=planter;
+    const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
+    c.fillStyle='#172a2555';c.beginPath();c.ellipse(x+width/2,y+height+2,width/2+3,4,0,0,Math.PI*2);c.fill();
+    const stone=['#6f6657','#756b5b','#685f51'][tone]!;
+    rect(0,0,width,height,stone);
+    rect(0,0,width,3,'#8a806d');rect(0,height-2,width,2,'#4f483e');
+    rect(2,3,width-4,height-5,'#4a3a2c');
+    for(let i=0;i<5;i++){
+      const fx=4+i*4,fy=5+(i%2)*3;
+      rect(fx,fy,2,4,'#597d48');
+      rect(fx-1,fy-2,4,3,['#f2c982','#d29dbb','#dce4a0'][(i+tone)%3]!);
+      if(i%2===0)rect(fx+1,fy+1,1,1,'#f6e6b0');
+    }
+    rect(2,0,2,2,'#9a907b');rect(width-4,0,2,2,'#9a907b');
   }
   private paintCave(c:CanvasRenderingContext2D,x:number,y:number,index:number,facing:'north'|'south'|'east'|'west'):void {
     const rect=(dx:number,dy:number,w:number,h:number,color:string)=>{c.fillStyle=color;c.fillRect(x+dx,y+dy,w,h);};
@@ -523,6 +781,20 @@ export class CanvasWorldRenderer implements WorldRenderer {
           c.fillRect(x-7+drift,y-15-rise,ember===2?1:2,1+(ember%2));
         }
       }
+    }
+    // Fountain water is painted per frame so the fall, ripples and glints can
+    // move without repainting the whole offscreen surface.
+    if(FOUNTAIN.x+FOUNTAIN.width>frame.camera.x-48&&FOUNTAIN.x<frame.camera.x+width+48
+      &&FOUNTAIN.y+FOUNTAIN.height>frame.camera.y-48&&FOUNTAIN.y<frame.camera.y+height+48)
+      this.paintFountainWater(c,frame.time,reduced);
+    // Lamps cast a soft warm pool of light. The body is baked into the chunk;
+    // only the light and a slow flicker live here.
+    for(const {x,y} of PLAZA_LAMPS){
+      if(x<frame.camera.x-70||x>frame.camera.x+width+70||y<frame.camera.y-70||y>frame.camera.y+height+70)continue;
+      const flicker=reduced?0:Math.round(Math.sin((frame.time+x*7+y*3)/520)*2);
+      const glow=c.createRadialGradient(x,y-44,2,x,y-44,30+flicker);
+      glow.addColorStop(0,'#f6d99a30');glow.addColorStop(0.5,'#f0c36f18');glow.addColorStop(1,'#f0c36f00');
+      c.fillStyle=glow;c.fillRect(x-34,y-78,68,68);
     }
     if(!reduced)for(const site of EXPLORATION_SITES){
       if(site.kind!=='cave')continue;

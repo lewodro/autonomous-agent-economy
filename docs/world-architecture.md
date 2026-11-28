@@ -42,6 +42,12 @@ The discovery journal is opened from the minimap footer or the header menu and g
 
 Discovery state is stored under `agent-world-discoveries-v1` in `localStorage`, the same visitor-local mechanism used by world settings. It follows this browser, not a signed-in public-world account; linking discoveries to account persistence is explicitly out of scope for this pass. The minimap plots nearby humans only (within 760 world pixels) and never canonical agents or exact resource spawns.
 
+## Plaza and first steps
+
+The central plaza keeps its original footprint (`PLAZA_FLOOR`) but now paints designed flagstones, a fountain medallion, a raised curb with road thresholds and decorated corner tiles. The three-tier fountain uses `FOUNTAIN` for both art and collision; falling water, ripples and glints are the only per-frame water work, and reduce to a static pose under `prefers-reduced-motion`. Lamps, benches and planters are authored in `map.ts` with matching collision rectangles, placed clear of the canonical NPC route and click-to-move probes.
+
+A new visitor's first-steps tour is a local, non-gating guide stored under `agent-world-plaza-tour-v1`. It points at the fountain, Arena door and Bazaar in turn, yields to farm errands, and can be skipped from the intro card. The fountain is an ordinary interactable landmark, so no game state or reward depends on completing the tour.
+
 ## Village and market
 
 The expanded ground is organized as a small settlement rather than a set of disconnected decorative strips. A centralized path list joins the original plaza to west cottages, northern homes, the Agency, botanical garden and south market. The renderer computes the visible edge of the combined road network, so overlapping path rectangles form one road and never draw seams through the plaza. Eleven compact houses sit near road endpoints while preserving open multiplayer space.

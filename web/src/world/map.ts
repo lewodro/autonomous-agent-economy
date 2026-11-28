@@ -103,6 +103,14 @@ export const ZONES: Record<WorldZone, Rect> = {
   campfire_clearing:{x:1930,y:660,width:340,height:280},
   market:{x:280,y:1120,width:1240,height:530},
 };
+/**
+ * The authored central plaza floor. The renderer paints its stonework inside
+ * this rectangle, and the first path entry keeps using the same geometry so
+ * collision, minimap projection and the original layout stay unchanged.
+ */
+export const PLAZA_FLOOR: Rect = { x: 392, y: 300, width: 760, height: 560 };
+/** The fountain footprint is shared by collision, art, floor medallion and tests. */
+export const FOUNTAIN: Rect = { x: 500, y: 340, width: 112, height: 64 };
 export type BuildingKind = 'major'|'house'|'stall';
 export interface Building extends Rect { name:string;color:string;roof?:string;accent?:string;kind?:BuildingKind }
 export const BUILDINGS: Building[] = [
@@ -233,7 +241,7 @@ export const OUTER_LOOP_PATHS: WorldPath[] = [
   {x:1978,y:866,width:OUTER_LOOP.right+28-1978,height:56,color:'#786b55'},
 ];
 export const PATHS: WorldPath[] = [
-  {x:392,y:300,width:760,height:560},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},
+  {...PLAZA_FLOOR},{x:72,y:420,width:1024,height:84},{x:860,y:300,width:112,height:400},
   {x:140,y:494,width:148,height:152},{x:480,y:688,width:160,height:140},{x:-730,y:420,width:802,height:84},
   {x:520,y:-420,width:112,height:720},{x:392,y:860,width:364,height:620},
   // One 84 px road leaves the plaza. Its north spur reaches the Agency door;
@@ -283,6 +291,32 @@ export interface MarketProp extends Position {kind:'well'|'sign'|'crates'|'barre
 export const MARKET_PROPS: MarketProp[] = [
   {x:900,y:1392,kind:'well'},{x:710,y:1090,kind:'sign'},{x:548,y:1268,kind:'crates'},
   {x:1190,y:1465,kind:'barrels'},{x:1080,y:1290,kind:'crates'},{x:665,y:1460,kind:'barrels'},
+];
+/** Plaza furniture is authored, not generated: every piece has a reason to be there. */
+export interface PlazaBench extends Position { facing:'left'|'right'|'down' }
+export interface PlazaPlanter extends Position { width:number; height:number; tone:0|1|2 }
+export const PLAZA_LAMPS: Position[] = [
+  {x:411,y:342},{x:683,y:354},{x:411,y:698},{x:1099,y:698},{x:699,y:822},{x:1039,y:822},
+];
+export const PLAZA_BENCHES: PlazaBench[] = [
+  {x:480,y:446,facing:'right'},{x:652,y:458,facing:'left'},
+  {x:700,y:686,facing:'left'},{x:1112,y:574,facing:'left'},
+];
+export const PLAZA_PLANTERS: PlazaPlanter[] = [
+  {x:394,y:362,width:24,height:14,tone:0},{x:626,y:342,width:24,height:14,tone:1},
+  {x:394,y:594,width:24,height:14,tone:2},{x:1106,y:394,width:24,height:14,tone:0},
+  {x:1106,y:594,width:24,height:14,tone:1},{x:458,y:694,width:24,height:14,tone:2},
+  {x:646,y:694,width:24,height:14,tone:0},{x:746,y:814,width:24,height:14,tone:1},
+];
+/**
+ * The first-visit route. It only points; it never gates movement or awards
+ * anything. Steps complete when the visitor walks into their radius.
+ */
+export interface PlazaTourStep { id:'fountain'|'arena'|'bazaar'; label:string; target:Position; radius:number; notice:string }
+export const PLAZA_TOUR: PlazaTourStep[] = [
+  {id:'fountain',label:'See the fountain',target:{x:FOUNTAIN.x+FOUNTAIN.width/2,y:FOUNTAIN.y+FOUNTAIN.height/2},radius:58,notice:'FIRST STEPS · THE FOUNTAIN'},
+  {id:'arena',label:'Find the Arena door',target:{x:928,y:674},radius:78,notice:'FIRST STEPS · THE ARENA'},
+  {id:'bazaar',label:'Visit the Bazaar',target:{x:681,y:1292},radius:80,notice:'FIRST STEPS · THE BAZAAR'},
 ];
 function overlaps(rect:Rect,point:Position,radius:number):boolean {
   return point.x+radius>rect.x&&point.x-radius<rect.x+rect.width&&point.y+radius>rect.y&&point.y-radius<rect.y+rect.height;
@@ -643,9 +677,13 @@ export const EXPLORATION_PROBES = {
 } satisfies Record<string,Position>;
 const TREE_TRUNKS: Rect[] = TREES.map(({x,y,scale=1})=>({x,y:y+24*scale,width:12*scale,height:28*scale}));
 export const WALLS: Rect[] = [...BUILDINGS,
-  { x: 500, y: 340, width: 112, height: 64 }, // plaza fountain
+  { ...FOUNTAIN }, // plaza fountain
   { x: 184, y: 530, width: 80, height: 48 }, // free table
   { x: 480, y: 720, width: 160, height: 32 }, // archive terminal
+  // Plaza furniture keeps the floor readable without blocking the main routes.
+  ...PLAZA_LAMPS.map(({x,y})=>({x:x-5,y:y-4,width:10,height:12})),
+  ...PLAZA_BENCHES.map(({x,y,facing})=>({x:x-(facing==='down'?11:14),y:y-4,width:facing==='down'?22:28,height:12})),
+  ...PLAZA_PLANTERS.map(({x,y,width,height})=>({x,y,width,height})),
   ...TREE_TRUNKS,
   ...BUSHES.filter(bush=>bush.solid).map(({x,y,size})=>({x:x-size/2,y:y-size/3,width:size,height:size/2})),
   ...ROCKS.map(({x,y})=>({x:x-12,y:y-8,width:24,height:16})),
@@ -654,6 +692,7 @@ export const WALLS: Rect[] = [...BUILDINGS,
 ];
 export const LANDMARKS: Interactable[] = [
   { id: 'arena-door', type: 'arena', position: { x: 928, y: 674 }, radius: 72, label: 'Enter Arena' },
+  { id: 'plaza-fountain', type: 'zone', position: { x: 556, y: 420 }, radius: 40, label: 'Inspect the fountain', prompt: 'Inspect the fountain' },
   { id: 'plaza-table', type: 'table', position: { x: 224, y: 609 }, radius: 68, label: 'Sit · free Tic-Tac-Toe' },
   { id: 'archive', type: 'research', position: { x: 560, y: 790 }, radius: 64, label: 'Open arena statistics' },
   { id: 'forest-clearing', type: 'zone', position: { x: 1280, y: 500 }, radius: 86, label: 'Explore forest clearing' },
