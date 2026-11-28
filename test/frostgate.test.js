@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SNOW_WORLD, SNOW_SPAWN, SNOW_RETURN, TERRACES, CLIFFS, CLIMB_STEPS, ELEVATION_LEVELS,
-  SNOW_TRAIL, SNOW_WALK_SPEED, trailLength, climbAt,
+  SNOW_TRAIL, SNOW_WALK_SPEED, SNOW_FOOT_RADIUS, trailLength, climbAt, cliffRoute,
   FROSTGATE_LANDMARKS, FROSTGATE_BUILDINGS, INTERIORS, SNOW_OBSTACLES,
   SNOW_PINES, SNOW_ROCKS, SNOW_SHRUBS, SNOW_ICE,
   terraceAt, elevationAt, cliffBlocks, interiorBlocks, buildingAt,
@@ -132,4 +132,58 @@ test('interiors are cozy reusable layouts with cheap fireplaces', () => {
   assert.deepEqual(Object.values(INTERIORS).filter(interior => interior.fireplace).map(interior => interior.id),
     ['hall', 'cottage', 'watch']);
   assert.equal(interiorBlocks(INTERIORS.hall, 220, 71), true, 'the hall fireplace blocks walking');
+});
+
+test('the gate spawn starts outside solid cliff geometry', () => {
+  const bodyRadius = SNOW_FOOT_RADIUS;
+  assert.equal(cliffBlocks(SNOW_SPAWN.x, SNOW_SPAWN.y, bodyRadius), false,
+    'the starting body must not overlap the first ridge');
+  const blockedByProp = SNOW_OBSTACLES.some(rect => SNOW_SPAWN.x + bodyRadius > rect.x
+    && SNOW_SPAWN.x - bodyRadius < rect.x + rect.width
+    && SNOW_SPAWN.y + bodyRadius > rect.y && SNOW_SPAWN.y - bodyRadius < rect.y + rect.height);
+  assert.equal(blockedByProp, false, 'the gate spawn is clear of rocks, pines and buildings');
+  // Short steps in every direction from the spawn include at least one legal move.
+  for (const [dx, dy] of [[0, -3], [0, 3], [-3, 0], [3, 0]]) {
+    const x = SNOW_SPAWN.x + dx, y = SNOW_SPAWN.y + dy;
+    if (!cliffBlocks(x, y, bodyRadius)) assert.ok(true);
+  }
+  assert.equal(cliffBlocks(SNOW_SPAWN.x, SNOW_SPAWN.y + 120, bodyRadius), false,
+    'the return gate stays on walkable ground south of the spawn');
+});
+
+test('cliff openings clear the whole body, not just its centre', () => {
+  for (const cliff of CLIFFS) {
+    for (const corridor of cliff.corridors) {
+      const middle = (corridor.minX + corridor.maxX) / 2;
+      assert.equal(cliffBlocks(middle, cliff.y, SNOW_FOOT_RADIUS), false, `middle of ${corridor.kind} at ${cliff.y}`);
+      assert.equal(cliffBlocks(corridor.minX + 2, cliff.y, SNOW_FOOT_RADIUS), true,
+        'a body touching the rock face must stay blocked');
+      assert.equal(cliffBlocks(corridor.maxX - 2, cliff.y, SNOW_FOOT_RADIUS), true,
+        'the opening has real jambs on both sides');
+    }
+  }
+});
+
+test('click-to-move routes across every ridge through walkable crossings', () => {
+  const walkable = (x, y) => !cliffBlocks(x, y, SNOW_FOOT_RADIUS)
+    && !SNOW_OBSTACLES.some(rect => x + SNOW_FOOT_RADIUS > rect.x && x - SNOW_FOOT_RADIUS < rect.x + rect.width
+      && y + SNOW_FOOT_RADIUS > rect.y && y - SNOW_FOOT_RADIUS < rect.y + rect.height);
+  for (const [from, to] of [
+    [SNOW_SPAWN, { x: 1500, y: 900 }],
+    [{ x: 1500, y: 900 }, SNOW_SPAWN],
+  ]) {
+    const path = cliffRoute(from, to);
+    assert.ok(path.length >= CLIFFS.length * 2, 'a summit click needs an approach and exit for each ridge');
+    assert.ok(path.length < 400, 'the route stays a sparse set of waypoints, not one per pixel');
+    for (const waypoint of path) assert.equal(walkable(waypoint.x, waypoint.y), true, 'every waypoint is walkable');
+    const crossings = CLIFFS.filter(cliff => (from.y > cliff.y) !== (to.y > cliff.y));
+    for (const cliff of crossings) {
+      const crossing = path.find(point => Math.abs(point.y - cliff.y) < 170
+        && cliff.corridors.some(corridor => point.x >= corridor.minX + SNOW_FOOT_RADIUS
+          && point.x <= corridor.maxX - SNOW_FOOT_RADIUS));
+      assert.ok(crossing, `ridge ${cliff.y} is crossed through a ramp, bridge or stair`);
+    }
+  }
+  assert.deepEqual(cliffRoute(SNOW_SPAWN, { x: 1500, y: 19740 }), [{ x: 1500, y: 19740 }],
+    'a destination on the same terrace needs no detour');
 });

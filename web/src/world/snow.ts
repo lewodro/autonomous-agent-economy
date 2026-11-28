@@ -12,7 +12,7 @@ import { drawActorSprite } from './renderer.js';
 import { loadDiscoveries, saveDiscoveries } from './explore.js';
 import {
   SNOW_WORLD, SNOW_SPAWN, SNOW_RETURN, SNOW_RETURN_RADIUS, SNOW_WALK_SPEED, SNOW_FOOT_RADIUS,
-  TERRACES, CLIFFS, CLIMB_STEPS, SNOW_TRAIL, terraceAt, elevationAt, regionAtElevation, cliffBlocks, climbAt,
+  TERRACES, CLIFFS, CLIMB_STEPS, SNOW_TRAIL, terraceAt, elevationAt, regionAtElevation, cliffBlocks, climbAt, cliffRoute,
   FROSTGATE_LANDMARKS, FROSTGATE_BUILDINGS, INTERIORS, SNOW_OBSTACLES,
   SNOW_PINES, SNOW_ROCKS, SNOW_SHRUBS, SNOW_ICE,
   interiorBlocks, buildingAt,
@@ -62,7 +62,7 @@ let local: Position = { ...SNOW_SPAWN };
 let camera: Position = { x: 0, y: 0 };
 let facing: 'up' | 'down' | 'left' | 'right' = 'up';
 let moving = false, stopped = false, lastFrame = performance.now();
-let moveTarget: Position | null = null, toastUntil = 0;
+let moveTarget: Position | null = null, movePath: Position[] = [], toastUntil = 0;
 let snowfall: Array<{ x: number; y: number; speed: number; drift: number; size: number }> = [];
 let health = PLAYER_MAX_HP;
 let safeSpot: Position = { ...SNOW_SPAWN };
@@ -188,7 +188,7 @@ function takeDamage(amount: number): void {
   health = PLAYER_MAX_HP;
   local = { ...safeSpot };
   camera = cameraFor(local);
-  moveTarget = null; attackTargetId = null;
+  clearMove(); attackTargetId = null;
   flash('THE COLD TAKES YOU · BACK AT THE LAST HEARTH');
 }
 function returnToWorld(): void {
@@ -208,7 +208,7 @@ function enterBuilding(id: string): void {
   activeInterior = interior;
   mode = 'interior';
   local = { ...interior.entry };
-  moveTarget = null;
+  clearMove();
   camera = cameraFor(local);
   flash(`${interior.label} · WARM INSIDE`);
   updateHud();
@@ -220,7 +220,7 @@ function exitBuilding(): void {
   activeInterior = null;
   activeDoor = null;
   exteriorReturn = null;
-  moveTarget = null;
+  clearMove();
   camera = cameraFor(local);
   updateHud();
 }
@@ -280,33 +280,56 @@ function paintExteriorSurface(c: CanvasRenderingContext2D, bounds: Bounds): void
       else if (sample < .12) paint(gx + 19, gy + 20, 6, 3, shade(terrace.snow, -9));
     }
   }
-  // Cliff faces, retaining walls and the ramps that cut through them.
+  // Cliff faces, retaining walls and the ramps that cut through them. Stone is
+  // derived from each terrace's own palette; snow caps and shadows are dithered
+  // so the walls read as part of the mountain rather than a hard colour band.
   for (const cliff of CLIFFS) {
     for (let gx = Math.floor(bounds.x / 24) * 24; gx < right; gx += 24) {
       if (gx < bounds.x - 24 || gx > right) continue;
-      const corridor = cliff.corridors.find(span => gx >= span.minX - 12 && gx <= span.maxX + 12);
+      const corridor = cliff.corridors.find(span => gx + 12 >= span.minX - 12 && gx <= span.maxX + 24);
       if (corridor) continue;
       const terrace = terraceAt(cliff.y - 20), lower = terraceAt(cliff.y + 20);
-      const wobble = (snowNoise(gx, cliff.y, 120, 97) - 0.5) * 10;
-      paint(gx, cliff.y - 16 + wobble, 24, 30, terrace.stone);
-      paint(gx, cliff.y - 16 + wobble, 24, 5, '#e8f3f8');
-      paint(gx, cliff.y - 6 + wobble, 24, 3, shade(terrace.stone, -14));
-      paint(gx, cliff.y + 14 + wobble, 24, 6, lower.shadow);
-      for (let seam = 0; seam < 3; seam++) paint(gx + 4 + seam * 7, cliff.y - 6 + wobble, 2, 12, shade(terrace.stone, -10));
+      const wobble = Math.round((snowNoise(gx, cliff.y, 120, 97) - 0.5) * 8);
+      const face = shade(terrace.stone, -5 + (gx % 48 === 0 ? 3 : 0));
+      paint(gx, cliff.y - 17 + wobble, 24, 32, face);
+      // Layered cap: stone lip, then a broken snow shelf, never one white line.
+      paint(gx, cliff.y - 17 + wobble, 24, 4, shade(terrace.stone, 9));
+      paint(gx + (gx % 48 === 0 ? 3 : 0), cliff.y - 18 + wobble, 21, 3, shade(terrace.snow, -5));
+      paint(gx + 6, cliff.y - 18 + wobble, 10, 2, shade(terrace.snow, 3));
+      // Weathered seams and a soft lower step into the terrace below.
+      for (let seam = 0; seam < 3; seam++) {
+        const offset = seam % 2 === 0 ? 0 : 3;
+        paint(gx + 4 + seam * 7 + offset, cliff.y - 7 + wobble, 2, 11, shade(terrace.stone, -13));
+        if (hashUnit(gx, cliff.y + seam, 91) > .72) paint(gx + 6 + seam * 7, cliff.y - 5 + wobble, 2, 2, shade(terrace.accent, 6));
+      }
+      paint(gx, cliff.y + 12 + wobble, 24, 3, shade(face, -8));
+      paint(gx, cliff.y + 15 + wobble, 24, 3, shade(lower.shadow, 4));
+      if (hashUnit(gx, cliff.y, 33) > .68) paint(gx + 15, cliff.y + 9 + wobble, 3, 2, shade(terrace.snow, -8));
     }
     for (const span of cliff.corridors) {
       if (span.maxX < bounds.x || span.minX > right) continue;
-      const terrace = terraceAt(cliff.y - 20);
-      paint(span.minX, cliff.y - 20, span.maxX - span.minX, 40, shade(terrace.stone, 10));
-      paint(span.minX + 4, cliff.y - 20, span.maxX - span.minX - 8, 34, '#a9bec9');
+      const terrace = terraceAt(cliff.y - 20), width = span.maxX - span.minX;
+      const ramp = shade(terrace.stone, 11), packed = shade(terrace.snow, -10);
+      paint(span.minX, cliff.y - 20, width, 40, shade(terrace.stone, -8));
+      paint(span.minX + 4, cliff.y - 19, width - 8, 36, ramp);
+      paint(span.minX + 7, cliff.y - 17, width - 14, 32, packed);
       if (span.kind === 'stair') {
-        for (let step = 0; step < 5; step++) paint(span.minX + 2, cliff.y - 18 + step * 8, span.maxX - span.minX - 4, 3, '#708996');
+        for (let step = 0; step < 5; step++) {
+          paint(span.minX + 3, cliff.y - 16 + step * 8, width - 6, 3, shade(terrace.accent, -6));
+          paint(span.minX + 3, cliff.y - 13 + step * 8, width - 6, 2, shade(packed, 6));
+        }
       } else if (span.kind === 'bridge') {
-        for (let plank = span.minX + 4; plank < span.maxX - 4; plank += 14) paint(plank, cliff.y - 14, 8, 28, '#7f8d84');
-        paint(span.minX + 2, cliff.y - 22, 8, 44, '#5f6f78');
-        paint(span.maxX - 10, cliff.y - 22, 8, 44, '#5f6f78');
+        for (let plank = span.minX + 5; plank < span.maxX - 5; plank += 14) {
+          paint(plank, cliff.y - 13, 8, 27, shade(terrace.stone, 18));
+          paint(plank + 1, cliff.y - 11, 6, 2, shade(terrace.accent, 4));
+        }
+        paint(span.minX + 2, cliff.y - 22, 8, 44, shade(terrace.stone, -10));
+        paint(span.maxX - 10, cliff.y - 22, 8, 44, shade(terrace.stone, -10));
       } else {
-        for (let step = 0; step < 4; step++) paint(span.minX + 3, cliff.y - 16 + step * 9, span.maxX - span.minX - 6, 3, '#879faa');
+        for (let step = 0; step < 4; step++) {
+          paint(span.minX + 4, cliff.y - 15 + step * 9, width - 8, 3, shade(terrace.accent, -8));
+          paint(span.minX + 4, cliff.y - 12 + step * 9, width - 8, 2, shade(packed, 5));
+        }
       }
     }
   }
@@ -834,6 +857,13 @@ function moveBy(x: number, y: number): boolean {
   if (walkable(local.x, ny)) { local.y = ny; moved = true; }
   return moved;
 }
+/** Click destinations are routed through ramps; manual input always cancels the route. */
+function setMoveDestination(point: Position): void {
+  movePath = mode === 'exterior' ? cliffRoute(local, point) : [{ ...point }];
+  moveTarget = movePath.shift() ?? null;
+}
+function clearMove(): void { movePath = []; moveTarget = null; }
+
 function pointerTarget(event: PointerEvent): void {
   if (stopped || event.button !== 0) return;
   canvas.focus({ preventScroll: true });
@@ -845,22 +875,22 @@ function pointerTarget(event: PointerEvent): void {
   if (mode === 'interior') {
     const exit = activeInterior?.exit;
     if (exit && distance(point, exit) < 34) { interact(); return; }
-    moveTarget = point;
+    setMoveDestination(point);
     return;
   }
   const mob = mobAt(mobs, point, 30);
   if (mob) {
     if (distance(local, mob.position) <= PLAYER_STRIKE_RANGE) strike();
-    else { attackTargetId = mob.id; moveTarget = { ...mob.position }; }
+    else { attackTargetId = mob.id; setMoveDestination(mob.position); }
     return;
   }
   if (inReturnGate() || distance(point, SNOW_RETURN) < 46) { interact(); return; }
   const door = FROSTGATE_BUILDINGS.find(value => distance(point, value.door) < 42);
-  if (door) { moveTarget = { ...door.door }; return; }
+  if (door) { setMoveDestination(door.door); return; }
   const site = FROSTGATE_LANDMARKS
     .filter(value => distance(point, value.position) < 54)
     .sort((a, b) => distance(point, a.position) - distance(point, b.position))[0];
-  moveTarget = site ? { ...site.position } : point;
+  setMoveDestination(site ? site.position : point);
 }
 function frame(time: number): void {
   if (stopped) return;
@@ -868,24 +898,23 @@ function frame(time: number): void {
   const k = keyboard.read(), t = touch.read();
   const input = normalizeInput(k.x + t.x, k.y + t.y, k.interact || t.interact);
   moving = false;
-  if (input.x || input.y) attackTargetId = null;
+  if (input.x || input.y) { attackTargetId = null; clearMove(); }
   if (attackTargetId) {
     const target = mobs.find(mob => mob.id === attackTargetId && mob.mode !== 'dead');
-    if (!target) { attackTargetId = null; moveTarget = null; }
+    if (!target) { attackTargetId = null; clearMove(); }
     else {
-      moveTarget = { ...target.position };
+      setMoveDestination(target.position);
       if (distance(local, target.position) <= PLAYER_STRIKE_RANGE) {
-        strike(); attackTargetId = null; moveTarget = null;
+        strike(); attackTargetId = null; clearMove();
       }
     }
   }
   if (input.x || input.y) {
-    moveTarget = null;
     setFacingFromInput(input.x, input.y);
     moving = moveBy(input.x * WALK_SPEED * dt, input.y * WALK_SPEED * dt);
   } else if (moveTarget) {
     const dx = moveTarget.x - local.x, dy = moveTarget.y - local.y, length = Math.hypot(dx, dy);
-    if (length <= 4) moveTarget = null;
+    if (length <= 4) { moveTarget = movePath.shift() ?? null; }
     else {
       setFacingFromInput(dx, dy);
       moving = moveBy(dx / length * WALK_SPEED * dt, dy / length * WALK_SPEED * dt);
@@ -926,7 +955,7 @@ window.addEventListener('pagehide', () => { stopped = true; keyboard.destroy(); 
 // the local visitor; it cannot change discoveries, server state or other plays.
 (window as Window & { __frostgateTeleport?: (x: number, y: number) => void }).__frostgateTeleport = (x, y) => {
   if (stopped) return;
-  mode = 'exterior'; activeInterior = null; exteriorReturn = null; activeDoor = null; moveTarget = null; attackTargetId = null;
+  mode = 'exterior'; activeInterior = null; exteriorReturn = null; activeDoor = null; clearMove(); attackTargetId = null;
   local = { x, y }; camera = cameraFor(local); updateHud();
 };
 // Mob inspection hooks for the browser regression journey. They can only touch

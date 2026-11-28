@@ -10,7 +10,10 @@ import type { Position, Rect } from './model.js';
 import type { DiscoveryKind } from './explore.js';
 
 export const SNOW_WORLD = { width: 3600, height: 20000 } as const;
-export const SNOW_SPAWN: Position = { x: 1500, y: 19620 };
+// Keep the gate spawn south of the first ridge's collision band. The ridge at
+// y=19600 occupies 19572..19628 once the 12px body radius is included, so the
+// old 19620 spawn started inside solid rock and every horizontal move failed.
+export const SNOW_SPAWN: Position = { x: 1500, y: 19720 };
 export const SNOW_RETURN: Position = { x: 1500, y: 19840 };
 export const SNOW_RETURN_RADIUS = 58;
 /** Mountain pace matches the green overworld's 150 px/s so walk times are real. */
@@ -59,13 +62,83 @@ export const CLIFFS: readonly Cliff[] = Array.from({ length: 28 }, (_, index) =>
 export const CLIMB_STEPS = CLIFFS.length;
 export function climbAt(y: number): number { return CLIFFS.filter(cliff => y < cliff.y).length; }
 const CLIFF_HALF_HEIGHT = 16;
-function onCorridor(cliff: Cliff, x: number): boolean {
-  return cliff.corridors.some(corridor => x >= corridor.minX && x <= corridor.maxX);
+function onCorridor(cliff: Cliff, x: number, radius: number): boolean {
+  // The whole body, not just its centre, must fit inside the opening.
+  return cliff.corridors.some(corridor => x >= corridor.minX + radius && x <= corridor.maxX - radius);
 }
 /** Cliff faces are solid except at their authored ramps, bridges and stairs. */
 export function cliffBlocks(x: number, y: number, radius = SNOW_FOOT_RADIUS): boolean {
   return CLIFFS.some(cliff => y + radius > cliff.y - CLIFF_HALF_HEIGHT
-    && y - radius < cliff.y + CLIFF_HALF_HEIGHT && !onCorridor(cliff, x));
+    && y - radius < cliff.y + CLIFF_HALF_HEIGHT && !onCorridor(cliff, x, radius));
+}
+function blocksBody(x: number, y: number): boolean {
+  return cliffBlocks(x, y) || SNOW_OBSTACLES.some(rect => x + SNOW_FOOT_RADIUS > rect.x
+    && x - SNOW_FOOT_RADIUS < rect.x + rect.width && y + SNOW_FOOT_RADIUS > rect.y
+    && y - SNOW_FOOT_RADIUS < rect.y + rect.height);
+}
+/** A crossing can have drifted snow or a pine on it; nudge the waypoint clear. */
+function freePoint(point: Position): Position {
+  if (!blocksBody(point.x, point.y)) return { ...point };
+  for (let radius = 8; radius <= 96; radius += 8) {
+    for (let step = 0; step < 8; step++) {
+      const angle = step * Math.PI / 4;
+      const candidate = { x: point.x + Math.cos(angle) * radius, y: point.y + Math.sin(angle) * radius };
+      if (!blocksBody(candidate.x, candidate.y)) return candidate;
+    }
+  }
+  return { ...point };
+}
+function segmentClear(a: Position, b: Position): boolean {
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 6));
+  for (let step = 0; step <= steps; step++) {
+    const x = a.x + (b.x - a.x) * step / steps, y = a.y + (b.y - a.y) * step / steps;
+    if (blocksBody(x, y)) return false;
+  }
+  return true;
+}
+/** A short side-step around a pine or rock; cliffs are handled by the corridor route. */
+function reachableLeg(from: Position, to: Position, depth = 0): Position[] {
+  if (segmentClear(from, to) || depth >= 6) return [{ ...to }];
+  const dx = to.x - from.x, dy = to.y - from.y, length = Math.hypot(dx, dy) || 1;
+  for (const radius of [24, 48, 80]) {
+    for (const sign of [1, -1]) {
+      const detour = freePoint({
+        x: (from.x + to.x) / 2 - dy / length * radius * sign,
+        y: (from.y + to.y) / 2 + dx / length * radius * sign,
+      });
+      if (!blocksBody(detour.x, detour.y) && segmentClear(from, detour)) {
+        return [detour, ...reachableLeg(detour, to, depth + 1)];
+      }
+    }
+  }
+  return [{ ...to }];
+}
+/**
+ * Route a click-to-move request through the authored crossings instead of
+ * driving into a cliff face. Crossings are ordered south-to-north, so each
+ * waypoint pair is already one terrace away from every other ridge.
+ */
+export function cliffRoute(from: Position, to: Position): Position[] {
+  const crossings = CLIFFS.filter(cliff => (from.y > cliff.y) !== (to.y > cliff.y));
+  const raw: Position[] = [];
+  let x = from.x, y = from.y;
+  for (const cliff of crossings) {
+    const corridor = cliff.corridors.reduce((best, candidate) =>
+      Math.abs((candidate.minX + candidate.maxX) / 2 - x) < Math.abs((best.minX + best.maxX) / 2 - x) ? candidate : best);
+    const crossingX = (corridor.minX + corridor.maxX) / 2;
+    if (Math.abs(crossingX - x) > 1) raw.push({ x: crossingX, y: cliff.y + 150 });
+    raw.push({ x: crossingX, y: cliff.y - 150 });
+    x = crossingX; y = cliff.y - 150;
+  }
+  if (!crossings.length || Math.abs(to.x - x) > 1 || Math.abs(to.y - y) > 1) raw.push({ ...to });
+  const path: Position[] = [];
+  let previous = from;
+  for (const rawWaypoint of raw) {
+    const waypoint = freePoint(rawWaypoint);
+    path.push(...reachableLeg(previous, waypoint));
+    previous = path[path.length - 1] ?? waypoint;
+  }
+  return path;
 }
 
 /** The authored switchback trail. Rendered as packed snow and measured by the

@@ -672,8 +672,8 @@ try{
  assert.equal(await evaluate("document.getElementById('snow-region').textContent"),'LOWER FROSTGATE');
  assert.ok(await evaluate("document.getElementById('snow-canvas').dataset.appearance.length>0"),'the snow destination keeps the saved visitor appearance');
  await screenshot('snow-gate');
- // Mountain journey helpers. Teleports place the visitor near a climb; each
- // elevation change is still walked through the real ridge collision.
+ // Regression: the gate spawn must not begin inside the first ridge collision
+ // band. Every movement mode has to make progress before any teleport.
  const snowTeleport=async(x,y)=>{await evaluate(`window.__frostgateTeleport(${x},${y})`);await delay(140);};
  const snowWalk=async(key,ms)=>{
   await evaluate(`document.getElementById('snow-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'${key}',bubbles:true}))`);
@@ -687,6 +687,29 @@ try{
   await evaluate("window.dispatchEvent(new KeyboardEvent('keyup',{key:'e',bubbles:true}))");
   await delay(160);
  };
+ const snowPos=()=>evaluate("document.getElementById('snow-canvas').dataset.player.split(',').map(Number)");
+ const gateStart=await snowPos();
+ assert.ok(Math.abs(gateStart[0]-1500)<=1&&Math.abs(gateStart[1]-19720)<=1,`gate spawn is walkable ground (was ${gateStart})`);
+ await snowWalk('w',700);
+ const walkedNorth=await snowPos();
+ assert.ok(walkedNorth[1]<gateStart[1]-40,'W walks north out of the gate');
+ await snowWalk('ArrowDown',500);
+ const walkedSouth=await snowPos();
+ assert.ok(walkedSouth[1]>walkedNorth[1]+25,'arrow keys walk back south');
+ await snowWalk('a',450);
+ const walkedWest=await snowPos();
+ assert.ok(walkedWest[0]<walkedSouth[0]-25,'A strafes west at the gate');
+ await snowWalk('ArrowRight',450);
+ const walkedEast=await snowPos();
+ assert.ok(walkedEast[0]>walkedWest[0]+25,'arrow keys strafe east at the gate');
+ // Click-to-move targets a point on the same terrace and walks there.
+ await evaluate(`(()=>{const c=document.getElementById('snow-canvas'),r=c.getBoundingClientRect();const p=${JSON.stringify(walkedEast)},camX=Math.max(0,Math.min(3600-480,p[0]-240)),camY=Math.max(0,Math.min(20000-540,p[1]-270));const target={x:p[0]+90,y:p[1]-30};c.dispatchEvent(new PointerEvent('pointerdown',{button:0,bubbles:true,clientX:r.left+(target.x-camX)*r.width/480,clientY:r.top+(target.y-camY)*r.height/540}))})()`);
+ await delay(900);
+ const clicked=await snowPos();
+ assert.ok(Math.hypot(clicked[0]-walkedEast[0],clicked[1]-walkedEast[1])>35,'click-to-move walks toward the clicked tile');
+ await screenshot('snow-gate-walk');
+ // Mountain journey helpers. Teleports place the visitor near a climb; each
+ // elevation change is still walked through the real ridge collision.
  // Mountain mobs: the population is spread across the whole region, the gait
  // advances, goats stay neutral until struck, and barbarians attack on sight.
  assert.equal(await evaluate("document.getElementById('snow-canvas').dataset.mobs"),'27');
@@ -785,6 +808,12 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=390'),'the snow destination must fit a 390px viewport');
  assert.ok(await evaluate('(()=>{const c=document.getElementById("snow-canvas").getBoundingClientRect(),a=document.getElementById("snow-action").getBoundingClientRect();return c.width>0&&a.width>=44&&a.height>=44&&a.right<=390})()'),'snow touch controls stay usable at 390px');
  assert.notEqual(await evaluate("getComputedStyle(document.getElementById('snow-joystick')).display"),'none','the snow destination keeps its joystick on touch sizes');
+ const snowTouchBefore=await snowPos();
+ const snowPad=await evaluate('(()=>{const r=document.getElementById("snow-joystick").getBoundingClientRect();return {x:r.x+r.width/2+28,y:r.y+r.height/2}})()');
+ await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[snowPad]});await delay(650);
+ await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await delay(200);
+ const snowTouchAfter=await snowPos();
+ assert.ok(snowTouchAfter[0]>snowTouchBefore[0]+15,'the mobile joystick walks right inside Frostgate');
  await screenshot('snow-mobile');
  await send('Emulation.setDeviceMetricsOverride',{width:430,height:932,deviceScaleFactor:1,mobile:true});
  await delay(200);
