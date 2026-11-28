@@ -1,4 +1,4 @@
-import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
+import { MAP, BUILDINGS, BUSHES, CAMPFIRES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, GROUND_PROPS, MARKET_PROPS, OUTER_LOOP, PATHS, ROCKS, TERRAIN_AREAS, TREES } from './map.js';
 import { SPRITES, type SpriteDefinition } from './sprites.js';
 import { appearanceSprites } from './appearance.js';
 import type { Position, WorldActor, Interactable, WorldParticle, WorldResource } from './model.js';
@@ -307,9 +307,13 @@ export class CanvasWorldRenderer implements WorldRenderer {
       const [dark,light]=treePalettes[tint]!;
       c.fillStyle='#172b2866';c.beginPath();c.ellipse(x+7*scale,y+50*scale,25*scale,8*scale,0,0,Math.PI*2);c.fill();
       rect(x,y+24*scale,12*scale,28*scale,'#675542');
+      rect(x+8*scale,y+30*scale,3*scale,18*scale,'#554634');
       rect(x-18*scale,y,48*scale,34*scale,dark!);
       rect(x-10*scale,y-12*scale,32*scale,26*scale,light!);
       rect(x+3*scale,y-8*scale,10*scale,6*scale,dark!);
+      rect(x-14*scale,y+20*scale,15*scale,5*scale,'#3f5a3e');
+      rect(x+14*scale,y+6*scale,11*scale,4*scale,'#3f5a3e');
+      rect(x-6*scale,y-8*scale,8*scale,3*scale,'#87a071');
     }
     const bushPalettes=[['#355940','#4e744b'],['#3d6045','#608052'],['#456040','#70814e']];
     for(const {x,y,size,tint=0} of BUSHES){
@@ -331,7 +335,55 @@ export class CanvasWorldRenderer implements WorldRenderer {
         rect(x,y+3,2,5,'#597d48');rect(x-2,y,5,4,flower);
       }
     }
-    for(const {x,y} of ROCKS){rect(x-12,y-8,24,16,'#696b60');rect(x-6,y-13,12,7,'#858474');}
+    // Small, non-blocking scenery fills the gaps between the large props. Every
+    // position is screened by the same exclusion rules as stones, so logs and
+    // mushrooms never sit on a road, trunk, plant bed or landmark.
+    for(const prop of GROUND_PROPS){
+      const {x,y,kind,tint=0,flip}=prop;
+      if(kind==='log'){
+        rect(x-16,y-3,32,8,'#3b3228');rect(x-16,y-5,32,5,'#6b5137');
+        rect(x-15,y-4,3,3,'#8a6a44');rect(x+12,y-4,3,3,'#8a6a44');
+        rect(x-9,y-5,7,2,'#4a6c42');rect(x+3,y-5,5,2,'#4a6c42');
+        rect(flip?x+8:x-15,y-3,7,8,'#2e2c26');rect(flip?x+10:x-13,y-1,3,3,'#8a6a44');
+      }else if(kind==='stump'){
+        rect(x-6,y-2,12,8,'#5a4430');rect(x-8,y-5,16,6,'#7b5c3c');
+        rect(x-4,y-4,8,3,'#9a7951');rect(x-1,y-3,2,1,'#6b5137');rect(x+5,y-5,3,2,'#4a6c42');
+      }else if(kind==='mushroom'){
+        const cap=['#b96a58','#c89d5a','#a884b6'][tint]!;
+        const spot=['#f0d7b0','#f3dfa8','#e2d3ee'][tint]!;
+        const cluster:[number,number,number][]=flip?[[7,2,3],[-6,-2,4],[0,3,2]]:[[-7,2,3],[6,-2,4],[0,3,2]];
+        for(const [dx,dy,size] of cluster){
+          rect(x+dx-1,y+dy,2,4,'#dcd0aa');rect(x+dx-size,y+dy-3,size*2,4,cap);rect(x+dx-1,y+dy-3,2,1,spot);
+        }
+      }else if(kind==='pebbles'){
+        const stone=['#6d7163','#78796a','#636a60'][tint]!;
+        rect(x-9,y,9,5,stone);rect(x-7,y-2,5,3,'#909086');
+        rect(x+1,y+1,7,4,stone);rect(x+3,y-1,4,2,'#909086');
+        rect(x+8,y-2,5,4,'#5d6359');
+      }else{
+        const leaf=['#477049','#3f6644','#53774b'][tint]!;
+        const lean=flip?-1:1;
+        for(let blade=-2;blade<=2;blade++){
+          const bx=x+blade*3;
+          c.fillStyle=leaf;c.beginPath();c.moveTo(bx,y+4);
+          c.lineTo(bx+lean*(2+Math.abs(blade)),y-7-Math.abs(blade));
+          c.lineTo(bx+lean,y+4);c.closePath();c.fill();
+        }
+        rect(x-2,y+3,5,2,'#35573b');
+      }
+    }
+    // Weathered stones keep the same 24x16 collision body, with a small mossy
+    // cap and shadow so they read as part of the scenery rather than grey boxes.
+    for(const [index,{x,y}] of ROCKS.entries()){
+      rect(x-12,y+6,24,3,'#26352c55');
+      rect(x-12,y-8,24,16,'#5f6359');
+      rect(x-12,y-8,24,4,'#777a6c');
+      rect(x-11,y-3,19,7,'#696b60');
+      rect(x-6,y-13,12,7,'#858474');
+      rect(x-4,y-12,7,2,'#9b998a');
+      if(index%3===0){rect(x-10,y-8,6,2,'#4c6a45');rect(x+5,y-6,5,2,'#4c6a45');}
+      if(index%5===2){rect(x+7,y-4,3,2,'#3f5c3b');}
+    }
     for(const {x,y} of CAMPFIRES){
       // A worn ash circle, stone ring and split-log seats make every seeded
       // clearing read as a deliberate rest point rather than a lone flame.
