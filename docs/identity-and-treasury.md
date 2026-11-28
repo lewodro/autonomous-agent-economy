@@ -22,7 +22,7 @@ Clerk subject
       └─ future payout requests
 ```
 
-Guests retain the signed anonymous session and can use the world without login. On
+Guests retain the signed anonymous session and can use the world without login. --> On
 successful Clerk authentication, farm state, resource receipts and private experiments
 are adopted into the account. Merge receipts make retries idempotent. Movement frames
 are never written as durable ownership data.
