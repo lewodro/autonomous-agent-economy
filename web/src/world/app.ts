@@ -1,7 +1,7 @@
 import { KeyboardInput, TouchJoystickInput } from './input.js';
 import { CanvasWorldRenderer } from './renderer.js';
 import { moveActor, moveToward, followCamera } from './movement.js';
-import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, WALLS, WORLD_BOUNDS, safePosition, CAMP_SITES } from './map.js';
+import { EXPLORATION_PROBES, EXPLORATION_SITES, MAP, LANDMARKS, PLAZA_TOUR, WALLS, WORLD_BOUNDS, safePosition, CAMP_SITES } from './map.js';
 import { nearestInteraction, normalizeInput, type WorldActor, type WorldEvent, type Interactable, type WorldSpeech, type WorldParticle, type WorldResource } from './model.js';
 import { DISCOVERY_SITES, REGIONS, discoveryGroups, loadDiscoveries, minimapMarkers, nearbyHumans, regionAt, saveDiscoveries } from './explore.js';
 import { WorldMinimap } from './minimap.js';
@@ -38,6 +38,15 @@ const player:WorldActor={id:'visitor',type:'human',name:'You',position:settings.
 const renderer=new CanvasWorldRenderer(canvas),keyboard=new KeyboardInput(canvas,{holdDelayMs:QUICK_CHAT_HOLD_MS,onHold:openQuickChat,onHoldEnd:closeQuickChatFromHold}),touch=new TouchJoystickInput($('joystick'),$('joystick-knob'),$<HTMLButtonElement>('interact'));
 const minimap=new WorldMinimap($<HTMLCanvasElement>('minimap-canvas'),$<HTMLButtonElement>('minimap-toggle'),$('minimap-body'),$('minimap-region'),$<HTMLButtonElement>('minimap-journal'));
 const discoveries=new Set(loadDiscoveries());
+// The first-steps tour is deliberately small and local: it points at the
+// fountain, the Arena door and the Bazaar, then retires for good.
+const TOUR_KEY='agent-world-plaza-tour-v1';
+let tourStep=0,tourDone=false,tourAnnounced=false;
+try{
+  const saved=JSON.parse(localStorage.getItem(TOUR_KEY)||'null') as {step?:number;done?:boolean}|null;
+  if(saved&&typeof saved.step==='number')tourStep=Math.max(0,Math.min(PLAZA_TOUR.length,Math.floor(saved.step)));
+  tourDone=Boolean(saved?.done)||tourStep>=PLAZA_TOUR.length;
+}catch{tourStep=0;tourDone=false;}
 let currentRegion=regionAt(player.position),discoveryMarkers=minimapMarkers(discoveries);
 let discoveryToastTimer=0,regionLabelTimer=0;
 const discoveryToast=$<HTMLDivElement>('discovery-toast'),regionBadge=$<HTMLDivElement>('world-region');
@@ -903,6 +912,13 @@ async function interact(target:Interactable|undefined=nearby):Promise<void> {
     if(target.id==='compound-entrance'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/compound'),220);return;}
     if(target.id==='treasury-house'){persist();resetInput();void leavePresence();document.body.classList.add('leaving');setTimeout(()=>location.assign('/treasury'),220);return;}
     if(target.id==='south-market'){await showBazaar();return;}
+    if(target.id==='plaza-fountain'){
+      show('The Last Seat fountain');
+      text('p','Three stone tiers step down into a wide basin. Water sheets from the upper bowls, breaks into slow rings below, and catches the warm lamplight.');
+      text('p','Moss gathers on the shaded rim and gold inlay traces the carved base. The whole plaza was laid out around this spot.');
+      text('p',tourDone?'The Arena door waits to the east; the Bazaar road runs south.':'First steps: walk to the Arena door to the east, then follow the southern road to the Bazaar.');
+      return;
+    }
     if(target.id.startsWith('resource:')){await gatherResource(target.id.slice('resource:'.length));return;}
     if(target.id.startsWith('plot:')){
       const tile=farmSnapshot?.tiles.find(value=>value.id===target.id.slice('plot:'.length));
@@ -1105,6 +1121,8 @@ $('intro-google').onclick=async()=>{
 };
 $('avatar-change').onclick=()=>{resetInput();updateCharacterControls();drawCharacterPreview();character.showModal();};
 $('character-close').onclick=()=>{if(entered)character.close();else $('enter-world').click();};
+$('plaza-tour-skip').onclick=()=>skipPlazaTour();
+syncPlazaTourCard();
 $('enter-world').onclick=()=>{entered=true;restoreWorldFocus=true;persist();void flushSavedProfile();try{sessionStorage.setItem('agent-world-entered','1');}catch{}character.close();canvas.focus();const joined=startPresence();lastPlayTick=Date.now();void joined.then(()=>loadFarm());};
 // Act on the click immediately instead of waiting for the next frame's input
 // buffer, which a blur or reset can clear before it is read.
@@ -1206,6 +1224,43 @@ async function refreshWorldLive():Promise<void>{
   liveNotice.textContent=lines.length?`LIVE · ${lines[worldLiveIndex++%lines.length]}`:'LIVE · plaza open · the next public match is starting soon';
   liveNotice.hidden=false;
 }
+function savePlazaTour():void{try{localStorage.setItem(TOUR_KEY,JSON.stringify({step:tourStep,done:tourDone}));}catch{}}
+/** Mirror the saved tour progress into the intro card without rebuilding it. */
+function syncPlazaTourCard():void{
+  const list=document.getElementById('plaza-tour-steps');
+  if(list){
+    [...list.querySelectorAll('li')].forEach((item,index)=>{
+      item.dataset.state=index<tourStep?'done':index===tourStep&&!tourDone?'current':'upcoming';
+    });
+  }
+  const skip=document.getElementById('plaza-tour-skip') as HTMLButtonElement|null;
+  if(skip)skip.hidden=tourDone;
+}
+function skipPlazaTour():void{
+  if(tourDone)return;
+  tourDone=true;savePlazaTour();syncPlazaTourCard();
+  farmHud.notice('FIRST STEPS SKIPPED · EXPLORE AT YOUR OWN PACE','info');
+}
+function plazaTourGuide():{target:{x:number;y:number};label:string}|null{
+  if(!entered||tourDone)return null;
+  const step=PLAZA_TOUR[tourStep];
+  return step?{target:{...step.target},label:step.label}:null;
+}
+/** Advance when the visitor reaches the current stop. Nothing is awarded. */
+function updatePlazaTour():void{
+  if(!entered||tourDone)return;
+  if(!tourAnnounced){tourAnnounced=true;syncPlazaTourCard();const first=PLAZA_TOUR[tourStep];if(first)farmHud.notice(first.notice,'info');}
+  const step=PLAZA_TOUR[tourStep];
+  if(!step||Math.hypot(player.position.x-step.target.x,player.position.y-step.target.y)>step.radius)return;
+  tourStep+=1;
+  if(tourStep>=PLAZA_TOUR.length){
+    tourDone=true;savePlazaTour();syncPlazaTourCard();
+    farmHud.notice('FIRST STEPS COMPLETE · THE PLAZA IS YOURS','good');
+  }else{
+    savePlazaTour();syncPlazaTourCard();
+    farmHud.notice(PLAZA_TOUR[tourStep]!.notice,'good');
+  }
+}
 function farmGuide():{target:{x:number;y:number};label:string}|null{
   if(!entered||!farmSnapshot?.account)return null;
   const account=farmSnapshot.account;
@@ -1257,6 +1312,7 @@ function frame(time:number):void {
     const targets=[...LANDMARKS,...resourceTargets,...plotTargets,...npcs.map(a=>({id:a.agentId!,position:a.position,radius:72,type:'agent' as const,label:`${a.speech&&a.speech.expiresAt>time?'Talk to':'Inspect'} ${a.name}`}))];
     nearby=nearestInteraction(player.position,targets);
     if(input.interact)void interact();
+    updatePlazaTour();
     if(player.movementState==='walking'&&time-lastMoveEvent>500){emit({type:'world:actor-moved',actorId:player.id,position:{...player.position}});lastMoveEvent=time;}
     if(time-lastSave>3000){persist();lastSave=time;}
   }else{player.movementState='idle';if(!entered||dialog.open||character.open)resetInput();}
@@ -1300,7 +1356,11 @@ function frame(time:number):void {
   // Exposes the contextual guidance range to tests without changing rendering.
   const guideKey=farmGuideTarget?`${farmGuideTarget.label}@${Math.round(farmGuideTarget.target.x)},${Math.round(farmGuideTarget.target.y)}`:'';
   if(canvas.dataset.farmGuide!==guideKey)canvas.dataset.farmGuide=guideKey;
-  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuideTarget,moveTarget});raf=requestAnimationFrame(frame);
+  // A local farm errand always outranks the first-steps tour.
+  const tourGuideTarget=plazaTourGuide();
+  const tourKey=tourGuideTarget?`${tourGuideTarget.label}@${Math.round(tourGuideTarget.target.x)},${Math.round(tourGuideTarget.target.y)}`:'';
+  if(canvas.dataset.plazaTour!==tourKey)canvas.dataset.plazaTour=tourKey;
+  renderer.render({actors:[player,...[...remotePlayers.values()].map(remote=>remote.actor),...npcs],camera,nearby,time,resources:worldResources,particles,farmTiles:farmSnapshot?.tiles||[],guide:farmGuideTarget??tourGuideTarget,moveTarget});raf=requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide',()=>{stopped=true;persist();cancelAnimationFrame(raf);keyboard.destroy();touch.destroy();renderer.destroy();
   if(presenceHeartbeat)window.clearInterval(presenceHeartbeat);if(presenceReconnect)window.clearTimeout(presenceReconnect);if(worldLiveTimer)window.clearInterval(worldLiveTimer);presenceClient?.close();presenceClient=undefined;});
