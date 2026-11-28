@@ -39,7 +39,7 @@ try{
  // visitor cookie. Let it finish before the identity-refresh reload so the
  // visitor is not replaced by a second login on this first visit.
  await wait("document.getElementById('connection')?.textContent.includes('HERE')");
- await evaluate("sessionStorage.clear();localStorage.removeItem('agent-world-settings-v1');localStorage.removeItem('agent-world-discoveries-v1')");
+ await evaluate("sessionStorage.clear();localStorage.removeItem('agent-world-settings-v1');localStorage.removeItem('agent-world-discoveries-v1');localStorage.removeItem('agent-world-plaza-tour-v1')");
  await send('Page.reload',{ignoreCache:true});
  await wait("document.getElementById('connection')?.textContent.includes('HERE')");
  await wait("document.getElementById('character-dialog')?.open");
@@ -49,6 +49,8 @@ try{
  assert.ok(googleIntro.disabled?/not configured|Checking/.test(googleIntro.note):googleIntro.note.includes('Sign in with Google'),'the Google button must explain its configured or guest-only state');
  await wait('document.getElementById("character-preview")&&document.querySelectorAll("#character-body-swatches button").length===6&&document.querySelectorAll("#character-hair-colors button").length===6&&document.querySelectorAll("#character-outfit-colors button").length===6');
  assert.ok(await evaluate('getComputedStyle(document.getElementById("character-preview")).imageRendering==="pixelated"'),'the creator preview must stay pixel-perfect');
+ assert.equal(await evaluate('document.querySelectorAll("#plaza-tour-steps li").length'),3,'the intro explains all three first steps');
+ assert.ok(await evaluate('document.getElementById("plaza-tour-skip")&&!document.getElementById("plaza-tour-skip").hidden'),'new visitors can skip the tour');
  assert.equal(await evaluate('JSON.parse(localStorage.getItem("agent-world-settings-v1")).appearance.body'),'body_brown','new visitors start with the starter kit appearance');
  const focusedSwatch=await evaluate('(()=>{const b=document.querySelectorAll("#character-body-swatches button")[5];b.focus();return b.dataset.value})()');
  await evaluate('document.querySelectorAll("#character-body-swatches button")[5].click()');
@@ -59,6 +61,9 @@ try{
  assert.equal(chosenAppearance.hair,'hair_buzz_red');assert.equal(chosenAppearance.outfit,'outfit_jacket_forest');assert.equal(chosenAppearance.body,'body_tan');
  await evaluate("window.__presenceFailures=[];const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);if(String(args[0]).includes('/presence/')&&!response.ok){const body=await response.clone().json().catch(()=>({}));window.__presenceFailures.push({path:String(args[0]),status:response.status,code:body.code})}return response}");
  await evaluate('document.getElementById("enter-world").click()');await screenshot('plaza');
+ await wait("document.getElementById('world-canvas').dataset.plazaTour.includes('See the fountain')");
+ await wait("document.getElementById('farm-notices').textContent.includes('FIRST STEPS')");
+ await screenshot('plaza-fountain');
  await wait('!document.getElementById("world-canvas").getAttribute("aria-label").includes("0 visiting agents in the plaza")');
  await wait("!document.getElementById('world-live').hidden&&document.getElementById('world-live').textContent.startsWith('LIVE ·')");
  assert.equal(await evaluate('!!document.querySelector(".world-header a[href=\\"/compound\\"],.world-header a[href=\\"/arena\\"]")'),false,'Arena and Compound must not return as global header buttons');
@@ -99,8 +104,12 @@ try{
  // Both real browsers are now in the plaza. Browser B gets a character so its
  // own quick-chat selector can be exercised too.
  await secondBrowser.wait('document.getElementById("character-dialog")?.open',8000);
+ assert.equal(await secondBrowser.evaluate('document.querySelectorAll("#plaza-tour-steps li").length'),3,'the second visitor also sees the first steps');
+ await secondBrowser.evaluate('document.getElementById("plaza-tour-skip").click()');
  await secondBrowser.evaluate("document.getElementById('enter-world').click()");
  await secondBrowser.wait('!document.getElementById("character-dialog").open');
+ await secondBrowser.wait("document.getElementById('world-canvas').dataset.plazaTour===''");
+ assert.equal(await secondBrowser.evaluate("JSON.parse(localStorage.getItem('agent-world-plaza-tour-v1')).done"),true,'skipping the tour is remembered');
  await wait('!document.getElementById("quick-chat-prompt").hidden');
  // A holds E: the directional selector appears instead of interacting.
  await evaluate("document.getElementById('world-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}))");
@@ -255,6 +264,15 @@ try{
  await wait('location.pathname==="/labs/world"&&document.getElementById("world-lab")&&!document.getElementById("world-lab").hidden');
  await wait('document.getElementById("character-dialog").open');
  await evaluate('document.getElementById("enter-world").click()');await wait('!document.getElementById("character-dialog").open');
+ // The first-steps tour advances by walking, without gating movement.
+ await evaluate('window.__worldTeleport({x:556,y:424})');
+ await wait("document.getElementById('world-canvas').dataset.plazaTour.includes('Find the Arena door')");
+ await screenshot('plaza-tour-fountain');
+ await evaluate('window.__worldTeleport({x:928,y:660})');
+ await wait("document.getElementById('world-canvas').dataset.plazaTour.includes('Visit the Bazaar')");
+ await evaluate('window.__worldTeleport({x:681,y:1292})');
+ await wait("document.getElementById('world-canvas').dataset.plazaTour===''");
+ assert.equal(await evaluate("JSON.parse(localStorage.getItem('agent-world-plaza-tour-v1')).done"),true,'completing the tour is remembered');
  // Farm guidance must be local: the plot is a known minimap destination, but
  // its contextual arrow/help appears only within ~20 in-world metres (320 units).
  const farmTile=await evaluate("fetch('/api/world/farm').then(r=>r.json()).then(s=>s.tiles[0]||null)");

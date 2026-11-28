@@ -45,6 +45,7 @@ test('cave, ruin, shrine, pass and camp prompts describe real contextual actions
   assert.equal(prompts.get('sunken-shrine'), 'Visit shrine');
   assert.equal(prompts.get('frostgate-pass'), 'Cross the pass');
   assert.equal(prompts.get('camp-west-1'), 'Rest at camp');
+  assert.equal(prompts.get('plaza-fountain'), 'Inspect the fountain');
 });
 
 test('discoveries persist per browser and ignore stale or duplicate ids', () => {

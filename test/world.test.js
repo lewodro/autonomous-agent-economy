@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeInput, nearestInteraction } from '../web/dist/world/model.js';
 import { moveActor, moveToward, followCamera, presenceObstacles } from '../web/dist/world/movement.js';
-import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, ROCKS, TERRAIN_AREAS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
+import { MAP, WORLD_BOUNDS, BUILDINGS, BUSHES, CAMPFIRES, CORE_BOUNDS, EXPLORATION_PROBES, EXPLORATION_SITES, FLOWER_BEDS, FOUNTAIN, GROUND_DETAILS, MARKET_PROPS, NPC_WAYPOINTS, OUTER_LOOP, OUTER_VEGETATION, PATHS, PLAZA_BENCHES, PLAZA_FLOOR, PLAZA_LAMPS, PLAZA_PLANTERS, PLAZA_TOUR, ROCKS, TERRAIN_AREAS, VEGETATION_GROUPS, WORLD_SITE_CLEARANCE, WORLD_SITES, canPlaceBush, canPlaceFlower, canPlaceRock, canPlaceTree, isNaturalGround, safePosition, collides, LANDMARKS, TREES, ZONES } from '../web/dist/world/map.js';
 import { FARM_ANCHORS } from '../service/world-farm.js';
 import { RESOURCE_NODES } from '../service/world-economy.js';
 import { AVATARS, parseSettings, SPRITES } from '../web/dist/world/sprites.js';
@@ -93,6 +93,43 @@ test('east road connects the plaza, Agency door, and botanical trail at walkable
   assert.ok(PATHS.some(path=>path.x===1152&&path.y===420&&path.width===592&&path.height===84));
   assert.ok(PATHS.some(path=>path.x===1526&&path.y===288&&path.width===84&&path.height===132));
   for(const [name,point] of Object.entries(EXPLORATION_PROBES))assert.equal(collides(point),false,`${name} browser probe must be walkable`);
+});
+test('plaza floor, fountain and furniture share one authored, walkable layout',()=>{
+  assert.deepEqual(PLAZA_FLOOR,{x:392,y:300,width:760,height:560});
+  assert.deepEqual(FOUNTAIN,{x:500,y:340,width:112,height:64});
+  assert.deepEqual(PATHS[0],PLAZA_FLOOR,'the plaza path keeps the authored floor geometry');
+  assert.equal(collides({x:FOUNTAIN.x+FOUNTAIN.width/2,y:FOUNTAIN.y+FOUNTAIN.height/2}),true,'the fountain basin blocks movement');
+  const furniture=[
+    ...PLAZA_LAMPS.map(({x,y})=>({id:`lamp ${x},${y}`,x,y,width:10,height:12,left:x-5,top:y-4})),
+    ...PLAZA_BENCHES.map(({x,y,facing})=>({id:`bench ${x},${y}`,x,y,width:facing==='down'?22:28,height:12,left:x-(facing==='down'?11:14),top:y-4})),
+    ...PLAZA_PLANTERS.map(({x,y,width,height})=>({id:`planter ${x},${y}`,x,y,width,height,left:x,top:y})),
+  ];
+  for(const item of furniture){
+    assert.ok(item.x>=PLAZA_FLOOR.x&&item.x<PLAZA_FLOOR.x+PLAZA_FLOOR.width,`${item.id} stays on the plaza floor`);
+    assert.ok(item.y>=PLAZA_FLOOR.y&&item.y<PLAZA_FLOOR.y+PLAZA_FLOOR.height,`${item.id} stays on the plaza floor`);
+    assert.equal(collides({x:item.x,y:item.y}),true,`${item.id} blocks its own footprint`);
+  }
+  for(let a=0;a<furniture.length;a++)for(let b=a+1;b<furniture.length;b++){
+    const left=furniture[a],right=furniture[b];
+    const overlaps=left.left<right.left+right.width&&left.left+left.width>right.left
+      &&left.top<right.top+right.height&&left.top+left.height>right.top;
+    assert.equal(overlaps,false,`${left.id} must not overlap ${right.id}`);
+  }
+  assert.ok(PLAZA_LAMPS.length>=4&&PLAZA_BENCHES.length>=3&&PLAZA_PLANTERS.length>=6,'the plaza keeps lamps, benches and planters');
+  const fountain=LANDMARKS.find(landmark=>landmark.id==='plaza-fountain');
+  assert.ok(fountain,'the fountain is an interactable landmark');
+  assert.equal(fountain.prompt,'Inspect the fountain');
+  assert.ok(Math.hypot(fountain.position.x-(FOUNTAIN.x+FOUNTAIN.width/2),fountain.position.y-(FOUNTAIN.y+FOUNTAIN.height/2))<80,'the prompt sits beside the fountain');
+});
+test('the first-steps tour is ordered, reachable and never points through stone',()=>{
+  assert.deepEqual(PLAZA_TOUR.map(step=>step.id),['fountain','arena','bazaar']);
+  assert.equal(new Set(PLAZA_TOUR.map(step=>step.notice)).size,PLAZA_TOUR.length);
+  for(const step of PLAZA_TOUR){
+    assert.ok(step.label.length>4&&step.radius>=40);
+    const samples=[[0,0],[step.radius-2,0],[-step.radius+2,0],[0,step.radius-2],[0,-step.radius+2]];
+    assert.ok(samples.some(([dx,dy])=>!collides({x:step.target.x+dx,y:step.target.y+dy})),`${step.id} has walkable ground inside its radius`);
+  }
+  assert.ok(PLAZA_TOUR.every(step=>Math.hypot(step.target.x-MAP.spawn.x,step.target.y-MAP.spawn.y)>step.radius),'the spawn does not auto-complete a step');
 });
 test('town art data is deterministic, varied, and keeps decorative texture non-authoritative',()=>{
   assert.equal(GROUND_DETAILS.length,260);assert.deepEqual(GROUND_DETAILS.slice(0,2),[
