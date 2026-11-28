@@ -7,6 +7,9 @@ const base=process.env.GAME_URL;
 const debug=process.env.CHROME_DEBUG_URL;
 if(!base||!debug)throw new Error('Wallet browser smoke requires GAME_URL and CHROME_DEBUG_URL');
 const alphabet='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const unsafeJsCharMap={'<':'\\u003C','>':'\\u003E','/':'\\u002F','\\':'\\\\','\b':'\\b','\f':'\\f','\n':'\\n','\r':'\\r','\t':'\\t','\0':'\\0','\u2028':'\\u2028','\u2029':'\\u2029'};
+const unsafeJsChars=/[<>/\\\b\f\n\r\t\0\u2028\u2029]/g;
+function escapeForEmbeddedJsStringLiteral(value){return JSON.stringify(value).replace(unsafeJsChars,char=>unsafeJsCharMap[char]);}
 function base58(bytes){let value=0n;for(const byte of bytes)value=value*256n+BigInt(byte);let output='';while(value>0n){output=alphabet[Number(value%58n)]+output;value/=58n;}for(const byte of bytes){if(byte===0)output=`1${output}`;else break;}return output||'1';}
 function address(){const {publicKey}=generateKeyPairSync('ed25519');return base58(Buffer.from(publicKey.export({format:'jwk'}).x,'base64url'));}
 const first=address(),second=address(),short=value=>`${value.slice(0,6)}...${value.slice(-5)}`;
@@ -30,7 +33,7 @@ try{
   await send('Page.navigate',{url:`${base}/world`});
   await openAccount();
   assert.ok((await evaluate("document.getElementById('interaction-content').textContent")).includes('No linked wallet'));
-  await evaluate(`(()=>{const form=document.querySelector('#interaction-content .wallet-link-form');form.querySelector('input').value=${JSON.stringify(first)};form.requestSubmit()})()`);
+  await evaluate(`(()=>{const form=document.querySelector('#interaction-content .wallet-link-form');form.querySelector('input').value=${escapeForEmbeddedJsStringLiteral(first)};form.requestSubmit()})()`);
   await wait(`document.getElementById('interaction-content')?.textContent.includes(${JSON.stringify(short(first))})`);
   assert.equal(await evaluate("fetch('/api/world/farm').then(response=>response.json()).then(snapshot=>snapshot.account.wallet.status)"),'unverified');
   const profileText=await evaluate("document.getElementById('interaction-content').textContent");
@@ -43,7 +46,7 @@ try{
   await send('Page.reload',{ignoreCache:true});
   await openAccount();
   assert.ok((await evaluate("document.getElementById('interaction-content').textContent")).includes(short(first)),'refresh restores the linked wallet from the server');
-  await evaluate(`(()=>{const form=document.querySelector('#interaction-content .wallet-link-form');form.querySelector('input').value=${JSON.stringify(second)};form.requestSubmit()})()`);
+  await evaluate(`(()=>{const form=document.querySelector('#interaction-content .wallet-link-form');form.querySelector('input').value=${escapeForEmbeddedJsStringLiteral(second)};form.requestSubmit()})()`);
   await wait(`document.getElementById('interaction-content')?.textContent.includes(${JSON.stringify(short(second))})`);
   assert.equal((await evaluate("document.getElementById('interaction-content').textContent")).includes(first),false);
   await evaluate("[...document.querySelectorAll('#interaction-content button')].find(button=>button.textContent==='REMOVE WALLET').click()");
