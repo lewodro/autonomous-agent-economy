@@ -5,7 +5,12 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
 import { FARM_SCARCITY } from '../service/world-farm.js';
+import { accountCookie } from '../service/world-identity.js';
+
+const BASE58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58(bytes){let value=0n;for(const byte of bytes)value=value*256n+BigInt(byte);let output='';while(value>0n){output=BASE58[Number(value%58n)]+output;value/=58n;}for(const byte of bytes){if(byte===0)output=`1${output}`;else break;}return output||'1';}
 
 function start(environment) {
   const child = spawn(process.execPath, ['server.js'], { cwd: new URL('../', import.meta.url), env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -79,6 +84,38 @@ test('farm HTTP routes drive the same server-authoritative loop the world render
 
     const wallet = await post('wallet-challenge', { wallet_address: '11111111111111111111111111111111' });
     assert.equal(wallet.status, 403, 'guest wallet claims are never accepted');
+    const accountA=accountCookie('clerk:user_http_a',process.env,Date.now()-2_000).split(';')[0];
+    const secondSessionA=accountCookie('clerk:user_http_a',process.env,Date.now()-1_000).split(';')[0];
+    const loginAgainA=accountCookie('clerk:user_http_a').split(';')[0];
+    assert.notEqual(accountA,secondSessionA);
+    const accountB=accountCookie('clerk:user_http_b').split(';')[0];
+    const addressA='11111111111111111111111111111111';
+    const {publicKey}=generateKeyPairSync('ed25519');
+    const addressB=base58(Buffer.from(publicKey.export({format:'jwk'}).x,'base64url'));
+    const accountGet=async cookieValue=>(await (await fetch(base+'/api/world/farm',{headers:{Cookie:cookieValue}})).json()).account;
+    const accountPost=async(cookieValue,body)=>{
+      const response=await fetch(base+'/api/world/farm/wallet-address',{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookieValue},body:JSON.stringify(body)});
+      return {status:response.status,body:await response.json()};
+    };
+    assert.equal((await accountPost(cookie,{wallet_address:addressA})).status,403,'guests cannot link addresses');
+    assert.equal((await accountPost(accountA,{wallet_address:addressA,account_id:'clerk:user_http_b'})).body.account.wallet.status,'unverified');
+    assert.equal((await accountPost(accountB,{wallet_address:addressA})).status,200,'unverified duplicates are allowed');
+    assert.equal((await accountPost(accountB,{wallet_address:addressB})).status,200);
+    assert.equal((await accountGet(accountA)).wallet.address,addressA);
+    assert.equal((await accountGet(secondSessionA)).wallet.address,addressA,'a second signed session sees the same account wallet');
+    assert.equal((await accountGet(accountB)).wallet.address,addressB);
+    assert.equal((await (await fetch(base+'/api/world/farm?account_id=clerk:user_http_a',{headers:{Cookie:accountB}})).json()).account.wallet.address,addressB,'query IDs cannot select another account');
+    assert.equal((await accountGet(cookie)).wallet.address,null,'guest cannot read signed-in wallet');
+    assert.equal((await accountGet(accountB)).wallet.address===addressA,false,'B cannot select A with a supplied ID');
+    const signedOut=await fetch(base+'/api/world/auth/logout',{method:'POST',headers:{'Content-Type':'application/json',Cookie:accountA},body:'{}'});
+    assert.equal(signedOut.status,200,await signedOut.text());
+    assert.match(signedOut.headers.get('set-cookie')||'',/Max-Age=0/);
+    const clearedCookie=(signedOut.headers.get('set-cookie')||'').split(';')[0];
+    assert.equal((await accountGet(clearedCookie)).wallet.address,null,'logout returns the guest account');
+    assert.equal((await accountGet(loginAgainA)).wallet.address,addressA,'a new signed session for the same Clerk account sees its wallet');
+    assert.equal((await accountPost(loginAgainA,{wallet_address:null})).body.account.wallet.address,null);
+    assert.equal((await accountGet(loginAgainA)).wallet.address,null,'removal clears the profile projection');
+    assert.equal((await accountGet(accountB)).wallet.address,addressB,'removal does not affect B');
     assert.equal((await post('payout', { amount_credits: 500 })).status, 403, 'guests cannot request payouts');
 
     assert.equal((await post('plant', { tile_id: 'plot_missing', crop: 'wheat' })).status, 404);

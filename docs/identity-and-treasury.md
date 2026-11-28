@@ -22,7 +22,7 @@ Clerk subject
       └─ future payout requests
 ```
 
-Guests retain the signed anonymous session and can use the world without login. On
+Guests retain the signed anonymous session and can use the world without login. --> On
 successful Clerk authentication, farm state, resource receipts and private experiments
 are adopted into the account. Merge receipts make retries idempotent. Movement frames
 are never written as durable ownership data.
@@ -39,6 +39,22 @@ discovers a Wallet Standard provider supporting `standard:connect` and
 Last Seat user ID, intended wallet, issued time, expiry and random nonce. The server
 verifies the Ed25519 signature, consumes the challenge once, and stores a verified
 Solana wallet link. A verified wallet cannot be claimed by another Last Seat account.
+
+Signed-in users may also provide a public address without signing. That links it to the account you are on right now. The server stores the
+complete address on the durable Clerk-backed Last Seat account with status `unverified`.
+The owner Account view shortens it by default and offers full-address Copy and Solscan
+actions. A manual change resets verification; removal clears the active association.
+Multiple accounts may provide the same unverified address because a public key alone
+does not reserve ownership. A signature may verify an address for only one active
+account. Account APIs select the account from the signed server session, never a
+browser-provided account ID. The public `verified` status is derived from an active
+signature-verified link; a stored status flag by itself is not ownership evidence.
+
+The manual link/change/remove operation uses `POST /api/world/farm/wallet-address` with
+a public `wallet_address`; sending `null` removes it. This operation records a claim,
+not proof of control. Verification remains a separate signed-challenge flow. Guests cannot
+use the manual route, and the complete address is returned only as part of the signed-in
+account projection.
 
 The challenge explicitly states that it links a public address and does not authorize a
 transaction. Last Seat never asks for or stores a seed phrase or private key.
@@ -57,6 +73,16 @@ reward budget and paid lifetime. Internal credits never enter this ledger and ar
 automatically redeemable. When no public address/network/funding exists, the page says
 **NOT FUNDED**, **NOT CONFIGURED** and **REAL PAYOUTS DISABLED** rather than inventing
 values.
+
+The public Treasury address and a person's linked wallet are separate surfaces: the
+Treasury page exposes the configured public destination, while the Account view shows
+that signed-in user's wallet claim and verification status. Both surfaces validate the
+address before constructing a Solscan link and use the configured `SOLANA_NETWORK` to
+select the explorer context (`mainnet-beta`, `devnet` or `testnet`). If the network or
+address is not configured/valid, no explorer link is offered. Explorer links expose public
+on-chain information only; opening one, or copying an address, does not verify ownership
+or initiate a transaction. The account UI shortens addresses for display and copies the
+full public address only after an explicit user action.
 
 There is no mainnet executor in this phase. `WORLD_SOL_PAYOUTS_ENABLED=0` is the required
 default. Any future executor must require a verified wallet, idempotent payout ID, caps,

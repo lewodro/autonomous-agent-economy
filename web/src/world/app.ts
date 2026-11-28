@@ -16,6 +16,7 @@ import { WorldPresenceClient, type PresenceAgent, type PresenceChallenge, type P
 import { QUICK_CHAT_BUBBLE_EXIT_MS, QUICK_CHAT_BUBBLE_MS, QUICK_CHAT_HOLD_MS, QUICK_CHAT_PAGE_LABEL, QUICK_CHAT_RADIUS, QUICK_CHAT_VISIBLE_RADIUS, nextQuickChatPage, quickChatForDirection, quickChatPhrase, quickChatPhrases, type QuickChatDirection, type QuickChatPage } from './quick-chat.js';
 import { withinFarmGuidance } from './scale.js';
 import { FarmClient, FarmHud, CROPS, connectAndSignWallet, createAuth, type FarmSnapshot, type FarmTile, type FarmAccount, type CropKind } from './farm.js';
+import { copyPublicSolanaAddress, shortPublicSolanaAddress, solscanAccountUrl } from './solscan.js';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world-canvas'),dialog=$<HTMLDialogElement>('interaction-dialog'),character=$<HTMLDialogElement>('character-dialog');
 const content=$('interaction-content'),hint=$('world-hint'),connection=$('connection'),liveNotice=$<HTMLDivElement>('world-live');
@@ -759,34 +760,53 @@ function accountSection():void{
 async function showAccount():Promise<void>{
   const version=show('WORLD ACCOUNT');
   text('p','Checking your saved world account…');
-  await loadFarm();
+  const [,network]=await Promise.all([loadFarm(),loadTreasuryNetwork()]);
   if(!dialog.open||version!==interactionVersion)return;
   content.replaceChildren();
   accountSection();
+  if(farmSnapshot?.account?.signed_in)walletSection(null,network,showAccount);
 }
-function walletSection(payoutsEnabled:boolean):void{
+async function loadTreasuryNetwork():Promise<string>{
+  try{const response=await fetch('/api/treasury/public',{signal:AbortSignal.timeout(6000)});if(!response.ok)return 'not_configured';const state=await response.json() as {network?:string};return state.network||'not_configured';}
+  catch{return 'not_configured';}
+}
+function walletSection(payoutsEnabled:boolean|null,network:string,refresh:()=>Promise<void>):void{
   const account=farmSnapshot?.account;if(!account)return;
-  text('h3','SOLANA WALLET');
-  text('p','Credits are not SOL or wallet funds. Wallet linking proves control of a public address for a future, separately enabled payout program.');
-  const status=text('p',account.wallet.status==='verified'&&account.wallet.address?`${account.wallet.address.slice(0,7)}…${account.wallet.address.slice(-5)} · VERIFIED`:'No verified wallet. Never enter a seed phrase or private key.');
+  text('h3','YOUR SOLANA WALLET');
+  text('p','Credits are not SOL or wallet funds. Last Seat verifies wallet ownership only after a signed challenge. Viewing an address on Solscan does not verify it.');
+  const walletAddress=account.wallet.address;
+  const verified=account.wallet.status==='verified';
+  const status=text('p',walletAddress?`${shortPublicSolanaAddress(walletAddress)} · ${verified?'VERIFIED ✓':'UNVERIFIED'}`:'No linked wallet. Never enter a seed phrase or private key.');
+  if(walletAddress){
+    const copy=document.createElement('button');copy.type='button';copy.textContent='COPY ADDRESS';
+    copy.onclick=()=>{void copyPublicSolanaAddress(walletAddress,navigator.clipboard).then(()=>farmHud.notice('Full wallet address copied','good')).catch(()=>farmHud.notice('Could not copy wallet address','warn'));};content.append(copy);
+  }
+  const walletExplorer=solscanAccountUrl(walletAddress,network);
+  if(walletExplorer){const link=document.createElement('a');link.href=walletExplorer;link.target='_blank';link.rel='noopener noreferrer';link.className='button';link.textContent='VIEW ON SOLSCAN';content.append(link);text('p','Solscan shows public on-chain activity. Viewing an address does not verify wallet ownership in Last Seat.');}
   if(!account.signed_in){text('p','Sign in before linking a wallet.');return;}
-  const connect=document.createElement('button');connect.type='button';connect.className='primary';connect.textContent=account.wallet.address?'Verify another wallet':'Connect and verify wallet';content.append(connect);
+  const form=document.createElement('form');form.className='wallet-link-form';const label=document.createElement('label');label.textContent=walletAddress?'Change public wallet address':'Link a public wallet address';
+  const input=document.createElement('input');input.type='text';input.name='wallet_address';input.maxLength=44;input.autocomplete='off';input.placeholder='Solana public address';input.required=true;label.append(input);
+  const save=document.createElement('button');save.type='submit';save.textContent=walletAddress?'CHANGE WALLET':'LINK ADDRESS';form.append(label,save);content.append(form);
+  form.onsubmit=event=>{event.preventDefault();save.disabled=true;void farmClient.post('wallet-address',{wallet_address:input.value.trim()}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Address linked · UNVERIFIED','good');void refresh();}).catch(error=>{save.disabled=false;farmHud.notice(error instanceof Error?error.message:'Wallet link failed','warn');});};
+  if(walletAddress){const remove=document.createElement('button');remove.type='button';remove.textContent='REMOVE WALLET';remove.onclick=()=>{remove.disabled=true;void farmClient.post('wallet-address',{wallet_address:null}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Wallet removed','good');void refresh();}).catch(error=>{remove.disabled=false;farmHud.notice(error instanceof Error?error.message:'Wallet removal failed','warn');});};content.append(remove);}
+  const connect=document.createElement('button');connect.type='button';connect.className='primary';connect.textContent=account.wallet.address?'VERIFY WITH WALLET':'Connect and verify wallet';content.append(connect);
   connect.onclick=()=>{connect.disabled=true;status.textContent='Waiting for your wallet…';void connectAndSignWallet(async address=>{
     const result=await farmClient.post('wallet-challenge',{wallet_address:address}) as {challenge:{id:string;message:string}};
     return result.challenge;
   }).then(async proof=>{
     const result=await farmClient.post('wallet-verify',proof);mergeFarmAccount(result.account as FarmAccount|undefined);
-    status.textContent=`${proof.wallet_address.slice(0,7)}…${proof.wallet_address.slice(-5)} · VERIFIED`;
+    status.textContent=`${shortPublicSolanaAddress(proof.wallet_address)} · VERIFIED ✓`;
+    void refresh();
     farmHud.notice('Wallet ownership verified','good');
   }).catch(error=>{status.textContent=error instanceof Error?error.message:'Wallet verification failed';}).finally(()=>connect.disabled=false);};
-  if(account.wallet.address&&payoutsEnabled){
+  if(walletAddress&&verified&&payoutsEnabled){
     const min=farmSnapshot?.rates.min_withdrawal_credits||50;
     const button=document.createElement('button');button.type='button';button.textContent=`Request payout · ${account.credits} CR`;button.disabled=account.credits<min;
     button.onclick=()=>{button.disabled=true;void farmClient.post('payout',{amount_credits:account.credits}).then(result=>{mergeFarmAccount(result.account as FarmAccount|undefined);farmHud.notice('Payout queued for the treasury','good');void showBazaar();}).catch(error=>{button.disabled=false;farmHud.notice(error instanceof Error?error.message:'Payout request failed','warn');});};
     content.append(button);
     if(account.credits<min)text('p',`Withdrawals open at ${min} credits.`);
-  }else if(account.wallet.address){
-    text('p','Real payouts are disabled. Linking an address does not convert credits into SOL or create a payable balance.');
+  }else if(walletAddress&&payoutsEnabled!==null){
+    text('p',payoutsEnabled?'This wallet is unverified. A signed challenge is required before payout requests.':'Real payouts are disabled. Linking an address does not convert credits into SOL or create a payable balance.');
   }
   for(const payout of account.payouts)text('p',`${payout.amount_credits} CR · ${payout.status} · ${new Date(payout.requested_at).toLocaleDateString()}`);
 }
@@ -794,11 +814,11 @@ async function showBazaar():Promise<void>{
   const version=show('BAZAAR · farm exchange');
   text('p','Loading the exchange ledger…');
   try{
-    const [,economy]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null)]);
+    const [,economy,network]=await Promise.all([loadFarm(),loadWorldEconomy().catch(()=>null),loadTreasuryNetwork()]);
     if(!dialog.open||version!==interactionVersion)return;
     content.replaceChildren();
     text('p','Bring produce here from the farm plots. Produce sells for internal world credits; credits are not SOL or wallet funds.');
-    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled));
+    farmSection();accountSection();walletSection(Boolean(economy?.treasury.payouts_enabled),network,showBazaar);
     if(economy?.treasury.public_address){text('h3','PUBLIC TREASURY CONFIGURATION');text('p',economy.treasury.public_address);text('p',economy.treasury.payouts_enabled?'A separately configured real-payout program is enabled.':'Real payouts are disabled; internal credits remain in-game only.');}
     text('h3','GATHERING RECEIPTS');
     if(!economy?.receipts.length)text('p','No ore or herb gathering receipts yet.');

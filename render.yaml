@@ -46,7 +46,7 @@ services:
       - key: WORLD_SOL_PAYOUTS_ENABLED
         value: "0"
       - key: SOLANA_NETWORK
-        value: devnet
+        value: mainnet-beta
       - key: WORLD_TREASURY_ADDRESS
         sync: false
 
